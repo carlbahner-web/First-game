@@ -1099,7 +1099,7 @@ function drawDancer(d) {
     // Beat-synced animation
     const onBeat = (step % 4 === 0);       // strong beats (quarter notes)
     const bob = onBeat ? 3 : (step % 2 === 0 ? 1 : 0);  // jump on beats, small bob otherwise
-    const armsUp = step % 4 < 2;           // arms alternate every 2 steps
+    const armsUp = onBeat;                  // arms raise on quarter-note beats
     const footOffset = step % 2 === 0 ? 1 : -1;
 
     const dx = d.x;
