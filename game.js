@@ -9,9 +9,9 @@ const ctx = canvas.getContext("2d");
 const TILE = 16;
 const SCALE = 3;
 const COLS = 22;           // room width in tiles
-const ROWS = 16;           // room height in tiles
+const ROWS = 18;           // room height in tiles
 const GRID_COLS = 16;      // sequencer steps
-const GRID_ROWS = 4;       // drum channels (kick, snare, hihat-closed, hihat-open)
+const GRID_ROWS = 6;       // drum channels
 const GRID_X = 3;          // grid start tile-x
 const GRID_Y = 4;          // grid start tile-y
 const BPM = 120;
@@ -31,7 +31,7 @@ const PAL = {
     floor:     "#345558",
     floorAlt:  "#2f4f53",
     gridOff:   "#2a4448",
-    gridOn:    ["#BF7538", "#F6CC60", "#BFCDC0", "#EBEBE3"], // per-row colors (open-hh, hihat, snare, kick)
+    gridOn:    ["#BF7538", "#F6CC60", "#BFCDC0", "#EBEBE3", "#E86A6A", "#6AB8E8"], // per-row colors
     gridBorder:"#3A6168",
     playhead:  "#F6CC60",
     player:    "#EBEBE3",
@@ -45,7 +45,7 @@ const PAL = {
     titleText: "#EBEBE3",
 };
 
-const DRUM_LABELS = ["OPEN-HH", "HI-HAT", "SNARE", "KICK"];
+const DRUM_LABELS = ["OPEN-HH", "HI-HAT", "SNARE", "KICK", "COWBELL", "TOM"];
 
 // ---- Audio Engine (Web Audio API with synthesized drums) ----
 let audioCtx = null;
@@ -127,11 +127,52 @@ function playHihat(time, open) {
     noise.start(time);
 }
 
+function playCowbell(time) {
+    const ctx = audioCtx;
+    // Two detuned square oscillators for metallic tone
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const filt = ctx.createBiquadFilter();
+    osc1.type = "square";
+    osc2.type = "square";
+    osc1.frequency.value = 560;
+    osc2.frequency.value = 845;
+    filt.type = "bandpass";
+    filt.frequency.value = 800;
+    filt.Q.value = 3;
+    gain.gain.setValueAtTime(0.4, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.15);
+    osc1.connect(filt);
+    osc2.connect(filt);
+    filt.connect(gain);
+    gain.connect(ctx.destination);
+    osc1.start(time); osc1.stop(time + 0.15);
+    osc2.start(time); osc2.stop(time + 0.15);
+}
+
+function playTom(time) {
+    const ctx = audioCtx;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(200, time);
+    osc.frequency.exponentialRampToValueAtTime(80, time + 0.15);
+    gain.gain.setValueAtTime(0.7, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.25);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(time);
+    osc.stop(time + 0.25);
+}
+
 const drumFns = [
     (t) => playHihat(t, true),
     (t) => playHihat(t, false),
     (t) => playSnare(t),
     (t) => playKick(t),
+    (t) => playCowbell(t),
+    (t) => playTom(t),
 ];
 
 // ---- Sequencer State ----
@@ -671,6 +712,23 @@ function render() {
             drawRect(ix + 2, iy + 8, 10, 2, col);       // bottom cymbal (touching)
             drawRect(ix + 1, iy + 7, 1, 2, col);        // left edge
             drawRect(ix + 12, iy + 7, 1, 2, col);       // right edge
+        } else if (r === 4) {
+            // COWBELL: trapezoidal bell shape
+            drawRect(ix + 4, iy + 2, 6, 2, col);        // top (narrow)
+            drawRect(ix + 3, iy + 4, 8, 2, col);        // upper body
+            drawRect(ix + 2, iy + 6, 10, 4, col);       // lower body (wide)
+            drawRect(ix + 1, iy + 10, 12, 2, col);      // bottom rim
+            drawRect(ix + 6, iy + 7, 2, 3, dark);       // strike mark
+        } else if (r === 5) {
+            // TOM: round drum from above
+            drawRect(ix + 3, iy + 2, 8, 2, col);        // top rim
+            drawRect(ix + 3, iy + 12, 8, 2, col);       // bottom rim
+            drawRect(ix + 1, iy + 4, 2, 8, col);        // left side
+            drawRect(ix + 11, iy + 4, 2, 8, col);       // right side
+            // drum head lines
+            drawRect(ix + 4, iy + 5, 6, 1, dark);
+            drawRect(ix + 4, iy + 8, 6, 1, dark);
+            drawRect(ix + 4, iy + 11, 6, 1, dark);
         } else {
             // OPEN HI-HAT: two cymbals apart
             drawRect(ix + 6, iy + 2, 2, 12, col);       // stand
