@@ -541,8 +541,11 @@ function update(dt) {
         else if (keys["ArrowDown"]  || keys["KeyS"]) wantDir = 0;
 
         if (wantDir >= 0) {
-            p.dir = wantDir;
-            // Immediately move one tile in the pressed direction
+            if (p.dir !== wantDir) {
+                // Turn only, don't move
+                p.dir = wantDir;
+            } else {
+            // Already facing this way — move one tile
             let nx = p.x, ny = p.y;
             switch (wantDir) {
                 case 0: ny = Math.min((ROWS - 2) * TILE, p.y + TILE); break;
@@ -558,6 +561,7 @@ function update(dt) {
             } else {
                 p.destX = nx;
                 p.destY = ny;
+            }
             }
         } else {
             p.frame = 0;
