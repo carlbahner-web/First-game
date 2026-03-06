@@ -568,10 +568,6 @@ function render() {
     for (let c = 0; c < COLS; c++) {
         const stripe = c % 2 === 0 ? "#BF7538" : "#EBEBE3";
         drawRect(c * TILE, 0, TILE, TILE, stripe);
-        // Scalloped bottom edge of tent
-        drawRect(c * TILE, TILE, TILE, 4, c % 2 === 0 ? "#BF7538" : "#EBEBE3");
-        // Dark trim under scallop
-        drawRect(c * TILE, TILE + 4, TILE, 2, "#3A6168");
 
         // Bottom wall — ticket booth style
         drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#3A6168" : "#4a7a82");
@@ -724,9 +720,36 @@ function render() {
         ctx.fillRect((bx + 1) * SCALE, (by + 1) * SCALE, (TILE - 2) * SCALE, 2 * SCALE);
         ctx.fillStyle = "rgba(0,0,0,0.25)";
         ctx.fillRect((bx + 1) * SCALE, (by + TILE - 3) * SCALE, (TILE - 2) * SCALE, 2 * SCALE);
-        // Label (centered below the block)
-        const labelW = blk.label.length * 2.5;
-        drawText(blk.label, bx + TILE / 2 - labelW, by + TILE + 8, blk.color, 3);
+
+        if (key === "playStop") {
+            // Draw play triangle or stop bars icon on the block
+            const iconColor = "#2a4448";
+            if (playing) {
+                // Stop icon: two vertical bars
+                drawRect(bx + 4, by + 4, 3, 8, iconColor);
+                drawRect(bx + 9, by + 4, 3, 8, iconColor);
+            } else {
+                // Play icon: right-pointing triangle
+                ctx.fillStyle = iconColor;
+                ctx.beginPath();
+                ctx.moveTo((bx + 5) * SCALE, (by + 3) * SCALE);
+                ctx.lineTo((bx + 5) * SCALE, (by + 13) * SCALE);
+                ctx.lineTo((bx + 13) * SCALE, (by + 8) * SCALE);
+                ctx.fill();
+            }
+        } else {
+            // Reset icon: undo/circular arrow
+            const iconColor = "#2a4448";
+            // Arc body (drawn as pixel segments)
+            drawRect(bx + 5, by + 3, 6, 2, iconColor);  // top
+            drawRect(bx + 3, by + 5, 2, 4, iconColor);   // left
+            drawRect(bx + 5, by + 11, 6, 2, iconColor);  // bottom
+            drawRect(bx + 11, by + 7, 2, 4, iconColor);  // right
+            // Arrow head pointing left at the top-left
+            drawRect(bx + 3, by + 3, 2, 2, iconColor);
+            drawRect(bx + 2, by + 5, 2, 2, iconColor);
+            drawRect(bx + 5, by + 1, 2, 2, iconColor);
+        }
     }
 
     // Goblin
