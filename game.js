@@ -14,8 +14,8 @@ const GRID_COLS = 16;      // sequencer steps
 const GRID_ROWS = 6;       // drum channels
 const GRID_X = 3;          // grid start tile-x
 const GRID_Y = 4;          // grid start tile-y
-const BPM = 120;
-const STEP_MS = (60 / BPM / 4) * 1000; // 16th-note interval
+let bpm = 120;
+let stepMs = (60 / bpm / 4) * 1000; // 16th-note interval
 
 canvas.width = COLS * TILE * SCALE;
 canvas.height = ROWS * TILE * SCALE;
@@ -177,7 +177,7 @@ const drumFns = [
 
 // ---- Sequencer State ----
 const grid = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).fill(false));
-let playing = true;
+const playing = true; // always playing — use RESET block to clear
 let currentStep = 0;
 let lastStepTime = 0;
 
@@ -233,8 +233,9 @@ let deathText = null; // {x, y, timer, text}
 
 // ---- Control Blocks (physical buttons in the room) ----
 const CTRL_BLOCKS = {
-    playStop: { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + GRID_ROWS + 2, label: "STOP", color: "#BFCDC0" },
-    reset:    { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + GRID_ROWS + 3, label: "RESET", color: "#BF7538" },
+    tempoDown: { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + GRID_ROWS + 1, label: "BPM-", color: "#6AB8E8" },
+    tempoUp:   { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + GRID_ROWS + 2, label: "BPM+", color: "#E86A6A" },
+    reset:     { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + GRID_ROWS + 3, label: "RESET", color: "#BF7538" },
 };
 
 // ---- Input ----
@@ -249,12 +250,6 @@ window.addEventListener("keydown", (e) => {
     if (e.code === "Enter") {
         e.preventDefault();
         ensureAudio();
-        playing = !playing;
-        if (playing) {
-            currentStep = 0;
-            lastStepTime = performance.now();
-        }
-        CTRL_BLOCKS.playStop.label = playing ? "STOP" : "PLAY";
     }
 });
 window.addEventListener("keyup", (e) => { keys[e.code] = false; });
@@ -341,16 +336,19 @@ function update(dt) {
         }
 
         // Check control blocks
-        const ps = CTRL_BLOCKS.playStop;
+        const td = CTRL_BLOCKS.tempoDown;
+        const tu = CTRL_BLOCKS.tempoUp;
         const rs = CTRL_BLOCKS.reset;
-        if (targetTileX === ps.tileX && targetTileY === ps.tileY) {
+        if (targetTileX === td.tileX && targetTileY === td.tileY) {
             ensureAudio();
-            playing = !playing;
-            if (playing) {
-                currentStep = 0;
-                lastStepTime = performance.now();
-            }
-            ps.label = playing ? "STOP" : "PLAY";
+            bpm = Math.max(40, bpm - 1);
+            stepMs = (60 / bpm / 4) * 1000;
+            p.swordHit = true;
+        }
+        if (targetTileX === tu.tileX && targetTileY === tu.tileY) {
+            ensureAudio();
+            bpm = Math.min(300, bpm + 1);
+            stepMs = (60 / bpm / 4) * 1000;
             p.swordHit = true;
         }
         if (targetTileX === rs.tileX && targetTileY === rs.tileY) {
@@ -563,8 +561,8 @@ function update(dt) {
     if (playing) {
         if (!lastStepTime) lastStepTime = performance.now();
         const now = performance.now();
-        if (now - lastStepTime >= STEP_MS) {
-            lastStepTime += STEP_MS;
+        if (now - lastStepTime >= stepMs) {
+            lastStepTime += stepMs;
             // Play active drums for current step
             ensureAudio();
             const t = audioCtx ? audioCtx.currentTime : 0;
@@ -680,7 +678,7 @@ function render() {
     // Title with carnival flair
     drawText("DRUM QUEST", GRID_X * TILE + 32, TILE * 2.8, "#F6CC60", 6);
     // Tempo badge
-    drawText("120 BPM", (GRID_X + 12) * TILE, TILE * 2.8, "#BFCDC0", 4);
+    drawText(bpm + " BPM", (GRID_X + 12) * TILE, TILE * 2.8, "#BFCDC0", 4);
 
     // Row icons (pixel-art drum icons in the left wall area)
     for (let r = 0; r < GRID_ROWS; r++) {
@@ -788,22 +786,12 @@ function render() {
     // Status indicator
     const indicatorY = (GRID_Y + GRID_ROWS) * TILE + 18;
     const indicatorX = GRID_X * TILE;
-    if (playing) {
-        drawRect(indicatorX, indicatorY, 6, 8, PAL.stopBtn);
-        drawRect(indicatorX + 8, indicatorY, 6, 8, PAL.stopBtn);
-        drawText("PLAYING", indicatorX + 18, indicatorY + 7, PAL.startBtn, 3);
-    } else {
-        ctx.fillStyle = PAL.startBtn;
-        ctx.beginPath();
-        ctx.moveTo(indicatorX * SCALE, indicatorY * SCALE);
-        ctx.lineTo(indicatorX * SCALE, (indicatorY + 9) * SCALE);
-        ctx.lineTo((indicatorX + 8) * SCALE, (indicatorY + 4.5) * SCALE);
-        ctx.fill();
-        drawText("STOPPED", indicatorX + 18, indicatorY + 7, "#5a8a8f", 3);
-    }
+    drawRect(indicatorX, indicatorY, 6, 8, PAL.stopBtn);
+    drawRect(indicatorX + 8, indicatorY, 6, 8, PAL.stopBtn);
+    drawText("PLAYING", indicatorX + 18, indicatorY + 7, PAL.startBtn, 3);
 
     // Control blocks
-    for (const key of ["playStop", "reset"]) {
+    for (const key of ["tempoDown", "tempoUp", "reset"]) {
         const blk = CTRL_BLOCKS[key];
         const bx = blk.tileX * TILE;
         const by = blk.tileY * TILE;
@@ -816,22 +804,26 @@ function render() {
         ctx.fillStyle = "rgba(0,0,0,0.25)";
         ctx.fillRect((bx + 1) * SCALE, (by + TILE - 3) * SCALE, (TILE - 2) * SCALE, 2 * SCALE);
 
-        if (key === "playStop") {
-            // Draw play triangle or stop bars icon on the block
+        if (key === "tempoDown") {
+            // Down arrow icon
             const iconColor = "#2a4448";
-            if (playing) {
-                // Stop icon: two vertical bars
-                drawRect(bx + 4, by + 4, 3, 8, iconColor);
-                drawRect(bx + 9, by + 4, 3, 8, iconColor);
-            } else {
-                // Play icon: right-pointing triangle
-                ctx.fillStyle = iconColor;
-                ctx.beginPath();
-                ctx.moveTo((bx + 5) * SCALE, (by + 3) * SCALE);
-                ctx.lineTo((bx + 5) * SCALE, (by + 13) * SCALE);
-                ctx.lineTo((bx + 13) * SCALE, (by + 8) * SCALE);
-                ctx.fill();
-            }
+            drawRect(bx + 6, by + 3, 4, 6, iconColor);          // shaft
+            ctx.fillStyle = iconColor;
+            ctx.beginPath();
+            ctx.moveTo((bx + 3) * SCALE, (by + 9) * SCALE);
+            ctx.lineTo((bx + 13) * SCALE, (by + 9) * SCALE);
+            ctx.lineTo((bx + 8) * SCALE, (by + 14) * SCALE);
+            ctx.fill();
+        } else if (key === "tempoUp") {
+            // Up arrow icon
+            const iconColor = "#2a4448";
+            drawRect(bx + 6, by + 7, 4, 6, iconColor);          // shaft
+            ctx.fillStyle = iconColor;
+            ctx.beginPath();
+            ctx.moveTo((bx + 3) * SCALE, (by + 7) * SCALE);
+            ctx.lineTo((bx + 13) * SCALE, (by + 7) * SCALE);
+            ctx.lineTo((bx + 8) * SCALE, (by + 2) * SCALE);
+            ctx.fill();
         } else {
             // Reset icon: undo/circular arrow
             const iconColor = "#2a4448";
