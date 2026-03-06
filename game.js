@@ -233,10 +233,42 @@ let deathText = null; // {x, y, timer, text}
 
 // ---- Control Blocks (physical buttons in the room) ----
 const CTRL_BLOCKS = {
-    tempoDown: { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + GRID_ROWS + 1, label: "BPM-", color: "#6AB8E8" },
-    tempoUp:   { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + GRID_ROWS + 2, label: "BPM+", color: "#E86A6A" },
-    reset:     { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + GRID_ROWS + 3, label: "RESET", color: "#BF7538" },
+    tempoUp:   { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + GRID_ROWS + 1, label: "BPM+", color: "#E86A6A" },
+    tempoDown: { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + GRID_ROWS + 4, label: "BPM-", color: "#6AB8E8" },
+    reset:     { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + GRID_ROWS + 5, label: "RESET", color: "#BF7538" },
 };
+
+// ---- Pixel-art digit bitmaps (3 wide × 5 tall) ----
+const DIGIT_BITMAPS = [
+    [0b111, 0b101, 0b101, 0b101, 0b111], // 0
+    [0b010, 0b110, 0b010, 0b010, 0b111], // 1
+    [0b111, 0b001, 0b111, 0b100, 0b111], // 2
+    [0b111, 0b001, 0b111, 0b001, 0b111], // 3
+    [0b101, 0b101, 0b111, 0b001, 0b001], // 4
+    [0b111, 0b100, 0b111, 0b001, 0b111], // 5
+    [0b111, 0b100, 0b111, 0b101, 0b111], // 6
+    [0b111, 0b001, 0b010, 0b010, 0b010], // 7
+    [0b111, 0b101, 0b111, 0b101, 0b111], // 8
+    [0b111, 0b101, 0b111, 0b001, 0b111], // 9
+];
+
+function drawPixelDigits(num, cx, cy, color, pixelSize) {
+    const str = String(num);
+    const digitW = 3 * pixelSize + pixelSize; // digit width + spacing
+    const totalW = str.length * digitW - pixelSize; // no trailing space
+    let startX = cx - totalW / 2;
+    for (let d = 0; d < str.length; d++) {
+        const bitmap = DIGIT_BITMAPS[parseInt(str[d])];
+        const dx = startX + d * digitW;
+        for (let row = 0; row < 5; row++) {
+            for (let col = 0; col < 3; col++) {
+                if (bitmap[row] & (1 << (2 - col))) {
+                    drawRect(dx + col * pixelSize, cy + row * pixelSize, pixelSize, pixelSize, color);
+                }
+            }
+        }
+    }
+}
 
 // ---- Input ----
 const keys = {};
@@ -791,7 +823,7 @@ function render() {
     drawText("PLAYING", indicatorX + 18, indicatorY + 7, PAL.startBtn, 3);
 
     // Control blocks
-    for (const key of ["tempoDown", "tempoUp", "reset"]) {
+    for (const key of ["tempoUp", "tempoDown", "reset"]) {
         const blk = CTRL_BLOCKS[key];
         const bx = blk.tileX * TILE;
         const by = blk.tileY * TILE;
@@ -837,6 +869,24 @@ function render() {
             drawRect(bx + 2, by + 5, 2, 2, iconColor);
             drawRect(bx + 5, by + 1, 2, 2, iconColor);
         }
+    }
+
+    // Large pixel-art BPM display between tempo arrows
+    {
+        const bpmBlockX = CTRL_BLOCKS.tempoUp.tileX * TILE;
+        const bpmAreaTop = (CTRL_BLOCKS.tempoUp.tileY + 1) * TILE;
+        const bpmAreaBottom = CTRL_BLOCKS.tempoDown.tileY * TILE;
+        const bpmCenterX = bpmBlockX + TILE / 2;
+        const bpmCenterY = (bpmAreaTop + bpmAreaBottom) / 2;
+        // Background panel
+        drawRect(bpmBlockX, bpmAreaTop, TILE, bpmAreaBottom - bpmAreaTop, "#1a3438");
+        drawRect(bpmBlockX + 1, bpmAreaTop + 1, TILE - 2, bpmAreaBottom - bpmAreaTop - 2, "#243e42");
+        // Digits
+        const pxSize = 3;
+        const digitH = 5 * pxSize;
+        drawPixelDigits(bpm, bpmCenterX, bpmCenterY - digitH / 2 - 4, "#F6CC60", pxSize);
+        // "BPM" label below digits
+        drawText("BPM", bpmCenterX - 7, bpmCenterY + digitH / 2 + 2, "#8ab0b4", 3);
     }
 
     // Goblin
