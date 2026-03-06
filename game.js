@@ -284,6 +284,8 @@ const goblin = {
     sabotageTimer: 0,
     moveSteps: 0, // count steps for re-picking target
     elite: false, // true for every 3rd goblin (pink & fast)
+    hp: 1,        // normal goblins have 1 hp, elites have 3
+    hurtTimer: 0, // flash white when hit
 };
 
 // Death particles
@@ -574,11 +576,69 @@ function update(dt) {
         const gobTileX = Math.round(goblin.x / TILE);
         const gobTileY = Math.round(goblin.y / TILE);
         if (!goblin.dead && targetTileX === gobTileX && targetTileY === gobTileY) {
+            p.swordHit = true;
+            goblin.hp--;
+
+            if (goblin.hp > 0) {
+                // Non-lethal hit on elite goblin — hurt feedback
+                goblin.hurtTimer = 12; // flash white for 12 frames
+                goblin.speed = goblin.hp === 2 ? 0.9 : 1.1; // get faster each hit
+
+                // Small hit freeze + shake
+                hitFreeze = 2;
+                pendingShake = true;
+                pendingShakeElite = false;
+
+                // Knockback: push goblin 1 tile away from player
+                const knockDx = gobTileX - Math.round(p.x / TILE);
+                const knockDy = gobTileY - Math.round(p.y / TILE);
+                const knockX = goblin.x + Math.sign(knockDx) * TILE;
+                const knockY = goblin.y + Math.sign(knockDy) * TILE;
+                goblin.destX = Math.max(TILE, Math.min((COLS - 2) * TILE, knockX));
+                goblin.destY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, knockY));
+
+                // Small burst of particles
+                for (let i = 0; i < 8; i++) {
+                    deathParticles.push({
+                        x: goblin.x + goblin.w / 2,
+                        y: goblin.y + goblin.h / 2,
+                        vx: (Math.random() - 0.5) * 2,
+                        vy: (Math.random() - 0.5) * 2 - 0.5,
+                        life: 15 + Math.random() * 15,
+                        color: goblin.hp === 2 ? "#d46a9a" : "#ff4444",
+                        size: 2 + Math.random() * 2,
+                        sparkle: false,
+                    });
+                }
+
+                // Hurt text
+                const hurtTexts = goblin.hp === 2
+                    ? ["OW!", "HEY!", "RUDE!", "OUCH!"]
+                    : ["STOP IT!", "AAAGH!", "IM MAD!", "GRRRR!"];
+                const ht = hurtTexts[Math.floor(Math.random() * hurtTexts.length)];
+                const htCol = goblin.hp === 2 ? "#ffaacc" : "#ff6666";
+                deathText = { x: goblin.x - 8, y: goblin.y - 8, timer: 40, text: ht, color: htCol, scale: 4 };
+
+                // Hurt sound — descending pitch, angrier each hit
+                if (audioCtx) {
+                    const now = audioCtx.currentTime;
+                    const osc = audioCtx.createOscillator();
+                    const g = audioCtx.createGain();
+                    osc.type = "square";
+                    const startFreq = goblin.hp === 2 ? 500 : 700;
+                    osc.frequency.setValueAtTime(startFreq, now);
+                    osc.frequency.exponentialRampToValueAtTime(150, now + 0.15);
+                    g.gain.setValueAtTime(0.12, now);
+                    g.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                    osc.connect(g); g.connect(audioCtx.destination);
+                    osc.start(now); osc.stop(now + 0.15);
+                }
+            } else {
+            // Lethal hit — full death sequence
             goblin.dead = true;
             const wasElite = goblin.elite;
             // Longer pause after elite (3rd) kill: 15s vs 10s
             goblin.respawnTimer = wasElite ? 900 : goblin.respawnDelay;
-            p.swordHit = true;
 
             // Death particles — elite gets a big sparkly explosion
             const particleCount = wasElite ? 50 : 20;
@@ -707,6 +767,7 @@ function update(dt) {
                     });
                 }
             }
+            } // end else (lethal hit)
         }
 
         // Check dancer hit — donk! They're immune
@@ -799,6 +860,7 @@ function update(dt) {
             goblin.dead = false;
             // Every 3rd goblin is elite (pink & fast)
             goblin.elite = (killCount % 3 === 2);
+            goblin.hp = goblin.elite ? 3 : 1;
             goblin.speed = goblin.elite ? 0.75 : 0.5;
             // Pick a random cave to spawn from
             goblin.spawnCave = Math.floor(Math.random() * CAVES.length);
@@ -932,6 +994,9 @@ function update(dt) {
             }
         }
     }
+
+    // Decrement goblin hurt flash timer
+    if (goblin.hurtTimer > 0) goblin.hurtTimer--;
 
     // Update death particles
     deathParticles = deathParticles.filter(p => {
@@ -1504,11 +1569,23 @@ function drawGoblin() {
     const gy = g.y;
     const bob = g.frame % 2 === 1 ? 1 : 0;
 
-    // Color palette: pink for elite, green for normal
-    const bodyCol = g.elite ? "#c45a8a" : "#4a8a3a";
-    const darkCol = g.elite ? "#a43a6a" : "#3a6a2a";
-    const headCol = g.elite ? "#d46a9a" : "#5a9a4a";
-    const eyeCol  = g.elite ? "#ffee44" : "#cc2222";
+    // Color palette: elite changes color based on HP (3=pink, 2=dark magenta, 1=bright red)
+    let bodyCol, darkCol, headCol, eyeCol;
+    if (g.hurtTimer > 0 && g.hurtTimer % 4 < 2) {
+        // White flash when hurt
+        bodyCol = "#ffffff"; darkCol = "#dddddd"; headCol = "#ffffff"; eyeCol = "#ffee44";
+    } else if (!g.elite) {
+        bodyCol = "#4a8a3a"; darkCol = "#3a6a2a"; headCol = "#5a9a4a"; eyeCol = "#cc2222";
+    } else if (g.hp === 3) {
+        // Full HP elite: pink
+        bodyCol = "#c45a8a"; darkCol = "#a43a6a"; headCol = "#d46a9a"; eyeCol = "#ffee44";
+    } else if (g.hp === 2) {
+        // Hurt elite: darker magenta, angrier
+        bodyCol = "#8a2a5a"; darkCol = "#6a1a3a"; headCol = "#aa3a6a"; eyeCol = "#ff4444";
+    } else {
+        // Near death elite: bright red, furious
+        bodyCol = "#cc2222"; darkCol = "#991111"; headCol = "#ee3333"; eyeCol = "#ffee44";
+    }
 
     // Shadow
     drawRect(gx + 3, gy + g.h - 2, g.w - 6, 3, PAL.shadow);
