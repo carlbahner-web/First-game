@@ -206,7 +206,7 @@ const player = {
     attackTimer: 0,
     attackDuration: 12,
     swordHit: false, // did this swing already toggle a block?
-    speed: 1.35, // pixels per frame at 60fps (~same total speed as before)
+    speed: 2.0, // pixels per frame at 60fps — snappy tile-to-tile glide
 };
 
 // ---- Caves (goblin spawn points) ----
@@ -541,27 +541,23 @@ function update(dt) {
         else if (keys["ArrowDown"]  || keys["KeyS"]) wantDir = 0;
 
         if (wantDir >= 0) {
-            if (p.dir !== wantDir) {
-                // Turn only, don't move
-                p.dir = wantDir;
+            p.dir = wantDir;
+            // Immediately move one tile in the pressed direction
+            let nx = p.x, ny = p.y;
+            switch (wantDir) {
+                case 0: ny = Math.min((ROWS - 2) * TILE, p.y + TILE); break;
+                case 1: ny = Math.max(TILE * 2, p.y - TILE); break;
+                case 2: nx = Math.max(TILE, p.x - TILE); break;
+                case 3: nx = Math.min((COLS - 2) * TILE, p.x + TILE); break;
+            }
+            // Check goblin collision
+            const gRoundX = Math.round(goblin.x / TILE) * TILE;
+            const gRoundY = Math.round(goblin.y / TILE) * TILE;
+            if (!goblin.dead && nx === gRoundX && ny === gRoundY) {
+                // blocked by goblin
             } else {
-                // Already facing this way — set new destination
-                let nx = p.x, ny = p.y;
-                switch (wantDir) {
-                    case 0: ny = Math.min((ROWS - 2) * TILE, p.y + TILE); break;
-                    case 1: ny = Math.max(TILE * 2, p.y - TILE); break;
-                    case 2: nx = Math.max(TILE, p.x - TILE); break;
-                    case 3: nx = Math.min((COLS - 2) * TILE, p.x + TILE); break;
-                }
-                // Check goblin collision
-                const gRoundX = Math.round(goblin.x / TILE) * TILE;
-                const gRoundY = Math.round(goblin.y / TILE) * TILE;
-                if (!goblin.dead && nx === gRoundX && ny === gRoundY) {
-                    // blocked by goblin
-                } else {
-                    p.destX = nx;
-                    p.destY = ny;
-                }
+                p.destX = nx;
+                p.destY = ny;
             }
         } else {
             p.frame = 0;
@@ -1072,21 +1068,21 @@ function drawSword() {
     ctx.globalAlpha = 1.0;
 
     // Calculate swing angle based on direction
-    // Sword arcs from behind/above → down in front
+    // Sword arcs overhead in the direction the player faces
     let angle;
     const shoulderX = cx, shoulderY = py + 2; // pivot near shoulders
     switch (p.dir) {
-        case 0: // down — arc from upper-right to lower-center
-            angle = -Math.PI * 0.6 + progress * Math.PI * 1.1;
+        case 0: // down — arc from upper-left to lower-right
+            angle = -Math.PI * 0.8 + progress * Math.PI * 1.2;
             break;
-        case 1: // up — arc from lower-right to upper-center
-            angle = Math.PI * 0.6 - progress * Math.PI * 1.1;
+        case 1: // up — arc from lower-right to upper-left
+            angle = Math.PI * 0.8 - progress * Math.PI * 1.2;
             break;
-        case 2: // left — arc from upper-right to left
-            angle = -Math.PI * 0.4 + progress * Math.PI * 0.9;
+        case 2: // left — arc from upper-right down to left
+            angle = -Math.PI * 0.3 - progress * Math.PI * 0.9;
             break;
-        case 3: // right — arc from upper-left to right
-            angle = -Math.PI * 0.6 - progress * Math.PI * 0.9 + Math.PI;
+        case 3: // right — arc from upper-left down to right
+            angle = -Math.PI * 0.7 + progress * Math.PI * 0.9;
             break;
     }
 
