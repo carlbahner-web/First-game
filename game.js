@@ -297,6 +297,8 @@ window.addEventListener("keydown", (e) => {
         e.preventDefault();
         ensureAudio();
         gamePaused = !gamePaused;
+        // Reset sequencer timing so it doesn't fast-forward on unpause
+        if (!gamePaused) lastStepTime = performance.now();
         // Pause/unpause sound
         if (audioCtx) {
             const now = audioCtx.currentTime;
