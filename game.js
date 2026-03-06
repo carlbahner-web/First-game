@@ -241,7 +241,8 @@ const goblin = {
 
 // Death particles
 let deathParticles = [];
-let deathText = null; // {x, y, timer, text}
+let deathText = null; // {x, y, timer, text, color, scale}
+let screenFlash = 0; // white flash frames remaining
 
 // ---- Control Blocks (physical buttons in the room) ----
 const CTRL_BLOCKS = {
@@ -421,51 +422,100 @@ function update(dt) {
         const gobTileY = Math.round(goblin.y / TILE);
         if (!goblin.dead && targetTileX === gobTileX && targetTileY === gobTileY) {
             goblin.dead = true;
+            const wasElite = goblin.elite;
             // Longer pause after elite (3rd) kill: 15s vs 10s
-            goblin.respawnTimer = goblin.elite ? 900 : goblin.respawnDelay;
+            goblin.respawnTimer = wasElite ? 900 : goblin.respawnDelay;
             p.swordHit = true;
-            // Spawn death particles (bloody pixel explosion)
-            for (let i = 0; i < 20; i++) {
+
+            // Death particles — elite gets a big sparkly explosion
+            const particleCount = wasElite ? 50 : 20;
+            const spreadMul = wasElite ? 3 : 2;
+            for (let i = 0; i < particleCount; i++) {
+                const isSparkle = wasElite && Math.random() > 0.5;
                 deathParticles.push({
                     x: goblin.x + goblin.w / 2,
                     y: goblin.y + goblin.h / 2,
-                    vx: (Math.random() - 0.5) * 2,
-                    vy: (Math.random() - 0.5) * 2 - 1,
-                    life: 30 + Math.random() * 30,
-                    color: goblin.elite
-                        ? (Math.random() > 0.3 ? "#d46a9a" : "#a43a6a")
+                    vx: (Math.random() - 0.5) * spreadMul,
+                    vy: (Math.random() - 0.5) * spreadMul - 1,
+                    life: wasElite ? 50 + Math.random() * 50 : 30 + Math.random() * 30,
+                    color: wasElite
+                        ? (isSparkle ? "#ffee44" : Math.random() > 0.3 ? "#d46a9a" : "#ff88bb")
                         : (Math.random() > 0.3 ? "#cc2222" : "#881111"),
-                    size: 2 + Math.random() * 3,
+                    size: wasElite ? 2 + Math.random() * 4 : 2 + Math.random() * 3,
+                    sparkle: isSparkle, // sparkle particles twinkle
                 });
             }
-            // "OW!" text
-            deathText = { x: goblin.x, y: goblin.y - 8, timer: 60, text: "OW!" };
-            // Play a silly death sound
+
+            // Death text
+            deathText = wasElite
+                ? { x: goblin.x - 12, y: goblin.y - 12, timer: 90, text: "YEAH!", color: "#ffee44", scale: 6 }
+                : { x: goblin.x, y: goblin.y - 8, timer: 60, text: "OW!", color: "#cc2222", scale: 5 };
+
+            // Screen flash for elite kill
+            if (wasElite) screenFlash = 15;
+
+            // Sound: fanfare for elite, simple boop for normal
             if (audioCtx) {
                 const now = audioCtx.currentTime;
-                const osc = audioCtx.createOscillator();
-                const g = audioCtx.createGain();
-                osc.type = "square";
-                osc.frequency.setValueAtTime(600, now);
-                osc.frequency.exponentialRampToValueAtTime(80, now + 0.3);
-                g.gain.setValueAtTime(0.15, now);
-                g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-                osc.connect(g); g.connect(audioCtx.destination);
-                osc.start(now); osc.stop(now + 0.3);
+                if (wasElite) {
+                    // Triumphant fanfare — ascending arpeggio
+                    const notes = [523, 659, 784, 1047]; // C5, E5, G5, C6
+                    notes.forEach((freq, i) => {
+                        const osc = audioCtx.createOscillator();
+                        const g = audioCtx.createGain();
+                        osc.type = "square";
+                        osc.frequency.setValueAtTime(freq, now + i * 0.1);
+                        g.gain.setValueAtTime(0.12, now + i * 0.1);
+                        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.3);
+                        osc.connect(g); g.connect(audioCtx.destination);
+                        osc.start(now + i * 0.1); osc.stop(now + i * 0.1 + 0.3);
+                    });
+                    // Held final note with triangle wave for warmth
+                    const fin = audioCtx.createOscillator();
+                    const fg = audioCtx.createGain();
+                    fin.type = "triangle";
+                    fin.frequency.setValueAtTime(1047, now + 0.4);
+                    fg.gain.setValueAtTime(0.1, now + 0.4);
+                    fg.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+                    fin.connect(fg); fg.connect(audioCtx.destination);
+                    fin.start(now + 0.4); fin.stop(now + 1.0);
+                } else {
+                    const osc = audioCtx.createOscillator();
+                    const g = audioCtx.createGain();
+                    osc.type = "square";
+                    osc.frequency.setValueAtTime(600, now);
+                    osc.frequency.exponentialRampToValueAtTime(80, now + 0.3);
+                    g.gain.setValueAtTime(0.15, now);
+                    g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                    osc.connect(g); g.connect(audioCtx.destination);
+                    osc.start(now); osc.stop(now + 0.3);
+                }
             }
+
             // Kill counter & dancer spawn
             killCount++;
             if (killCount % 3 === 0) {
-                // Pick a position in the lower area (rows 14-16), spread horizontally
-                const minX = 2 * TILE;
-                const maxX = (COLS - 3) * TILE;
-                const palette = DANCER_PALETTES[dancers.length % DANCER_PALETTES.length];
-                dancers.push({
-                    x: minX + Math.random() * (maxX - minX),
-                    y: (14 + Math.floor(Math.random() * 3)) * TILE,
-                    palette: palette,
-                    phase: Math.floor(Math.random() * 16),
-                });
+                // Spawn 3 dancers that walk in from the border
+                for (let di = 0; di < 3; di++) {
+                    const palette = DANCER_PALETTES[dancers.length % DANCER_PALETTES.length];
+                    const targetY = (14 + Math.floor(Math.random() * 3)) * TILE;
+                    const targetX = (2 + Math.floor(Math.random() * (COLS - 5))) * TILE;
+                    // Pick a random border edge to walk in from
+                    const edge = Math.floor(Math.random() * 3); // 0=left, 1=right, 2=bottom
+                    let startX, startY;
+                    if (edge === 0) { startX = -TILE; startY = targetY; }
+                    else if (edge === 1) { startX = COLS * TILE; startY = targetY; }
+                    else { startX = targetX; startY = ROWS * TILE; }
+                    dancers.push({
+                        x: startX,
+                        y: startY,
+                        targetX: targetX,
+                        targetY: targetY,
+                        walkingIn: true,
+                        palette: palette,
+                        phase: Math.floor(Math.random() * 16),
+                    });
+                }
             }
         }
     }
@@ -632,6 +682,7 @@ function update(dt) {
         p.x += p.vx;
         p.y += p.vy;
         p.vy += 0.15; // gravity
+        if (p.sparkle) p.vx *= 0.98; // sparkles float more
         p.life--;
         return p.life > 0;
     });
@@ -639,6 +690,23 @@ function update(dt) {
         deathText.y -= 0.3;
         deathText.timer--;
         if (deathText.timer <= 0) deathText = null;
+    }
+    if (screenFlash > 0) screenFlash--;
+
+    // Update dancers walking in from border
+    for (const d of dancers) {
+        if (d.walkingIn) {
+            const dx = d.targetX - d.x;
+            const dy = d.targetY - d.y;
+            const walkSpeed = 0.6;
+            if (Math.abs(dx) > 0.5) d.x += Math.sign(dx) * Math.min(walkSpeed, Math.abs(dx));
+            if (Math.abs(dy) > 0.5) d.y += Math.sign(dy) * Math.min(walkSpeed, Math.abs(dy));
+            if (Math.abs(dx) <= 0.5 && Math.abs(dy) <= 0.5) {
+                d.x = d.targetX;
+                d.y = d.targetY;
+                d.walkingIn = false;
+            }
+        }
     }
 
     // Sequencer step
@@ -913,6 +981,7 @@ function render() {
 
     // Death particles
     for (const p of deathParticles) {
+        if (p.sparkle && Math.random() > 0.6) continue; // twinkle effect
         ctx.fillStyle = p.color;
         ctx.globalAlpha = p.life / 60;
         ctx.fillRect(p.x * SCALE, p.y * SCALE, p.size * SCALE, p.size * SCALE);
@@ -922,7 +991,15 @@ function render() {
     // Death text
     if (deathText) {
         ctx.globalAlpha = Math.min(1, deathText.timer / 20);
-        drawText(deathText.text, deathText.x, deathText.y, "#cc2222", 5);
+        drawText(deathText.text, deathText.x, deathText.y, deathText.color || "#cc2222", deathText.scale || 5);
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Screen flash (elite kill)
+    if (screenFlash > 0) {
+        ctx.fillStyle = "#fff";
+        ctx.globalAlpha = screenFlash / 15 * 0.6;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.globalAlpha = 1.0;
     }
 
