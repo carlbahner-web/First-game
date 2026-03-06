@@ -751,6 +751,49 @@ function update(dt) {
             goblin.destY = spawnY;
             goblin.targetRow = -1;
             goblin.moveSteps = 0;
+
+            // Danger chord! Dissonant stinger on spawn
+            ensureAudio();
+            if (audioCtx) {
+                const now = audioCtx.currentTime;
+                if (goblin.elite) {
+                    // Elite gets a nastier, lower, more menacing chord
+                    const freqs = [110, 131, 165, 208]; // A2, C3, E3, Ab3 — diminished
+                    freqs.forEach((f, i) => {
+                        const osc = audioCtx.createOscillator();
+                        const g = audioCtx.createGain();
+                        osc.type = "sawtooth";
+                        osc.frequency.setValueAtTime(f, now);
+                        osc.frequency.linearRampToValueAtTime(f * 0.95, now + 0.4);
+                        g.gain.setValueAtTime(0.12, now);
+                        g.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+                        osc.connect(g); g.connect(audioCtx.destination);
+                        osc.start(now + i * 0.03); osc.stop(now + 0.5);
+                    });
+                    // Low rumble underneath
+                    const sub = audioCtx.createOscillator();
+                    const sg = audioCtx.createGain();
+                    sub.type = "sine";
+                    sub.frequency.setValueAtTime(55, now);
+                    sg.gain.setValueAtTime(0.2, now);
+                    sg.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+                    sub.connect(sg); sg.connect(audioCtx.destination);
+                    sub.start(now); sub.stop(now + 0.6);
+                } else {
+                    // Normal goblin — quick minor stab
+                    const freqs = [220, 262, 330]; // A3, C4, E4 — A minor
+                    freqs.forEach((f, i) => {
+                        const osc = audioCtx.createOscillator();
+                        const g = audioCtx.createGain();
+                        osc.type = "square";
+                        osc.frequency.setValueAtTime(f, now);
+                        g.gain.setValueAtTime(0.08, now);
+                        g.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+                        osc.connect(g); g.connect(audioCtx.destination);
+                        osc.start(now + i * 0.02); osc.stop(now + 0.3);
+                    });
+                }
+            }
         }
     } else {
         // Smooth pixel movement toward destination
