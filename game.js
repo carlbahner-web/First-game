@@ -236,6 +236,7 @@ const goblin = {
     targetCol: -1,
     sabotageTimer: 0,
     moveSteps: 0, // count steps for re-picking target
+    elite: false, // true for every 3rd goblin (pink & fast)
 };
 
 // Death particles
@@ -420,7 +421,8 @@ function update(dt) {
         const gobTileY = Math.round(goblin.y / TILE);
         if (!goblin.dead && targetTileX === gobTileX && targetTileY === gobTileY) {
             goblin.dead = true;
-            goblin.respawnTimer = goblin.respawnDelay;
+            // Longer pause after elite (3rd) kill: 15s vs 10s
+            goblin.respawnTimer = goblin.elite ? 900 : goblin.respawnDelay;
             p.swordHit = true;
             // Spawn death particles (bloody pixel explosion)
             for (let i = 0; i < 20; i++) {
@@ -430,7 +432,9 @@ function update(dt) {
                     vx: (Math.random() - 0.5) * 2,
                     vy: (Math.random() - 0.5) * 2 - 1,
                     life: 30 + Math.random() * 30,
-                    color: Math.random() > 0.3 ? "#cc2222" : "#881111",
+                    color: goblin.elite
+                        ? (Math.random() > 0.3 ? "#d46a9a" : "#a43a6a")
+                        : (Math.random() > 0.3 ? "#cc2222" : "#881111"),
                     size: 2 + Math.random() * 3,
                 });
             }
@@ -537,6 +541,9 @@ function update(dt) {
         goblin.respawnTimer--;
         if (goblin.respawnTimer <= 0) {
             goblin.dead = false;
+            // Every 3rd goblin is elite (pink & fast)
+            goblin.elite = (killCount % 3 === 2);
+            goblin.speed = goblin.elite ? 0.75 : 0.5;
             // Pick a random cave to spawn from
             goblin.spawnCave = Math.floor(Math.random() * CAVES.length);
             const cave = CAVES[goblin.spawnCave];
@@ -721,8 +728,9 @@ function render() {
             // Show eyes in the cave it'll spawn from
             const showEyes = goblin.respawnTimer < 60 && ci === goblin.spawnCave;
             if (showEyes) {
-                drawRect(cx + 5, cy + 5, 2, 2, "#cc2222");
-                drawRect(cx + 9, cy + 5, 2, 2, "#cc2222");
+                const caveEyeCol = goblin.elite ? "#ffee44" : "#cc2222";
+                drawRect(cx + 5, cy + 5, 2, 2, caveEyeCol);
+                drawRect(cx + 9, cy + 5, 2, 2, caveEyeCol);
             }
         }
     }
@@ -1062,23 +1070,29 @@ function drawGoblin() {
     const gy = g.y;
     const bob = g.frame % 2 === 1 ? 1 : 0;
 
+    // Color palette: pink for elite, green for normal
+    const bodyCol = g.elite ? "#c45a8a" : "#4a8a3a";
+    const darkCol = g.elite ? "#a43a6a" : "#3a6a2a";
+    const headCol = g.elite ? "#d46a9a" : "#5a9a4a";
+    const eyeCol  = g.elite ? "#ffee44" : "#cc2222";
+
     // Shadow
     drawRect(gx + 3, gy + g.h - 2, g.w - 6, 3, PAL.shadow);
-    // Body (green)
-    drawRect(gx + 4, gy + 3 - bob, 8, 9, "#4a8a3a");
+    // Body
+    drawRect(gx + 4, gy + 3 - bob, 8, 9, bodyCol);
     // Darker sides
-    drawRect(gx + 4, gy + 3 - bob, 2, 9, "#3a6a2a");
-    drawRect(gx + 10, gy + 3 - bob, 2, 9, "#3a6a2a");
+    drawRect(gx + 4, gy + 3 - bob, 2, 9, darkCol);
+    drawRect(gx + 10, gy + 3 - bob, 2, 9, darkCol);
     // Head
-    drawRect(gx + 3, gy - 1 - bob, 10, 6, "#5a9a4a");
+    drawRect(gx + 3, gy - 1 - bob, 10, 6, headCol);
     // Pointy ears
-    drawRect(gx + 1, gy - bob, 3, 3, "#5a9a4a");
-    drawRect(gx + 12, gy - bob, 3, 3, "#5a9a4a");
-    // Eyes (beady red)
+    drawRect(gx + 1, gy - bob, 3, 3, headCol);
+    drawRect(gx + 12, gy - bob, 3, 3, headCol);
+    // Eyes
     if (g.dir !== 1) {
         const ed = [[0, 2], [0, -2], [-1, 0], [1, 0]][g.dir];
-        drawRect(gx + 5 + ed[0], gy + 1 - bob + ed[1], 2, 2, "#cc2222");
-        drawRect(gx + 9 + ed[0], gy + 1 - bob + ed[1], 2, 2, "#cc2222");
+        drawRect(gx + 5 + ed[0], gy + 1 - bob + ed[1], 2, 2, eyeCol);
+        drawRect(gx + 9 + ed[0], gy + 1 - bob + ed[1], 2, 2, eyeCol);
     }
     // Mouth (little fangs)
     if (g.dir === 0) {
@@ -1087,8 +1101,8 @@ function drawGoblin() {
     }
     // Feet
     const wo = g.frame === 1 ? 2 : g.frame === 3 ? -2 : 0;
-    drawRect(gx + 5 + wo, gy + 12, 3, 2, "#3a6a2a");
-    drawRect(gx + 8 - wo, gy + 12, 3, 2, "#3a6a2a");
+    drawRect(gx + 5 + wo, gy + 12, 3, 2, darkCol);
+    drawRect(gx + 8 - wo, gy + 12, 3, 2, darkCol);
 }
 
 function drawDancer(d) {
