@@ -194,6 +194,22 @@ function playDonk(time) {
     osc2.stop(time + 0.08);
 }
 
+function playSabotageSound(time) {
+    const ctx = audioCtx;
+    if (!ctx) return;
+    // Dissonant buzz: two detuned square waves
+    [200, 213].forEach((freq) => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = "square";
+        osc.frequency.setValueAtTime(freq, time);
+        g.gain.setValueAtTime(0.12, time);
+        g.gain.exponentialRampToValueAtTime(0.001, time + 0.1);
+        osc.connect(g); g.connect(ctx.destination);
+        osc.start(time); osc.stop(time + 0.1);
+    });
+}
+
 const drumFns = [
     (t) => playHihat(t, true),
     (t) => playHihat(t, false),
@@ -203,6 +219,9 @@ const drumFns = [
 
 // ---- Sequencer State ----
 const grid = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).fill(false));
+// Starter beat: kick on 1,9 and snare on 5,13 (0-indexed: row 3=kick, row 2=snare)
+grid[3][0] = true; grid[3][8] = true;   // Kick on steps 1 and 9
+grid[2][4] = true; grid[2][12] = true;  // Snare on steps 5 and 13
 const playing = true; // always playing — use RESET block to clear
 let currentStep = 0;
 let lastStepTime = 0;
@@ -271,6 +290,16 @@ const goblin = {
 let deathParticles = [];
 let deathText = null; // {x, y, timer, text, color, scale}
 let screenFlash = 0; // white flash frames remaining
+
+// Screen shake & hit freeze (juice)
+let hitFreeze = 0;        // frames to skip update() but still render
+let screenShake = 0;      // frames of screen shake remaining
+let shakeIntensity = 0;   // pixel magnitude of shake offset
+let pendingShake = false;  // triggers shake after freeze ends
+let pendingShakeElite = false;
+
+// Sabotage flash — per-cell timer for red flash overlay
+const cellFlash = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).fill(0));
 let gamePaused = false;
 let gameState = "title"; // "title" or "playing"
 let titleBlink = 0; // blink timer for "PRESS ENTER"
@@ -439,6 +468,21 @@ function getBlockRect(row, col) {
 // ---- Update ----
 function update(dt) {
     if (gamePaused) return;
+
+    // Hit freeze: skip update but keep rendering for dramatic pause
+    if (hitFreeze > 0) {
+        hitFreeze--;
+        if (hitFreeze === 0 && pendingShake) {
+            screenShake = pendingShakeElite ? 10 : 6;
+            shakeIntensity = pendingShakeElite ? 4 : 2;
+            pendingShake = false;
+        }
+        return;
+    }
+
+    // Decrement screen shake
+    if (screenShake > 0) screenShake--;
+
     const p = player;
 
     // Attack (single press only)
@@ -562,6 +606,11 @@ function update(dt) {
 
             // Screen flash for elite kill
             if (wasElite) screenFlash = 15;
+
+            // Hit freeze + screen shake (juice)
+            hitFreeze = wasElite ? 5 : 3;
+            pendingShake = true;
+            pendingShakeElite = wasElite;
 
             // Sound: fanfare for elite, simple boop for normal
             if (audioCtx) {
@@ -824,6 +873,8 @@ function update(dt) {
             if (gr >= 0 && gr < GRID_ROWS && gc >= 0 && gc < GRID_COLS) {
                 if (gc === goblin.targetCol && gr === goblin.targetRow) {
                     grid[gr][gc] = !grid[gr][gc];
+                    cellFlash[gr][gc] = 30; // trigger red flash
+                    if (audioCtx) playSabotageSound(audioCtx.currentTime);
                     goblin.targetRow = -1;
                 }
             }
@@ -947,6 +998,14 @@ function drawText(text, x, y, color, size) {
 
 // ---- Render ----
 function render() {
+    // Screen shake offset
+    if (screenShake > 0) {
+        const sx = (Math.random() - 0.5) * 2 * shakeIntensity * SCALE;
+        const sy = (Math.random() - 0.5) * 2 * shakeIntensity * SCALE;
+        ctx.save();
+        ctx.translate(sx, sy);
+    }
+
     // Clear
     drawRect(0, 0, COLS * TILE, ROWS * TILE, PAL.bg);
 
@@ -1063,6 +1122,19 @@ function render() {
                 ctx.fillRect((bx + 1) * SCALE, (by + 1) * SCALE, (TILE - 2) * SCALE, 2 * SCALE);
                 ctx.fillStyle = "rgba(0,0,0,0.2)";
                 ctx.fillRect((bx + 1) * SCALE, (by + TILE - 3) * SCALE, (TILE - 2) * SCALE, 2 * SCALE);
+            }
+
+            // Sabotage flash overlay
+            if (cellFlash[r][c] > 0) {
+                ctx.fillStyle = "#ff2222";
+                ctx.globalAlpha = cellFlash[r][c] / 30 * 0.6;
+                ctx.fillRect((bx + 1) * SCALE, (by + 1) * SCALE, (TILE - 2) * SCALE, (TILE - 2) * SCALE);
+                ctx.globalAlpha = 1.0;
+                // "!" indicator for first half of flash
+                if (cellFlash[r][c] > 15) {
+                    drawText("!", bx + 5, by - 4, "#ff4444", 4);
+                }
+                cellFlash[r][c]--;
             }
         }
     }
@@ -1293,6 +1365,11 @@ function render() {
         const hintX = bannerX + bannerW / 2 - hintW / 2;
         const hintY = bannerY + bannerH - 10;
         drawText(hintText, hintX, hintY, "#8ab0b4", hintScale);
+    }
+
+    // Restore screen shake transform
+    if (screenShake > 0) {
+        ctx.restore();
     }
 }
 
