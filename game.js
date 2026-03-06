@@ -157,10 +157,16 @@ const player = {
     moveCooldownMax: 12, // frames between moves (half speed)
 };
 
+// ---- Cave (goblin spawn point) ----
+const CAVE = {
+    tileX: COLS - 1,   // right wall
+    tileY: GRID_Y + 3, // near bottom of grid
+};
+
 // ---- Goblin Enemy State ----
 const goblin = {
-    x: (GRID_X + 14) * TILE,
-    y: (GRID_Y) * TILE,
+    x: CAVE.tileX * TILE,
+    y: CAVE.tileY * TILE,
     w: TILE,
     h: TILE,
     dir: 0,
@@ -321,6 +327,40 @@ function update(dt) {
                 osc.start(now); osc.stop(now + 0.2);
             }
         }
+
+        // Check goblin hit (always check, even if we hit a grid block)
+        if (!goblin.dead && targetTileX * TILE === goblin.x && targetTileY * TILE === goblin.y) {
+            goblin.dead = true;
+            goblin.respawnTimer = goblin.respawnDelay;
+            p.swordHit = true;
+            // Spawn death particles (bloody pixel explosion)
+            for (let i = 0; i < 20; i++) {
+                deathParticles.push({
+                    x: goblin.x + goblin.w / 2,
+                    y: goblin.y + goblin.h / 2,
+                    vx: (Math.random() - 0.5) * 4,
+                    vy: (Math.random() - 0.5) * 4 - 2,
+                    life: 30 + Math.random() * 30,
+                    color: Math.random() > 0.3 ? "#cc2222" : "#881111",
+                    size: 2 + Math.random() * 3,
+                });
+            }
+            // "OW!" text
+            deathText = { x: goblin.x, y: goblin.y - 8, timer: 60, text: "OW!" };
+            // Play a silly death sound
+            if (audioCtx) {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc.type = "square";
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.exponentialRampToValueAtTime(80, now + 0.3);
+                g.gain.setValueAtTime(0.15, now);
+                g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                osc.connect(g); g.connect(audioCtx.destination);
+                osc.start(now); osc.stop(now + 0.3);
+            }
+        }
     }
     spaceJustPressed = false;
 
@@ -368,61 +408,15 @@ function update(dt) {
         }
     }
 
-    // Check sword hit on goblin
-    if (p.attacking && p.swordHit === false) {
-        // swordHit is false only if we didn't hit a grid block
-        // Check if sword target tile is the goblin
-        const playerTileX = Math.round(p.x / TILE);
-        const playerTileY = Math.round(p.y / TILE);
-        let stx = playerTileX, sty = playerTileY;
-        switch (p.dir) {
-            case 0: sty += 1; break;
-            case 1: sty -= 1; break;
-            case 2: stx -= 1; break;
-            case 3: stx += 1; break;
-        }
-        if (!goblin.dead && stx * TILE === goblin.x && sty * TILE === goblin.y) {
-            goblin.dead = true;
-            goblin.respawnTimer = goblin.respawnDelay;
-            p.swordHit = true;
-            // Spawn death particles (bloody pixel explosion)
-            for (let i = 0; i < 20; i++) {
-                deathParticles.push({
-                    x: goblin.x + goblin.w / 2,
-                    y: goblin.y + goblin.h / 2,
-                    vx: (Math.random() - 0.5) * 4,
-                    vy: (Math.random() - 0.5) * 4 - 2,
-                    life: 30 + Math.random() * 30,
-                    color: Math.random() > 0.3 ? "#cc2222" : "#881111",
-                    size: 2 + Math.random() * 3,
-                });
-            }
-            // "OW!" text
-            deathText = { x: goblin.x, y: goblin.y - 8, timer: 60, text: "OW!" };
-            // Play a silly death sound
-            if (audioCtx) {
-                const now = audioCtx.currentTime;
-                const osc = audioCtx.createOscillator();
-                const g = audioCtx.createGain();
-                osc.type = "square";
-                osc.frequency.setValueAtTime(600, now);
-                osc.frequency.exponentialRampToValueAtTime(80, now + 0.3);
-                g.gain.setValueAtTime(0.15, now);
-                g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-                osc.connect(g); g.connect(audioCtx.destination);
-                osc.start(now); osc.stop(now + 0.3);
-            }
-        }
-    }
-
     // Update goblin
     if (goblin.dead) {
         goblin.respawnTimer--;
         if (goblin.respawnTimer <= 0) {
             goblin.dead = false;
-            // Respawn at a random edge position away from player
-            goblin.x = (GRID_X + Math.floor(Math.random() * GRID_COLS)) * TILE;
-            goblin.y = (GRID_Y - 1) * TILE > TILE * 2 ? (GRID_Y - 1) * TILE : (GRID_Y + GRID_ROWS + 2) * TILE;
+            // Respawn from the cave
+            goblin.x = (CAVE.tileX - 1) * TILE;
+            goblin.y = CAVE.tileY * TILE;
+            goblin.targetRow = -1;
         }
     } else {
         goblin.moveCooldown--;
@@ -551,6 +545,27 @@ function render() {
         // Post highlight
         drawRect(2, r * TILE, 2, TILE, "rgba(255,255,255,0.1)");
         drawRect((COLS - 1) * TILE + 2, r * TILE, 2, TILE, "rgba(255,255,255,0.1)");
+    }
+
+    // Cave opening on right wall (goblin spawn)
+    const caveX = CAVE.tileX * TILE;
+    const caveY = CAVE.tileY * TILE;
+    // Dark cave hole
+    drawRect(caveX, caveY - 2, TILE, TILE + 4, "#1a1a1a");
+    // Rocky arch around cave
+    drawRect(caveX - 2, caveY - 4, TILE + 2, 3, "#5a5a4a");  // top rocks
+    drawRect(caveX - 2, caveY + TILE + 1, TILE + 2, 3, "#5a5a4a");  // bottom rocks
+    drawRect(caveX - 3, caveY - 2, 3, TILE + 4, "#4a4a3a");  // left edge rocks
+    // Stalactites
+    drawRect(caveX + 3, caveY - 2, 2, 4, "#6a6a5a");
+    drawRect(caveX + 9, caveY - 2, 2, 3, "#6a6a5a");
+    // Stalagmites
+    drawRect(caveX + 5, caveY + TILE - 2, 2, 4, "#6a6a5a");
+    drawRect(caveX + 11, caveY + TILE - 1, 2, 3, "#6a6a5a");
+    // Eye gleam inside cave (if goblin is dead / waiting to respawn)
+    if (goblin.dead && goblin.respawnTimer < 60) {
+        drawRect(caveX + 5, caveY + 5, 2, 2, "#cc2222");
+        drawRect(caveX + 9, caveY + 5, 2, 2, "#cc2222");
     }
 
     // Carnival string lights along top
