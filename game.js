@@ -193,10 +193,10 @@ const DANCER_PALETTES = [
 
 // ---- Player State ----
 const player = {
-    x: (GRID_X + 7) * TILE,   // center of grid (logical tile position)
+    x: (GRID_X + 7) * TILE,   // current position (smooth, pixel-level)
     y: (GRID_Y + GRID_ROWS + 1) * TILE,
-    displayX: (GRID_X + 7) * TILE, // visual position (smoothly interpolated)
-    displayY: (GRID_Y + GRID_ROWS + 1) * TILE,
+    destX: (GRID_X + 7) * TILE, // movement destination
+    destY: (GRID_Y + GRID_ROWS + 1) * TILE,
     w: TILE,
     h: TILE,
     dir: 0,        // 0=down, 1=up, 2=left, 3=right
@@ -206,9 +206,7 @@ const player = {
     attackTimer: 0,
     attackDuration: 12,
     swordHit: false, // did this swing already toggle a block?
-    moveCooldown: 0,
-    moveCooldownMax: 12, // frames between moves
-    moveSpeed: 0.35, // interpolation speed (0-1, higher = faster)
+    speed: 1.35, // pixels per frame at 60fps (~same total speed as before)
 };
 
 // ---- Caves (goblin spawn points) ----
@@ -302,7 +300,7 @@ window.addEventListener("keyup", (e) => { keys[e.code] = false; });
 // ---- Helper: get sword hitbox ----
 function getSwordBox() {
     const p = player;
-    const px = p.displayX, py = p.displayY;
+    const px = p.x, py = p.y;
     const sw = 6, sh = 14;
     const progress = 1 - (p.attackTimer / p.attackDuration);
     switch (p.dir) {
@@ -474,10 +472,14 @@ function update(dt) {
         if (p.attackTimer <= 0) p.attacking = false;
     }
 
-    // Movement (grid-snapped, one tile at a time, not while attacking)
-    if (p.moveCooldown > 0) p.moveCooldown--;
+    // Movement (smooth pixel-by-pixel, destination-based)
+    const atDest = Math.abs(p.x - p.destX) < 0.5 && Math.abs(p.y - p.destY) < 0.5;
 
-    if (!p.attacking && p.moveCooldown <= 0) {
+    if (atDest && !p.attacking) {
+        // Snap to destination
+        p.x = p.destX;
+        p.y = p.destY;
+
         let wantDir = -1;
         if (keys["ArrowLeft"]  || keys["KeyA"])  wantDir = 2;
         else if (keys["ArrowRight"] || keys["KeyD"]) wantDir = 3;
@@ -488,9 +490,8 @@ function update(dt) {
             if (p.dir !== wantDir) {
                 // Turn only, don't move
                 p.dir = wantDir;
-                p.moveCooldown = p.moveCooldownMax;
             } else {
-                // Already facing this way — move
+                // Already facing this way — set new destination
                 let nx = p.x, ny = p.y;
                 switch (wantDir) {
                     case 0: ny = Math.min((ROWS - 2) * TILE, p.y + TILE); break;
@@ -504,24 +505,32 @@ function update(dt) {
                 if (!goblin.dead && nx === gRoundX && ny === gRoundY) {
                     // blocked by goblin
                 } else {
-                    p.x = nx;
-                    p.y = ny;
+                    p.destX = nx;
+                    p.destY = ny;
                 }
-                p.moveCooldown = p.moveCooldownMax;
-                p.frame = (p.frame + 1) % 4;
             }
         } else {
             p.frame = 0;
         }
     }
 
-    // Smooth player visual position interpolation
-    const lerpSpeed = p.moveSpeed;
-    p.displayX += (p.x - p.displayX) * lerpSpeed;
-    p.displayY += (p.y - p.displayY) * lerpSpeed;
-    // Snap when very close to avoid sub-pixel jitter
-    if (Math.abs(p.x - p.displayX) < 0.5) p.displayX = p.x;
-    if (Math.abs(p.y - p.displayY) < 0.5) p.displayY = p.y;
+    // Move toward destination smoothly
+    if (!atDest) {
+        const dx = p.destX - p.x;
+        const dy = p.destY - p.y;
+        if (Math.abs(dx) > 0.5) {
+            p.x += Math.sign(dx) * Math.min(p.speed, Math.abs(dx));
+        }
+        if (Math.abs(dy) > 0.5) {
+            p.y += Math.sign(dy) * Math.min(p.speed, Math.abs(dy));
+        }
+        // Walk animation
+        p.frameTimer++;
+        if (p.frameTimer >= 6) {
+            p.frameTimer = 0;
+            p.frame = (p.frame + 1) % 4;
+        }
+    }
 
     // Update goblin
     if (goblin.dead) {
@@ -910,22 +919,22 @@ function render() {
     }
 
     // Player shadow
-    drawRect(player.displayX + 2, player.displayY + player.h - 2, player.w - 4, 4, PAL.shadow);
+    drawRect(player.x + 2, player.y + player.h - 2, player.w - 4, 4, PAL.shadow);
 
-    // Sword (draw behind or in front depending on direction)
+    // Sword (draw behind player for up-facing, in front otherwise)
     if (player.attacking && player.dir === 1) drawSword();
 
     // Player sprite
     drawPlayer();
 
-    // Sword (in front for other directions)
+    // Sword (in front for down/left/right)
     if (player.attacking && player.dir !== 1) drawSword();
 }
 
 function drawPlayer() {
     const p = player;
-    const px = p.displayX;
-    const py = p.displayY;
+    const px = p.x;
+    const py = p.y;
     const bob = p.frame % 2 === 1 ? 1 : 0;
 
     // Body
@@ -956,55 +965,90 @@ function drawPlayer() {
 
 function drawSword() {
     const p = player;
-    const px = p.displayX;
-    const py = p.displayY;
+    const px = p.x;
+    const py = p.y;
+    const cx = px + p.w / 2; // player center x
+    const cy = py + p.h / 2; // player center y
     const progress = 1 - (p.attackTimer / p.attackDuration);
-    const swing = Math.sin(progress * Math.PI);
+
+    // Overhead arc: sword rotates from behind player to in front
+    // progress 0→1 maps to angle arc depending on facing direction
+    const bladeLen = 13;
+    const hiltLen = 3;
 
     ctx.save();
     const sbox = getSwordBox();
 
     // Sword glow
     ctx.fillStyle = PAL.swordGlow;
+    const swing = Math.sin(progress * Math.PI);
     ctx.globalAlpha = 0.4 * swing;
     ctx.fillRect((sbox.x - 2) * SCALE, (sbox.y - 2) * SCALE, (sbox.w + 4) * SCALE, (sbox.h + 4) * SCALE);
     ctx.globalAlpha = 1.0;
 
-    // Sword blade
+    // Calculate swing angle based on direction
+    // Sword arcs from behind/above → down in front
+    let angle;
+    const shoulderX = cx, shoulderY = py + 2; // pivot near shoulders
     switch (p.dir) {
-        case 0: // down
-            drawRect(px + 6, py + p.h, 4, 10 * swing, PAL.sword);
-            drawRect(px + 4, py + p.h - 1, 8, 2, "#8a7040"); // hilt
+        case 0: // down — arc from upper-right to lower-center
+            angle = -Math.PI * 0.6 + progress * Math.PI * 1.1;
             break;
-        case 1: // up
-            drawRect(px + 6, py - 10 * swing, 4, 10 * swing, PAL.sword);
-            drawRect(px + 4, py - 1, 8, 2, "#8a7040");
+        case 1: // up — arc from lower-right to upper-center
+            angle = Math.PI * 0.6 - progress * Math.PI * 1.1;
             break;
-        case 2: // left
-            drawRect(px - 10 * swing, py + 5, 10 * swing, 4, PAL.sword);
-            drawRect(px - 1, py + 3, 2, 8, "#8a7040");
+        case 2: // left — arc from upper-right to left
+            angle = -Math.PI * 0.4 + progress * Math.PI * 0.9;
             break;
-        case 3: // right
-            drawRect(px + p.w, py + 5, 10 * swing, 4, PAL.sword);
-            drawRect(px + p.w - 1, py + 3, 2, 8, "#8a7040");
+        case 3: // right — arc from upper-left to right
+            angle = -Math.PI * 0.6 - progress * Math.PI * 0.9 + Math.PI;
             break;
     }
 
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+
+    // Hilt (short stub behind pivot)
+    const hx = shoulderX - cosA * hiltLen;
+    const hy = shoulderY - sinA * hiltLen;
+
+    // Tip (end of blade)
+    const tx = shoulderX + cosA * bladeLen;
+    const ty = shoulderY + sinA * bladeLen;
+
+    // Draw blade as a thick line (3px wide)
+    ctx.strokeStyle = PAL.sword;
+    ctx.lineWidth = 3 * SCALE;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(shoulderX * SCALE, shoulderY * SCALE);
+    ctx.lineTo(tx * SCALE, ty * SCALE);
+    ctx.stroke();
+
+    // Draw hilt as crossguard
+    ctx.strokeStyle = "#8a7040";
+    ctx.lineWidth = 2 * SCALE;
+    ctx.beginPath();
+    ctx.moveTo(shoulderX * SCALE, shoulderY * SCALE);
+    ctx.lineTo(hx * SCALE, hy * SCALE);
+    ctx.stroke();
+
+    // Crossguard perpendicular to blade
+    const perpX = -sinA * 3;
+    const perpY = cosA * 3;
+    ctx.lineWidth = 2 * SCALE;
+    ctx.beginPath();
+    ctx.moveTo((shoulderX + perpX) * SCALE, (shoulderY + perpY) * SCALE);
+    ctx.lineTo((shoulderX - perpX) * SCALE, (shoulderY - perpY) * SCALE);
+    ctx.stroke();
+
     // Sparkle at tip
     if (swing > 0.5 && p.swordHit) {
-        const sparkle = Math.random() > 0.3;
-        if (sparkle) {
+        if (Math.random() > 0.3) {
             ctx.fillStyle = "#fff";
             ctx.globalAlpha = swing;
-            let sx, sy;
-            switch (p.dir) {
-                case 0: sx = px + 7; sy = py + p.h + 10 * swing; break;
-                case 1: sx = px + 7; sy = py - 10 * swing; break;
-                case 2: sx = px - 10 * swing; sy = py + 6; break;
-                case 3: sx = px + p.w + 10 * swing; sy = py + 6; break;
-            }
-            ctx.fillRect((sx - 1) * SCALE, sy * SCALE, 3 * SCALE, 1 * SCALE);
-            ctx.fillRect(sx * SCALE, (sy - 1) * SCALE, 1 * SCALE, 3 * SCALE);
+            ctx.fillRect((tx - 1) * SCALE, ty * SCALE, 3 * SCALE, 1 * SCALE);
+            ctx.fillRect(tx * SCALE, (ty - 1) * SCALE, 1 * SCALE, 3 * SCALE);
             ctx.globalAlpha = 1.0;
         }
     }
