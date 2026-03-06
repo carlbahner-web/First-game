@@ -1822,16 +1822,18 @@ function renderStoryScreen() {
 
     // Story text — silly backstory
     const storyLines = [
-        { text: "THE GROOVE CARNIVAL", color: "#F6CC60", scale: 6, gap: 14 },
-        { text: "was the happiest place in the land.", color: "#BFCDC0", scale: 3, gap: 10 },
-        { text: "Every night, sick beats echoed", color: "#BFCDC0", scale: 3, gap: 8 },
-        { text: "through the halls and the people danced.", color: "#BFCDC0", scale: 3, gap: 12 },
-        { text: "But the GOBLINS got jealous.", color: "#66cc66", scale: 3, gap: 8 },
-        { text: "They sneak in and MESS UP YOUR BEATS.", color: "#ff6666", scale: 3, gap: 8 },
-        { text: "They must be stopped.", color: "#BFCDC0", scale: 3, gap: 12 },
-        { text: "You are the DJ.", color: "#F6CC60", scale: 4, gap: 8 },
-        { text: "You have a sword.", color: "#E86A6A", scale: 4, gap: 8 },
-        { text: "Go get em.", color: "#EBEBE3", scale: 4, gap: 0 },
+        { text: "Long ago, sick beats echoed through", color: "#BFCDC0", scale: 3, gap: 8 },
+        { text: "the hills and valleys of", color: "#BFCDC0", scale: 3, gap: 8 },
+        { text: "STUDIOLAND", color: "#F6CC60", scale: 6, gap: 10 },
+        { text: "and the people danced.", color: "#BFCDC0", scale: 3, gap: 10 },
+        { text: "But on one dark day,", color: "#BFCDC0", scale: 3, gap: 8 },
+        { text: "the GOBLINS got jealous.", color: "#66cc66", scale: 3, gap: 8 },
+        { text: "Now they sneak in and", color: "#BFCDC0", scale: 3, gap: 8 },
+        { text: "MESS UP YOUR BEATS.", color: "#ff6666", scale: 4, gap: 10 },
+        { text: "It's time for a brave soul to", color: "#BFCDC0", scale: 3, gap: 8 },
+        { text: "stop them once and for all!", color: "#BFCDC0", scale: 3, gap: 12 },
+        { text: "You are the DJ, and you have a sword.", color: "#F6CC60", scale: 3, gap: 10 },
+        { text: "Time to get stabbin'.", color: "#E86A6A", scale: 4, gap: 0 },
     ];
 
     let textY = 12;
