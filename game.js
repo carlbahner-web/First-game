@@ -136,7 +136,7 @@ const drumFns = [
 
 // ---- Sequencer State ----
 const grid = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).fill(false));
-let playing = false;
+let playing = true;
 let currentStep = 0;
 let lastStepTime = 0;
 
@@ -157,29 +157,33 @@ const player = {
     moveCooldownMax: 12, // frames between moves (half speed)
 };
 
-// ---- Cave (goblin spawn point) ----
-const CAVE = {
-    tileX: COLS - 1,   // right wall
-    tileY: GRID_Y + 3, // near bottom of grid
-};
+// ---- Caves (goblin spawn points) ----
+const CAVES = [
+    { tileX: COLS - 1, tileY: GRID_Y + 3 },   // right wall
+    { tileX: Math.floor(COLS / 2), tileY: ROWS - 1 }, // bottom wall
+    { tileX: 0, tileY: GRID_Y + 1 },           // left wall
+];
 
 // ---- Goblin Enemy State ----
 const goblin = {
-    x: CAVE.tileX * TILE,
-    y: CAVE.tileY * TILE,
+    x: CAVES[0].tileX * TILE,
+    y: CAVES[0].tileY * TILE,
+    destX: CAVES[0].tileX * TILE,
+    destY: CAVES[0].tileY * TILE,
     w: TILE,
     h: TILE,
     dir: 0,
     frame: 0,
-    moveCooldown: 0,
-    moveCooldownMax: 48, // 25% player speed (player is 12)
-    dead: false,
-    respawnTimer: 0,
-    respawnDelay: 180, // ~3 seconds at 60fps
+    frameTimer: 0,
+    speed: 0.5, // pixels per frame (player is ~1.33 px/frame)
+    dead: true,
+    respawnTimer: 300, // start dead, spawn after 5 seconds
+    respawnDelay: 600, // ~10 seconds at 60fps
+    spawnCave: 0,
     targetRow: -1,
     targetCol: -1,
     sabotageTimer: 0,
-    sabotageDelay: 60, // tries to sabotage every ~1 second
+    moveSteps: 0, // count steps for re-picking target
 };
 
 // Death particles
@@ -188,8 +192,8 @@ let deathText = null; // {x, y, timer, text}
 
 // ---- Control Blocks (physical buttons in the room) ----
 const CTRL_BLOCKS = {
-    playStop: { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + 1, label: "PLAY", color: "#BFCDC0" },
-    reset:    { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + 2, label: "RESET", color: "#BF7538" },
+    playStop: { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + GRID_ROWS + 2, label: "STOP", color: "#BFCDC0" },
+    reset:    { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + GRID_ROWS + 3, label: "RESET", color: "#BF7538" },
 };
 
 // ---- Input ----
@@ -329,7 +333,9 @@ function update(dt) {
         }
 
         // Check goblin hit (always check, even if we hit a grid block)
-        if (!goblin.dead && targetTileX * TILE === goblin.x && targetTileY * TILE === goblin.y) {
+        const gobTileX = Math.round(goblin.x / TILE);
+        const gobTileY = Math.round(goblin.y / TILE);
+        if (!goblin.dead && targetTileX === gobTileX && targetTileY === gobTileY) {
             goblin.dead = true;
             goblin.respawnTimer = goblin.respawnDelay;
             p.swordHit = true;
@@ -394,7 +400,9 @@ function update(dt) {
                     case 3: nx = Math.min((COLS - 2) * TILE, p.x + TILE); break;
                 }
                 // Check goblin collision
-                if (!goblin.dead && nx === goblin.x && ny === goblin.y) {
+                const gRoundX = Math.round(goblin.x / TILE) * TILE;
+                const gRoundY = Math.round(goblin.y / TILE) * TILE;
+                if (!goblin.dead && nx === gRoundX && ny === gRoundY) {
                     // blocked by goblin
                 } else {
                     p.x = nx;
@@ -413,38 +421,61 @@ function update(dt) {
         goblin.respawnTimer--;
         if (goblin.respawnTimer <= 0) {
             goblin.dead = false;
-            // Respawn from the cave
-            goblin.x = (CAVE.tileX - 1) * TILE;
-            goblin.y = CAVE.tileY * TILE;
+            // Pick a random cave to spawn from
+            goblin.spawnCave = Math.floor(Math.random() * CAVES.length);
+            const cave = CAVES[goblin.spawnCave];
+            // Start one tile inside the room from the cave
+            const spawnX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
+            const spawnY = cave.tileY === ROWS - 1 ? (ROWS - 2) * TILE : cave.tileY * TILE;
+            goblin.x = spawnX;
+            goblin.y = spawnY;
+            goblin.destX = spawnX;
+            goblin.destY = spawnY;
             goblin.targetRow = -1;
+            goblin.moveSteps = 0;
         }
     } else {
-        goblin.moveCooldown--;
-        if (goblin.moveCooldown <= 0) {
-            goblin.moveCooldown = goblin.moveCooldownMax;
+        // Smooth pixel movement toward destination
+        const dx = goblin.destX - goblin.x;
+        const dy = goblin.destY - goblin.y;
+        const dist = Math.abs(dx) + Math.abs(dy);
 
-            // Pick a target grid cell to sabotage
-            goblin.sabotageTimer--;
-            if (goblin.sabotageTimer <= 0 || goblin.targetRow < 0) {
-                goblin.targetRow = Math.floor(Math.random() * GRID_ROWS);
-                goblin.targetCol = Math.floor(Math.random() * GRID_COLS);
-                goblin.sabotageTimer = 3; // re-pick after 3 moves if not reached
+        if (dist < goblin.speed) {
+            // Arrived at destination
+            goblin.x = goblin.destX;
+            goblin.y = goblin.destY;
+
+            // Check if on a grid cell to sabotage
+            const gc = Math.round(goblin.x / TILE) - GRID_X;
+            const gr = Math.round(goblin.y / TILE) - GRID_Y;
+            if (gr >= 0 && gr < GRID_ROWS && gc >= 0 && gc < GRID_COLS) {
+                if (gc === goblin.targetCol && gr === goblin.targetRow) {
+                    grid[gr][gc] = !grid[gr][gc];
+                    goblin.targetRow = -1;
+                }
             }
 
-            const targetX = (GRID_X + goblin.targetCol) * TILE;
-            const targetY = (GRID_Y + goblin.targetRow) * TILE;
+            // Pick next destination tile
+            goblin.moveSteps++;
+            if (goblin.targetRow < 0 || goblin.moveSteps > 5) {
+                goblin.targetRow = Math.floor(Math.random() * GRID_ROWS);
+                goblin.targetCol = Math.floor(Math.random() * GRID_COLS);
+                goblin.moveSteps = 0;
+            }
 
-            // Move one step toward target
+            const goalX = (GRID_X + goblin.targetCol) * TILE;
+            const goalY = (GRID_Y + goblin.targetRow) * TILE;
+            const gdx = goalX - goblin.x;
+            const gdy = goalY - goblin.y;
+
+            // Move one tile toward goal
             let nx = goblin.x, ny = goblin.y;
-            const dx = targetX - goblin.x;
-            const dy = targetY - goblin.y;
-
-            if (Math.abs(dx) > Math.abs(dy)) {
-                nx += Math.sign(dx) * TILE;
-                goblin.dir = dx > 0 ? 3 : 2;
-            } else if (dy !== 0) {
-                ny += Math.sign(dy) * TILE;
-                goblin.dir = dy > 0 ? 0 : 1;
+            if (Math.abs(gdx) > Math.abs(gdy)) {
+                nx += Math.sign(gdx) * TILE;
+                goblin.dir = gdx > 0 ? 3 : 2;
+            } else if (gdy !== 0) {
+                ny += Math.sign(gdy) * TILE;
+                goblin.dir = gdy > 0 ? 0 : 1;
             }
 
             // Clamp to room bounds
@@ -453,19 +484,22 @@ function update(dt) {
 
             // Don't walk into player
             if (nx !== p.x || ny !== p.y) {
-                goblin.x = nx;
-                goblin.y = ny;
+                goblin.destX = nx;
+                goblin.destY = ny;
             }
-            goblin.frame = (goblin.frame + 1) % 4;
-
-            // If on a grid cell, sabotage it!
-            const gc = Math.round(goblin.x / TILE) - GRID_X;
-            const gr = Math.round(goblin.y / TILE) - GRID_Y;
-            if (gr >= 0 && gr < GRID_ROWS && gc >= 0 && gc < GRID_COLS) {
-                if (gc === goblin.targetCol && gr === goblin.targetRow) {
-                    grid[gr][gc] = !grid[gr][gc];
-                    goblin.targetRow = -1; // pick new target
-                }
+        } else {
+            // Move toward destination smoothly
+            if (Math.abs(dx) > 0) {
+                goblin.x += Math.sign(dx) * Math.min(goblin.speed, Math.abs(dx));
+            }
+            if (Math.abs(dy) > 0) {
+                goblin.y += Math.sign(dy) * Math.min(goblin.speed, Math.abs(dy));
+            }
+            // Animate walk frame
+            goblin.frameTimer++;
+            if (goblin.frameTimer >= 8) {
+                goblin.frameTimer = 0;
+                goblin.frame = (goblin.frame + 1) % 4;
             }
         }
     }
@@ -486,13 +520,17 @@ function update(dt) {
 
     // Sequencer step
     if (playing) {
+        if (!lastStepTime) lastStepTime = performance.now();
         const now = performance.now();
         if (now - lastStepTime >= STEP_MS) {
             lastStepTime += STEP_MS;
             // Play active drums for current step
-            const t = audioCtx.currentTime;
-            for (let r = 0; r < GRID_ROWS; r++) {
-                if (grid[r][currentStep]) drumFns[r](t);
+            ensureAudio();
+            const t = audioCtx ? audioCtx.currentTime : 0;
+            if (audioCtx) {
+                for (let r = 0; r < GRID_ROWS; r++) {
+                    if (grid[r][currentStep]) drumFns[r](t);
+                }
             }
             currentStep = (currentStep + 1) % GRID_COLS;
         }
@@ -547,25 +585,34 @@ function render() {
         drawRect((COLS - 1) * TILE + 2, r * TILE, 2, TILE, "rgba(255,255,255,0.1)");
     }
 
-    // Cave opening on right wall (goblin spawn)
-    const caveX = CAVE.tileX * TILE;
-    const caveY = CAVE.tileY * TILE;
-    // Dark cave hole
-    drawRect(caveX, caveY - 2, TILE, TILE + 4, "#1a1a1a");
-    // Rocky arch around cave
-    drawRect(caveX - 2, caveY - 4, TILE + 2, 3, "#5a5a4a");  // top rocks
-    drawRect(caveX - 2, caveY + TILE + 1, TILE + 2, 3, "#5a5a4a");  // bottom rocks
-    drawRect(caveX - 3, caveY - 2, 3, TILE + 4, "#4a4a3a");  // left edge rocks
-    // Stalactites
-    drawRect(caveX + 3, caveY - 2, 2, 4, "#6a6a5a");
-    drawRect(caveX + 9, caveY - 2, 2, 3, "#6a6a5a");
-    // Stalagmites
-    drawRect(caveX + 5, caveY + TILE - 2, 2, 4, "#6a6a5a");
-    drawRect(caveX + 11, caveY + TILE - 1, 2, 3, "#6a6a5a");
-    // Eye gleam inside cave (if goblin is dead / waiting to respawn)
-    if (goblin.dead && goblin.respawnTimer < 60) {
-        drawRect(caveX + 5, caveY + 5, 2, 2, "#cc2222");
-        drawRect(caveX + 9, caveY + 5, 2, 2, "#cc2222");
+    // Cave openings (goblin spawn points)
+    for (let ci = 0; ci < CAVES.length; ci++) {
+        const cave = CAVES[ci];
+        const cx = cave.tileX * TILE;
+        const cy = cave.tileY * TILE;
+        // Dark cave hole
+        drawRect(cx, cy - 2, TILE, TILE + 4, "#1a1a1a");
+        // Rocky arch around cave
+        drawRect(cx - 2, cy - 4, TILE + 4, 3, "#5a5a4a");  // top rocks
+        drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#5a5a4a");  // bottom rocks
+        if (cave.tileX > 0) drawRect(cx - 3, cy - 2, 3, TILE + 4, "#4a4a3a"); // left edge
+        if (cave.tileX < COLS - 1) drawRect(cx + TILE, cy - 2, 3, TILE + 4, "#4a4a3a"); // right edge
+        // Stalactites
+        drawRect(cx + 3, cy - 2, 2, 4, "#6a6a5a");
+        drawRect(cx + 9, cy - 2, 2, 3, "#6a6a5a");
+        // Stalagmites
+        drawRect(cx + 5, cy + TILE - 2, 2, 4, "#6a6a5a");
+        drawRect(cx + 11, cy + TILE - 1, 2, 3, "#6a6a5a");
+        // Eye gleam inside cave (if goblin is dead / about to respawn from this cave)
+        const willSpawnHere = goblin.dead && goblin.respawnTimer < 90;
+        if (willSpawnHere) {
+            // Show eyes in a random cave to keep player guessing, but real one near end
+            const showEyes = goblin.respawnTimer < 60 && ci === goblin.spawnCave;
+            if (showEyes) {
+                drawRect(cx + 5, cy + 5, 2, 2, "#cc2222");
+                drawRect(cx + 9, cy + 5, 2, 2, "#cc2222");
+            }
+        }
     }
 
     // Carnival string lights along top
@@ -677,8 +724,9 @@ function render() {
         ctx.fillRect((bx + 1) * SCALE, (by + 1) * SCALE, (TILE - 2) * SCALE, 2 * SCALE);
         ctx.fillStyle = "rgba(0,0,0,0.25)";
         ctx.fillRect((bx + 1) * SCALE, (by + TILE - 3) * SCALE, (TILE - 2) * SCALE, 2 * SCALE);
-        // Label
-        drawText(blk.label, bx - blk.label.length * 2, by + TILE + 8, blk.color, 3);
+        // Label (centered below the block)
+        const labelW = blk.label.length * 2.5;
+        drawText(blk.label, bx + TILE / 2 - labelW, by + TILE + 8, blk.color, 3);
     }
 
     // Goblin
