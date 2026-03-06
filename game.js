@@ -243,6 +243,7 @@ const goblin = {
 let deathParticles = [];
 let deathText = null; // {x, y, timer, text, color, scale}
 let screenFlash = 0; // white flash frames remaining
+let gamePaused = false;
 
 // ---- Control Blocks (physical buttons in the room) ----
 const CTRL_BLOCKS = {
@@ -295,6 +296,48 @@ window.addEventListener("keydown", (e) => {
     if (e.code === "Enter") {
         e.preventDefault();
         ensureAudio();
+        gamePaused = !gamePaused;
+        // Pause/unpause sound
+        if (audioCtx) {
+            const now = audioCtx.currentTime;
+            if (gamePaused) {
+                // Descending two-tone "pause" chime
+                const o1 = audioCtx.createOscillator();
+                const g1 = audioCtx.createGain();
+                o1.type = "square";
+                o1.frequency.setValueAtTime(440, now);
+                g1.gain.setValueAtTime(0.1, now);
+                g1.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                o1.connect(g1); g1.connect(audioCtx.destination);
+                o1.start(now); o1.stop(now + 0.15);
+                const o2 = audioCtx.createOscillator();
+                const g2 = audioCtx.createGain();
+                o2.type = "square";
+                o2.frequency.setValueAtTime(330, now + 0.12);
+                g2.gain.setValueAtTime(0.1, now + 0.12);
+                g2.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                o2.connect(g2); g2.connect(audioCtx.destination);
+                o2.start(now + 0.12); o2.stop(now + 0.3);
+            } else {
+                // Ascending two-tone "unpause" chime
+                const o1 = audioCtx.createOscillator();
+                const g1 = audioCtx.createGain();
+                o1.type = "square";
+                o1.frequency.setValueAtTime(330, now);
+                g1.gain.setValueAtTime(0.1, now);
+                g1.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                o1.connect(g1); g1.connect(audioCtx.destination);
+                o1.start(now); o1.stop(now + 0.15);
+                const o2 = audioCtx.createOscillator();
+                const g2 = audioCtx.createGain();
+                o2.type = "square";
+                o2.frequency.setValueAtTime(440, now + 0.12);
+                g2.gain.setValueAtTime(0.1, now + 0.12);
+                g2.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                o2.connect(g2); g2.connect(audioCtx.destination);
+                o2.start(now + 0.12); o2.stop(now + 0.3);
+            }
+        }
     }
 });
 window.addEventListener("keyup", (e) => { keys[e.code] = false; });
@@ -330,6 +373,7 @@ function getBlockRect(row, col) {
 
 // ---- Update ----
 function update(dt) {
+    if (gamePaused) return;
     const p = player;
 
     // Attack (single press only)
@@ -495,13 +539,33 @@ function update(dt) {
             // Kill counter & dancer spawn
             killCount++;
             if (killCount % 3 === 0) {
-                // Spawn 3 dancers that walk in from the border
+                // Spawn 3 dancers from different edges, no overlapping destinations
+                const edges = [0, 1, 2]; // left, right, bottom
+                // Shuffle edges so each dancer gets a unique one
+                for (let i = edges.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [edges[i], edges[j]] = [edges[j], edges[i]];
+                }
+                // Collect occupied target tiles (existing dancers)
+                const occupied = new Set();
+                for (const dd of dancers) {
+                    const tx = Math.round((dd.targetX ?? dd.x) / TILE);
+                    const ty = Math.round((dd.targetY ?? dd.y) / TILE);
+                    occupied.add(tx + "," + ty);
+                }
                 for (let di = 0; di < 3; di++) {
                     const palette = DANCER_PALETTES[dancers.length % DANCER_PALETTES.length];
-                    const targetY = (14 + Math.floor(Math.random() * 3)) * TILE;
-                    const targetX = (2 + Math.floor(Math.random() * (COLS - 5))) * TILE;
-                    // Pick a random border edge to walk in from
-                    const edge = Math.floor(Math.random() * 3); // 0=left, 1=right, 2=bottom
+                    // Find a target tile not already taken
+                    let targetTX, targetTY, attempts = 0;
+                    do {
+                        targetTX = 2 + Math.floor(Math.random() * (COLS - 5));
+                        targetTY = 14 + Math.floor(Math.random() * 3);
+                        attempts++;
+                    } while (occupied.has(targetTX + "," + targetTY) && attempts < 50);
+                    occupied.add(targetTX + "," + targetTY);
+                    const targetX = targetTX * TILE;
+                    const targetY = targetTY * TILE;
+                    const edge = edges[di];
                     let startX, startY;
                     if (edge === 0) { startX = -TILE; startY = targetY; }
                     else if (edge === 1) { startX = COLS * TILE; startY = targetY; }
@@ -937,17 +1001,18 @@ function render() {
             ctx.lineTo((bx + 8) * SCALE, (by + 2) * SCALE);
             ctx.fill();
         } else {
-            // Reset icon: undo/circular arrow
+            // Reset icon: X mark
             const iconColor = "#2a4448";
-            // Arc body (drawn as pixel segments)
-            drawRect(bx + 5, by + 3, 6, 2, iconColor);  // top
-            drawRect(bx + 3, by + 5, 2, 4, iconColor);   // left
-            drawRect(bx + 5, by + 11, 6, 2, iconColor);  // bottom
-            drawRect(bx + 11, by + 7, 2, 4, iconColor);  // right
-            // Arrow head pointing left at the top-left
-            drawRect(bx + 3, by + 3, 2, 2, iconColor);
-            drawRect(bx + 2, by + 5, 2, 2, iconColor);
-            drawRect(bx + 5, by + 1, 2, 2, iconColor);
+            // Diagonal line top-left to bottom-right
+            drawRect(bx + 4, by + 4, 2, 2, iconColor);
+            drawRect(bx + 6, by + 6, 2, 2, iconColor);
+            drawRect(bx + 8, by + 8, 2, 2, iconColor);
+            drawRect(bx + 10, by + 10, 2, 2, iconColor);
+            // Diagonal line top-right to bottom-left
+            drawRect(bx + 10, by + 4, 2, 2, iconColor);
+            drawRect(bx + 8, by + 6, 2, 2, iconColor);
+            drawRect(bx + 6, by + 8, 2, 2, iconColor);
+            drawRect(bx + 4, by + 10, 2, 2, iconColor);
         }
     }
 
@@ -1014,6 +1079,54 @@ function render() {
 
     // Sword (in front for down/left/right)
     if (player.attacking && player.dir !== 1) drawSword();
+
+    // Pause overlay
+    if (gamePaused) {
+        // Dim the screen
+        ctx.fillStyle = "#000";
+        ctx.globalAlpha = 0.55;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1.0;
+
+        // Pixel-art style banner background
+        const bannerX = 4 * TILE;
+        const bannerY = 7 * TILE;
+        const bannerW = (COLS - 8) * TILE;
+        const bannerH = 4 * TILE;
+        // Outer border (dark)
+        drawRect(bannerX - 2, bannerY - 2, bannerW + 4, bannerH + 4, "#1a3438");
+        // Inner fill (matches carnival tent style)
+        drawRect(bannerX, bannerY, bannerW, bannerH, "#2a4a50");
+        // Highlight edge top
+        drawRect(bannerX, bannerY, bannerW, 2, "#3a6a70");
+        // Highlight edge bottom
+        drawRect(bannerX, bannerY + bannerH - 2, bannerW, 2, "#1a2a2e");
+        // Striped accents (carnival style)
+        for (let i = 0; i < bannerW; i += 8) {
+            if (Math.floor(i / 8) % 2 === 0) {
+                drawRect(bannerX + i, bannerY, Math.min(8, bannerW - i), 2, "#BF3B53");
+            }
+        }
+
+        // "PAUSED" text centered
+        const pauseText = "PAUSED";
+        const textScale = 7;
+        const textW = pauseText.length * textScale * 1.1; // approximate
+        const textX = bannerX + bannerW / 2 - textW / 2;
+        const textY = bannerY + bannerH / 2 + 2;
+        // Shadow
+        drawText(pauseText, textX + 1, textY + 1, "#0a1a1e", textScale);
+        // Main text
+        drawText(pauseText, textX, textY, "#F6CC60", textScale);
+
+        // "PRESS ENTER" hint below
+        const hintText = "PRESS ENTER";
+        const hintScale = 3;
+        const hintW = hintText.length * hintScale * 1.1;
+        const hintX = bannerX + bannerW / 2 - hintW / 2;
+        const hintY = bannerY + bannerH - 10;
+        drawText(hintText, hintX, hintY, "#8ab0b4", hintScale);
+    }
 }
 
 function drawPlayer() {
