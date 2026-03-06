@@ -393,6 +393,34 @@ function getSwordBox() {
     }
 }
 
+// ---- Helper: check if a tile is blocked by solid objects ----
+function isTileBlockedByObjects(tileX, tileY) {
+    // Control blocks (tempoUp, tempoDown, reset)
+    for (const key of ["tempoUp", "tempoDown", "reset"]) {
+        const blk = CTRL_BLOCKS[key];
+        if (tileX === blk.tileX && tileY === blk.tileY) return true;
+    }
+    // BPM display between tempo arrows (same x column, rows between tempoUp and tempoDown)
+    const ctrlX = CTRL_BLOCKS.tempoUp.tileX;
+    const bpmTop = CTRL_BLOCKS.tempoUp.tileY + 1;
+    const bpmBot = CTRL_BLOCKS.tempoDown.tileY - 1;
+    if (tileX === ctrlX && tileY >= bpmTop && tileY <= bpmBot) return true;
+    // Kill counter area (roughly tiles 3-4, row 9)
+    const kcTileY = GRID_Y + GRID_ROWS + 1; // row below grid + 1 (where counter renders)
+    if (tileX >= GRID_X && tileX <= GRID_X + 2 && tileY === kcTileY) return true;
+    return false;
+}
+
+// ---- Helper: check if a tile is occupied by a dancer ----
+function isTileOccupiedByDancer(tileX, tileY) {
+    for (const d of dancers) {
+        const dx = Math.round(d.x / TILE);
+        const dy = Math.round(d.y / TILE);
+        if (tileX === dx && tileY === dy) return true;
+    }
+    return false;
+}
+
 // ---- Helper: AABB collision ----
 function aabb(a, b) {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -667,12 +695,15 @@ function update(dt) {
                 case 2: nx = Math.max(TILE, p.x - TILE); break;
                 case 3: nx = Math.min((COLS - 2) * TILE, p.x + TILE); break;
             }
-            // Check goblin collision
+            // Check collisions
+            const ntx = Math.round(nx / TILE);
+            const nty = Math.round(ny / TILE);
             const gRoundX = Math.round(goblin.x / TILE) * TILE;
             const gRoundY = Math.round(goblin.y / TILE) * TILE;
-            if (!goblin.dead && nx === gRoundX && ny === gRoundY) {
-                // blocked by goblin
-            } else {
+            const blocked = (!goblin.dead && nx === gRoundX && ny === gRoundY)
+                || isTileBlockedByObjects(ntx, nty)
+                || isTileOccupiedByDancer(ntx, nty);
+            if (!blocked) {
                 p.destX = nx;
                 p.destY = ny;
             }
@@ -769,8 +800,13 @@ function update(dt) {
             nx = Math.max(TILE, Math.min((COLS - 2) * TILE, nx));
             ny = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, ny));
 
-            // Don't walk into player
-            if (nx !== p.x || ny !== p.y) {
+            // Don't walk into player, dancers, or solid objects
+            const gntx = Math.round(nx / TILE);
+            const gnty = Math.round(ny / TILE);
+            const gobBlocked = (nx === p.x && ny === p.y)
+                || isTileBlockedByObjects(gntx, gnty)
+                || isTileOccupiedByDancer(gntx, gnty);
+            if (!gobBlocked) {
                 goblin.destX = nx;
                 goblin.destY = ny;
             }
@@ -941,11 +977,6 @@ function render() {
         const bulbColors = ["#F6CC60", "#BF7538", "#BFCDC0", "#EBEBE3"];
         drawRect(lx - 1, ly, 3, 3, bulbColors[(c + 2) % bulbColors.length]);
     }
-
-    // Title with carnival flair
-    drawText("DRUM QUEST", GRID_X * TILE + 32, TILE * 2.8, "#F6CC60", 6);
-    // Tempo badge
-    drawText(bpm + " BPM", (GRID_X + 12) * TILE, TILE * 2.8, "#BFCDC0", 4);
 
     // Row labels (O, H, S, K) in the column just left of the first beat block
     const ROW_LETTERS = ["O", "H", "S", "K"];
@@ -1152,10 +1183,10 @@ function render() {
         ctx.globalAlpha = 1.0;
 
         // Pixel-art style banner background
-        const bannerX = 4 * TILE;
-        const bannerY = 7 * TILE;
-        const bannerW = (COLS - 8) * TILE;
-        const bannerH = 4 * TILE;
+        const bannerX = 3 * TILE;
+        const bannerY = 5 * TILE;
+        const bannerW = (COLS - 6) * TILE;
+        const bannerH = 8 * TILE;
         // Outer border (dark)
         drawRect(bannerX - 2, bannerY - 2, bannerW + 4, bannerH + 4, "#1a3438");
         // Inner fill (matches carnival tent style)
@@ -1174,16 +1205,34 @@ function render() {
         // "PAUSED" text centered
         const pauseText = "PAUSED";
         const textScale = 7;
-        const textW = pauseText.length * textScale * 1.1; // approximate
+        const textW = pauseText.length * textScale * 1.1;
         const textX = bannerX + bannerW / 2 - textW / 2;
-        const textY = bannerY + bannerH / 2 + 2;
+        const textY = bannerY + 12;
         // Shadow
         drawText(pauseText, textX + 1, textY + 1, "#0a1a1e", textScale);
         // Main text
         drawText(pauseText, textX, textY, "#F6CC60", textScale);
 
-        // "PRESS ENTER" hint below
-        const hintText = "PRESS ENTER";
+        // Controls section
+        const ctrlX = bannerX + 16;
+        const ctrlY = textY + 22;
+        const ctrlCol = "#BFCDC0";
+        const labelCol = "#F6CC60";
+        drawText("CONTROLS:", ctrlX, ctrlY, labelCol, 4);
+        drawText("ARROWS", ctrlX, ctrlY + 12, labelCol, 4);
+        drawText("Move around", ctrlX + 32, ctrlY + 12, ctrlCol, 4);
+        drawText("SPACE", ctrlX, ctrlY + 22, labelCol, 4);
+        drawText("Sword attack", ctrlX + 28, ctrlY + 22, ctrlCol, 4);
+        drawText("ENTER", ctrlX, ctrlY + 32, labelCol, 4);
+        drawText("Pause / Unpause", ctrlX + 28, ctrlY + 32, ctrlCol, 4);
+
+        // Tips
+        drawText("TIPS:", ctrlX, ctrlY + 48, labelCol, 4);
+        drawText("Hit blocks to toggle beats", ctrlX, ctrlY + 58, ctrlCol, 4);
+        drawText("Slay goblins to earn dancers", ctrlX, ctrlY + 68, ctrlCol, 4);
+
+        // "PRESS ENTER" hint at bottom
+        const hintText = "PRESS ENTER TO RESUME";
         const hintScale = 3;
         const hintW = hintText.length * hintScale * 1.1;
         const hintX = bannerX + bannerW / 2 - hintW / 2;
