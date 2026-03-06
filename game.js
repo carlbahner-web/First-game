@@ -204,10 +204,10 @@ const player = {
     frameTimer: 0,
     attacking: false,
     attackTimer: 0,
-    attackDuration: 6,
+    attackDuration: 12,
     swordHit: false, // did this swing already toggle a block?
     moveCooldown: 0,
-    moveCooldownMax: 6, // frames between moves
+    moveCooldownMax: 12, // frames between moves
     moveSpeed: 0.35, // interpolation speed (0-1, higher = faster)
 };
 
@@ -229,10 +229,10 @@ const goblin = {
     dir: 0,
     frame: 0,
     frameTimer: 0,
-    speed: 1.0, // pixels per frame (player is ~2.67 px/frame at 30fps)
+    speed: 0.5, // pixels per frame at 60fps
     dead: true,
-    respawnTimer: 150, // start dead, spawn after 5 seconds
-    respawnDelay: 300, // ~10 seconds at 30fps
+    respawnTimer: 300, // start dead, spawn after 5 seconds
+    respawnDelay: 600, // ~10 seconds at 60fps
     spawnCave: 0,
     targetRow: -1,
     targetCol: -1,
@@ -429,15 +429,15 @@ function update(dt) {
                 deathParticles.push({
                     x: goblin.x + goblin.w / 2,
                     y: goblin.y + goblin.h / 2,
-                    vx: (Math.random() - 0.5) * 4,
-                    vy: (Math.random() - 0.5) * 4 - 2,
-                    life: 15 + Math.random() * 15,
+                    vx: (Math.random() - 0.5) * 2,
+                    vy: (Math.random() - 0.5) * 2 - 1,
+                    life: 30 + Math.random() * 30,
                     color: Math.random() > 0.3 ? "#cc2222" : "#881111",
                     size: 2 + Math.random() * 3,
                 });
             }
             // "OW!" text
-            deathText = { x: goblin.x, y: goblin.y - 8, timer: 30, text: "OW!" };
+            deathText = { x: goblin.x, y: goblin.y - 8, timer: 60, text: "OW!" };
             // Play a silly death sound
             if (audioCtx) {
                 const now = audioCtx.currentTime;
@@ -604,7 +604,7 @@ function update(dt) {
             }
             // Animate walk frame
             goblin.frameTimer++;
-            if (goblin.frameTimer >= 4) {
+            if (goblin.frameTimer >= 8) {
                 goblin.frameTimer = 0;
                 goblin.frame = (goblin.frame + 1) % 4;
             }
@@ -615,12 +615,12 @@ function update(dt) {
     deathParticles = deathParticles.filter(p => {
         p.x += p.vx;
         p.y += p.vy;
-        p.vy += 0.3; // gravity
+        p.vy += 0.15; // gravity
         p.life--;
         return p.life > 0;
     });
     if (deathText) {
-        deathText.y -= 0.6;
+        deathText.y -= 0.3;
         deathText.timer--;
         if (deathText.timer <= 0) deathText = null;
     }
@@ -707,10 +707,10 @@ function render() {
         drawRect(cx + 5, cy + TILE - 2, 2, 4, "#6a6a5a");
         drawRect(cx + 11, cy + TILE - 1, 2, 3, "#6a6a5a");
         // Eye gleam inside cave (if goblin is dead / about to respawn from this cave)
-        const willSpawnHere = goblin.dead && goblin.respawnTimer < 45;
+        const willSpawnHere = goblin.dead && goblin.respawnTimer < 90;
         if (willSpawnHere) {
             // Show eyes in the cave it'll spawn from
-            const showEyes = goblin.respawnTimer < 30 && ci === goblin.spawnCave;
+            const showEyes = goblin.respawnTimer < 60 && ci === goblin.spawnCave;
             if (showEyes) {
                 drawRect(cx + 5, cy + 5, 2, 2, "#cc2222");
                 drawRect(cx + 9, cy + 5, 2, 2, "#cc2222");
@@ -1112,9 +1112,9 @@ function drawDancer(d) {
     drawRect(dx + 7 - footOffset, dy + 11, 2, 2, pal.dark);
 }
 
-// ---- Game Loop (30 fps) ----
+// ---- Game Loop (60 fps) ----
 let lastTime = 0;
-const FRAME_MS = 1000 / 30;
+const FRAME_MS = 1000 / 60;
 let frameAccum = 0;
 function gameLoop(timestamp) {
     const dt = timestamp - lastTime;
