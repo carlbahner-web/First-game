@@ -951,21 +951,34 @@ function render() {
         drawText(num, tx, (GRID_Y + GRID_ROWS) * TILE + 8, c === currentStep && playing ? PAL.playhead : "#5a8a8f", 3);
     }
 
-    // Kill counter (skull icon + count)
-    const kcY = (GRID_Y + GRID_ROWS) * TILE + 18;
-    const kcX = GRID_X * TILE;
-    // Skull icon
-    drawRect(kcX, kcY, 7, 5, "#EBEBE3");         // cranium
-    drawRect(kcX + 1, kcY + 5, 5, 2, "#EBEBE3");  // jaw
-    drawRect(kcX + 1, kcY + 2, 2, 2, "#2c4a4f");  // left eye
-    drawRect(kcX + 4, kcY + 2, 2, 2, "#2c4a4f");  // right eye
-    drawRect(kcX + 3, kcY + 4, 1, 1, "#2c4a4f");  // nose
-    drawText(String(killCount), kcX + 10, kcY + 7, "#EBEBE3", 3);
-    // Next dancer progress dots
-    const dotsX = kcX + 10 + String(killCount).length * 5 + 6;
-    for (let i = 0; i < 3; i++) {
-        const filled = (killCount % 3) > i;
-        drawRect(dotsX + i * 5, kcY + 2, 3, 3, filled ? "#F6CC60" : "#5a8a8f");
+    // Kill counter — large pixel-art number with skull
+    {
+        const kcY = (GRID_Y + GRID_ROWS) * TILE + 16;
+        const kcX = GRID_X * TILE;
+        // Background panel
+        const pxSz = 3;
+        const digitW = (3 * pxSz + pxSz); // per digit width
+        const numDigits = String(killCount).length;
+        const panelW = 14 + numDigits * digitW + 10;
+        const panelH = 5 * pxSz + 6;
+        drawRect(kcX - 2, kcY - 2, panelW + 4, panelH + 4, "#1a3438");
+        drawRect(kcX, kcY, panelW, panelH, "#243e42");
+        drawRect(kcX, kcY, panelW, 1, "#3a6a70");
+        // Skull icon (10x10 pixel art)
+        const sx = kcX + 2, sy = kcY + 3;
+        drawRect(sx + 1, sy, 8, 2, "#EBEBE3");     // top cranium
+        drawRect(sx, sy + 2, 10, 4, "#EBEBE3");     // mid cranium
+        drawRect(sx + 1, sy + 6, 8, 2, "#EBEBE3");  // lower face
+        drawRect(sx + 2, sy + 8, 2, 2, "#EBEBE3");  // left tooth
+        drawRect(sx + 6, sy + 8, 2, 2, "#EBEBE3");  // right tooth
+        drawRect(sx + 2, sy + 3, 2, 2, "#2c4a4f");  // left eye
+        drawRect(sx + 6, sy + 3, 2, 2, "#2c4a4f");  // right eye
+        drawRect(sx + 4, sy + 5, 2, 2, "#2c4a4f");  // nose
+        drawRect(sx + 4, sy + 8, 2, 2, "#2c4a4f");  // tooth gap
+        // Large pixel-art kill number
+        const numX = kcX + 14;
+        const numY = kcY + 3;
+        drawPixelDigits(killCount, numX + (numDigits * digitW) / 2, numY, "#EBEBE3", pxSz);
     }
 
     // Control blocks
