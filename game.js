@@ -21,29 +21,31 @@ canvas.width = COLS * TILE * SCALE;
 canvas.height = ROWS * TILE * SCALE;
 ctx.imageSmoothingEnabled = false;
 
-// ---- Colors (16-bit palette) ----
+// ---- Colors (carnival palette) ----
+// #EBEBE3 Ticket Paper, #F6CC60 Midway Mustard, #BFCDC0 Foggy Mint
+// #3A6168 Harbor Teal, #BF7538 Rusty Turnstile
 const PAL = {
-    bg:        "#2b2b3d",
-    wall:      "#4a4a6a",
-    wallTop:   "#5c5c7e",
-    floor:     "#3b3b55",
-    floorAlt:  "#363650",
-    gridOff:   "#2e3440",
-    gridOn:    ["#bf616a", "#d08770", "#ebcb8b", "#a3be8c"], // per-row colors
-    gridBorder:"#4c566a",
-    playhead:  "#88c0d0",
-    player:    "#81a1c1",
-    playerDark:"#5e81ac",
-    sword:     "#e5e9f0",
-    swordGlow: "#8fbcbb",
-    shadow:    "rgba(0,0,0,0.25)",
-    startBtn:  "#a3be8c",
-    stopBtn:   "#bf616a",
-    labelText: "#d8dee9",
-    titleText: "#eceff4",
+    bg:        "#2c4a4f",
+    wall:      "#3A6168",
+    wallTop:   "#4a7a82",
+    floor:     "#345558",
+    floorAlt:  "#2f4f53",
+    gridOff:   "#2a4448",
+    gridOn:    ["#BF7538", "#F6CC60", "#BFCDC0", "#EBEBE3"], // per-row colors (open-hh, hihat, snare, kick)
+    gridBorder:"#3A6168",
+    playhead:  "#F6CC60",
+    player:    "#EBEBE3",
+    playerDark:"#BFCDC0",
+    sword:     "#F6CC60",
+    swordGlow: "#BF7538",
+    shadow:    "rgba(0,0,0,0.3)",
+    startBtn:  "#BFCDC0",
+    stopBtn:   "#BF7538",
+    labelText: "#EBEBE3",
+    titleText: "#EBEBE3",
 };
 
-const DRUM_LABELS = ["KICK", "SNARE", "HI-HAT", "OPEN-HH"];
+const DRUM_LABELS = ["OPEN-HH", "HI-HAT", "SNARE", "KICK"];
 
 // ---- Audio Engine (Web Audio API with synthesized drums) ----
 let audioCtx = null;
@@ -126,10 +128,10 @@ function playHihat(time, open) {
 }
 
 const drumFns = [
-    (t) => playKick(t),
-    (t) => playSnare(t),
-    (t) => playHihat(t, false),
     (t) => playHihat(t, true),
+    (t) => playHihat(t, false),
+    (t) => playSnare(t),
+    (t) => playKick(t),
 ];
 
 // ---- Sequencer State ----
@@ -144,7 +146,6 @@ const player = {
     y: (GRID_Y + GRID_ROWS + 1) * TILE,
     w: TILE,
     h: TILE,
-    speed: 2.2,
     dir: 0,        // 0=down, 1=up, 2=left, 3=right
     frame: 0,
     frameTimer: 0,
@@ -152,6 +153,8 @@ const player = {
     attackTimer: 0,
     attackDuration: 12,
     swordHit: false, // did this swing already toggle a block?
+    moveCooldown: 0,
+    moveCooldownMax: 12, // frames between moves (half speed)
 };
 
 // ---- Input ----
@@ -255,28 +258,30 @@ function update(dt) {
         if (p.attackTimer <= 0) p.attacking = false;
     }
 
-    // Movement (not while attacking)
-    if (!p.attacking) {
-        let dx = 0, dy = 0;
-        if (keys["ArrowLeft"]  || keys["KeyA"]) { dx = -p.speed; p.dir = 2; }
-        if (keys["ArrowRight"] || keys["KeyD"]) { dx =  p.speed; p.dir = 3; }
-        if (keys["ArrowUp"]    || keys["KeyW"]) { dy = -p.speed; p.dir = 1; }
-        if (keys["ArrowDown"]  || keys["KeyS"]) { dy =  p.speed; p.dir = 0; }
+    // Movement (grid-snapped, one tile at a time, not while attacking)
+    if (p.moveCooldown > 0) p.moveCooldown--;
 
-        // Clamp to room walls (1 tile border)
-        const nx = Math.max(TILE, Math.min(p.x + dx, (COLS - 2) * TILE));
-        const ny = Math.max(TILE * 2, Math.min(p.y + dy, (ROWS - 2) * TILE));
+    if (!p.attacking && p.moveCooldown <= 0) {
+        let moved = false;
+        if (keys["ArrowLeft"]  || keys["KeyA"]) {
+            p.x = Math.max(TILE, p.x - TILE);
+            p.dir = 2; moved = true;
+        } else if (keys["ArrowRight"] || keys["KeyD"]) {
+            p.x = Math.min((COLS - 2) * TILE, p.x + TILE);
+            p.dir = 3; moved = true;
+        } else if (keys["ArrowUp"]    || keys["KeyW"]) {
+            p.y = Math.max(TILE * 2, p.y - TILE);
+            p.dir = 1; moved = true;
+        } else if (keys["ArrowDown"]  || keys["KeyS"]) {
+            p.y = Math.min((ROWS - 2) * TILE, p.y + TILE);
+            p.dir = 0; moved = true;
+        }
 
-        p.x = nx;
-        p.y = ny;
-
-        // Walk animation
-        if (dx !== 0 || dy !== 0) {
-            p.frameTimer++;
-            if (p.frameTimer > 8) { p.frame = (p.frame + 1) % 4; p.frameTimer = 0; }
+        if (moved) {
+            p.moveCooldown = p.moveCooldownMax;
+            p.frame = (p.frame + 1) % 4;
         } else {
             p.frame = 0;
-            p.frameTimer = 0;
         }
     }
 
@@ -354,7 +359,7 @@ function render() {
 
             // Beat markers (every 4th column)
             if (!on && c % 4 === 0) {
-                drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, "#343848");
+                drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, "#2f4f53");
             }
 
             // 3D highlight for on-blocks
@@ -382,7 +387,7 @@ function render() {
     for (let c = 0; c < GRID_COLS; c++) {
         const num = String(c + 1);
         const tx = (GRID_X + c) * TILE + (c < 9 ? 4 : 1);
-        drawText(num, tx, (GRID_Y + GRID_ROWS) * TILE + 8, c === currentStep && playing ? PAL.playhead : "#555568", 3);
+        drawText(num, tx, (GRID_Y + GRID_ROWS) * TILE + 8, c === currentStep && playing ? PAL.playhead : "#5a8a8f", 3);
     }
 
     // Start/Stop indicator
@@ -400,7 +405,7 @@ function render() {
         ctx.lineTo(indicatorX * SCALE, (indicatorY + 9) * SCALE);
         ctx.lineTo((indicatorX + 8) * SCALE, (indicatorY + 4.5) * SCALE);
         ctx.fill();
-        drawText("STOPPED - ENTER TO PLAY", indicatorX + 18, indicatorY + 7, "#888", 3);
+        drawText("STOPPED - ENTER TO PLAY", indicatorX + 18, indicatorY + 7, "#5a8a8f", 3);
     }
 
     // Player shadow
@@ -437,11 +442,11 @@ function drawPlayer() {
         [1, 0],  // right
     ][p.dir];
     if (p.dir !== 1) { // don't draw eyes facing up
-        drawRect(px + 5 + eyeDir[0], py + bob + eyeDir[1], 2, 2, "#2e3440");
-        drawRect(px + 9 + eyeDir[0], py + bob + eyeDir[1], 2, 2, "#2e3440");
+        drawRect(px + 5 + eyeDir[0], py + bob + eyeDir[1], 2, 2, "#1f3a3f");
+        drawRect(px + 9 + eyeDir[0], py + bob + eyeDir[1], 2, 2, "#1f3a3f");
     }
     // Hair/hat
-    drawRect(px + 3, py - 3 - bob, 10, 3, "#5e81ac");
+    drawRect(px + 3, py - 3 - bob, 10, 3, "#BF7538");
     // Feet
     const walkOffset = p.frame === 1 ? 2 : p.frame === 3 ? -2 : 0;
     drawRect(px + 4 + walkOffset, py + 12, 3, 3, PAL.playerDark);
