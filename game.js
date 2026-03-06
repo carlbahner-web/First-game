@@ -494,7 +494,7 @@ function update(dt) {
 
             // Death text
             deathText = wasElite
-                ? { x: goblin.x - 12, y: goblin.y - 12, timer: 90, text: "YEAH!", color: "#ffee44", scale: 6 }
+                ? { x: goblin.x - 40, y: goblin.y - 12, timer: 120, text: "bro why you gotta stab me?", color: "#ffee44", scale: 4 }
                 : { x: goblin.x - 8, y: goblin.y - 8, timer: 60, text: "OW FUCK!", color: "#cc2222", scale: 5 };
 
             // Screen flash for elite kill
