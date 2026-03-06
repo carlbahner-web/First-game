@@ -210,6 +210,86 @@ function playSabotageSound(time) {
     });
 }
 
+function playCatapultLaunch(time) {
+    const ctx = audioCtx;
+    if (!ctx) return;
+    // Low frequency sweep with noise burst
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(80, time);
+    osc.frequency.exponentialRampToValueAtTime(200, time + 0.2);
+    g.gain.setValueAtTime(0.3, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.25);
+    osc.connect(g); g.connect(ctx.destination);
+    osc.start(time); osc.stop(time + 0.25);
+    // Creak/wood noise
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.15, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.15, time);
+    ng.gain.exponentialRampToValueAtTime(0.001, time + 0.15);
+    const filt = ctx.createBiquadFilter();
+    filt.type = "bandpass"; filt.frequency.value = 400; filt.Q.value = 5;
+    noise.connect(filt); filt.connect(ng); ng.connect(ctx.destination);
+    noise.start(time);
+}
+
+function playCatapultImpact(time) {
+    const ctx = audioCtx;
+    if (!ctx) return;
+    // Deep boom
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(50, time);
+    osc.frequency.exponentialRampToValueAtTime(20, time + 0.4);
+    g.gain.setValueAtTime(0.5, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.4);
+    osc.connect(g); g.connect(ctx.destination);
+    osc.start(time); osc.stop(time + 0.4);
+    // Crash noise
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.3, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.3, time);
+    ng.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
+    const filt = ctx.createBiquadFilter();
+    filt.type = "lowpass"; filt.frequency.value = 600;
+    noise.connect(filt); filt.connect(ng); ng.connect(ctx.destination);
+    noise.start(time);
+}
+
+function playClang(time) {
+    const ctx = audioCtx;
+    if (!ctx) return;
+    // High metallic ping
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(800, time);
+    osc.frequency.exponentialRampToValueAtTime(600, time + 0.1);
+    g.gain.setValueAtTime(0.15, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.12);
+    osc.connect(g); g.connect(ctx.destination);
+    osc.start(time); osc.stop(time + 0.12);
+    // Second harmonic for metallic quality
+    const osc2 = ctx.createOscillator();
+    const g2 = ctx.createGain();
+    osc2.type = "square";
+    osc2.frequency.setValueAtTime(1200, time);
+    g2.gain.setValueAtTime(0.06, time);
+    g2.gain.exponentialRampToValueAtTime(0.001, time + 0.08);
+    osc2.connect(g2); g2.connect(ctx.destination);
+    osc2.start(time); osc2.stop(time + 0.08);
+}
+
 const drumFns = [
     (t) => playHihat(t, true),
     (t) => playHihat(t, false),
@@ -302,6 +382,12 @@ let pendingShakeElite = false;
 
 // Sabotage flash — per-cell timer for red flash overlay
 const cellFlash = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).fill(0));
+// ---- Catapult Goblin State ----
+let catapultGoblin = null; // null when inactive
+// When active: { x, y, destX, destY, dir, frame, frameTimer, speed,
+//   phase, phaseTimer, caveIndex, targetRow, targetCol,
+//   boulder: null | { startX, startY, targetX, targetY, progress } }
+
 let gamePaused = false;
 let gameState = "title"; // "title", "story", or "playing"
 let titleBlink = 0; // blink timer for "PRESS ENTER"
@@ -774,6 +860,30 @@ function update(dt) {
             } // end else (lethal hit)
         }
 
+        // Check catapult goblin hit — invincible! Clang sound
+        if (catapultGoblin) {
+            const cgTileX = Math.round(catapultGoblin.x / TILE);
+            const cgTileY = Math.round(catapultGoblin.y / TILE);
+            if (targetTileX === cgTileX && targetTileY === cgTileY) {
+                p.swordHit = true;
+                ensureAudio();
+                if (audioCtx) playClang(audioCtx.currentTime);
+                // Spark particles
+                for (let i = 0; i < 5; i++) {
+                    deathParticles.push({
+                        x: catapultGoblin.x + catapultGoblin.w / 2,
+                        y: catapultGoblin.y + catapultGoblin.h / 2,
+                        vx: (Math.random() - 0.5) * 3,
+                        vy: (Math.random() - 0.5) * 3 - 1,
+                        life: 10 + Math.random() * 10,
+                        color: Math.random() > 0.5 ? "#ffee44" : "#ffffff",
+                        size: 1 + Math.random() * 2,
+                        sparkle: true,
+                    });
+                }
+            }
+        }
+
         // Check dancer hit — donk! They're immune
         for (const d of dancers) {
             const dTileX = Math.round(d.x / TILE);
@@ -826,7 +936,10 @@ function update(dt) {
             const nty = Math.round(ny / TILE);
             const gRoundX = Math.round(goblin.x / TILE) * TILE;
             const gRoundY = Math.round(goblin.y / TILE) * TILE;
+            const cgRoundX = catapultGoblin ? Math.round(catapultGoblin.x / TILE) * TILE : -999;
+            const cgRoundY = catapultGoblin ? Math.round(catapultGoblin.y / TILE) * TILE : -999;
             const blocked = (!goblin.dead && nx === gRoundX && ny === gRoundY)
+                || (catapultGoblin && nx === cgRoundX && ny === cgRoundY)
                 || isTileBlockedByObjects(ntx, nty)
                 || isTileOccupiedByDancer(ntx, nty);
             if (!blocked) {
@@ -861,9 +974,17 @@ function update(dt) {
     if (goblin.dead) {
         goblin.respawnTimer--;
         if (goblin.respawnTimer <= 0) {
+            // Every 6th goblin is a catapult goblin instead of normal/elite
+            if (killCount % 6 === 5 && !catapultGoblin) {
+                spawnCatapultGoblin();
+                goblin.respawnTimer = 300; // wait until catapult goblin finishes
+            } else if (catapultGoblin) {
+                // Wait for catapult goblin to finish before spawning next
+                goblin.respawnTimer = 60;
+            } else {
             goblin.dead = false;
-            // Every 3rd goblin is elite (pink & fast)
-            goblin.elite = (killCount % 3 === 2);
+            // Every 3rd goblin is elite (pink & fast), but not on catapult turns
+            goblin.elite = (killCount % 3 === 2 && killCount % 6 !== 5);
             goblin.hp = goblin.elite ? 3 : 1;
             goblin.speed = goblin.elite ? 0.75 : 0.5;
             // Pick a random cave to spawn from
@@ -922,6 +1043,7 @@ function update(dt) {
                 }
             }
         }
+        } // end else (non-catapult spawn)
     } else {
         // Smooth pixel movement toward destination
         const dx = goblin.destX - goblin.x;
@@ -975,9 +1097,12 @@ function update(dt) {
             // Don't walk into player, dancers, or solid objects
             const gntx = Math.round(nx / TILE);
             const gnty = Math.round(ny / TILE);
+            const cgBlockX = catapultGoblin ? Math.round(catapultGoblin.x / TILE) * TILE : -999;
+            const cgBlockY = catapultGoblin ? Math.round(catapultGoblin.y / TILE) * TILE : -999;
             const gobBlocked = (nx === p.x && ny === p.y)
                 || isTileBlockedByObjects(gntx, gnty)
-                || isTileOccupiedByDancer(gntx, gnty);
+                || isTileOccupiedByDancer(gntx, gnty)
+                || (catapultGoblin && nx === cgBlockX && ny === cgBlockY);
             if (!gobBlocked) {
                 goblin.destX = nx;
                 goblin.destY = ny;
@@ -1001,6 +1126,9 @@ function update(dt) {
 
     // Decrement goblin hurt flash timer
     if (goblin.hurtTimer > 0) goblin.hurtTimer--;
+
+    // Update catapult goblin
+    if (catapultGoblin) updateCatapultGoblin();
 
     // Update death particles
     deathParticles = deathParticles.filter(p => {
@@ -1050,6 +1178,181 @@ function update(dt) {
             }
             currentStep = (currentStep + 1) % GRID_COLS;
         }
+    }
+}
+
+// ---- Catapult Goblin Logic ----
+function spawnCatapultGoblin() {
+    const caveIdx = Math.floor(Math.random() * CAVES.length);
+    const cave = CAVES[caveIdx];
+    const spawnX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
+    const spawnY = cave.tileY === ROWS - 1 ? (ROWS - 2) * TILE : cave.tileY * TILE;
+
+    // Pick a random grid cell as boulder target
+    const tRow = Math.floor(Math.random() * GRID_ROWS);
+    const tCol = Math.floor(Math.random() * GRID_COLS);
+
+    // Calculate a stop position: 2 tiles outside the grid area
+    let stopX, stopY;
+    if (cave.tileX === 0) {
+        stopX = TILE * 2; stopY = (GRID_Y + tRow) * TILE;
+    } else if (cave.tileX === COLS - 1) {
+        stopX = (COLS - 3) * TILE; stopY = (GRID_Y + tRow) * TILE;
+    } else {
+        stopX = (GRID_X + tCol) * TILE; stopY = (ROWS - 3) * TILE;
+    }
+    // Clamp to room bounds
+    stopX = Math.max(TILE, Math.min((COLS - 2) * TILE, stopX));
+    stopY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, stopY));
+
+    catapultGoblin = {
+        x: spawnX, y: spawnY,
+        destX: stopX, destY: stopY,
+        w: TILE, h: TILE,
+        dir: 0, frame: 0, frameTimer: 0,
+        speed: 0.6,
+        phase: "entering",
+        phaseTimer: 0,
+        caveIndex: caveIdx,
+        targetRow: tRow,
+        targetCol: tCol,
+        boulder: null,
+    };
+
+    // Spawn sound — ominous rumble
+    ensureAudio();
+    if (audioCtx) {
+        const now = audioCtx.currentTime;
+        // Low menacing rumble
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(70, now);
+        osc.frequency.linearRampToValueAtTime(55, now + 0.6);
+        g.gain.setValueAtTime(0.15, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+        osc.connect(g); g.connect(audioCtx.destination);
+        osc.start(now); osc.stop(now + 0.7);
+        // Wooden creak
+        const osc2 = audioCtx.createOscillator();
+        const g2 = audioCtx.createGain();
+        osc2.type = "square";
+        osc2.frequency.setValueAtTime(150, now);
+        osc2.frequency.linearRampToValueAtTime(120, now + 0.3);
+        g2.gain.setValueAtTime(0.05, now);
+        g2.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        osc2.connect(g2); g2.connect(audioCtx.destination);
+        osc2.start(now + 0.1); osc2.stop(now + 0.4);
+    }
+}
+
+function updateCatapultGoblin() {
+    const cg = catapultGoblin;
+    if (!cg) return;
+
+    if (cg.phase === "entering") {
+        // Walk toward stop position
+        const dx = cg.destX - cg.x;
+        const dy = cg.destY - cg.y;
+        const dist = Math.abs(dx) + Math.abs(dy);
+        if (dist < cg.speed) {
+            cg.x = cg.destX;
+            cg.y = cg.destY;
+            cg.phase = "aiming";
+            cg.phaseTimer = 60; // 1 second aiming
+        } else {
+            if (Math.abs(dx) > Math.abs(dy)) {
+                cg.x += Math.sign(dx) * Math.min(cg.speed, Math.abs(dx));
+                cg.dir = dx > 0 ? 3 : 2;
+            } else {
+                cg.y += Math.sign(dy) * Math.min(cg.speed, Math.abs(dy));
+                cg.dir = dy > 0 ? 0 : 1;
+            }
+            cg.frameTimer++;
+            if (cg.frameTimer >= 8) { cg.frameTimer = 0; cg.frame = (cg.frame + 1) % 4; }
+        }
+    } else if (cg.phase === "aiming") {
+        cg.phaseTimer--;
+        if (cg.phaseTimer <= 0) {
+            // Fire!
+            cg.phase = "firing";
+            const targetPixelX = (GRID_X + cg.targetCol) * TILE + TILE / 2;
+            const targetPixelY = (GRID_Y + cg.targetRow) * TILE + TILE / 2;
+            cg.boulder = {
+                startX: cg.x + cg.w / 2,
+                startY: cg.y - 4, // launch from top of catapult
+                targetX: targetPixelX,
+                targetY: targetPixelY,
+                progress: 0,
+            };
+            ensureAudio();
+            if (audioCtx) playCatapultLaunch(audioCtx.currentTime);
+        }
+    } else if (cg.phase === "firing") {
+        // Animate boulder arc
+        cg.boulder.progress += 1 / 45; // ~45 frames to land
+        if (cg.boulder.progress >= 1) {
+            // IMPACT — flip 3x3 grid cells
+            cg.boulder.progress = 1;
+            const cr = cg.targetRow;
+            const cc = cg.targetCol;
+            for (let dr = -1; dr <= 1; dr++) {
+                for (let dc = -1; dc <= 1; dc++) {
+                    const r = cr + dr;
+                    const c = cc + dc;
+                    if (r >= 0 && r < GRID_ROWS && c >= 0 && c < GRID_COLS) {
+                        grid[r][c] = !grid[r][c];
+                        cellFlash[r][c] = 30;
+                    }
+                }
+            }
+            // Impact effects
+            ensureAudio();
+            if (audioCtx) playCatapultImpact(audioCtx.currentTime);
+            screenShake = 12;
+            shakeIntensity = 5;
+            // Dust particles at impact
+            const impactX = cg.boulder.targetX;
+            const impactY = cg.boulder.targetY;
+            for (let i = 0; i < 15; i++) {
+                deathParticles.push({
+                    x: impactX, y: impactY,
+                    vx: (Math.random() - 0.5) * 3,
+                    vy: (Math.random() - 0.5) * 3 - 1,
+                    life: 20 + Math.random() * 20,
+                    color: Math.random() > 0.5 ? "#8B7355" : "#6B5335",
+                    size: 2 + Math.random() * 3,
+                    sparkle: false,
+                });
+            }
+            cg.boulder = null;
+            cg.phase = "retreating";
+            // Set retreat destination back to cave
+            const cave = CAVES[cg.caveIndex];
+            const retreatX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
+            const retreatY = cave.tileY === ROWS - 1 ? (ROWS - 2) * TILE : cave.tileY * TILE;
+            cg.destX = retreatX;
+            cg.destY = retreatY;
+        }
+    } else if (cg.phase === "retreating") {
+        // Walk back to cave
+        const dx = cg.destX - cg.x;
+        const dy = cg.destY - cg.y;
+        const dist = Math.abs(dx) + Math.abs(dy);
+        if (dist < cg.speed) {
+            // Reached cave — disappear
+            catapultGoblin = null;
+            return;
+        }
+        if (Math.abs(dx) > Math.abs(dy)) {
+            cg.x += Math.sign(dx) * Math.min(cg.speed, Math.abs(dx));
+            cg.dir = dx > 0 ? 3 : 2;
+        } else {
+            cg.y += Math.sign(dy) * Math.min(cg.speed, Math.abs(dy));
+            cg.dir = dy > 0 ? 0 : 1;
+        }
+        cg.frameTimer++;
+        if (cg.frameTimer >= 8) { cg.frameTimer = 0; cg.frame = (cg.frame + 1) % 4; }
     }
 }
 
@@ -1332,6 +1635,11 @@ function render() {
     // Goblin
     if (!goblin.dead) {
         drawGoblin();
+    }
+
+    // Catapult goblin
+    if (catapultGoblin) {
+        drawCatapultGoblin();
     }
 
     // Death particles
@@ -1618,6 +1926,113 @@ function drawGoblin() {
     const wo = g.frame === 1 ? 2 : g.frame === 3 ? -2 : 0;
     drawRect(gx + 5 + wo, gy + 12, 3, 2, darkCol);
     drawRect(gx + 8 - wo, gy + 12, 3, 2, darkCol);
+}
+
+function drawCatapultGoblin() {
+    const cg = catapultGoblin;
+    if (!cg) return;
+
+    const gx = cg.x;
+    const gy = cg.y;
+    const bob = cg.frame % 2 === 1 ? 1 : 0;
+
+    // Colors: bronze/brown with golden shimmer
+    const bodyCol = "#8B5E3C";
+    const darkCol = "#6B3E1C";
+    const headCol = "#9B6E4C";
+    const eyeCol = "#ffee44";
+
+    // Invincibility shimmer — oscillating brightness
+    const shimmerPhase = (performance.now() / 100) % (Math.PI * 2);
+    const shimmerAlpha = 0.15 + Math.sin(shimmerPhase) * 0.1;
+
+    // Shadow
+    drawRect(gx + 3, gy + cg.h - 2, cg.w - 6, 3, PAL.shadow);
+
+    // Catapult behind goblin (wooden frame)
+    const catX = gx - 4;
+    const catY = gy + 2;
+    drawRect(catX, catY + 6, 24, 3, "#5C3A1E"); // base beam
+    drawRect(catX + 2, catY + 2, 3, 6, "#5C3A1E"); // left upright
+    drawRect(catX + 19, catY + 2, 3, 6, "#5C3A1E"); // right upright
+    drawRect(catX + 4, catY, 16, 2, "#7B5A3A"); // arm
+    // Bowl/cup at end of arm
+    drawRect(catX + 2, catY - 2, 5, 3, "#4A2A0E");
+
+    // Body
+    drawRect(gx + 4, gy + 3 - bob, 8, 9, bodyCol);
+    drawRect(gx + 4, gy + 3 - bob, 2, 9, darkCol);
+    drawRect(gx + 10, gy + 3 - bob, 2, 9, darkCol);
+    // Head
+    drawRect(gx + 3, gy - 1 - bob, 10, 6, headCol);
+    // Pointy ears
+    drawRect(gx + 1, gy - bob, 3, 3, headCol);
+    drawRect(gx + 12, gy - bob, 3, 3, headCol);
+    // Eyes
+    const ed = [[0, 2], [0, -2], [-1, 0], [1, 0]][cg.dir] || [0, 2];
+    drawRect(gx + 5 + ed[0], gy + 1 - bob + ed[1], 2, 2, eyeCol);
+    drawRect(gx + 9 + ed[0], gy + 1 - bob + ed[1], 2, 2, eyeCol);
+    // Fangs
+    drawRect(gx + 6, gy + 4 - bob, 1, 2, "#EBEBE3");
+    drawRect(gx + 9, gy + 4 - bob, 1, 2, "#EBEBE3");
+    // Feet
+    const cwo = cg.frame === 1 ? 2 : cg.frame === 3 ? -2 : 0;
+    drawRect(gx + 5 + cwo, gy + 12, 3, 2, darkCol);
+    drawRect(gx + 8 - cwo, gy + 12, 3, 2, darkCol);
+
+    // Invincibility shimmer overlay
+    ctx.fillStyle = "#ffee44";
+    ctx.globalAlpha = shimmerAlpha;
+    ctx.fillRect((gx + 2) * SCALE, (gy - 2 - bob) * SCALE, 12 * SCALE, 16 * SCALE);
+    ctx.globalAlpha = 1.0;
+
+    // Boulder in flight
+    if (cg.boulder) {
+        const b = cg.boulder;
+        const t = b.progress;
+        // Lerp position
+        const bx = b.startX + (b.targetX - b.startX) * t;
+        const baseY = b.startY + (b.targetY - b.startY) * t;
+        // Parabolic arc — peak height proportional to distance
+        const arcHeight = 40;
+        const arcY = -4 * arcHeight * t * (1 - t);
+        const by = baseY + arcY;
+
+        // Shadow on ground (grows as boulder descends)
+        const shadowSize = 3 + (1 - Math.abs(arcY) / arcHeight) * 4;
+        drawRect(bx - shadowSize / 2, b.targetY + 2, shadowSize, 2, PAL.shadow);
+
+        // Boulder (dark gray rock)
+        drawRect(bx - 4, by - 4, 8, 8, "#6a6a6a");
+        drawRect(bx - 3, by - 3, 6, 6, "#888888");
+        // Highlight
+        drawRect(bx - 2, by - 3, 2, 2, "#aaaaaa");
+    }
+
+    // Target warning during aiming phase
+    if (cg.phase === "aiming") {
+        const flashOn = Math.floor(cg.phaseTimer / 4) % 2 === 0;
+        if (flashOn) {
+            for (let dr = -1; dr <= 1; dr++) {
+                for (let dc = -1; dc <= 1; dc++) {
+                    const r = cg.targetRow + dr;
+                    const c = cg.targetCol + dc;
+                    if (r >= 0 && r < GRID_ROWS && c >= 0 && c < GRID_COLS) {
+                        const tx = (GRID_X + c) * TILE;
+                        const ty = (GRID_Y + r) * TILE;
+                        ctx.fillStyle = "#ff4400";
+                        ctx.globalAlpha = 0.35;
+                        ctx.fillRect(tx * SCALE, ty * SCALE, TILE * SCALE, TILE * SCALE);
+                        ctx.globalAlpha = 1.0;
+                        // Orange border
+                        ctx.strokeStyle = "#ff6600";
+                        ctx.lineWidth = SCALE;
+                        ctx.strokeRect(tx * SCALE + SCALE, ty * SCALE + SCALE, TILE * SCALE - 2 * SCALE, TILE * SCALE - 2 * SCALE);
+                    }
+                }
+            }
+        }
+    }
 }
 
 function drawDancer(d) {
