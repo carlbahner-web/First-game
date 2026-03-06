@@ -567,27 +567,39 @@ function update(dt) {
             if (audioCtx) {
                 const now = audioCtx.currentTime;
                 if (wasElite) {
-                    // Triumphant fanfare — ascending arpeggio
-                    const notes = [523, 659, 784, 1047]; // C5, E5, G5, C6
+                    // Bright happy major arpeggio — C major up two octaves
+                    const notes = [523, 659, 784, 1047, 1319, 1568, 2093]; // C5 E5 G5 C6 E6 G6 C7
                     notes.forEach((freq, i) => {
                         const osc = audioCtx.createOscillator();
                         const g = audioCtx.createGain();
-                        osc.type = "square";
-                        osc.frequency.setValueAtTime(freq, now + i * 0.1);
-                        g.gain.setValueAtTime(0.12, now + i * 0.1);
-                        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.3);
+                        osc.type = "triangle";
+                        osc.frequency.setValueAtTime(freq, now + i * 0.07);
+                        g.gain.setValueAtTime(0.15 - i * 0.015, now + i * 0.07);
+                        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.35);
                         osc.connect(g); g.connect(audioCtx.destination);
-                        osc.start(now + i * 0.1); osc.stop(now + i * 0.1 + 0.3);
+                        osc.start(now + i * 0.07); osc.stop(now + i * 0.07 + 0.35);
                     });
-                    // Held final note with triangle wave for warmth
-                    const fin = audioCtx.createOscillator();
-                    const fg = audioCtx.createGain();
-                    fin.type = "triangle";
-                    fin.frequency.setValueAtTime(1047, now + 0.4);
-                    fg.gain.setValueAtTime(0.1, now + 0.4);
-                    fg.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
-                    fin.connect(fg); fg.connect(audioCtx.destination);
-                    fin.start(now + 0.4); fin.stop(now + 1.0);
+                    // Sparkly high shimmer on top
+                    const shimmer = audioCtx.createOscillator();
+                    const sg = audioCtx.createGain();
+                    shimmer.type = "sine";
+                    shimmer.frequency.setValueAtTime(2093, now + 0.49);
+                    shimmer.frequency.linearRampToValueAtTime(2637, now + 0.8);
+                    sg.gain.setValueAtTime(0.08, now + 0.49);
+                    sg.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+                    shimmer.connect(sg); sg.connect(audioCtx.destination);
+                    shimmer.start(now + 0.49); shimmer.stop(now + 1.0);
+                    // Warm held chord underneath (C major triad)
+                    [523, 659, 784].forEach((freq) => {
+                        const osc = audioCtx.createOscillator();
+                        const g = audioCtx.createGain();
+                        osc.type = "triangle";
+                        osc.frequency.setValueAtTime(freq, now + 0.49);
+                        g.gain.setValueAtTime(0.06, now + 0.49);
+                        g.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+                        osc.connect(g); g.connect(audioCtx.destination);
+                        osc.start(now + 0.49); osc.stop(now + 1.2);
+                    });
                 } else {
                     const osc = audioCtx.createOscillator();
                     const g = audioCtx.createGain();
