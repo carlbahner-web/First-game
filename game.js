@@ -11,7 +11,7 @@ const SCALE = 3;
 const COLS = 22;           // room width in tiles
 const ROWS = 18;           // room height in tiles
 const GRID_COLS = 16;      // sequencer steps
-const GRID_ROWS = 6;       // drum channels
+const GRID_ROWS = 4;       // drum channels
 const GRID_X = 3;          // grid start tile-x
 const GRID_Y = 4;          // grid start tile-y
 let bpm = 120;
@@ -31,7 +31,7 @@ const PAL = {
     floor:     "#345558",
     floorAlt:  "#2f4f53",
     gridOff:   "#2a4448",
-    gridOn:    ["#BF7538", "#F6CC60", "#BFCDC0", "#EBEBE3", "#E86A6A", "#6AB8E8"], // per-row colors
+    gridOn:    ["#BF7538", "#F6CC60", "#BFCDC0", "#EBEBE3"], // per-row colors
     gridBorder:"#3A6168",
     playhead:  "#F6CC60",
     player:    "#EBEBE3",
@@ -45,7 +45,7 @@ const PAL = {
     titleText: "#EBEBE3",
 };
 
-const DRUM_LABELS = ["OPEN-HH", "HI-HAT", "SNARE", "KICK", "COWBELL", "TOM"];
+const DRUM_LABELS = ["OPEN-HH", "HI-HAT", "SNARE", "KICK"];
 
 // ---- Audio Engine (Web Audio API with synthesized drums) ----
 let audioCtx = null;
@@ -171,8 +171,6 @@ const drumFns = [
     (t) => playHihat(t, false),
     (t) => playSnare(t),
     (t) => playKick(t),
-    (t) => playCowbell(t),
-    (t) => playTom(t),
 ];
 
 // ---- Sequencer State ----
@@ -195,8 +193,10 @@ const DANCER_PALETTES = [
 
 // ---- Player State ----
 const player = {
-    x: (GRID_X + 7) * TILE,   // center of grid
+    x: (GRID_X + 7) * TILE,   // center of grid (logical tile position)
     y: (GRID_Y + GRID_ROWS + 1) * TILE,
+    displayX: (GRID_X + 7) * TILE, // visual position (smoothly interpolated)
+    displayY: (GRID_Y + GRID_ROWS + 1) * TILE,
     w: TILE,
     h: TILE,
     dir: 0,        // 0=down, 1=up, 2=left, 3=right
@@ -208,6 +208,7 @@ const player = {
     swordHit: false, // did this swing already toggle a block?
     moveCooldown: 0,
     moveCooldownMax: 6, // frames between moves
+    moveSpeed: 0.35, // interpolation speed (0-1, higher = faster)
 };
 
 // ---- Caves (goblin spawn points) ----
@@ -301,13 +302,14 @@ window.addEventListener("keyup", (e) => { keys[e.code] = false; });
 // ---- Helper: get sword hitbox ----
 function getSwordBox() {
     const p = player;
+    const px = p.displayX, py = p.displayY;
     const sw = 6, sh = 14;
     const progress = 1 - (p.attackTimer / p.attackDuration);
     switch (p.dir) {
-        case 0: return { x: p.x - 1, y: p.y + p.h - 2, w: sh, h: sw + 4 };
-        case 1: return { x: p.x - 1, y: p.y - sw - 4, w: sh, h: sw + 4 };
-        case 2: return { x: p.x - sw - 6, y: p.y, w: sw + 6, h: sh };
-        case 3: return { x: p.x + p.w, y: p.y, w: sw + 6, h: sh };
+        case 0: return { x: px - 1, y: py + p.h - 2, w: sh, h: sw + 4 };
+        case 1: return { x: px - 1, y: py - sw - 4, w: sh, h: sw + 4 };
+        case 2: return { x: px - sw - 6, y: py, w: sw + 6, h: sh };
+        case 3: return { x: px + p.w, y: py, w: sw + 6, h: sh };
     }
 }
 
@@ -512,6 +514,14 @@ function update(dt) {
             p.frame = 0;
         }
     }
+
+    // Smooth player visual position interpolation
+    const lerpSpeed = p.moveSpeed;
+    p.displayX += (p.x - p.displayX) * lerpSpeed;
+    p.displayY += (p.y - p.displayY) * lerpSpeed;
+    // Snap when very close to avoid sub-pixel jitter
+    if (Math.abs(p.x - p.displayX) < 0.5) p.displayX = p.x;
+    if (Math.abs(p.y - p.displayY) < 0.5) p.displayY = p.y;
 
     // Update goblin
     if (goblin.dead) {
@@ -738,63 +748,12 @@ function render() {
     // Tempo badge
     drawText(bpm + " BPM", (GRID_X + 12) * TILE, TILE * 2.8, "#BFCDC0", 4);
 
-    // Row icons (pixel-art drum icons in the left wall area)
+    // Row labels (O, H, S, K) in the column just left of the first beat block
+    const ROW_LETTERS = ["O", "H", "S", "K"];
     for (let r = 0; r < GRID_ROWS; r++) {
-        const ix = 2;  // icon x start (inside left wall)
-        const iy = (GRID_Y + r) * TILE;
-        const col = PAL.gridOn[r];
-        const dark = "#2a2a2a";
-
-        if (r === 3) {
-            // KICK: bass drum — large circle with beater
-            drawRect(ix + 2, iy + 2, 10, 2, col);      // top rim
-            drawRect(ix + 2, iy + 12, 10, 2, col);     // bottom rim
-            drawRect(ix, iy + 4, 2, 8, col);            // left side
-            drawRect(ix + 12, iy + 4, 2, 8, col);       // right side
-            drawRect(ix + 6, iy + 5, 2, 5, dark);       // center dot
-        } else if (r === 2) {
-            // SNARE: drum from side — short cylinder with snare wires
-            drawRect(ix + 1, iy + 4, 12, 2, col);       // top rim
-            drawRect(ix + 1, iy + 11, 12, 2, col);      // bottom rim
-            drawRect(ix + 1, iy + 6, 2, 5, col);        // left side
-            drawRect(ix + 11, iy + 6, 2, 5, col);       // right side
-            // snare wires (horizontal lines across bottom)
-            drawRect(ix + 3, iy + 10, 8, 1, dark);
-            drawRect(ix + 3, iy + 12, 8, 1, dark);
-        } else if (r === 1) {
-            // CLOSED HI-HAT: two cymbals pressed together
-            drawRect(ix + 6, iy + 2, 2, 12, col);       // stand
-            drawRect(ix + 2, iy + 6, 10, 2, col);       // top cymbal
-            drawRect(ix + 2, iy + 8, 10, 2, col);       // bottom cymbal (touching)
-            drawRect(ix + 1, iy + 7, 1, 2, col);        // left edge
-            drawRect(ix + 12, iy + 7, 1, 2, col);       // right edge
-        } else if (r === 4) {
-            // COWBELL: trapezoidal bell shape
-            drawRect(ix + 4, iy + 2, 6, 2, col);        // top (narrow)
-            drawRect(ix + 3, iy + 4, 8, 2, col);        // upper body
-            drawRect(ix + 2, iy + 6, 10, 4, col);       // lower body (wide)
-            drawRect(ix + 1, iy + 10, 12, 2, col);      // bottom rim
-            drawRect(ix + 6, iy + 7, 2, 3, dark);       // strike mark
-        } else if (r === 5) {
-            // TOM: round drum from above
-            drawRect(ix + 3, iy + 2, 8, 2, col);        // top rim
-            drawRect(ix + 3, iy + 12, 8, 2, col);       // bottom rim
-            drawRect(ix + 1, iy + 4, 2, 8, col);        // left side
-            drawRect(ix + 11, iy + 4, 2, 8, col);       // right side
-            // drum head lines
-            drawRect(ix + 4, iy + 5, 6, 1, dark);
-            drawRect(ix + 4, iy + 8, 6, 1, dark);
-            drawRect(ix + 4, iy + 11, 6, 1, dark);
-        } else {
-            // OPEN HI-HAT: two cymbals apart
-            drawRect(ix + 6, iy + 2, 2, 12, col);       // stand
-            drawRect(ix + 2, iy + 5, 10, 2, col);       // top cymbal
-            drawRect(ix + 2, iy + 10, 10, 2, col);      // bottom cymbal (gap)
-            drawRect(ix + 1, iy + 6, 1, 1, col);        // top left edge
-            drawRect(ix + 12, iy + 6, 1, 1, col);       // top right edge
-            drawRect(ix + 1, iy + 11, 1, 1, col);       // bottom left edge
-            drawRect(ix + 12, iy + 11, 1, 1, col);      // bottom right edge
-        }
+        const lx = (GRID_X - 1) * TILE + 3;
+        const ly = (GRID_Y + r) * TILE + 12;
+        drawText(ROW_LETTERS[r], lx, ly, PAL.gridOn[r], 5);
     }
 
     // Grid blocks
@@ -841,16 +800,9 @@ function render() {
         drawText(num, tx, (GRID_Y + GRID_ROWS) * TILE + 8, c === currentStep && playing ? PAL.playhead : "#5a8a8f", 3);
     }
 
-    // Status indicator
-    const indicatorY = (GRID_Y + GRID_ROWS) * TILE + 18;
-    const indicatorX = GRID_X * TILE;
-    drawRect(indicatorX, indicatorY, 6, 8, PAL.stopBtn);
-    drawRect(indicatorX + 8, indicatorY, 6, 8, PAL.stopBtn);
-    drawText("PLAYING", indicatorX + 18, indicatorY + 7, PAL.startBtn, 3);
-
     // Kill counter (skull icon + count)
-    const kcX = indicatorX + 80;
-    const kcY = indicatorY;
+    const kcY = (GRID_Y + GRID_ROWS) * TILE + 18;
+    const kcX = GRID_X * TILE;
     // Skull icon
     drawRect(kcX, kcY, 7, 5, "#EBEBE3");         // cranium
     drawRect(kcX + 1, kcY + 5, 5, 2, "#EBEBE3");  // jaw
@@ -958,7 +910,7 @@ function render() {
     }
 
     // Player shadow
-    drawRect(player.x + 2, player.y + player.h - 2, player.w - 4, 4, PAL.shadow);
+    drawRect(player.displayX + 2, player.displayY + player.h - 2, player.w - 4, 4, PAL.shadow);
 
     // Sword (draw behind or in front depending on direction)
     if (player.attacking && player.dir === 1) drawSword();
@@ -972,8 +924,8 @@ function render() {
 
 function drawPlayer() {
     const p = player;
-    const px = p.x;
-    const py = p.y;
+    const px = p.displayX;
+    const py = p.displayY;
     const bob = p.frame % 2 === 1 ? 1 : 0;
 
     // Body
@@ -1004,6 +956,8 @@ function drawPlayer() {
 
 function drawSword() {
     const p = player;
+    const px = p.displayX;
+    const py = p.displayY;
     const progress = 1 - (p.attackTimer / p.attackDuration);
     const swing = Math.sin(progress * Math.PI);
 
@@ -1019,20 +973,20 @@ function drawSword() {
     // Sword blade
     switch (p.dir) {
         case 0: // down
-            drawRect(p.x + 6, p.y + p.h, 4, 10 * swing, PAL.sword);
-            drawRect(p.x + 4, p.y + p.h - 1, 8, 2, "#8a7040"); // hilt
+            drawRect(px + 6, py + p.h, 4, 10 * swing, PAL.sword);
+            drawRect(px + 4, py + p.h - 1, 8, 2, "#8a7040"); // hilt
             break;
         case 1: // up
-            drawRect(p.x + 6, p.y - 10 * swing, 4, 10 * swing, PAL.sword);
-            drawRect(p.x + 4, p.y - 1, 8, 2, "#8a7040");
+            drawRect(px + 6, py - 10 * swing, 4, 10 * swing, PAL.sword);
+            drawRect(px + 4, py - 1, 8, 2, "#8a7040");
             break;
         case 2: // left
-            drawRect(p.x - 10 * swing, p.y + 5, 10 * swing, 4, PAL.sword);
-            drawRect(p.x - 1, p.y + 3, 2, 8, "#8a7040");
+            drawRect(px - 10 * swing, py + 5, 10 * swing, 4, PAL.sword);
+            drawRect(px - 1, py + 3, 2, 8, "#8a7040");
             break;
         case 3: // right
-            drawRect(p.x + p.w, p.y + 5, 10 * swing, 4, PAL.sword);
-            drawRect(p.x + p.w - 1, p.y + 3, 2, 8, "#8a7040");
+            drawRect(px + p.w, py + 5, 10 * swing, 4, PAL.sword);
+            drawRect(px + p.w - 1, py + 3, 2, 8, "#8a7040");
             break;
     }
 
@@ -1044,10 +998,10 @@ function drawSword() {
             ctx.globalAlpha = swing;
             let sx, sy;
             switch (p.dir) {
-                case 0: sx = p.x + 7; sy = p.y + p.h + 10 * swing; break;
-                case 1: sx = p.x + 7; sy = p.y - 10 * swing; break;
-                case 2: sx = p.x - 10 * swing; sy = p.y + 6; break;
-                case 3: sx = p.x + p.w + 10 * swing; sy = p.y + 6; break;
+                case 0: sx = px + 7; sy = py + p.h + 10 * swing; break;
+                case 1: sx = px + 7; sy = py - 10 * swing; break;
+                case 2: sx = px - 10 * swing; sy = py + 6; break;
+                case 3: sx = px + p.w + 10 * swing; sy = py + 6; break;
             }
             ctx.fillRect((sx - 1) * SCALE, sy * SCALE, 3 * SCALE, 1 * SCALE);
             ctx.fillRect(sx * SCALE, (sy - 1) * SCALE, 1 * SCALE, 3 * SCALE);
