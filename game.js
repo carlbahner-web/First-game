@@ -159,9 +159,13 @@ const player = {
 
 // ---- Input ----
 const keys = {};
+let spaceJustPressed = false;
 window.addEventListener("keydown", (e) => {
+    if (e.code === "Space") {
+        e.preventDefault();
+        if (!keys[e.code]) spaceJustPressed = true; // only on initial press
+    }
     keys[e.code] = true;
-    if (e.code === "Space") e.preventDefault();
     if (e.code === "Enter") {
         e.preventDefault();
         ensureAudio();
@@ -206,8 +210,8 @@ function getBlockRect(row, col) {
 function update(dt) {
     const p = player;
 
-    // Attack
-    if (keys["Space"] && !p.attacking) {
+    // Attack (single press only)
+    if (spaceJustPressed && !p.attacking) {
         p.attacking = true;
         p.attackTimer = p.attackDuration;
         p.swordHit = false;
@@ -225,36 +229,40 @@ function update(dt) {
             osc.connect(g); g.connect(audioCtx.destination);
             osc.start(now); osc.stop(now + 0.08);
         }
+
+        // Determine target tile directly in front of player
+        const playerTileX = Math.round(p.x / TILE);
+        const playerTileY = Math.round(p.y / TILE);
+        let targetTileX = playerTileX, targetTileY = playerTileY;
+        switch (p.dir) {
+            case 0: targetTileY += 1; break; // down
+            case 1: targetTileY -= 1; break; // up
+            case 2: targetTileX -= 1; break; // left
+            case 3: targetTileX += 1; break; // right
+        }
+        const col = targetTileX - GRID_X;
+        const row = targetTileY - GRID_Y;
+        if (row >= 0 && row < GRID_ROWS && col >= 0 && col < GRID_COLS) {
+            grid[row][col] = !grid[row][col];
+            p.swordHit = true;
+            // play a toggle blip
+            if (audioCtx) {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc.type = "square";
+                osc.frequency.value = grid[row][col] ? 880 : 440;
+                g.gain.setValueAtTime(0.1, now);
+                g.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+                osc.connect(g); g.connect(audioCtx.destination);
+                osc.start(now); osc.stop(now + 0.06);
+            }
+        }
     }
+    spaceJustPressed = false;
 
     if (p.attacking) {
         p.attackTimer--;
-        // Check sword <-> grid collision
-        if (!p.swordHit) {
-            const sbox = getSwordBox();
-            for (let r = 0; r < GRID_ROWS; r++) {
-                for (let c = 0; c < GRID_COLS; c++) {
-                    if (aabb(sbox, getBlockRect(r, c))) {
-                        grid[r][c] = !grid[r][c];
-                        p.swordHit = true;
-                        // play a toggle blip
-                        if (audioCtx) {
-                            const now = audioCtx.currentTime;
-                            const osc = audioCtx.createOscillator();
-                            const g = audioCtx.createGain();
-                            osc.type = "square";
-                            osc.frequency.value = grid[r][c] ? 880 : 440;
-                            g.gain.setValueAtTime(0.1, now);
-                            g.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
-                            osc.connect(g); g.connect(audioCtx.destination);
-                            osc.start(now); osc.stop(now + 0.06);
-                        }
-                        break;
-                    }
-                }
-                if (p.swordHit) break;
-            }
-        }
         if (p.attackTimer <= 0) p.attacking = false;
     }
 
@@ -317,29 +325,66 @@ function render() {
     // Clear
     drawRect(0, 0, COLS * TILE, ROWS * TILE, PAL.bg);
 
-    // Floor tiles
+    // Wooden plank floor
     for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
-            const col = (r + c) % 2 === 0 ? PAL.floor : PAL.floorAlt;
+            const col = (r + c) % 2 === 0 ? "#8B6914" : "#7A5C12";
             drawRect(c * TILE, r * TILE, TILE, TILE, col);
+            // Plank line
+            drawRect(c * TILE, r * TILE + TILE - 1, TILE, 1, "rgba(0,0,0,0.15)");
         }
     }
 
-    // Walls (top 1.5 tiles, sides 1 tile, bottom 1 tile)
+    // Tent-style walls — striped top border (red/cream carnival stripes)
     for (let c = 0; c < COLS; c++) {
-        drawRect(c * TILE, 0, TILE, TILE, PAL.wallTop);
-        drawRect(c * TILE, TILE, TILE, TILE / 2, PAL.wall);
-        drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, PAL.wall);
+        const stripe = c % 2 === 0 ? "#BF7538" : "#EBEBE3";
+        drawRect(c * TILE, 0, TILE, TILE, stripe);
+        // Scalloped bottom edge of tent
+        drawRect(c * TILE, TILE, TILE, 4, c % 2 === 0 ? "#BF7538" : "#EBEBE3");
+        // Dark trim under scallop
+        drawRect(c * TILE, TILE + 4, TILE, 2, "#3A6168");
+
+        // Bottom wall — ticket booth style
+        drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#3A6168" : "#4a7a82");
     }
+    // Side walls — booth posts
     for (let r = 0; r < ROWS; r++) {
-        drawRect(0, r * TILE, TILE, TILE, PAL.wall);
-        drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, PAL.wall);
+        drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#3A6168" : "#4a7a82");
+        drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#3A6168" : "#4a7a82");
+        // Post highlight
+        drawRect(2, r * TILE, 2, TILE, "rgba(255,255,255,0.1)");
+        drawRect((COLS - 1) * TILE + 2, r * TILE, 2, TILE, "rgba(255,255,255,0.1)");
     }
 
-    // Title
-    drawText("DRUM QUEST", GRID_X * TILE + 32, TILE * 2.8, PAL.titleText, 6);
+    // Carnival string lights along top
+    for (let c = 1; c < COLS - 1; c++) {
+        const bulbY = TILE + 6;
+        const bulbX = c * TILE + TILE / 2;
+        // Wire
+        drawRect(c * TILE, TILE + 5, TILE, 1, "#2a2a2a");
+        // Bulb
+        const bulbColors = ["#F6CC60", "#BF7538", "#BFCDC0", "#EBEBE3"];
+        const bulbCol = bulbColors[c % bulbColors.length];
+        drawRect(bulbX - 2, bulbY, 4, 4, bulbCol);
+        // Glow
+        ctx.fillStyle = bulbCol;
+        ctx.globalAlpha = 0.15;
+        ctx.fillRect((bulbX - 4) * SCALE, (bulbY - 2) * SCALE, 8 * SCALE, 8 * SCALE);
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Banner lights along bottom wall
+    for (let c = 1; c < COLS - 1; c++) {
+        const lx = c * TILE + TILE / 2;
+        const ly = (ROWS - 1) * TILE + 2;
+        const bulbColors = ["#F6CC60", "#BF7538", "#BFCDC0", "#EBEBE3"];
+        drawRect(lx - 1, ly, 3, 3, bulbColors[(c + 2) % bulbColors.length]);
+    }
+
+    // Title with carnival flair
+    drawText("DRUM QUEST", GRID_X * TILE + 32, TILE * 2.8, "#F6CC60", 6);
     // Tempo badge
-    drawText("120 BPM", (GRID_X + 12) * TILE, TILE * 2.8, PAL.wall, 4);
+    drawText("120 BPM", (GRID_X + 12) * TILE, TILE * 2.8, "#BFCDC0", 4);
 
     // Row labels
     for (let r = 0; r < GRID_ROWS; r++) {
