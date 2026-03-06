@@ -157,6 +157,35 @@ const player = {
     moveCooldownMax: 12, // frames between moves (half speed)
 };
 
+// ---- Goblin Enemy State ----
+const goblin = {
+    x: (GRID_X + 14) * TILE,
+    y: (GRID_Y) * TILE,
+    w: TILE,
+    h: TILE,
+    dir: 0,
+    frame: 0,
+    moveCooldown: 0,
+    moveCooldownMax: 48, // 25% player speed (player is 12)
+    dead: false,
+    respawnTimer: 0,
+    respawnDelay: 180, // ~3 seconds at 60fps
+    targetRow: -1,
+    targetCol: -1,
+    sabotageTimer: 0,
+    sabotageDelay: 60, // tries to sabotage every ~1 second
+};
+
+// Death particles
+let deathParticles = [];
+let deathText = null; // {x, y, timer, text}
+
+// ---- Control Blocks (physical buttons in the room) ----
+const CTRL_BLOCKS = {
+    playStop: { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + 1, label: "PLAY", color: "#BFCDC0" },
+    reset:    { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + 2, label: "RESET", color: "#BF7538" },
+};
+
 // ---- Input ----
 const keys = {};
 let spaceJustPressed = false;
@@ -174,6 +203,7 @@ window.addEventListener("keydown", (e) => {
             currentStep = 0;
             lastStepTime = performance.now();
         }
+        CTRL_BLOCKS.playStop.label = playing ? "STOP" : "PLAY";
     }
 });
 window.addEventListener("keyup", (e) => { keys[e.code] = false; });
@@ -258,6 +288,39 @@ function update(dt) {
                 osc.start(now); osc.stop(now + 0.06);
             }
         }
+
+        // Check control blocks
+        const ps = CTRL_BLOCKS.playStop;
+        const rs = CTRL_BLOCKS.reset;
+        if (targetTileX === ps.tileX && targetTileY === ps.tileY) {
+            ensureAudio();
+            playing = !playing;
+            if (playing) {
+                currentStep = 0;
+                lastStepTime = performance.now();
+            }
+            ps.label = playing ? "STOP" : "PLAY";
+            p.swordHit = true;
+        }
+        if (targetTileX === rs.tileX && targetTileY === rs.tileY) {
+            for (let r = 0; r < GRID_ROWS; r++)
+                for (let c = 0; c < GRID_COLS; c++)
+                    grid[r][c] = false;
+            p.swordHit = true;
+            // play a clear sound
+            if (audioCtx) {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc.type = "sine";
+                osc.frequency.setValueAtTime(800, now);
+                osc.frequency.exponentialRampToValueAtTime(200, now + 0.2);
+                g.gain.setValueAtTime(0.1, now);
+                g.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                osc.connect(g); g.connect(audioCtx.destination);
+                osc.start(now); osc.stop(now + 0.2);
+            }
+        }
     }
     spaceJustPressed = false;
 
@@ -270,27 +333,161 @@ function update(dt) {
     if (p.moveCooldown > 0) p.moveCooldown--;
 
     if (!p.attacking && p.moveCooldown <= 0) {
-        let moved = false;
-        if (keys["ArrowLeft"]  || keys["KeyA"]) {
-            p.x = Math.max(TILE, p.x - TILE);
-            p.dir = 2; moved = true;
-        } else if (keys["ArrowRight"] || keys["KeyD"]) {
-            p.x = Math.min((COLS - 2) * TILE, p.x + TILE);
-            p.dir = 3; moved = true;
-        } else if (keys["ArrowUp"]    || keys["KeyW"]) {
-            p.y = Math.max(TILE * 2, p.y - TILE);
-            p.dir = 1; moved = true;
-        } else if (keys["ArrowDown"]  || keys["KeyS"]) {
-            p.y = Math.min((ROWS - 2) * TILE, p.y + TILE);
-            p.dir = 0; moved = true;
-        }
+        let wantDir = -1;
+        if (keys["ArrowLeft"]  || keys["KeyA"])  wantDir = 2;
+        else if (keys["ArrowRight"] || keys["KeyD"]) wantDir = 3;
+        else if (keys["ArrowUp"]    || keys["KeyW"]) wantDir = 1;
+        else if (keys["ArrowDown"]  || keys["KeyS"]) wantDir = 0;
 
-        if (moved) {
-            p.moveCooldown = p.moveCooldownMax;
-            p.frame = (p.frame + 1) % 4;
+        if (wantDir >= 0) {
+            if (p.dir !== wantDir) {
+                // Turn only, don't move
+                p.dir = wantDir;
+                p.moveCooldown = p.moveCooldownMax;
+            } else {
+                // Already facing this way — move
+                let nx = p.x, ny = p.y;
+                switch (wantDir) {
+                    case 0: ny = Math.min((ROWS - 2) * TILE, p.y + TILE); break;
+                    case 1: ny = Math.max(TILE * 2, p.y - TILE); break;
+                    case 2: nx = Math.max(TILE, p.x - TILE); break;
+                    case 3: nx = Math.min((COLS - 2) * TILE, p.x + TILE); break;
+                }
+                // Check goblin collision
+                if (!goblin.dead && nx === goblin.x && ny === goblin.y) {
+                    // blocked by goblin
+                } else {
+                    p.x = nx;
+                    p.y = ny;
+                }
+                p.moveCooldown = p.moveCooldownMax;
+                p.frame = (p.frame + 1) % 4;
+            }
         } else {
             p.frame = 0;
         }
+    }
+
+    // Check sword hit on goblin
+    if (p.attacking && p.swordHit === false) {
+        // swordHit is false only if we didn't hit a grid block
+        // Check if sword target tile is the goblin
+        const playerTileX = Math.round(p.x / TILE);
+        const playerTileY = Math.round(p.y / TILE);
+        let stx = playerTileX, sty = playerTileY;
+        switch (p.dir) {
+            case 0: sty += 1; break;
+            case 1: sty -= 1; break;
+            case 2: stx -= 1; break;
+            case 3: stx += 1; break;
+        }
+        if (!goblin.dead && stx * TILE === goblin.x && sty * TILE === goblin.y) {
+            goblin.dead = true;
+            goblin.respawnTimer = goblin.respawnDelay;
+            p.swordHit = true;
+            // Spawn death particles (bloody pixel explosion)
+            for (let i = 0; i < 20; i++) {
+                deathParticles.push({
+                    x: goblin.x + goblin.w / 2,
+                    y: goblin.y + goblin.h / 2,
+                    vx: (Math.random() - 0.5) * 4,
+                    vy: (Math.random() - 0.5) * 4 - 2,
+                    life: 30 + Math.random() * 30,
+                    color: Math.random() > 0.3 ? "#cc2222" : "#881111",
+                    size: 2 + Math.random() * 3,
+                });
+            }
+            // "OW!" text
+            deathText = { x: goblin.x, y: goblin.y - 8, timer: 60, text: "OW!" };
+            // Play a silly death sound
+            if (audioCtx) {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc.type = "square";
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.exponentialRampToValueAtTime(80, now + 0.3);
+                g.gain.setValueAtTime(0.15, now);
+                g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                osc.connect(g); g.connect(audioCtx.destination);
+                osc.start(now); osc.stop(now + 0.3);
+            }
+        }
+    }
+
+    // Update goblin
+    if (goblin.dead) {
+        goblin.respawnTimer--;
+        if (goblin.respawnTimer <= 0) {
+            goblin.dead = false;
+            // Respawn at a random edge position away from player
+            goblin.x = (GRID_X + Math.floor(Math.random() * GRID_COLS)) * TILE;
+            goblin.y = (GRID_Y - 1) * TILE > TILE * 2 ? (GRID_Y - 1) * TILE : (GRID_Y + GRID_ROWS + 2) * TILE;
+        }
+    } else {
+        goblin.moveCooldown--;
+        if (goblin.moveCooldown <= 0) {
+            goblin.moveCooldown = goblin.moveCooldownMax;
+
+            // Pick a target grid cell to sabotage
+            goblin.sabotageTimer--;
+            if (goblin.sabotageTimer <= 0 || goblin.targetRow < 0) {
+                goblin.targetRow = Math.floor(Math.random() * GRID_ROWS);
+                goblin.targetCol = Math.floor(Math.random() * GRID_COLS);
+                goblin.sabotageTimer = 3; // re-pick after 3 moves if not reached
+            }
+
+            const targetX = (GRID_X + goblin.targetCol) * TILE;
+            const targetY = (GRID_Y + goblin.targetRow) * TILE;
+
+            // Move one step toward target
+            let nx = goblin.x, ny = goblin.y;
+            const dx = targetX - goblin.x;
+            const dy = targetY - goblin.y;
+
+            if (Math.abs(dx) > Math.abs(dy)) {
+                nx += Math.sign(dx) * TILE;
+                goblin.dir = dx > 0 ? 3 : 2;
+            } else if (dy !== 0) {
+                ny += Math.sign(dy) * TILE;
+                goblin.dir = dy > 0 ? 0 : 1;
+            }
+
+            // Clamp to room bounds
+            nx = Math.max(TILE, Math.min((COLS - 2) * TILE, nx));
+            ny = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, ny));
+
+            // Don't walk into player
+            if (nx !== p.x || ny !== p.y) {
+                goblin.x = nx;
+                goblin.y = ny;
+            }
+            goblin.frame = (goblin.frame + 1) % 4;
+
+            // If on a grid cell, sabotage it!
+            const gc = Math.round(goblin.x / TILE) - GRID_X;
+            const gr = Math.round(goblin.y / TILE) - GRID_Y;
+            if (gr >= 0 && gr < GRID_ROWS && gc >= 0 && gc < GRID_COLS) {
+                if (gc === goblin.targetCol && gr === goblin.targetRow) {
+                    grid[gr][gc] = !grid[gr][gc];
+                    goblin.targetRow = -1; // pick new target
+                }
+            }
+        }
+    }
+
+    // Update death particles
+    deathParticles = deathParticles.filter(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.15; // gravity
+        p.life--;
+        return p.life > 0;
+    });
+    if (deathText) {
+        deathText.y -= 0.3;
+        deathText.timer--;
+        if (deathText.timer <= 0) deathText = null;
     }
 
     // Sequencer step
@@ -435,22 +632,58 @@ function render() {
         drawText(num, tx, (GRID_Y + GRID_ROWS) * TILE + 8, c === currentStep && playing ? PAL.playhead : "#5a8a8f", 3);
     }
 
-    // Start/Stop indicator
+    // Status indicator
     const indicatorY = (GRID_Y + GRID_ROWS) * TILE + 18;
     const indicatorX = GRID_X * TILE;
     if (playing) {
         drawRect(indicatorX, indicatorY, 6, 8, PAL.stopBtn);
         drawRect(indicatorX + 8, indicatorY, 6, 8, PAL.stopBtn);
-        drawText("PLAYING - ENTER TO STOP", indicatorX + 18, indicatorY + 7, PAL.startBtn, 3);
+        drawText("PLAYING", indicatorX + 18, indicatorY + 7, PAL.startBtn, 3);
     } else {
-        // play triangle
         ctx.fillStyle = PAL.startBtn;
         ctx.beginPath();
         ctx.moveTo(indicatorX * SCALE, indicatorY * SCALE);
         ctx.lineTo(indicatorX * SCALE, (indicatorY + 9) * SCALE);
         ctx.lineTo((indicatorX + 8) * SCALE, (indicatorY + 4.5) * SCALE);
         ctx.fill();
-        drawText("STOPPED - ENTER TO PLAY", indicatorX + 18, indicatorY + 7, "#5a8a8f", 3);
+        drawText("STOPPED", indicatorX + 18, indicatorY + 7, "#5a8a8f", 3);
+    }
+
+    // Control blocks
+    for (const key of ["playStop", "reset"]) {
+        const blk = CTRL_BLOCKS[key];
+        const bx = blk.tileX * TILE;
+        const by = blk.tileY * TILE;
+        // Block body
+        drawRect(bx, by, TILE, TILE, "#2a4448");
+        drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, blk.color);
+        // 3D effect
+        ctx.fillStyle = "rgba(255,255,255,0.25)";
+        ctx.fillRect((bx + 1) * SCALE, (by + 1) * SCALE, (TILE - 2) * SCALE, 2 * SCALE);
+        ctx.fillStyle = "rgba(0,0,0,0.25)";
+        ctx.fillRect((bx + 1) * SCALE, (by + TILE - 3) * SCALE, (TILE - 2) * SCALE, 2 * SCALE);
+        // Label
+        drawText(blk.label, bx - blk.label.length * 2, by + TILE + 8, blk.color, 3);
+    }
+
+    // Goblin
+    if (!goblin.dead) {
+        drawGoblin();
+    }
+
+    // Death particles
+    for (const p of deathParticles) {
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.life / 60;
+        ctx.fillRect(p.x * SCALE, p.y * SCALE, p.size * SCALE, p.size * SCALE);
+    }
+    ctx.globalAlpha = 1.0;
+
+    // Death text
+    if (deathText) {
+        ctx.globalAlpha = Math.min(1, deathText.timer / 20);
+        drawText(deathText.text, deathText.x, deathText.y, "#cc2222", 5);
+        ctx.globalAlpha = 1.0;
     }
 
     // Player shadow
@@ -552,6 +785,41 @@ function drawSword() {
     }
 
     ctx.restore();
+}
+
+function drawGoblin() {
+    const g = goblin;
+    const gx = g.x;
+    const gy = g.y;
+    const bob = g.frame % 2 === 1 ? 1 : 0;
+
+    // Shadow
+    drawRect(gx + 3, gy + g.h - 2, g.w - 6, 3, PAL.shadow);
+    // Body (green)
+    drawRect(gx + 4, gy + 3 - bob, 8, 9, "#4a8a3a");
+    // Darker sides
+    drawRect(gx + 4, gy + 3 - bob, 2, 9, "#3a6a2a");
+    drawRect(gx + 10, gy + 3 - bob, 2, 9, "#3a6a2a");
+    // Head
+    drawRect(gx + 3, gy - 1 - bob, 10, 6, "#5a9a4a");
+    // Pointy ears
+    drawRect(gx + 1, gy - bob, 3, 3, "#5a9a4a");
+    drawRect(gx + 12, gy - bob, 3, 3, "#5a9a4a");
+    // Eyes (beady red)
+    if (g.dir !== 1) {
+        const ed = [[0, 2], [0, -2], [-1, 0], [1, 0]][g.dir];
+        drawRect(gx + 5 + ed[0], gy + 1 - bob + ed[1], 2, 2, "#cc2222");
+        drawRect(gx + 9 + ed[0], gy + 1 - bob + ed[1], 2, 2, "#cc2222");
+    }
+    // Mouth (little fangs)
+    if (g.dir === 0) {
+        drawRect(gx + 6, gy + 4 - bob, 1, 2, "#EBEBE3");
+        drawRect(gx + 9, gy + 4 - bob, 1, 2, "#EBEBE3");
+    }
+    // Feet
+    const wo = g.frame === 1 ? 2 : g.frame === 3 ? -2 : 0;
+    drawRect(gx + 5 + wo, gy + 12, 3, 2, "#3a6a2a");
+    drawRect(gx + 8 - wo, gy + 12, 3, 2, "#3a6a2a");
 }
 
 // ---- Game Loop ----
