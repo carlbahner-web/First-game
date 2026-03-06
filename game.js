@@ -641,9 +641,46 @@ function render() {
     // Tempo badge
     drawText("120 BPM", (GRID_X + 12) * TILE, TILE * 2.8, "#BFCDC0", 4);
 
-    // Row labels
+    // Row icons (pixel-art drum icons in the left wall area)
     for (let r = 0; r < GRID_ROWS; r++) {
-        drawText(DRUM_LABELS[r], TILE * 0.3, (GRID_Y + r) * TILE + TILE * 0.75, PAL.gridOn[r], 3.5);
+        const ix = 2;  // icon x start (inside left wall)
+        const iy = (GRID_Y + r) * TILE;
+        const col = PAL.gridOn[r];
+        const dark = "#2a2a2a";
+
+        if (r === 3) {
+            // KICK: bass drum — large circle with beater
+            drawRect(ix + 2, iy + 2, 10, 2, col);      // top rim
+            drawRect(ix + 2, iy + 12, 10, 2, col);     // bottom rim
+            drawRect(ix, iy + 4, 2, 8, col);            // left side
+            drawRect(ix + 12, iy + 4, 2, 8, col);       // right side
+            drawRect(ix + 6, iy + 5, 2, 5, dark);       // center dot
+        } else if (r === 2) {
+            // SNARE: drum from side — short cylinder with snare wires
+            drawRect(ix + 1, iy + 4, 12, 2, col);       // top rim
+            drawRect(ix + 1, iy + 11, 12, 2, col);      // bottom rim
+            drawRect(ix + 1, iy + 6, 2, 5, col);        // left side
+            drawRect(ix + 11, iy + 6, 2, 5, col);       // right side
+            // snare wires (horizontal lines across bottom)
+            drawRect(ix + 3, iy + 10, 8, 1, dark);
+            drawRect(ix + 3, iy + 12, 8, 1, dark);
+        } else if (r === 1) {
+            // CLOSED HI-HAT: two cymbals pressed together
+            drawRect(ix + 6, iy + 2, 2, 12, col);       // stand
+            drawRect(ix + 2, iy + 6, 10, 2, col);       // top cymbal
+            drawRect(ix + 2, iy + 8, 10, 2, col);       // bottom cymbal (touching)
+            drawRect(ix + 1, iy + 7, 1, 2, col);        // left edge
+            drawRect(ix + 12, iy + 7, 1, 2, col);       // right edge
+        } else {
+            // OPEN HI-HAT: two cymbals apart
+            drawRect(ix + 6, iy + 2, 2, 12, col);       // stand
+            drawRect(ix + 2, iy + 5, 10, 2, col);       // top cymbal
+            drawRect(ix + 2, iy + 10, 10, 2, col);      // bottom cymbal (gap)
+            drawRect(ix + 1, iy + 6, 1, 1, col);        // top left edge
+            drawRect(ix + 12, iy + 6, 1, 1, col);       // top right edge
+            drawRect(ix + 1, iy + 11, 1, 1, col);       // bottom left edge
+            drawRect(ix + 12, iy + 11, 1, 1, col);      // bottom right edge
+        }
     }
 
     // Grid blocks
