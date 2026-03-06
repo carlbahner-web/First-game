@@ -303,7 +303,7 @@ let pendingShakeElite = false;
 // Sabotage flash — per-cell timer for red flash overlay
 const cellFlash = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).fill(0));
 let gamePaused = false;
-let gameState = "title"; // "title" or "playing"
+let gameState = "title"; // "title", "story", or "playing"
 let titleBlink = 0; // blink timer for "PRESS ENTER"
 
 // ---- Control Blocks (physical buttons in the room) ----
@@ -358,6 +358,10 @@ window.addEventListener("keydown", (e) => {
         e.preventDefault();
         if (gameState === "title") {
             ensureAudio();
+            gameState = "story";
+            return;
+        }
+        if (gameState === "story") {
             gameState = "playing";
             return;
         }
@@ -1685,7 +1689,7 @@ function drawDancer(d) {
 let lastTime = 0;
 const FRAME_MS = 1000 / 60;
 let frameAccum = 0;
-// ---- Title Screen ----
+// ---- Title Screen (page 1: logo only) ----
 function renderTitleScreen() {
     const W = COLS * TILE;
     const H = ROWS * TILE;
@@ -1704,41 +1708,36 @@ function renderTitleScreen() {
     }
     ctx.globalAlpha = 1;
 
-    // === Pixel Art Logo: "REVENGE OF THE GROOVE GOBLINS" ===
-    const logoY = 20;
+    // === Centered Logo ===
+    const centerY = H / 2 - 50;
 
-    // Big chunky "REVENGE" in pixel blocks
-    const px = 3; // pixel size for logo letters
+    // "REVENGE OF THE" smaller above
     const logoColor1 = "#BF7538";
     const logoColor2 = "#F6CC60";
-    const logoGlow = "#ff6622";
-
-    // Draw "REVENGE OF THE" smaller above
     const subTitle = "REVENGE OF THE";
     const subW = subTitle.length * 4;
     const subX = W / 2 - subW / 2;
     for (let i = 0; i < subTitle.length; i++) {
         const charX = subX + i * 4;
         const wobble = Math.sin(titleBlink * 0.08 + i * 0.5) * 1;
-        drawText(subTitle[i], charX, logoY + wobble, logoColor1, 4);
+        drawText(subTitle[i], charX, centerY + wobble, logoColor1, 4);
     }
 
-    // Big "GROOVE" with chunky pixel effect
+    // Big "GROOVE"
     const grooveText = "GROOVE";
     const groovePx = 5;
     const grooveW = grooveText.length * (groovePx * 4 + groovePx);
     const grooveX = W / 2 - grooveW / 2;
-    const grooveY = logoY + 16;
+    const grooveY = centerY + 16;
     for (let i = 0; i < grooveText.length; i++) {
         const charX = grooveX + i * (groovePx * 4 + groovePx);
         const bounce = Math.sin(titleBlink * 0.06 + i * 0.8) * 3;
         const col = i % 2 === 0 ? logoColor2 : logoColor1;
-        // Shadow
         drawText(grooveText[i], charX + 1, grooveY + bounce + 1, "#000000", groovePx * 4);
         drawText(grooveText[i], charX, grooveY + bounce, col, groovePx * 4);
     }
 
-    // Big "GOBLINS" below
+    // Big "GOBLINS"
     const goblinsText = "GOBLINS";
     const gobPx = 5;
     const gobW = goblinsText.length * (gobPx * 4 + gobPx);
@@ -1752,37 +1751,29 @@ function renderTitleScreen() {
         drawText(goblinsText[i], charX, gobY + bounce, col, gobPx * 4);
     }
 
-    // Pixel art goblin face in the center
+    // Pixel art goblin face below logo
     const faceX = W / 2 - 24;
     const faceY = gobY + 40;
-    const fp = 3; // face pixel size
-
-    // Green goblin head
+    const fp = 3;
     drawRect(faceX + 2*fp, faceY, 4*fp, fp, "#44aa44");
     drawRect(faceX + fp, faceY + fp, 6*fp, fp, "#44aa44");
     drawRect(faceX, faceY + 2*fp, 8*fp, 3*fp, "#66cc66");
     drawRect(faceX + fp, faceY + 5*fp, 6*fp, fp, "#66cc66");
     drawRect(faceX + 2*fp, faceY + 6*fp, 4*fp, fp, "#44aa44");
-    // Pointy ears
     drawRect(faceX - fp, faceY + 2*fp, fp, 2*fp, "#44aa44");
     drawRect(faceX + 8*fp, faceY + 2*fp, fp, 2*fp, "#44aa44");
-    // Eyes (red & menacing)
     drawRect(faceX + 2*fp, faceY + 3*fp, fp, fp, "#ff2222");
     drawRect(faceX + 5*fp, faceY + 3*fp, fp, fp, "#ff2222");
-    // Mouth (toothy grin)
     drawRect(faceX + 2*fp, faceY + 5*fp, 4*fp, fp, "#1a1a1a");
-    drawRect(faceX + 3*fp, faceY + 5*fp, fp, fp, "#EBEBE3"); // tooth
-    drawRect(faceX + 5*fp, faceY + 5*fp, fp, fp, "#EBEBE3"); // tooth
-
-    // Headphones on goblin
+    drawRect(faceX + 3*fp, faceY + 5*fp, fp, fp, "#EBEBE3");
+    drawRect(faceX + 5*fp, faceY + 5*fp, fp, fp, "#EBEBE3");
     drawRect(faceX - fp, faceY + fp, fp, 3*fp, "#333");
     drawRect(faceX + 8*fp, faceY + fp, fp, 3*fp, "#333");
     drawRect(faceX + fp, faceY - fp, 6*fp, fp, "#333");
-    // Headphone pads
     drawRect(faceX - 2*fp, faceY + fp, 2*fp, 2*fp, "#BF7538");
     drawRect(faceX + 8*fp, faceY + fp, 2*fp, 2*fp, "#BF7538");
 
-    // Musical notes floating around
+    // Musical notes floating around the face
     const notePositions = [
         { x: faceX - 20, y: faceY - 10 },
         { x: faceX + 40, y: faceY - 5 },
@@ -1794,29 +1785,171 @@ function renderTitleScreen() {
         const ny = np.y + Math.sin(titleBlink * 0.1 + i * 2) * 4;
         const noteCol = ["#F6CC60", "#BF7538", "#E86A6A", "#9B59B6"][i];
         ctx.globalAlpha = 0.6 + Math.sin(titleBlink * 0.08 + i) * 0.4;
-        // Note head
         drawRect(np.x, ny, 3, 2, noteCol);
-        // Note stem
         drawRect(np.x + 3, ny - 5, 1, 6, noteCol);
-        // Note flag
         drawRect(np.x + 3, ny - 5, 2, 1, noteCol);
     }
     ctx.globalAlpha = 1;
 
-    // Instructions
-    const instrY = faceY + 35;
-    const instrCol = "#BFCDC0";
-    drawText("ARROWS: MOVE", W/2 - 24, instrY, instrCol, 4);
-    drawText("SPACE: SWORD", W/2 - 24, instrY + 10, instrCol, 4);
-    drawText("ENTER: START/STOP BEAT", W/2 - 44, instrY + 20, instrCol, 4);
-    drawText("SLAY GOBLINS, MAKE BEATS!", W/2 - 50, instrY + 35, "#F6CC60", 4);
-
-    // Blinking "PRESS ENTER TO BEGIN"
+    // Blinking "PRESS ENTER"
     titleBlink++;
     if (titleBlink % 60 < 40) {
-        const pressText = "PRESS ENTER TO BEGIN";
+        const pressText = "PRESS ENTER";
         const pressW = pressText.length * 5;
         drawText(pressText, W/2 - pressW/2, H - 30, "#EBEBE3", 5);
+    }
+}
+
+// ---- Story Screen (page 2: backstory + instructions + characters) ----
+let storyBlink = 0;
+function renderStoryScreen() {
+    const W = COLS * TILE;
+    const H = ROWS * TILE;
+
+    // Dark background with slightly warmer tone
+    drawRect(0, 0, W, H, "#0a0a12");
+
+    // Starfield (same as title for consistency)
+    for (let i = 0; i < 60; i++) {
+        const sx = ((i * 137 + 50) % W);
+        const sy = ((i * 97 + 30) % H);
+        const twinkle = Math.sin(storyBlink * 0.05 + i) * 0.5 + 0.5;
+        ctx.globalAlpha = 0.3 + twinkle * 0.7;
+        const starSize = (i % 3 === 0) ? 2 : 1;
+        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#F6CC60" : "#EBEBE3");
+    }
+    ctx.globalAlpha = 1;
+
+    // Story text — silly backstory
+    const storyLines = [
+        { text: "THE GROOVE CARNIVAL", color: "#F6CC60", scale: 6, gap: 14 },
+        { text: "was the happiest place in the land.", color: "#BFCDC0", scale: 3, gap: 10 },
+        { text: "Every night, sick beats echoed", color: "#BFCDC0", scale: 3, gap: 8 },
+        { text: "through the halls and the people danced.", color: "#BFCDC0", scale: 3, gap: 12 },
+        { text: "But the GOBLINS got jealous.", color: "#66cc66", scale: 3, gap: 8 },
+        { text: "They sneak in and MESS UP YOUR BEATS.", color: "#ff6666", scale: 3, gap: 8 },
+        { text: "They must be stopped.", color: "#BFCDC0", scale: 3, gap: 12 },
+        { text: "You are the DJ.", color: "#F6CC60", scale: 4, gap: 8 },
+        { text: "You have a sword.", color: "#E86A6A", scale: 4, gap: 8 },
+        { text: "Go get em.", color: "#EBEBE3", scale: 4, gap: 0 },
+    ];
+
+    let textY = 12;
+    for (let i = 0; i < storyLines.length; i++) {
+        const line = storyLines[i];
+        const textW = line.text.length * (line.scale * 0.9);
+        const tx = W / 2 - textW / 2;
+        // Fade in lines sequentially based on storyBlink
+        const fadeStart = i * 15; // each line fades in 15 frames after the last
+        const alpha = Math.min(1, Math.max(0, (storyBlink - fadeStart) / 20));
+        ctx.globalAlpha = alpha;
+        drawText(line.text, tx, textY, line.color, line.scale);
+        ctx.globalAlpha = 1;
+        textY += line.scale + line.gap;
+    }
+
+    // Animated characters at the bottom — goblin on left, dancers on right, player in middle
+    const charY = H - 48;
+
+    // Goblin (left side, sneaking)
+    const gobFrame = Math.floor(storyBlink / 10) % 4;
+    const gobBob = gobFrame % 2 === 1 ? 1 : 0;
+    const gobX = 30 + Math.sin(storyBlink * 0.03) * 15;
+    // Body
+    drawRect(gobX + 4, charY + 3 - gobBob, 8, 9, "#4a8a3a");
+    drawRect(gobX + 4, charY + 3 - gobBob, 2, 9, "#3a6a2a");
+    drawRect(gobX + 10, charY + 3 - gobBob, 2, 9, "#3a6a2a");
+    // Head
+    drawRect(gobX + 3, charY - 1 - gobBob, 10, 6, "#5a9a4a");
+    // Ears
+    drawRect(gobX + 1, charY - gobBob, 3, 3, "#5a9a4a");
+    drawRect(gobX + 12, charY - gobBob, 3, 3, "#5a9a4a");
+    // Eyes
+    drawRect(gobX + 5, charY + 1 - gobBob, 2, 2, "#cc2222");
+    drawRect(gobX + 9, charY + 1 - gobBob, 2, 2, "#cc2222");
+    // Feet
+    const gwo = gobFrame === 1 ? 2 : gobFrame === 3 ? -2 : 0;
+    drawRect(gobX + 5 + gwo, charY + 12, 3, 2, "#3a6a2a");
+    drawRect(gobX + 8 - gwo, charY + 12, 3, 2, "#3a6a2a");
+
+    // Elite goblin (behind and to the left, pink)
+    const eliteX = 12 + Math.sin(storyBlink * 0.025 + 1) * 10;
+    const eliteBob = (gobFrame + 1) % 2 === 1 ? 1 : 0;
+    drawRect(eliteX + 4, charY + 3 - eliteBob, 8, 9, "#c45a8a");
+    drawRect(eliteX + 4, charY + 3 - eliteBob, 2, 9, "#a43a6a");
+    drawRect(eliteX + 10, charY + 3 - eliteBob, 2, 9, "#a43a6a");
+    drawRect(eliteX + 3, charY - 1 - eliteBob, 10, 6, "#d46a9a");
+    drawRect(eliteX + 1, charY - eliteBob, 3, 3, "#d46a9a");
+    drawRect(eliteX + 12, charY - eliteBob, 3, 3, "#d46a9a");
+    drawRect(eliteX + 5, charY + 1 - eliteBob, 2, 2, "#ffee44");
+    drawRect(eliteX + 9, charY + 1 - eliteBob, 2, 2, "#ffee44");
+
+    // Player (center, with sword raised)
+    const playerX = W / 2 - 8;
+    const playerBob = Math.floor(storyBlink / 12) % 2 === 0 ? 0 : 1;
+    // Body
+    drawRect(playerX + 3, charY + 2 - playerBob, 10, 10, "#3a6a8a");
+    drawRect(playerX + 3, charY + 2 - playerBob, 2, 10, "#2a4a6a");
+    drawRect(playerX + 11, charY + 2 - playerBob, 2, 10, "#2a4a6a");
+    // Head
+    drawRect(playerX + 2, charY - 4 - playerBob, 12, 7, "#F0D0B0");
+    // Eyes
+    drawRect(playerX + 5, charY - 2 - playerBob, 2, 2, "#1a1a2e");
+    drawRect(playerX + 9, charY - 2 - playerBob, 2, 2, "#1a1a2e");
+    // Hair
+    drawRect(playerX + 2, charY - 5 - playerBob, 12, 3, "#8a5a2a");
+    // Feet
+    const pwo = Math.floor(storyBlink / 12) % 2 === 0 ? 1 : -1;
+    drawRect(playerX + 4 + pwo, charY + 12, 3, 2, "#2a4a6a");
+    drawRect(playerX + 9 - pwo, charY + 12, 3, 2, "#2a4a6a");
+    // Sword (held up)
+    drawRect(playerX + 14, charY - 8 - playerBob, 2, 12, "#BFCDC0");
+    drawRect(playerX + 12, charY - 2 - playerBob, 6, 2, "#BF7538");
+
+    // Dancers (right side, dancing)
+    const dancerPals = [
+        { body: "#E86A6A", dark: "#C05050", head: "#F09090" },
+        { body: "#6AB8E8", dark: "#4A98C8", head: "#F0D0B0" },
+        { body: "#F6CC60", dark: "#D6AC40", head: "#F0D0B0" },
+    ];
+    for (let d = 0; d < 3; d++) {
+        const dp = dancerPals[d];
+        const dx = W - 70 + d * 22;
+        const dBob = Math.floor((storyBlink + d * 5) / 8) % 2 === 0 ? 0 : 2;
+        const armUp = Math.floor((storyBlink + d * 5) / 8) % 2 === 0;
+        // Body
+        drawRect(dx + 3, charY + 4 - dBob, 6, 7, dp.body);
+        drawRect(dx + 3, charY + 4 - dBob, 2, 7, dp.dark);
+        // Head
+        drawRect(dx + 2, charY - dBob, 8, 5, dp.head);
+        // Eyes
+        drawRect(dx + 4, charY + 2 - dBob, 1, 1, "#1a1a2e");
+        drawRect(dx + 7, charY + 2 - dBob, 1, 1, "#1a1a2e");
+        // Arms
+        if (armUp) {
+            drawRect(dx + 1, charY + 2 - dBob, 2, 2, dp.body);
+            drawRect(dx + 9, charY + 2 - dBob, 2, 2, dp.body);
+        } else {
+            drawRect(dx + 1, charY + 6 - dBob, 2, 2, dp.body);
+            drawRect(dx + 9, charY + 6 - dBob, 2, 2, dp.body);
+        }
+        // Feet
+        const dfo = (Math.floor((storyBlink + d * 5) / 8) % 2 === 0) ? 1 : -1;
+        drawRect(dx + 3 + dfo, charY + 11, 2, 2, dp.dark);
+        drawRect(dx + 7 - dfo, charY + 11, 2, 2, dp.dark);
+    }
+
+    // Controls section at bottom
+    const ctrlY = H - 28;
+    const ctrlCol = "#8ab0b4";
+    drawText("ARROWS:Move  SPACE:Sword  ENTER:Pause", W/2 - 76, ctrlY, ctrlCol, 3);
+
+    // Blinking "PRESS ENTER TO BEGIN"
+    storyBlink++;
+    if (storyBlink % 60 < 40) {
+        const pressText = "PRESS ENTER TO BEGIN";
+        const pressW = pressText.length * 5;
+        drawText(pressText, W/2 - pressW/2, H - 14, "#EBEBE3", 5);
     }
 }
 
@@ -1829,6 +1962,8 @@ function gameLoop(timestamp) {
         if (frameAccum > FRAME_MS) frameAccum = 0; // prevent spiral
         if (gameState === "title") {
             renderTitleScreen();
+        } else if (gameState === "story") {
+            renderStoryScreen();
         } else {
             update(dt);
             render();
