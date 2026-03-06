@@ -1094,43 +1094,68 @@ function drawGoblin() {
 }
 
 function drawDancer(d) {
-    const p = d.palette;
+    const pal = d.palette;
     const step = (currentStep + d.phase) % 16;
-    // Beat-synced animation
-    const onBeat = (step % 4 === 0);       // strong beats (quarter notes)
-    const bob = onBeat ? 3 : (step % 2 === 0 ? 1 : 0);  // jump on beats, small bob otherwise
-    const armsUp = onBeat;                  // arms raise on quarter-note beats
-    const footOffset = step % 2 === 0 ? 1 : -1;
+
+    // Smooth interpolation: how far through the current step (0.0 - 1.0)
+    const now = performance.now();
+    const stepProgress = lastStepTime ? Math.min((now - lastStepTime) / stepMs, 1.0) : 0;
+    // Fractional step position (e.g., step 4.6 means 60% through step 4)
+    const smoothStep = step + stepProgress;
+
+    // --- Smooth bob ---
+    // Target bob heights: 3px on quarter beats, 1px on 8th beats, 0px otherwise
+    const onBeat = (step % 4 === 0);
+    const onEighth = (step % 2 === 0);
+    const targetBob = onBeat ? 3 : onEighth ? 1 : 0;
+    // Next step's target
+    const nextStep = (step + 1) % 16;
+    const nextOnBeat = (nextStep % 4 === 0);
+    const nextOnEighth = (nextStep % 2 === 0);
+    const nextBob = nextOnBeat ? 3 : nextOnEighth ? 1 : 0;
+    // Ease out from current bob, ease in toward next
+    // Use a sine curve for natural bounce
+    const easedProgress = Math.sin(stepProgress * Math.PI / 2); // ease-out
+    const bob = targetBob + (nextBob - targetBob) * easedProgress;
+
+    // --- Smooth arms ---
+    // Arms up on quarter beats, smoothly transition
+    const armTarget = onBeat ? 1.0 : 0.0;
+    const nextArmTarget = nextOnBeat ? 1.0 : 0.0;
+    const armBlend = armTarget + (nextArmTarget - armTarget) * easedProgress;
+    // Arm Y offset: 0 = down position (dy+5), 1 = up position (dy+2)
+    const armDownY = 5;
+    const armUpY = 2;
+    const armY = armDownY + (armUpY - armDownY) * armBlend;
+    const armH = 4 + (3 - 4) * armBlend; // height transitions from 4 (down) to 3 (up)
+
+    // --- Smooth feet ---
+    const footWave = Math.sin(smoothStep * Math.PI); // continuous sine wave
+    const footOffset = footWave * 1.5;
 
     const dx = d.x;
     const dy = d.y;
 
-    // Shadow
-    drawRect(dx + 2, dy + 13, 8, 2, PAL.shadow);
+    // Shadow (squishes when dancer is higher)
+    const shadowW = 8 + bob * 0.5;
+    drawRect(dx + 2 - bob * 0.25, dy + 13, shadowW, 2, PAL.shadow);
     // Body
-    drawRect(dx + 3, dy + 4 - bob, 6, 7, p.body);
-    drawRect(dx + 3, dy + 4 - bob, 1, 7, p.dark);
-    drawRect(dx + 8, dy + 4 - bob, 1, 7, p.dark);
+    drawRect(dx + 3, dy + 4 - bob, 6, 7, pal.body);
+    drawRect(dx + 3, dy + 4 - bob, 1, 7, pal.dark);
+    drawRect(dx + 8, dy + 4 - bob, 1, 7, pal.dark);
     // Head
-    drawRect(dx + 3, dy - bob, 6, 5, p.head);
+    drawRect(dx + 3, dy - bob, 6, 5, pal.head);
     // Hair
-    drawRect(dx + 2, dy - 1 - bob, 8, 2, p.hair);
-    // Eyes (always facing front/down)
+    drawRect(dx + 2, dy - 1 - bob, 8, 2, pal.hair);
+    // Eyes
     drawRect(dx + 4, dy + 2 - bob, 1, 1, "#1f3a3f");
     drawRect(dx + 7, dy + 2 - bob, 1, 1, "#1f3a3f");
-    // Arms
-    if (armsUp) {
-        // Arms raised
-        drawRect(dx + 1, dy + 2 - bob, 2, 3, p.body);
-        drawRect(dx + 9, dy + 2 - bob, 2, 3, p.body);
-    } else {
-        // Arms down
-        drawRect(dx + 1, dy + 5 - bob, 2, 4, p.body);
-        drawRect(dx + 9, dy + 5 - bob, 2, 4, p.body);
-    }
-    // Feet
-    drawRect(dx + 3 + footOffset, dy + 11, 2, 2, p.dark);
-    drawRect(dx + 7 - footOffset, dy + 11, 2, 2, p.dark);
+    // Arms (smoothly interpolated position)
+    drawRect(dx + 1, dy + armY - bob, 2, armH, pal.body);
+    drawRect(dx + 9, dy + armY - bob, 2, armH, pal.body);
+    // Feet (smooth sine wave)
+    drawRect(dx + 3 + footOffset, dy + 11, 2, 2, pal.dark);
+    drawRect(dx + 7 - footOffset, dy + 11, 2, 2, pal.dark);
 }
 
 // ---- Game Loop (30 fps) ----
