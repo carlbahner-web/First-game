@@ -1,5 +1,5 @@
 // ============================================================
-// DRUM QUEST - A 16-bit Zelda-style drum sequencer game
+// REVENGE OF THE GROOVE GOBLINS - A 16-bit Zelda-style drum sequencer game
 // ============================================================
 
 const canvas = document.getElementById("game");
@@ -166,6 +166,34 @@ function playTom(time) {
     osc.stop(time + 0.25);
 }
 
+function playDonk(time) {
+    const ctx = audioCtx;
+    // Low thud — like bonking a coconut
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(180, time);
+    osc.frequency.exponentialRampToValueAtTime(60, time + 0.15);
+    gain.gain.setValueAtTime(0.5, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(time);
+    osc.stop(time + 0.2);
+    // High click on top for the "donk" attack
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = "square";
+    osc2.frequency.setValueAtTime(800, time);
+    osc2.frequency.exponentialRampToValueAtTime(300, time + 0.05);
+    gain2.gain.setValueAtTime(0.15, time);
+    gain2.gain.exponentialRampToValueAtTime(0.001, time + 0.08);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(time);
+    osc2.stop(time + 0.08);
+}
+
 const drumFns = [
     (t) => playHihat(t, true),
     (t) => playHihat(t, false),
@@ -244,6 +272,8 @@ let deathParticles = [];
 let deathText = null; // {x, y, timer, text, color, scale}
 let screenFlash = 0; // white flash frames remaining
 let gamePaused = false;
+let gameState = "title"; // "title" or "playing"
+let titleBlink = 0; // blink timer for "PRESS ENTER"
 
 // ---- Control Blocks (physical buttons in the room) ----
 const CTRL_BLOCKS = {
@@ -295,6 +325,11 @@ window.addEventListener("keydown", (e) => {
     keys[e.code] = true;
     if (e.code === "Enter") {
         e.preventDefault();
+        if (gameState === "title") {
+            ensureAudio();
+            gameState = "playing";
+            return;
+        }
         ensureAudio();
         gamePaused = !gamePaused;
         // Reset sequencer timing so it doesn't fast-forward on unpause
@@ -582,6 +617,19 @@ function update(dt) {
                         phase: Math.floor(Math.random() * 16),
                     });
                 }
+            }
+        }
+
+        // Check dancer hit — donk! They're immune
+        for (const d of dancers) {
+            const dTileX = Math.round(d.x / TILE);
+            const dTileY = Math.round(d.y / TILE);
+            if (targetTileX === dTileX && targetTileY === dTileY) {
+                p.swordHit = true;
+                if (audioCtx) {
+                    playDonk(audioCtx.currentTime);
+                }
+                break;
             }
         }
     }
@@ -1379,6 +1427,141 @@ function drawDancer(d) {
 let lastTime = 0;
 const FRAME_MS = 1000 / 60;
 let frameAccum = 0;
+// ---- Title Screen ----
+function renderTitleScreen() {
+    const W = COLS * TILE;
+    const H = ROWS * TILE;
+
+    // Dark background
+    drawRect(0, 0, W, H, "#0a0a12");
+
+    // Starfield
+    for (let i = 0; i < 60; i++) {
+        const sx = ((i * 137 + 50) % W);
+        const sy = ((i * 97 + 30) % H);
+        const twinkle = Math.sin(titleBlink * 0.05 + i) * 0.5 + 0.5;
+        ctx.globalAlpha = 0.3 + twinkle * 0.7;
+        const starSize = (i % 3 === 0) ? 2 : 1;
+        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#F6CC60" : "#EBEBE3");
+    }
+    ctx.globalAlpha = 1;
+
+    // === Pixel Art Logo: "REVENGE OF THE GROOVE GOBLINS" ===
+    const logoY = 20;
+
+    // Big chunky "REVENGE" in pixel blocks
+    const px = 3; // pixel size for logo letters
+    const logoColor1 = "#BF7538";
+    const logoColor2 = "#F6CC60";
+    const logoGlow = "#ff6622";
+
+    // Draw "REVENGE OF THE" smaller above
+    const subTitle = "REVENGE OF THE";
+    const subW = subTitle.length * 4;
+    const subX = W / 2 - subW / 2;
+    for (let i = 0; i < subTitle.length; i++) {
+        const charX = subX + i * 4;
+        const wobble = Math.sin(titleBlink * 0.08 + i * 0.5) * 1;
+        drawText(subTitle[i], charX, logoY + wobble, logoColor1, 4);
+    }
+
+    // Big "GROOVE" with chunky pixel effect
+    const grooveText = "GROOVE";
+    const groovePx = 5;
+    const grooveW = grooveText.length * (groovePx * 4 + groovePx);
+    const grooveX = W / 2 - grooveW / 2;
+    const grooveY = logoY + 16;
+    for (let i = 0; i < grooveText.length; i++) {
+        const charX = grooveX + i * (groovePx * 4 + groovePx);
+        const bounce = Math.sin(titleBlink * 0.06 + i * 0.8) * 3;
+        const col = i % 2 === 0 ? logoColor2 : logoColor1;
+        // Shadow
+        drawText(grooveText[i], charX + 1, grooveY + bounce + 1, "#000000", groovePx * 4);
+        drawText(grooveText[i], charX, grooveY + bounce, col, groovePx * 4);
+    }
+
+    // Big "GOBLINS" below
+    const goblinsText = "GOBLINS";
+    const gobPx = 5;
+    const gobW = goblinsText.length * (gobPx * 4 + gobPx);
+    const gobX = W / 2 - gobW / 2;
+    const gobY = grooveY + 30;
+    for (let i = 0; i < goblinsText.length; i++) {
+        const charX = gobX + i * (gobPx * 4 + gobPx);
+        const bounce = Math.sin(titleBlink * 0.06 + i * 0.8 + 3) * 3;
+        const col = i % 2 === 0 ? "#66cc66" : "#44aa44";
+        drawText(goblinsText[i], charX + 1, gobY + bounce + 1, "#000000", gobPx * 4);
+        drawText(goblinsText[i], charX, gobY + bounce, col, gobPx * 4);
+    }
+
+    // Pixel art goblin face in the center
+    const faceX = W / 2 - 24;
+    const faceY = gobY + 40;
+    const fp = 3; // face pixel size
+
+    // Green goblin head
+    drawRect(faceX + 2*fp, faceY, 4*fp, fp, "#44aa44");
+    drawRect(faceX + fp, faceY + fp, 6*fp, fp, "#44aa44");
+    drawRect(faceX, faceY + 2*fp, 8*fp, 3*fp, "#66cc66");
+    drawRect(faceX + fp, faceY + 5*fp, 6*fp, fp, "#66cc66");
+    drawRect(faceX + 2*fp, faceY + 6*fp, 4*fp, fp, "#44aa44");
+    // Pointy ears
+    drawRect(faceX - fp, faceY + 2*fp, fp, 2*fp, "#44aa44");
+    drawRect(faceX + 8*fp, faceY + 2*fp, fp, 2*fp, "#44aa44");
+    // Eyes (red & menacing)
+    drawRect(faceX + 2*fp, faceY + 3*fp, fp, fp, "#ff2222");
+    drawRect(faceX + 5*fp, faceY + 3*fp, fp, fp, "#ff2222");
+    // Mouth (toothy grin)
+    drawRect(faceX + 2*fp, faceY + 5*fp, 4*fp, fp, "#1a1a1a");
+    drawRect(faceX + 3*fp, faceY + 5*fp, fp, fp, "#EBEBE3"); // tooth
+    drawRect(faceX + 5*fp, faceY + 5*fp, fp, fp, "#EBEBE3"); // tooth
+
+    // Headphones on goblin
+    drawRect(faceX - fp, faceY + fp, fp, 3*fp, "#333");
+    drawRect(faceX + 8*fp, faceY + fp, fp, 3*fp, "#333");
+    drawRect(faceX + fp, faceY - fp, 6*fp, fp, "#333");
+    // Headphone pads
+    drawRect(faceX - 2*fp, faceY + fp, 2*fp, 2*fp, "#BF7538");
+    drawRect(faceX + 8*fp, faceY + fp, 2*fp, 2*fp, "#BF7538");
+
+    // Musical notes floating around
+    const notePositions = [
+        { x: faceX - 20, y: faceY - 10 },
+        { x: faceX + 40, y: faceY - 5 },
+        { x: faceX - 15, y: faceY + 20 },
+        { x: faceX + 45, y: faceY + 15 },
+    ];
+    for (let i = 0; i < notePositions.length; i++) {
+        const np = notePositions[i];
+        const ny = np.y + Math.sin(titleBlink * 0.1 + i * 2) * 4;
+        const noteCol = ["#F6CC60", "#BF7538", "#E86A6A", "#9B59B6"][i];
+        ctx.globalAlpha = 0.6 + Math.sin(titleBlink * 0.08 + i) * 0.4;
+        // Note head
+        drawRect(np.x, ny, 3, 2, noteCol);
+        // Note stem
+        drawRect(np.x + 3, ny - 5, 1, 6, noteCol);
+        // Note flag
+        drawRect(np.x + 3, ny - 5, 2, 1, noteCol);
+    }
+    ctx.globalAlpha = 1;
+
+    // Instructions
+    const instrY = faceY + 35;
+    const instrCol = "#BFCDC0";
+    drawText("ARROWS: MOVE", W/2 - 24, instrY, instrCol, 4);
+    drawText("SPACE: SWORD", W/2 - 24, instrY + 10, instrCol, 4);
+    drawText("ENTER: START/STOP BEAT", W/2 - 44, instrY + 20, instrCol, 4);
+    drawText("SLAY GOBLINS, MAKE BEATS!", W/2 - 50, instrY + 35, "#F6CC60", 4);
+
+    // Blinking "PRESS ENTER TO BEGIN"
+    titleBlink++;
+    if (titleBlink % 60 < 40) {
+        const pressText = "PRESS ENTER TO BEGIN";
+        const pressW = pressText.length * 5;
+        drawText(pressText, W/2 - pressW/2, H - 30, "#EBEBE3", 5);
+    }
+}
+
 function gameLoop(timestamp) {
     const dt = timestamp - lastTime;
     lastTime = timestamp;
@@ -1386,8 +1569,12 @@ function gameLoop(timestamp) {
     if (frameAccum >= FRAME_MS) {
         frameAccum -= FRAME_MS;
         if (frameAccum > FRAME_MS) frameAccum = 0; // prevent spiral
-        update(dt);
-        render();
+        if (gameState === "title") {
+            renderTitleScreen();
+        } else {
+            update(dt);
+            render();
+        }
     }
     requestAnimationFrame(gameLoop);
 }
