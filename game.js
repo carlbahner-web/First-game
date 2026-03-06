@@ -181,6 +181,18 @@ const playing = true; // always playing — use RESET block to clear
 let currentStep = 0;
 let lastStepTime = 0;
 
+// ---- Kill Counter & Dancers ----
+let killCount = 0;
+const dancers = [];
+const DANCER_PALETTES = [
+    { body: "#E86A6A", dark: "#C05050", head: "#F09090", hair: "#8B4513" },
+    { body: "#6AB8E8", dark: "#4A98C8", head: "#F0D0B0", hair: "#2a2a2a" },
+    { body: "#F6CC60", dark: "#D6AC40", head: "#F0D0B0", hair: "#BF7538" },
+    { body: "#9B59B6", dark: "#7B3996", head: "#F09090", hair: "#F6CC60" },
+    { body: "#2ECC71", dark: "#1EAC51", head: "#F0D0B0", hair: "#881111" },
+    { body: "#E67E22", dark: "#C65E02", head: "#F0D0B0", hair: "#2a2a2a" },
+];
+
 // ---- Player State ----
 const player = {
     x: (GRID_X + 7) * TILE,   // center of grid
@@ -436,6 +448,20 @@ function update(dt) {
                 g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
                 osc.connect(g); g.connect(audioCtx.destination);
                 osc.start(now); osc.stop(now + 0.3);
+            }
+            // Kill counter & dancer spawn
+            killCount++;
+            if (killCount % 3 === 0) {
+                // Pick a position in the lower area (rows 14-16), spread horizontally
+                const minX = 2 * TILE;
+                const maxX = (COLS - 3) * TILE;
+                const palette = DANCER_PALETTES[dancers.length % DANCER_PALETTES.length];
+                dancers.push({
+                    x: minX + Math.random() * (maxX - minX),
+                    y: (14 + Math.floor(Math.random() * 3)) * TILE,
+                    palette: palette,
+                    phase: Math.floor(Math.random() * 16),
+                });
             }
         }
     }
@@ -822,6 +848,23 @@ function render() {
     drawRect(indicatorX + 8, indicatorY, 6, 8, PAL.stopBtn);
     drawText("PLAYING", indicatorX + 18, indicatorY + 7, PAL.startBtn, 3);
 
+    // Kill counter (skull icon + count)
+    const kcX = indicatorX + 80;
+    const kcY = indicatorY;
+    // Skull icon
+    drawRect(kcX, kcY, 7, 5, "#EBEBE3");         // cranium
+    drawRect(kcX + 1, kcY + 5, 5, 2, "#EBEBE3");  // jaw
+    drawRect(kcX + 1, kcY + 2, 2, 2, "#2c4a4f");  // left eye
+    drawRect(kcX + 4, kcY + 2, 2, 2, "#2c4a4f");  // right eye
+    drawRect(kcX + 3, kcY + 4, 1, 1, "#2c4a4f");  // nose
+    drawText(String(killCount), kcX + 10, kcY + 7, "#EBEBE3", 3);
+    // Next dancer progress dots
+    const dotsX = kcX + 10 + String(killCount).length * 5 + 6;
+    for (let i = 0; i < 3; i++) {
+        const filled = (killCount % 3) > i;
+        drawRect(dotsX + i * 5, kcY + 2, 3, 3, filled ? "#F6CC60" : "#5a8a8f");
+    }
+
     // Control blocks
     for (const key of ["tempoUp", "tempoDown", "reset"]) {
         const blk = CTRL_BLOCKS[key];
@@ -887,6 +930,11 @@ function render() {
         drawPixelDigits(bpm, bpmCenterX, bpmCenterY - digitH / 2 - 4, "#F6CC60", pxSize);
         // "BPM" label below digits
         drawText("BPM", bpmCenterX - 7, bpmCenterY + digitH / 2 + 2, "#8ab0b4", 3);
+    }
+
+    // Dancers (rendered behind player/goblin)
+    for (const d of dancers) {
+        drawDancer(d);
     }
 
     // Goblin
@@ -1043,6 +1091,46 @@ function drawGoblin() {
     const wo = g.frame === 1 ? 2 : g.frame === 3 ? -2 : 0;
     drawRect(gx + 5 + wo, gy + 12, 3, 2, "#3a6a2a");
     drawRect(gx + 8 - wo, gy + 12, 3, 2, "#3a6a2a");
+}
+
+function drawDancer(d) {
+    const p = d.palette;
+    const step = (currentStep + d.phase) % 16;
+    // Beat-synced animation
+    const onBeat = (step % 4 === 0);       // strong beats (quarter notes)
+    const bob = onBeat ? 3 : (step % 2 === 0 ? 1 : 0);  // jump on beats, small bob otherwise
+    const armsUp = step % 4 < 2;           // arms alternate every 2 steps
+    const footOffset = step % 2 === 0 ? 1 : -1;
+
+    const dx = d.x;
+    const dy = d.y;
+
+    // Shadow
+    drawRect(dx + 2, dy + 13, 8, 2, PAL.shadow);
+    // Body
+    drawRect(dx + 3, dy + 4 - bob, 6, 7, p.body);
+    drawRect(dx + 3, dy + 4 - bob, 1, 7, p.dark);
+    drawRect(dx + 8, dy + 4 - bob, 1, 7, p.dark);
+    // Head
+    drawRect(dx + 3, dy - bob, 6, 5, p.head);
+    // Hair
+    drawRect(dx + 2, dy - 1 - bob, 8, 2, p.hair);
+    // Eyes (always facing front/down)
+    drawRect(dx + 4, dy + 2 - bob, 1, 1, "#1f3a3f");
+    drawRect(dx + 7, dy + 2 - bob, 1, 1, "#1f3a3f");
+    // Arms
+    if (armsUp) {
+        // Arms raised
+        drawRect(dx + 1, dy + 2 - bob, 2, 3, p.body);
+        drawRect(dx + 9, dy + 2 - bob, 2, 3, p.body);
+    } else {
+        // Arms down
+        drawRect(dx + 1, dy + 5 - bob, 2, 4, p.body);
+        drawRect(dx + 9, dy + 5 - bob, 2, 4, p.body);
+    }
+    // Feet
+    drawRect(dx + 3 + footOffset, dy + 11, 2, 2, p.dark);
+    drawRect(dx + 7 - footOffset, dy + 11, 2, 2, p.dark);
 }
 
 // ---- Game Loop (30 fps) ----
