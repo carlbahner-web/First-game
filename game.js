@@ -567,8 +567,8 @@ function update(dt) {
             if (audioCtx) {
                 const now = audioCtx.currentTime;
                 if (wasElite) {
-                    // Bright happy major arpeggio — C major up two octaves
-                    const notes = [523, 659, 784, 1047, 1319, 1568, 2093]; // C5 E5 G5 C6 E6 G6 C7
+                    // Bright happy major arpeggio — Cmaj7 up two octaves
+                    const notes = [523, 659, 784, 988, 1047, 1319, 1568, 1976, 2093]; // C5 E5 G5 B5 C6 E6 G6 B6 C7
                     notes.forEach((freq, i) => {
                         const osc = audioCtx.createOscillator();
                         const g = audioCtx.createGain();
