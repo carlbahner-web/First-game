@@ -3822,6 +3822,16 @@ function renderTutorialScreen() {
         ctx.globalAlpha = 1;
     }
 
+    // --- PHASE 6: Timer warning (t > 190) ---
+    if (t > 190) {
+        const text4Alpha = Math.min(1, (t - 190) / 25);
+        ctx.globalAlpha = text4Alpha;
+
+        const timerY = gridStartY + miniRows * TILE + 106;
+        drawCenteredText("FINISH BEFORE TIME RUNS OUT!", timerY, "#FF8844", 4);
+        ctx.globalAlpha = 1;
+    }
+
     // Blinking "PRESS ENTER TO START"
     if (t > 80 && t % 60 < 40) {
         drawCenteredText("PRESS ENTER TO START", H - 10, "#EBEBE3", 5);
