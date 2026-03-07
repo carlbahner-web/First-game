@@ -1094,19 +1094,34 @@ function update(dt) {
                     });
                 }
                 // Knockback player 2 tiles away from catapult goblin
-                let kbX = p.x, kbY = p.y;
                 const dx = p.x - catapultGoblin.x;
                 const dy = p.y - catapultGoblin.y;
-                if (Math.abs(dx) >= Math.abs(dy)) {
-                    kbX += Math.sign(dx) * 2 * TILE;
-                } else {
-                    kbY += Math.sign(dy) * 2 * TILE;
+                const kbDirX = Math.abs(dx) >= Math.abs(dy) ? Math.sign(dx) : 0;
+                const kbDirY = Math.abs(dx) >= Math.abs(dy) ? 0 : Math.sign(dy);
+                // Try 2 tiles back, fall back to 1, fall back to none
+                let kbDist = 0;
+                for (let d = 2; d >= 1; d--) {
+                    let tryX = p.x + kbDirX * d * TILE;
+                    let tryY = p.y + kbDirY * d * TILE;
+                    tryX = Math.max(TILE, Math.min((COLS - 2) * TILE, tryX));
+                    tryY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, tryY));
+                    const ttx = Math.round(tryX / TILE);
+                    const tty = Math.round(tryY / TILE);
+                    const gRX = Math.round(goblin.x / TILE) * TILE;
+                    const gRY = Math.round(goblin.y / TILE) * TILE;
+                    const blocked = isTileBlockedByObjects(ttx, tty)
+                        || isTileOccupiedByDancer(ttx, tty)
+                        || (!goblin.dead && tryX === gRX && tryY === gRY);
+                    if (!blocked) { kbDist = d; break; }
                 }
-                // Clamp within room bounds
-                kbX = Math.max(TILE, Math.min((COLS - 2) * TILE, kbX));
-                kbY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, kbY));
-                p.destX = kbX;
-                p.destY = kbY;
+                if (kbDist > 0) {
+                    let kbX = p.x + kbDirX * kbDist * TILE;
+                    let kbY = p.y + kbDirY * kbDist * TILE;
+                    kbX = Math.max(TILE, Math.min((COLS - 2) * TILE, kbX));
+                    kbY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, kbY));
+                    p.destX = kbX;
+                    p.destY = kbY;
+                }
                 // Screen shake for impact feel
                 screenShake = 8;
                 shakeIntensity = 3;
@@ -1565,6 +1580,7 @@ function resetGame() {
     player.attacking = false;
     player.attackTimer = 0;
     player.swordHit = false;
+    player.blinkTimer = 0;
 
     // Reset enemies
     killCount = 0;
@@ -2184,7 +2200,7 @@ function render() {
         // Timer digits
         if (blinkOn) {
             const tNumX = timerX + 14;
-            drawPixelDigits(parseInt(timerStr), tNumX + (timerDigits * digitW) / 2, numY, timerColor, pxSz);
+            drawPixelDigits(timerStr, tNumX + (timerDigits * digitW) / 2, numY, timerColor, pxSz);
         }
 
         // Tick sound during last 10 seconds (once per second)
