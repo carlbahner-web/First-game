@@ -2989,7 +2989,9 @@ function renderStoryScreen() {
         { text: "THAT IS, UNTIL THE DAY", color: "#66cc66", scale: 5, gap: 14 },
         { text: "GOBLINS BECAME JEALOUS", color: "#66cc66", scale: 5, gap: 14 },
         { text: "AND STARTED TO", color: "#ff6666", scale: 5, gap: 14 },
-        { text: "SABOTAGE THE MUSIC.", color: "#E86A6A", scale: 6, gap: 0 },
+        { text: "SABOTAGE THE MUSIC.", color: "#E86A6A", scale: 5, gap: 18 },
+        { text: "YOU ARE THE DJ,", color: "#BFCDC0", scale: 5, gap: 14 },
+        { text: "AND YOU HAVE A SWORD.", color: "#F6CC60", scale: 6, gap: 0 },
     ];
 
     // Calculate total height to vertically center story block
