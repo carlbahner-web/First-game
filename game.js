@@ -2543,6 +2543,78 @@ function drawSword() {
     ctx.restore();
 }
 
+// Reusable goblin sprite for all screens (story, warnings, gameplay)
+// type: "normal", "elite", "catapult"
+// gx, gy: top-left position
+// frame: animation frame (0-3)
+// options: { dir, showShadow, shimmer }
+function drawGoblinSprite(type, gx, gy, frame, options) {
+    const opts = options || {};
+    const dir = opts.dir !== undefined ? opts.dir : 0; // default facing down
+    const showShadow = opts.showShadow !== false; // default true
+    const bob = frame % 2 === 1 ? 1 : 0;
+
+    let bodyCol, darkCol, headCol, eyeCol;
+    if (type === "elite") {
+        bodyCol = "#c45a8a"; darkCol = "#a43a6a"; headCol = "#d46a9a"; eyeCol = "#ffee44";
+    } else if (type === "catapult") {
+        bodyCol = "#8B5E3C"; darkCol = "#6B3E1C"; headCol = "#9B6E4C"; eyeCol = "#ffee44";
+    } else {
+        bodyCol = "#4a8a3a"; darkCol = "#3a6a2a"; headCol = "#5a9a4a"; eyeCol = "#cc2222";
+    }
+
+    // Shadow
+    if (showShadow) {
+        drawRect(gx + 3, gy + TILE - 2, TILE - 6, 3, PAL.shadow);
+    }
+
+    // Catapult frame (behind goblin)
+    if (type === "catapult") {
+        const catX = gx - 4;
+        const catY = gy + 2;
+        drawRect(catX, catY + 6, 24, 3, "#5C3A1E");
+        drawRect(catX + 2, catY + 2, 3, 6, "#5C3A1E");
+        drawRect(catX + 19, catY + 2, 3, 6, "#5C3A1E");
+        drawRect(catX + 4, catY, 16, 2, "#7B5A3A");
+        drawRect(catX + 2, catY - 2, 5, 3, "#4A2A0E");
+    }
+
+    // Body
+    drawRect(gx + 4, gy + 3 - bob, 8, 9, bodyCol);
+    drawRect(gx + 4, gy + 3 - bob, 2, 9, darkCol);
+    drawRect(gx + 10, gy + 3 - bob, 2, 9, darkCol);
+    // Head
+    drawRect(gx + 3, gy - 1 - bob, 10, 6, headCol);
+    // Pointy ears
+    drawRect(gx + 1, gy - bob, 3, 3, headCol);
+    drawRect(gx + 12, gy - bob, 3, 3, headCol);
+    // Eyes (direction-aware)
+    if (dir !== 1) {
+        const ed = [[0, 2], [0, -2], [-1, 0], [1, 0]][dir];
+        drawRect(gx + 5 + ed[0], gy + 1 - bob + ed[1], 2, 2, eyeCol);
+        drawRect(gx + 9 + ed[0], gy + 1 - bob + ed[1], 2, 2, eyeCol);
+    }
+    // Mouth (fangs, when facing down)
+    if (dir === 0) {
+        drawRect(gx + 6, gy + 4 - bob, 1, 2, "#EBEBE3");
+        drawRect(gx + 9, gy + 4 - bob, 1, 2, "#EBEBE3");
+    }
+    // Feet
+    const wo = frame === 1 ? 2 : frame === 3 ? -2 : 0;
+    drawRect(gx + 5 + wo, gy + 12, 3, 2, darkCol);
+    drawRect(gx + 8 - wo, gy + 12, 3, 2, darkCol);
+
+    // Catapult invincibility shimmer
+    if (type === "catapult") {
+        const shimmerPhase = (performance.now() / 100) % (Math.PI * 2);
+        const shimmerAlpha = 0.15 + Math.sin(shimmerPhase) * 0.1;
+        ctx.fillStyle = "#ffee44";
+        ctx.globalAlpha = shimmerAlpha;
+        ctx.fillRect((gx + 2) * SCALE, (gy - 2 - bob) * SCALE, 12 * SCALE, 16 * SCALE);
+        ctx.globalAlpha = 1.0;
+    }
+}
+
 function drawGoblin() {
     const g = goblin;
     const gx = g.x;
@@ -3203,32 +3275,12 @@ function renderStoryScreen() {
 
     // Elite goblin (slot 0 — left)
     const eliteX = charMargin + slotW * 0 - 8 + Math.sin(storyBlink * 0.025 + 1) * 3;
-    const eliteBob = (gobFrame + 1) % 2 === 1 ? 1 : 0;
-    drawRect(eliteX + 4, charY + 3 - eliteBob, 8, 9, "#c45a8a");
-    drawRect(eliteX + 4, charY + 3 - eliteBob, 2, 9, "#a43a6a");
-    drawRect(eliteX + 10, charY + 3 - eliteBob, 2, 9, "#a43a6a");
-    drawRect(eliteX + 3, charY - 1 - eliteBob, 10, 6, "#d46a9a");
-    drawRect(eliteX + 1, charY - eliteBob, 3, 3, "#d46a9a");
-    drawRect(eliteX + 12, charY - eliteBob, 3, 3, "#d46a9a");
-    drawRect(eliteX + 5, charY + 1 - eliteBob, 2, 2, "#ffee44");
-    drawRect(eliteX + 9, charY + 1 - eliteBob, 2, 2, "#ffee44");
-    const efo = gobFrame === 1 ? 2 : gobFrame === 3 ? -2 : 0;
-    drawRect(eliteX + 5 + efo, charY + 12, 3, 2, "#a43a6a");
-    drawRect(eliteX + 8 - efo, charY + 12, 3, 2, "#a43a6a");
+    const eliteFrame = (gobFrame + 1) % 4;
+    drawGoblinSprite("elite", eliteX, charY, eliteFrame, { showShadow: false });
 
     // Goblin (slot 1)
     const gobX = charMargin + slotW * 1 - 8 + Math.sin(storyBlink * 0.03) * 3;
-    drawRect(gobX + 4, charY + 3 - gobBob, 8, 9, "#4a8a3a");
-    drawRect(gobX + 4, charY + 3 - gobBob, 2, 9, "#3a6a2a");
-    drawRect(gobX + 10, charY + 3 - gobBob, 2, 9, "#3a6a2a");
-    drawRect(gobX + 3, charY - 1 - gobBob, 10, 6, "#5a9a4a");
-    drawRect(gobX + 1, charY - gobBob, 3, 3, "#5a9a4a");
-    drawRect(gobX + 12, charY - gobBob, 3, 3, "#5a9a4a");
-    drawRect(gobX + 5, charY + 1 - gobBob, 2, 2, "#cc2222");
-    drawRect(gobX + 9, charY + 1 - gobBob, 2, 2, "#cc2222");
-    const gwo = gobFrame === 1 ? 2 : gobFrame === 3 ? -2 : 0;
-    drawRect(gobX + 5 + gwo, charY + 12, 3, 2, "#3a6a2a");
-    drawRect(gobX + 8 - gwo, charY + 12, 3, 2, "#3a6a2a");
+    drawGoblinSprite("normal", gobX, charY, gobFrame, { showShadow: false });
 
     // Player (center, slot 2)
     const playerX = charMargin + slotW * 2 - 8;
@@ -3765,26 +3817,10 @@ function renderEnemyWarning() {
             ctx.globalAlpha = 1;
         }
 
-        // Large animated elite goblin sprite (centered, story-screen style)
+        // Large animated elite goblin sprite (centered)
         if (t > 25) {
             ctx.globalAlpha = Math.min(1, (t - 25) / 20);
-            const gx = W / 2 - 8;
-            const gy = 80 + bobOffset;
-            // Body
-            drawRect(gx + 4, gy + 3 - gobBob, 8, 9, "#c45a8a");
-            drawRect(gx + 4, gy + 3 - gobBob, 2, 9, "#a43a6a");
-            drawRect(gx + 10, gy + 3 - gobBob, 2, 9, "#a43a6a");
-            // Head with horns
-            drawRect(gx + 3, gy - 1 - gobBob, 10, 6, "#d46a9a");
-            drawRect(gx + 1, gy - gobBob, 3, 3, "#d46a9a");
-            drawRect(gx + 12, gy - gobBob, 3, 3, "#d46a9a");
-            // Eyes
-            drawRect(gx + 5, gy + 1 - gobBob, 2, 2, "#ffee44");
-            drawRect(gx + 9, gy + 1 - gobBob, 2, 2, "#ffee44");
-            // Feet
-            const efo = gobFrame === 1 ? 2 : gobFrame === 3 ? -2 : 0;
-            drawRect(gx + 5 + efo, gy + 12, 3, 2, "#a43a6a");
-            drawRect(gx + 8 - efo, gy + 12, 3, 2, "#a43a6a");
+            drawGoblinSprite("elite", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
             ctx.globalAlpha = 1;
         }
 
@@ -3820,29 +3856,10 @@ function renderEnemyWarning() {
             ctx.globalAlpha = 1;
         }
 
-        // Large animated catapult goblin sprite
+        // Large animated catapult goblin sprite (centered)
         if (t > 25) {
             ctx.globalAlpha = Math.min(1, (t - 25) / 20);
-            const gx = W / 2 - 8;
-            const gy = 80 + bobOffset;
-            // Body
-            drawRect(gx + 4, gy + 3 - gobBob, 8, 9, "#4a8a3a");
-            drawRect(gx + 4, gy + 3 - gobBob, 2, 9, "#3a6a2a");
-            drawRect(gx + 10, gy + 3 - gobBob, 2, 9, "#3a6a2a");
-            // Head with horns
-            drawRect(gx + 3, gy - 1 - gobBob, 10, 6, "#5a9a4a");
-            drawRect(gx + 1, gy - gobBob, 3, 3, "#5a9a4a");
-            drawRect(gx + 12, gy - gobBob, 3, 3, "#5a9a4a");
-            // Eyes
-            drawRect(gx + 5, gy + 1 - gobBob, 2, 2, "#cc2222");
-            drawRect(gx + 9, gy + 1 - gobBob, 2, 2, "#cc2222");
-            // Catapult arm
-            drawRect(gx + TILE / 2 - 2, gy - 6 - gobBob, 4, 8, "#8B6914");
-            drawRect(gx + TILE / 2 - 5, gy - 6 - gobBob, 10, 3, "#A07818");
-            // Feet
-            const gfo = gobFrame === 1 ? 2 : gobFrame === 3 ? -2 : 0;
-            drawRect(gx + 5 + gfo, gy + 12, 3, 2, "#3a6a2a");
-            drawRect(gx + 8 - gfo, gy + 12, 3, 2, "#3a6a2a");
+            drawGoblinSprite("catapult", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
             ctx.globalAlpha = 1;
         }
 
