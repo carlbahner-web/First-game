@@ -2991,7 +2991,8 @@ function renderStoryScreen() {
         { text: "AND STARTED TO", color: "#ff6666", scale: 5, gap: 14 },
         { text: "SABOTAGE THE MUSIC.", color: "#E86A6A", scale: 5, gap: 18 },
         { text: "YOU ARE THE DJ,", color: "#BFCDC0", scale: 5, gap: 14 },
-        { text: "AND YOU HAVE A SWORD.", color: "#F6CC60", scale: 6, gap: 0 },
+        { text: "AND YOU HAVE A SWORD.", color: "#F6CC60", scale: 5, gap: 18 },
+        { text: "IT'S TIME TO GET STABBIN'!", color: "#E86A6A", scale: 6, gap: 0 },
     ];
 
     // Calculate total height to vertically center story block
