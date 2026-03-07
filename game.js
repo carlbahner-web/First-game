@@ -3763,6 +3763,27 @@ function renderTutorialScreen() {
             // Sword at rest (held up)
             drawRect(demoPlayerX + 14, demoPlayerY - 8 - pBob, 2, 10, "#F6CC60");
             drawRect(demoPlayerX + 12, demoPlayerY - 2 - pBob, 6, 2, "#BF7538");
+
+            // Gold bracket target indicator on the grid cell the player faces
+            const btx = gridStartX;
+            const bty = gridStartY;
+            const bPulse = 0.25 + Math.sin(t * 0.1) * 0.15;
+            ctx.globalAlpha = phase2Alpha * bPulse;
+            const bc = "#F6CC60";
+            const bs = 1;
+            const bL = 4;
+            // Top-left corner
+            drawRect(btx, bty, bL, bs, bc);
+            drawRect(btx, bty, bs, bL, bc);
+            // Top-right corner
+            drawRect(btx + TILE - bL, bty, bL, bs, bc);
+            drawRect(btx + TILE - bs, bty, bs, bL, bc);
+            // Bottom-left corner
+            drawRect(btx, bty + TILE - bs, bL, bs, bc);
+            drawRect(btx, bty + TILE - bL, bs, bL, bc);
+            // Bottom-right corner
+            drawRect(btx + TILE - bL, bty + TILE - bs, bL, bs, bc);
+            drawRect(btx + TILE - bs, bty + TILE - bL, bs, bL, bc);
         }
 
         ctx.globalAlpha = 1;
