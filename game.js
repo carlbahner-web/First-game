@@ -803,8 +803,8 @@ function update(dt) {
             // Lethal hit — full death sequence
             goblin.dead = true;
             const wasElite = goblin.elite;
-            // Longer pause after elite (3rd) kill: 15s vs 10s
-            goblin.respawnTimer = wasElite ? 900 : goblin.respawnDelay;
+            // Always 10s respawn
+            goblin.respawnTimer = 600;
 
             // Death particles — elite gets a big sparkly explosion
             const particleCount = wasElite ? 50 : 20;
