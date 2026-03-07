@@ -2678,46 +2678,54 @@ function renderTitleScreen() {
     ctx.globalAlpha = 1;
 
     // === Centered Logo ===
-    const centerY = H / 2 - 65;
-
-    // "REVENGE OF THE" smaller above
     const logoColor1 = "#BF7538";
     const logoColor2 = "#F6CC60";
+
+    // Use measureText for accurate centering
+    const bigFontSize = 20; // font size for GROOVE/GOBLINS
+
+    // "REVENGE OF THE" — smaller, well above GROOVE
     const subTitle = "REVENGE OF THE";
-    const subW = subTitle.length * 4;
-    const subX = W / 2 - subW / 2;
+    const subFontSize = 4;
+    ctx.font = `${subFontSize * SCALE}px monospace`;
+    const subMeasured = ctx.measureText(subTitle).width;
+    const subY = H / 2 - 80;
+    // Draw each letter with wobble, centered as a group
+    const subStartX = ((W * SCALE) - subMeasured) / (2 * SCALE);
+    const subCharW = subMeasured / (SCALE * subTitle.length);
     for (let i = 0; i < subTitle.length; i++) {
-        const charX = subX + i * 4;
+        const charX = subStartX + i * subCharW;
         const wobble = Math.sin(titleBlink * 0.08 + i * 0.5) * 1;
-        drawText(subTitle[i], charX, centerY + wobble, logoColor1, 4);
+        drawText(subTitle[i], charX, subY + wobble, logoColor1, subFontSize);
     }
 
-    // Big "GROOVE"
+    // Big "GROOVE" — use textAlign center for the whole word block
     const grooveText = "GROOVE";
-    const groovePx = 5;
-    const grooveW = grooveText.length * (groovePx * 4 + groovePx);
-    const grooveX = W / 2 - grooveW / 2;
-    const grooveY = centerY + 16;
+    ctx.font = `${bigFontSize * SCALE}px monospace`;
+    const grooveMeasured = ctx.measureText(grooveText).width;
+    const grooveCharW = grooveMeasured / (SCALE * grooveText.length);
+    const grooveY = subY + 14;
+    const grooveStartX = ((W * SCALE) - grooveMeasured) / (2 * SCALE);
     for (let i = 0; i < grooveText.length; i++) {
-        const charX = grooveX + i * (groovePx * 4 + groovePx);
+        const charX = grooveStartX + i * grooveCharW;
         const bounce = Math.sin(titleBlink * 0.06 + i * 0.8) * 3;
         const col = i % 2 === 0 ? logoColor2 : logoColor1;
-        drawText(grooveText[i], charX + 1, grooveY + bounce + 1, "#000000", groovePx * 4);
-        drawText(grooveText[i], charX, grooveY + bounce, col, groovePx * 4);
+        drawText(grooveText[i], charX + 1, grooveY + bounce + 1, "#000000", bigFontSize);
+        drawText(grooveText[i], charX, grooveY + bounce, col, bigFontSize);
     }
 
     // Big "GOBLINS"
     const goblinsText = "GOBLINS";
-    const gobPx = 5;
-    const gobW = goblinsText.length * (gobPx * 4 + gobPx);
-    const gobX = W / 2 - gobW / 2;
+    const gobMeasured = ctx.measureText(goblinsText).width;
+    const gobCharW = gobMeasured / (SCALE * goblinsText.length);
     const gobY = grooveY + 30;
+    const gobStartX = ((W * SCALE) - gobMeasured) / (2 * SCALE);
     for (let i = 0; i < goblinsText.length; i++) {
-        const charX = gobX + i * (gobPx * 4 + gobPx);
+        const charX = gobStartX + i * gobCharW;
         const bounce = Math.sin(titleBlink * 0.06 + i * 0.8 + 3) * 3;
         const col = i % 2 === 0 ? "#66cc66" : "#44aa44";
-        drawText(goblinsText[i], charX + 1, gobY + bounce + 1, "#000000", gobPx * 4);
-        drawText(goblinsText[i], charX, gobY + bounce, col, gobPx * 4);
+        drawText(goblinsText[i], charX + 1, gobY + bounce + 1, "#000000", bigFontSize);
+        drawText(goblinsText[i], charX, gobY + bounce, col, bigFontSize);
     }
 
     // Pixel art goblin face below logo
@@ -2760,28 +2768,32 @@ function renderTitleScreen() {
     }
     ctx.globalAlpha = 1;
 
+    // Helper to draw centered text
+    function drawCentered(text, y, color, scale) {
+        ctx.font = `${scale * SCALE}px monospace`;
+        ctx.fillStyle = color;
+        ctx.textAlign = "center";
+        ctx.fillText(text, (W * SCALE) / 2, y * SCALE);
+        ctx.textAlign = "start";
+    }
+
     // Blinking "PRESS ENTER"
     titleBlink++;
     const hasScores = highScores.length > 0;
     const pressY = hasScores ? H - 80 : H - 30;
     if (titleBlink % 60 < 40) {
-        const pressText = "PRESS ENTER";
-        const pressW = pressText.length * 5;
-        drawText(pressText, W/2 - pressW/2, pressY, "#EBEBE3", 5);
+        drawCentered("PRESS ENTER", pressY, "#EBEBE3", 5);
     }
 
     // High score leaderboard
     if (hasScores) {
-        const headerText = "HIGH SCORES";
-        const headerW = headerText.length * 3;
-        drawText(headerText, W / 2 - headerW / 2, H - 68, "#F6CC60", 3);
+        drawCentered("HIGH SCORES", H - 68, "#F6CC60", 3);
 
         for (let i = 0; i < highScores.length; i++) {
             const entry = highScores[i];
             const rank = (i + 1) + ". " + entry.name + "  " + String(entry.score).padStart(3, "0");
-            const rankW = rank.length * 3;
             const color = i === 0 ? "#F6CC60" : "#BFCDC0";
-            drawText(rank, W / 2 - rankW / 2, H - 58 + i * 10, color, 3);
+            drawCentered(rank, H - 58 + i * 10, color, 3);
         }
     }
 }
