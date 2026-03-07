@@ -1072,7 +1072,7 @@ function update(dt) {
             } // end else (lethal hit)
         }
 
-        // Check catapult goblin hit — invincible! Clang sound
+        // Check catapult goblin hit — invincible! Clang + knockback
         if (catapultGoblin) {
             const cgTileX = Math.round(catapultGoblin.x / TILE);
             const cgTileY = Math.round(catapultGoblin.y / TILE);
@@ -1081,18 +1081,35 @@ function update(dt) {
                 ensureAudio();
                 if (audioCtx) playClang(audioCtx.currentTime);
                 // Spark particles
-                for (let i = 0; i < 5; i++) {
+                for (let i = 0; i < 8; i++) {
                     deathParticles.push({
                         x: catapultGoblin.x + catapultGoblin.w / 2,
                         y: catapultGoblin.y + catapultGoblin.h / 2,
-                        vx: (Math.random() - 0.5) * 3,
-                        vy: (Math.random() - 0.5) * 3 - 1,
+                        vx: (Math.random() - 0.5) * 4,
+                        vy: (Math.random() - 0.5) * 4 - 1,
                         life: 10 + Math.random() * 10,
                         color: Math.random() > 0.5 ? "#ffee44" : "#ffffff",
                         size: 1 + Math.random() * 2,
                         sparkle: true,
                     });
                 }
+                // Knockback player 2 tiles away from catapult goblin
+                let kbX = p.x, kbY = p.y;
+                const dx = p.x - catapultGoblin.x;
+                const dy = p.y - catapultGoblin.y;
+                if (Math.abs(dx) >= Math.abs(dy)) {
+                    kbX += Math.sign(dx) * 2 * TILE;
+                } else {
+                    kbY += Math.sign(dy) * 2 * TILE;
+                }
+                // Clamp within room bounds
+                kbX = Math.max(TILE, Math.min((COLS - 2) * TILE, kbX));
+                kbY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, kbY));
+                p.destX = kbX;
+                p.destY = kbY;
+                // Screen shake for impact feel
+                screenShake = 8;
+                shakeIntensity = 3;
             }
         }
 
