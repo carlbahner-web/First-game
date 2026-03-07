@@ -3762,7 +3762,7 @@ function renderTutorialScreen() {
     // Page indicator dots
     const dotY = H - 22;
     for (let i = 0; i < 4; i++) {
-        const dx = W / 2 - 12 + i * 8;
+        const dx = W / 2 - 14 + i * 8;
         const active = i === tutorialPage;
         drawRect(dx, dotY, 3, 3, active ? "#F6CC60" : "#555555");
     }
