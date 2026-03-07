@@ -451,6 +451,7 @@ let levelTimer = LEVELS[0].timerSeconds * 60; // countdown in frames (seconds * 
 let levelComplete = false;
 let levelCelebrateTimer = 0;
 let titleBlink = 0; // blink timer for "PRESS ENTER"
+let tutorialTimer = 0; // animation frame counter for tutorial screen
 
 // ---- High Score System ----
 let highScores = []; // Array of { name: "AAA", score: 0 }, max 5, sorted desc
@@ -581,6 +582,11 @@ window.addEventListener("keydown", (e) => {
         }
         if (gameState === "story") {
             stopStoryDrums();
+            gameState = "tutorial";
+            tutorialTimer = 0;
+            return;
+        }
+        if (gameState === "tutorial") {
             gameState = "playing";
             currentStep = 0;
             lastStepTime = performance.now();
@@ -3530,6 +3536,192 @@ function renderGameOverScreen() {
     }
 }
 
+function renderTutorialScreen() {
+    tutorialTimer++;
+    const W = COLS * TILE;
+    const H = ROWS * TILE;
+    const t = tutorialTimer;
+
+    // Dark background
+    drawRect(0, 0, W, H, "#0a0a12");
+
+    // Starfield (same as story screen)
+    for (let i = 0; i < 60; i++) {
+        const sx = ((i * 137 + 50) % W);
+        const sy = ((i * 97 + 30) % H);
+        const twinkle = Math.sin(t * 0.05 + i) * 0.5 + 0.5;
+        ctx.globalAlpha = 0.3 + twinkle * 0.7;
+        const starSize = (i % 3 === 0) ? 2 : 1;
+        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#F6CC60" : "#EBEBE3");
+    }
+    ctx.globalAlpha = 1;
+
+    function drawCenteredText(text, y, color, scale) {
+        ctx.font = `${scale * SCALE}px monospace`;
+        ctx.fillStyle = color;
+        ctx.textAlign = "center";
+        ctx.fillText(text, (W * SCALE) / 2, y * SCALE);
+        ctx.textAlign = "start";
+    }
+
+    // Title — fades in
+    const titleAlpha = Math.min(1, t / 30);
+    ctx.globalAlpha = titleAlpha;
+    drawCenteredText("HOW TO PLAY", 20, "#F6CC60", 7);
+    ctx.globalAlpha = 1;
+
+    // --- PHASE 1: Show mini grid with target pattern (t > 30) ---
+    const gridStartX = W / 2 - 4 * TILE / 2; // 4 columns wide
+    const gridStartY = 50;
+    const miniRows = 2;
+    const miniCols = 4;
+    const rowColors = ["#F6CC60", "#BFCDC0"]; // H and S row colors
+
+    // Demo target pattern (simple: 2 rows x 4 cols)
+    const demoTarget = [
+        [true, false, true, false],
+        [false, true, false, true],
+    ];
+    // Demo current state — blocks toggle on over time
+    const toggleOrder = [[0,0], [0,2], [1,1], [1,3]]; // order blocks appear
+    const toggleDelay = 80; // frames between toggles
+    const toggleStart = 60; // when first toggle happens
+
+    if (t > 30) {
+        const gridAlpha = Math.min(1, (t - 30) / 20);
+        ctx.globalAlpha = gridAlpha;
+
+        // "MATCH THE PATTERN" text
+        drawCenteredText("MATCH THE PATTERN!", gridStartY - 10, "#BFCDC0", 5);
+
+        for (let r = 0; r < miniRows; r++) {
+            for (let c = 0; c < miniCols; c++) {
+                const bx = gridStartX + c * TILE;
+                const by = gridStartY + r * TILE;
+                const target = demoTarget[r][c];
+
+                // Figure out if this block has been "toggled on" by the animation
+                let isOn = false;
+                for (let i = 0; i < toggleOrder.length; i++) {
+                    if (toggleOrder[i][0] === r && toggleOrder[i][1] === c) {
+                        if (t > toggleStart + i * toggleDelay) isOn = true;
+                    }
+                }
+
+                // Draw cell
+                drawRect(bx, by, TILE, TILE, PAL.gridBorder);
+                drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? rowColors[r] : PAL.gridOff);
+
+                // Target indicator (pulsing outline) if not yet matched
+                if (target && !isOn) {
+                    const pulse = 0.3 + Math.sin(t * 0.06) * 0.15;
+                    ctx.globalAlpha = pulse;
+                    drawRect(bx + 1, by + 1, TILE - 2, 1, rowColors[r]);
+                    drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, rowColors[r]);
+                    drawRect(bx + 1, by + 1, 1, TILE - 2, rowColors[r]);
+                    drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, rowColors[r]);
+                    drawRect(bx + 6, by + 6, 4, 4, rowColors[r]);
+                    ctx.globalAlpha = gridAlpha;
+                }
+
+                // Flash when toggled on
+                if (isOn) {
+                    for (let i = 0; i < toggleOrder.length; i++) {
+                        if (toggleOrder[i][0] === r && toggleOrder[i][1] === c) {
+                            const flashAge = t - (toggleStart + i * toggleDelay);
+                            if (flashAge >= 0 && flashAge < 10) {
+                                ctx.globalAlpha = (1 - flashAge / 10) * 0.6;
+                                drawRect(bx, by, TILE, TILE, "#ffffff");
+                                ctx.globalAlpha = gridAlpha;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        ctx.globalAlpha = 1;
+    }
+
+    // --- PHASE 2: Show player + sword explanation (t > 50) ---
+    if (t > 50) {
+        const phase2Alpha = Math.min(1, (t - 50) / 20);
+        ctx.globalAlpha = phase2Alpha;
+
+        // Player character next to the grid, animated
+        const demoPlayerX = gridStartX - TILE * 2;
+        const demoPlayerY = gridStartY + 2;
+        const pBob = Math.floor(t / 12) % 2 === 0 ? 0 : 1;
+
+        // Body
+        drawRect(demoPlayerX + 3, demoPlayerY + 2 - pBob, 10, 10, "#3a6a8a");
+        drawRect(demoPlayerX + 3, demoPlayerY + 2 - pBob, 2, 10, "#2a4a6a");
+        drawRect(demoPlayerX + 11, demoPlayerY + 2 - pBob, 2, 10, "#2a4a6a");
+        // Head
+        drawRect(demoPlayerX + 2, demoPlayerY - 4 - pBob, 12, 7, "#F0D0B0");
+        // Eyes (facing right toward grid)
+        drawRect(demoPlayerX + 6, demoPlayerY - 2 - pBob, 2, 2, "#1a1a2e");
+        drawRect(demoPlayerX + 10, demoPlayerY - 2 - pBob, 2, 2, "#1a1a2e");
+        // Hair
+        drawRect(demoPlayerX + 2, demoPlayerY - 5 - pBob, 12, 3, "#8a5a2a");
+        // Feet
+        const pfo = Math.floor(t / 12) % 2 === 0 ? 1 : -1;
+        drawRect(demoPlayerX + 4 + pfo, demoPlayerY + 12, 3, 2, "#2a4a6a");
+        drawRect(demoPlayerX + 9 - pfo, demoPlayerY + 12, 3, 2, "#2a4a6a");
+
+        // Sword — swings periodically
+        const swingCycle = t % 60;
+        if (swingCycle < 15) {
+            // Sword extended right (attacking pose)
+            drawRect(demoPlayerX + 14, demoPlayerY - 2 - pBob, 12, 2, "#F6CC60");
+            drawRect(demoPlayerX + 13, demoPlayerY - 1 - pBob, 3, 4, "#BF7538");
+        } else {
+            // Sword at rest (held up)
+            drawRect(demoPlayerX + 14, demoPlayerY - 8 - pBob, 2, 10, "#F6CC60");
+            drawRect(demoPlayerX + 12, demoPlayerY - 2 - pBob, 6, 2, "#BF7538");
+        }
+
+        ctx.globalAlpha = 1;
+    }
+
+    // --- PHASE 3: Instruction text (t > 40) ---
+    if (t > 40) {
+        const textAlpha = Math.min(1, (t - 40) / 25);
+        ctx.globalAlpha = textAlpha;
+
+        const instrY = gridStartY + miniRows * TILE + 18;
+        drawCenteredText("SWING YOUR SWORD AT", instrY, "#BFCDC0", 5);
+        drawCenteredText("BLOCKS TO TOGGLE THEM", instrY + 14, "#BFCDC0", 5);
+        ctx.globalAlpha = 1;
+    }
+
+    // --- PHASE 4: Target explanation (t > 90) ---
+    if (t > 90) {
+        const text2Alpha = Math.min(1, (t - 90) / 25);
+        ctx.globalAlpha = text2Alpha;
+
+        const tgtY = gridStartY + miniRows * TILE + 50;
+        drawCenteredText("PULSING OUTLINES SHOW", tgtY, "#F6CC60", 4);
+        drawCenteredText("WHERE BEATS NEED TO GO", tgtY + 12, "#F6CC60", 4);
+        ctx.globalAlpha = 1;
+    }
+
+    // --- PHASE 5: Goblin warning (t > 140) ---
+    if (t > 140) {
+        const text3Alpha = Math.min(1, (t - 140) / 25);
+        ctx.globalAlpha = text3Alpha;
+
+        const warnY = gridStartY + miniRows * TILE + 78;
+        drawCenteredText("WATCH OUT FOR GOBLINS", warnY, "#E86A6A", 4);
+        drawCenteredText("THEY'LL SABOTAGE YOUR BEATS!", warnY + 12, "#E86A6A", 4);
+        ctx.globalAlpha = 1;
+    }
+
+    // Blinking "PRESS ENTER TO START"
+    if (t > 80 && t % 60 < 40) {
+        drawCenteredText("PRESS ENTER TO START", H - 10, "#EBEBE3", 5);
+    }
+}
+
 function renderEnemyWarning() {
     // Render the game underneath (frozen)
     render();
@@ -3668,6 +3860,8 @@ function gameLoop(timestamp) {
                 renderTitleScreen();
             } else if (gameState === "story") {
                 renderStoryScreen();
+            } else if (gameState === "tutorial") {
+                renderTutorialScreen();
             } else if (gameState === "enemywarning") {
                 renderEnemyWarning();
             } else if (gameState === "levelcomplete") {
