@@ -3917,10 +3917,60 @@ function renderTutorialScreen() {
             ctx.globalAlpha = 1;
         }
 
-        // Subtitle
+        // Control instructions
         if (t > 40) {
             ctx.globalAlpha = Math.min(1, (t - 40) / 25);
-            drawCenteredText("USE ARROW KEYS + SPACE", gridStartY + miniRows * TILE + 20, "#BFCDC0", 5);
+
+            const ky = gridStartY + miniRows * TILE + 18;
+            const ks = 9; // key size
+            const kg = 2; // key gap
+            const keyCol = "#3a3a5a";
+            const keyHi = "#5a5a8a";
+            const labelCol = "#EBEBE3";
+            const arrowGroupW = 3 * ks + 2 * kg; // width of arrow key cluster
+            const spW = 28; // space bar width
+            const gap = 14; // gap between arrow keys and space bar
+            const totalW = arrowGroupW + gap + spW;
+            const kx = W / 2 - totalW / 2; // left edge of arrow keys
+
+            // Up arrow
+            drawRect(kx + ks + kg, ky, ks, ks, keyCol);
+            drawRect(kx + ks + kg + 1, ky + 1, ks - 2, ks - 2, keyHi);
+            drawRect(kx + ks + kg + 3, ky + 3, 3, 1, labelCol);
+            drawRect(kx + ks + kg + 4, ky + 2, 1, 1, labelCol);
+            // Down arrow
+            drawRect(kx + ks + kg, ky + ks + kg, ks, ks, keyCol);
+            drawRect(kx + ks + kg + 1, ky + ks + kg + 1, ks - 2, ks - 2, keyHi);
+            drawRect(kx + ks + kg + 3, ky + ks + kg + 5, 3, 1, labelCol);
+            drawRect(kx + ks + kg + 4, ky + ks + kg + 6, 1, 1, labelCol);
+            // Left arrow
+            drawRect(kx, ky + ks + kg, ks, ks, keyCol);
+            drawRect(kx + 1, ky + ks + kg + 1, ks - 2, ks - 2, keyHi);
+            drawRect(kx + 3, ky + ks + kg + 4, 1, 1, labelCol);
+            drawRect(kx + 4, ky + ks + kg + 3, 1, 3, labelCol);
+            // Right arrow
+            drawRect(kx + 2 * (ks + kg), ky + ks + kg, ks, ks, keyCol);
+            drawRect(kx + 2 * (ks + kg) + 1, ky + ks + kg + 1, ks - 2, ks - 2, keyHi);
+            drawRect(kx + 2 * (ks + kg) + 5, ky + ks + kg + 4, 1, 1, labelCol);
+            drawRect(kx + 2 * (ks + kg) + 4, ky + ks + kg + 3, 1, 3, labelCol);
+
+            // Space bar icon (to the right of arrow keys)
+            const spX = kx + arrowGroupW + gap;
+            drawRect(spX, ky + ks + kg, spW, ks, keyCol);
+            drawRect(spX + 1, ky + ks + kg + 1, spW - 2, ks - 2, keyHi);
+            ctx.font = `${3 * SCALE}px monospace`;
+            ctx.fillStyle = labelCol;
+            ctx.textAlign = "center";
+            ctx.fillText("SPACE", (spX + spW / 2) * SCALE, (ky + ks + kg + 7) * SCALE);
+
+            // Labels below each group
+            ctx.font = `${5 * SCALE}px monospace`;
+            ctx.fillStyle = "#BFCDC0";
+            const arrowCenterX = kx + ks + kg + ks / 2;
+            ctx.fillText("MOVE", arrowCenterX * SCALE, (ky + 2 * ks + 2 * kg + 8) * SCALE);
+            ctx.fillText("ATTACK", (spX + spW / 2) * SCALE, (ky + 2 * ks + 2 * kg + 8) * SCALE);
+            ctx.textAlign = "start";
+
             ctx.globalAlpha = 1;
         }
     }
@@ -4159,6 +4209,12 @@ function renderTutorialScreen() {
             ctx.globalAlpha = Math.min(1, (t - 30) / 25);
             drawCenteredText("COMPLETE THE PATTERN", timerY + 80, "#BFCDC0", 5);
             drawCenteredText("BEFORE TIME RUNS OUT!", timerY + 94, "#BFCDC0", 5);
+            ctx.globalAlpha = 1;
+        }
+        if (t > 50) {
+            ctx.globalAlpha = Math.min(1, (t - 50) / 25);
+            drawCenteredText("IF THE TIMER HITS ZERO,", timerY + 114, "#FF4466", 5);
+            drawCenteredText("IT'S GAME OVER!", timerY + 128, "#FF4466", 5);
             ctx.globalAlpha = 1;
         }
     }
