@@ -447,7 +447,7 @@ let enemyWarningType = null;   // "elite" or "catapult"
 let enemyWarningShown = { elite: false, catapult: false }; // track which warnings have been shown
 let enemyWarningBlink = 0;     // blink timer for "PRESS ENTER"
 let currentLevel = 0;
-let levelTimer = LEVELS[0].timerSeconds * 60; // countdown in frames (seconds * 60)
+let levelTimer = LEVELS[0].timerSeconds * 90; // countdown in frames (seconds * 90)
 let levelComplete = false;
 let levelCelebrateTimer = 0;
 let titleBlink = 0; // blink timer for "PRESS ENTER"
@@ -1500,7 +1500,7 @@ function resetGame() {
     catapultGoblin = null;
     catapultSpawnedThisCycle = false;
     enemyWarningShown = { elite: false, catapult: false };
-    levelTimer = LEVELS[0].timerSeconds * 60;
+    levelTimer = LEVELS[0].timerSeconds * 90;
 
     // Clear dancers and effects
     dancers.length = 0;
@@ -1592,7 +1592,7 @@ function advanceLevel() {
         }
         return;
     }
-    levelTimer = LEVELS[currentLevel].timerSeconds * 60;
+    levelTimer = LEVELS[currentLevel].timerSeconds * 90;
     // Start with previous level's completed pattern (each level builds on the last)
     const prevPattern = LEVELS[currentLevel - 1].pattern;
     for (let r = 0; r < GRID_ROWS; r++)
@@ -2082,7 +2082,7 @@ function render() {
         drawPixelDigits(killCount, numX + (numDigits * digitW) / 2, numY, "#EBEBE3", pxSz);
 
         // Timer counter — right of kill counter
-        const timerSec = Math.max(0, Math.ceil(levelTimer / 60));
+        const timerSec = Math.max(0, Math.ceil(levelTimer / 90));
         const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
         const timerDigits = timerStr.length;
         const timerX = kcX + panelW + 8;
@@ -2111,7 +2111,7 @@ function render() {
         }
 
         // Tick sound during last 10 seconds (once per second)
-        if (isCritical && timerSec > 0 && levelTimer % 60 === 0 && audioCtx) {
+        if (isCritical && timerSec > 0 && levelTimer % 90 === 0 && audioCtx) {
             const now = audioCtx.currentTime;
             const tick = audioCtx.createOscillator();
             const tg = audioCtx.createGain();
