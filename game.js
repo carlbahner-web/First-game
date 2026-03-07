@@ -662,9 +662,9 @@ function isTileBlockedByObjects(tileX, tileY) {
     const bpmTop = CTRL_BLOCKS.tempoUp.tileY + 1;
     const bpmBot = CTRL_BLOCKS.tempoDown.tileY - 1;
     if (tileX === ctrlX && tileY >= bpmTop && tileY <= bpmBot) return true;
-    // Kill counter area (roughly tiles 3-4, row 9)
-    const kcTileY = GRID_Y + GRID_ROWS + 1; // row below grid + 1 (where counter renders)
-    if (tileX >= GRID_X && tileX <= GRID_X + 2 && tileY === kcTileY) return true;
+    // Level + Kill counter area (2 tiles below step numbers)
+    const counterTileY = GRID_Y + GRID_ROWS + 3;
+    if (tileX >= GRID_X && tileX <= GRID_X + 4 && tileY === counterTileY) return true;
     return false;
 }
 
@@ -2016,12 +2016,10 @@ function render() {
         drawRect(baseX - 2, kcY - 2, lvlPanelW + 4, panelH + 4, "#1a3438");
         drawRect(baseX, kcY, lvlPanelW, panelH, "#243e42");
         drawRect(baseX, kcY, lvlPanelW, 1, "#3a6a70");
-        // Flag icon (10x10 pixel art)
+        // "L" letter icon (pixel art)
         const fx = baseX + 2, fy = kcY + 3;
-        drawRect(fx, fy, 2, 10, "#EBEBE3");          // pole
-        drawRect(fx + 2, fy, 6, 2, "#F6CC60");       // flag top
-        drawRect(fx + 2, fy + 2, 6, 2, "#BF7538");   // flag bottom
-        drawRect(fx + 2, fy + 4, 4, 1, "#BF7538");   // flag taper
+        drawRect(fx, fy, 2, 10, "#EBEBE3");           // vertical stroke
+        drawRect(fx + 2, fy + 8, 6, 2, "#EBEBE3");    // horizontal stroke
         // Level number
         const lvlNumX = baseX + 14;
         const numY = kcY + 3;
