@@ -2724,7 +2724,7 @@ function renderTitleScreen() {
     }
 
     // Pixel art goblin face below logo
-    const faceX = W / 2 - 10;
+    const faceX = W / 2 - 4*fp;
     const faceY = gobY + 40;
     const fp = 3;
     drawRect(faceX + 2*fp, faceY, 4*fp, fp, "#44aa44");
@@ -2747,10 +2747,10 @@ function renderTitleScreen() {
 
     // Musical notes floating around the face
     const notePositions = [
-        { x: faceX - 20, y: faceY - 10 },
-        { x: faceX + 40, y: faceY - 5 },
-        { x: faceX - 15, y: faceY + 20 },
-        { x: faceX + 45, y: faceY + 15 },
+        { x: faceX - 16, y: faceY - 10 },
+        { x: faceX + 38, y: faceY - 5 },
+        { x: faceX - 12, y: faceY + 20 },
+        { x: faceX + 36, y: faceY + 15 },
     ];
     for (let i = 0; i < notePositions.length; i++) {
         const np = notePositions[i];
