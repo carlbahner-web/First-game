@@ -535,11 +535,7 @@ let spaceJustPressed = false;
 window.addEventListener("keydown", (e) => {
     if (e.code === "Space") {
         e.preventDefault();
-        if (gameState === "enemywarning") {
-            gameState = "playing";
-            lastStepTime = performance.now();
-            return;
-        }
+        if (gameState === "enemywarning") return; // ignore Space on warning screen
         if (!keys[e.code]) spaceJustPressed = true; // only on initial press
     }
     keys[e.code] = true;
@@ -3501,7 +3497,7 @@ function renderEnemyWarning() {
 
     // "PRESS ENTER TO CONTINUE" blinking
     if (Math.floor(enemyWarningBlink / 30) % 2 === 0) {
-        const hintText = "PRESS ENTER OR SPACE";
+        const hintText = "PRESS ENTER TO CONTINUE";
         const hintScale = 3;
         const hintW = hintText.length * hintScale * 1.1;
         const hintX = bannerX + bannerW / 2 - hintW / 2;
