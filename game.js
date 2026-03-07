@@ -19,6 +19,7 @@ let stepMs = (60 / bpm / 4) * 1000; // 16th-note interval
 
 // ---- Level Definitions ----
 const LEVELS = [
+    // ---- BEGINNER: Rock/Pop foundations (Levels 1-4) ----
     {
         name: "Level 1",
         // Start: basic kick + snare backbeat
@@ -28,7 +29,7 @@ const LEVELS = [
             [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // S
             [true, false,false,false, false,false,false,false, true, false,false,false, false,false,false,false], // K
         ],
-        // Goal: add 8th-note hats + extra kick pickup
+        // Goal: add 8th-note hats + kick pickup
         pattern: [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // O
             [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // H
@@ -40,27 +41,137 @@ const LEVELS = [
     },
     {
         name: "Level 2",
-        // Add hats and more complex kick/snare
+        // Open hat accent + snare ghost note
         pattern: [
-            [false,false,false,false, false,false,false,false, false,false,true, false, false,false,false,false],
-            [true, false,true, false, true, false,true, false, true, false,false,false, true, false,true, false],
-            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,true ],
-            [true, false,false,false, false,false,true, false, true, false,false,false, false,false,false,false],
+            [false,false,false,false, false,false,false,false, false,false,true, false, false,false,false,false], // O
+            [true, false,true, false, true, false,true, false, true, false,false,false, true, false,true, false], // H
+            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,true ], // S
+            [true, false,false,false, false,false,true, false, true, false,false,false, false,false,false,false], // K
+        ],
+        goblinSpeed: 0.55,
+        timerSeconds: 99,
+    },
+    {
+        name: "Level 3",
+        // More open hats + kick variation
+        pattern: [
+            [false,false,true, false, false,false,false,false, false,false,true, false, false,false,false,false], // O
+            [true, false,false,false, true, false,true, false, true, false,false,false, true, false,true, false], // H
+            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,true ], // S
+            [true, false,false,false, false,false,true, false, true, false,false,false, false,false,true, false], // K
         ],
         goblinSpeed: 0.6,
         timerSeconds: 99,
     },
     {
-        name: "Level 3",
-        // Full funky beat
+        name: "Level 4",
+        // Full rock beat with syncopated kick
         pattern: [
-            [false,false,true, false, false,false,true, false, false,false,true, false, false,false,true, false],
-            [true, false,false,true,  true, false,false,true,  true, false,false,true,  true, false,false,true ],
-            [false,false,false,false, true, false,false,true,  false,false,false,false, true, false,false,false],
-            [true, false,false,true,  false,false,true, false, true, true, false,false, false,false,true, false],
+            [false,false,true, false, false,false,true, false, false,false,true, false, false,false,true, false], // O
+            [true, false,false,false, true, false,false,false, true, false,false,false, true, false,false,false], // H
+            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,true ], // S
+            [true, false,false,true,  false,false,true, false, true, false,false,false, false,false,true, false], // K
+        ],
+        goblinSpeed: 0.65,
+        timerSeconds: 99,
+    },
+    // ---- INTERMEDIATE: Funk/Soul grooves (Levels 5-8) ----
+    {
+        name: "Level 5",
+        // Funk foundation — offbeat hats, syncopated kick
+        pattern: [
+            [false,false,true, false, false,false,true, false, false,false,true, false, false,false,true, false], // O
+            [true, false,false,true,  true, false,false,true,  true, false,false,true,  true, false,false,true ], // H
+            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // S
+            [true, false,false,true,  false,false,true, false, true, false,false,false, false,false,true, false], // K
+        ],
+        goblinSpeed: 0.7,
+        timerSeconds: 99,
+    },
+    {
+        name: "Level 6",
+        // Funky ghost snares
+        pattern: [
+            [false,false,true, false, false,false,true, false, false,false,true, false, false,false,true, false], // O
+            [true, false,false,true,  true, false,false,true,  true, false,false,true,  true, false,false,true ], // H
+            [false,false,false,false, true, false,false,true,  false,false,false,false, true, false,false,false], // S
+            [true, false,false,true,  false,false,true, false, true, true, false,false, false,false,true, false], // K
         ],
         goblinSpeed: 0.75,
         timerSeconds: 99,
+    },
+    {
+        name: "Level 7",
+        // Disco-funk with driving hats
+        pattern: [
+            [false,false,true, false, false,false,true, false, false,false,true, false, false,false,true, false], // O
+            [true, true, false,true,  true, true, false,true,  true, true, false,true,  true, true, false,true ], // H
+            [false,false,false,false, true, false,false,true,  false,false,false,false, true, false,false,false], // S
+            [true, false,false,true,  false,false,true, false, true, true, false,false, false,false,true, false], // K
+        ],
+        goblinSpeed: 0.8,
+        timerSeconds: 99,
+    },
+    {
+        name: "Level 8",
+        // Syncopated soul groove
+        pattern: [
+            [false,false,true, false, false,false,true, false, false,false,true, false, false,true, true, false], // O
+            [true, true, false,true,  true, true, false,true,  true, true, false,true,  true, false,false,true ], // H
+            [false,false,false,true,  true, false,false,true,  false,false,false,false, true, false,false,true ], // S
+            [true, false,false,true,  false,false,true, false, true, true, false,false, false,false,true, false], // K
+        ],
+        goblinSpeed: 0.85,
+        timerSeconds: 90,
+    },
+    // ---- ADVANCED: Breakbeats & Complex patterns (Levels 9-12) ----
+    {
+        name: "Level 9",
+        // Breakbeat intro — broken kick pattern
+        pattern: [
+            [false,false,true, false, false,true, true, false, false,false,true, false, false,true, true, false], // O
+            [true, true, false,true,  true, false,false,true,  true, true, false,true,  true, false,false,true ], // H
+            [false,false,false,true,  true, false,false,true,  false,false,false,false, true, false,true, true ], // S
+            [true, false,true, true,  false,false,true, false, true, true, false,false, false,false,true, false], // K
+        ],
+        goblinSpeed: 0.9,
+        timerSeconds: 90,
+    },
+    {
+        name: "Level 10",
+        // Dense breakbeat — lots of hits
+        pattern: [
+            [false,true, true, false, false,true, true, false, false,true, true, false, false,true, true, false], // O
+            [true, false,false,true,  true, false,false,true,  true, false,false,true,  true, false,false,true ], // H
+            [false,false,true, true,  true, false,false,true,  false,false,true, false, true, false,true, true ], // S
+            [true, false,true, true,  false,true, true, false, true, true, false,false, false,true, true, false], // K
+        ],
+        goblinSpeed: 0.95,
+        timerSeconds: 85,
+    },
+    {
+        name: "Level 11",
+        // Amen-style break
+        pattern: [
+            [false,true, true, false, true, true, true, false, false,true, true, false, true, true, true, false], // O
+            [true, false,false,true,  false,false,false,true,  true, false,false,true,  false,false,false,true ], // H
+            [false,false,true, true,  true, false,true, true,  false,false,true, false, true, false,true, true ], // S
+            [true, true, false,true,  false,true, true, false, true, true, false,true,  false,true, true, false], // K
+        ],
+        goblinSpeed: 1.0,
+        timerSeconds: 80,
+    },
+    {
+        name: "Level 12",
+        // The ultimate beat — nearly every step active
+        pattern: [
+            [false,true, true, true,  true, true, true, false, false,true, true, true,  true, true, true, false], // O
+            [true, false,false,false,  false,false,false,true,  true, false,false,false,  false,false,false,true ], // H
+            [true, false,true, true,  true, false,true, true,  true, false,true, true,  true, false,true, true ], // S
+            [true, true, true, true,  false,true, true, true,  true, true, true, false, true, true, true, true ], // K
+        ],
+        goblinSpeed: 1.1,
+        timerSeconds: 75,
     },
 ];
 
@@ -1988,8 +2099,6 @@ function render() {
     for (let c = 1; c < COLS - 1; c++) {
         const bulbY = TILE + 6;
         const bulbX = c * TILE + TILE / 2;
-        // Wire
-        drawRect(c * TILE, TILE + 5, TILE, 1, "#6a5a1a");
         // Bulb
         const bulbColors = ["#F6CC60", "#BF7538", "#BFCDC0", "#EBEBE3"];
         const bulbCol = bulbColors[c % bulbColors.length];
