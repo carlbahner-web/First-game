@@ -11,164 +11,190 @@ const SCALE = 3;
 const COLS = 22;           // room width in tiles
 const ROWS = 18;           // room height in tiles
 const GRID_COLS = 16;      // sequencer steps
-const GRID_ROWS = 4;       // drum channels
+const GRID_ROWS = 6;       // max drum channels (O, H, S, K, B, T)
 const GRID_X = 3;          // grid start tile-x
 const GRID_Y = 4;          // grid start tile-y
+const GAP_AFTER_ROW = 3;   // 1-tile visual gap after row 3 (Kick)
 let bpm = 120;
 let stepMs = (60 / bpm / 4) * 1000; // 16th-note interval
 
 // ---- Level Definitions ----
 const LEVELS = [
-    // ---- BEGINNER: Rock/Pop foundations (Levels 1-4) ----
+    // ---- BEGINNER: Rock/Pop foundations (Levels 1-4) — 4 rows: O,H,S,K ----
     {
         name: "Level 1",
-        // Start: basic kick + snare backbeat
+        activeRows: 4,
         startPattern: [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // O
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // H
             [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // S
             [true, false,false,false, false,false,false,false, true, false,false,false, false,false,false,false], // K
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // B
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
         ],
-        // Goal: add 8th-note hats + kick pickup
         pattern: [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // O
             [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // H
             [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // S
             [true, false,false,false, false,false,false,false, true, false,true, false, false,false,false,false], // K
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // B
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
         ],
         goblinSpeed: 0.5,
         timerSeconds: 99,
     },
     {
         name: "Level 2",
-        // Open hat accent + snare ghost note
+        activeRows: 4,
         pattern: [
             [false,false,false,false, false,false,false,false, false,false,true, false, false,false,false,false], // O
             [true, false,true, false, true, false,true, false, true, false,false,false, true, false,true, false], // H
             [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,true ], // S
             [true, false,false,false, false,false,true, false, true, false,false,false, false,false,false,false], // K
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // B
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
         ],
         goblinSpeed: 0.55,
         timerSeconds: 99,
     },
     {
         name: "Level 3",
-        // More open hats + kick variation
+        activeRows: 4,
         pattern: [
             [false,false,true, false, false,false,false,false, false,false,true, false, false,false,false,false], // O
             [true, false,false,false, true, false,true, false, true, false,false,false, true, false,true, false], // H
             [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,true ], // S
             [true, false,false,false, false,false,true, false, true, false,false,false, false,false,true, false], // K
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // B
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
         ],
         goblinSpeed: 0.6,
         timerSeconds: 99,
     },
     {
         name: "Level 4",
-        // Full rock beat with syncopated kick
+        activeRows: 4,
         pattern: [
             [false,false,true, false, false,false,true, false, false,false,true, false, false,false,true, false], // O
             [true, false,false,false, true, false,false,false, true, false,false,false, true, false,false,false], // H
             [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,true ], // S
             [true, false,false,true,  false,false,true, false, true, false,false,false, false,false,true, false], // K
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // B
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
         ],
         goblinSpeed: 0.65,
         timerSeconds: 99,
     },
-    // ---- INTERMEDIATE: Funk/Soul grooves (Levels 5-8) ----
+    // ---- INTERMEDIATE: Funk/Soul grooves (Levels 5-8) — 5 rows: +Cowbell ----
     {
         name: "Level 5",
-        // Funk foundation — offbeat hats, syncopated kick
+        activeRows: 5,
         pattern: [
             [false,false,true, false, false,false,true, false, false,false,true, false, false,false,true, false], // O
             [true, false,false,true,  true, false,false,true,  true, false,false,true,  true, false,false,true ], // H
             [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // S
             [true, false,false,true,  false,false,true, false, true, false,false,false, false,false,true, false], // K
+            [true, false,false,false, true, false,false,false, true, false,false,false, true, false,false,false], // B — quarter-note cowbell
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
         ],
         goblinSpeed: 0.7,
         timerSeconds: 99,
     },
     {
         name: "Level 6",
-        // Funky ghost snares
+        activeRows: 5,
         pattern: [
             [false,false,true, false, false,false,true, false, false,false,true, false, false,false,true, false], // O
             [true, false,false,true,  true, false,false,true,  true, false,false,true,  true, false,false,true ], // H
             [false,false,false,false, true, false,false,true,  false,false,false,false, true, false,false,false], // S
             [true, false,false,true,  false,false,true, false, true, true, false,false, false,false,true, false], // K
+            [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // B — 8th-note cowbell
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
         ],
         goblinSpeed: 0.75,
         timerSeconds: 99,
     },
     {
         name: "Level 7",
-        // Disco-funk with driving hats
+        activeRows: 5,
         pattern: [
             [false,false,true, false, false,false,true, false, false,false,true, false, false,false,true, false], // O
             [true, true, false,true,  true, true, false,true,  true, true, false,true,  true, true, false,true ], // H
             [false,false,false,false, true, false,false,true,  false,false,false,false, true, false,false,false], // S
             [true, false,false,true,  false,false,true, false, true, true, false,false, false,false,true, false], // K
+            [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // B
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
         ],
         goblinSpeed: 0.8,
         timerSeconds: 99,
     },
     {
         name: "Level 8",
-        // Syncopated soul groove
+        activeRows: 5,
         pattern: [
             [false,false,true, false, false,false,true, false, false,false,true, false, false,true, true, false], // O
             [true, true, false,true,  true, true, false,true,  true, true, false,true,  true, false,false,true ], // H
             [false,false,false,true,  true, false,false,true,  false,false,false,false, true, false,false,true ], // S
             [true, false,false,true,  false,false,true, false, true, true, false,false, false,false,true, false], // K
+            [true, false,true, true,  true, false,true, true,  true, false,true, true,  true, false,true, false], // B — syncopated cowbell
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
         ],
         goblinSpeed: 0.85,
         timerSeconds: 90,
     },
-    // ---- ADVANCED: Breakbeats & Complex patterns (Levels 9-12) ----
+    // ---- ADVANCED: Breakbeats (Levels 9-12) — 6 rows: +Tom ----
     {
         name: "Level 9",
-        // Breakbeat intro — broken kick pattern
+        activeRows: 6,
         pattern: [
             [false,false,true, false, false,true, true, false, false,false,true, false, false,true, true, false], // O
             [true, true, false,true,  true, false,false,true,  true, true, false,true,  true, false,false,true ], // H
             [false,false,false,true,  true, false,false,true,  false,false,false,false, true, false,true, true ], // S
             [true, false,true, true,  false,false,true, false, true, true, false,false, false,false,true, false], // K
+            [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // B
+            [false,false,false,false, false,false,false,true,  false,false,false,false, false,false,false,true ], // T — tom fills
         ],
         goblinSpeed: 0.9,
         timerSeconds: 90,
     },
     {
         name: "Level 10",
-        // Dense breakbeat — lots of hits
+        activeRows: 6,
         pattern: [
             [false,true, true, false, false,true, true, false, false,true, true, false, false,true, true, false], // O
             [true, false,false,true,  true, false,false,true,  true, false,false,true,  true, false,false,true ], // H
             [false,false,true, true,  true, false,false,true,  false,false,true, false, true, false,true, true ], // S
             [true, false,true, true,  false,true, true, false, true, true, false,false, false,true, true, false], // K
+            [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // B
+            [false,false,false,true,  false,false,false,true,  false,false,false,true,  false,false,false,true ], // T — offbeat toms
         ],
         goblinSpeed: 0.95,
         timerSeconds: 85,
     },
     {
         name: "Level 11",
-        // Amen-style break
+        activeRows: 6,
         pattern: [
             [false,true, true, false, true, true, true, false, false,true, true, false, true, true, true, false], // O
             [true, false,false,true,  false,false,false,true,  true, false,false,true,  false,false,false,true ], // H
             [false,false,true, true,  true, false,true, true,  false,false,true, false, true, false,true, true ], // S
             [true, true, false,true,  false,true, true, false, true, true, false,true,  false,true, true, false], // K
+            [true, true, true, false, true, true, true, false, true, true, true, false, true, true, true, false], // B — driving cowbell
+            [false,false,true, true,  false,false,true, true,  false,false,true, true,  false,false,true, true ], // T — tom rolls
         ],
         goblinSpeed: 1.0,
         timerSeconds: 80,
     },
     {
         name: "Level 12",
-        // The ultimate beat — nearly every step active
+        activeRows: 6,
         pattern: [
             [false,true, true, true,  true, true, true, false, false,true, true, true,  true, true, true, false], // O
-            [true, false,false,false,  false,false,false,true,  true, false,false,false,  false,false,false,true ], // H
+            [true, false,false,false, false,false,false,true,  true, false,false,false, false,false,false,true ], // H
             [true, false,true, true,  true, false,true, true,  true, false,true, true,  true, false,true, true ], // S
             [true, true, true, true,  false,true, true, true,  true, true, true, false, true, true, true, true ], // K
+            [true, true, true, true,  true, true, true, true,  true, true, true, true,  true, true, true, true ], // B — wall of cowbell
+            [true, false,true, true,  true, false,true, true,  true, false,true, true,  true, false,true, true ], // T — intense toms
         ],
         goblinSpeed: 1.1,
         timerSeconds: 75,
@@ -189,7 +215,7 @@ const PAL = {
     floor:     "#345558",
     floorAlt:  "#2f4f53",
     gridOff:   "#2a4448",
-    gridOn:    ["#BF7538", "#F6CC60", "#BFCDC0", "#EBEBE3"], // per-row colors
+    gridOn:    ["#BF7538", "#F6CC60", "#BFCDC0", "#EBEBE3", "#E86A6A", "#6AB8E8"], // per-row colors (O,H,S,K,B,T)
     gridBorder:"#3A6168",
     playhead:  "#F6CC60",
     player:    "#EBEBE3",
@@ -491,10 +517,12 @@ function playClang(time) {
 }
 
 const drumFns = [
-    (t) => playHihat(t, true),
-    (t) => playHihat(t, false),
-    (t) => playSnare(t),
-    (t) => playKick(t),
+    (t) => playHihat(t, true),   // 0: Open Hat
+    (t) => playHihat(t, false),  // 1: Closed Hat
+    (t) => playSnare(t),         // 2: Snare
+    (t) => playKick(t),          // 3: Kick
+    (t) => playCowbell(t),       // 4: Cowbell (Bell)
+    (t) => playTom(t),           // 5: Tom
 ];
 
 // ---- Sequencer State ----
@@ -525,9 +553,9 @@ const DANCER_PALETTES = [
 // ---- Player State ----
 const player = {
     x: (GRID_X + 7) * TILE,   // current position (smooth, pixel-level)
-    y: (GRID_Y + GRID_ROWS + 1) * TILE,
+    y: (GRID_Y + LEVELS[0].activeRows + 1) * TILE,
     destX: (GRID_X + 7) * TILE, // movement destination
-    destY: (GRID_Y + GRID_ROWS + 1) * TILE,
+    destY: (GRID_Y + LEVELS[0].activeRows + 1) * TILE,
     w: TILE,
     h: TILE,
     dir: 0,        // 0=down, 1=up, 2=left, 3=right
@@ -821,10 +849,34 @@ function getSwordBox() {
     }
 }
 
+// ---- Helper: active rows for current level ----
+function getActiveRows() {
+    return currentLevel < LEVELS.length ? LEVELS[currentLevel].activeRows : 6;
+}
+
+// ---- Helper: pixel Y for a grid row (accounts for visual gap after Kick) ----
+function rowPixelY(r) {
+    return (GRID_Y + r + (r > GAP_AFTER_ROW ? 1 : 0)) * TILE;
+}
+
+// ---- Helper: tile Y of the bottom of the active grid ----
+function gridBottomTileY() {
+    const ar = getActiveRows();
+    return GRID_Y + ar + (ar > GAP_AFTER_ROW + 1 ? 1 : 0);
+}
+
+// ---- Helper: convert tile Y back to grid row (inverse of rowPixelY) ----
+function tileYToRow(tileY) {
+    const offset = tileY - GRID_Y;
+    if (offset <= GAP_AFTER_ROW) return offset;       // rows 0-3
+    if (offset === GAP_AFTER_ROW + 1) return -1;      // gap tile (no row)
+    return offset - 1;                                  // rows 4-5
+}
+
 // ---- Helper: check if a tile is blocked by solid objects ----
 function isTileBlockedByObjects(tileX, tileY) {
     // Level + Kill counter + Timer area (4 tiles below step numbers)
-    const counterTileY = GRID_Y + GRID_ROWS + 5;
+    const counterTileY = gridBottomTileY() + 5;
     if (tileX >= GRID_X && tileX <= GRID_X + 8 && tileY === counterTileY) return true;
     return false;
 }
@@ -848,7 +900,7 @@ function aabb(a, b) {
 function getBlockRect(row, col) {
     return {
         x: (GRID_X + col) * TILE,
-        y: (GRID_Y + row) * TILE,
+        y: rowPixelY(row),
         w: TILE,
         h: TILE,
     };
@@ -914,8 +966,8 @@ function update(dt) {
             case 3: targetTileX += 1; break; // right
         }
         const col = targetTileX - GRID_X;
-        const row = targetTileY - GRID_Y;
-        if (row >= 0 && row < GRID_ROWS && col >= 0 && col < GRID_COLS) {
+        const row = tileYToRow(targetTileY);
+        if (row >= 0 && row < getActiveRows() && col >= 0 && col < GRID_COLS) {
             grid[row][col] = !grid[row][col];
             p.swordHit = true;
             // play a toggle blip
@@ -1407,8 +1459,8 @@ function update(dt) {
 
             // Check if on a grid cell to sabotage
             const gc = Math.round(goblin.x / TILE) - GRID_X;
-            const gr = Math.round(goblin.y / TILE) - GRID_Y;
-            if (gr >= 0 && gr < GRID_ROWS && gc >= 0 && gc < GRID_COLS) {
+            const gr = tileYToRow(Math.round(goblin.y / TILE));
+            if (gr >= 0 && gr < getActiveRows() && gc >= 0 && gc < GRID_COLS) {
                 if (gc === goblin.targetCol && gr === goblin.targetRow) {
                     grid[gr][gc] = !grid[gr][gc];
                     cellFlash[gr][gc] = 30; // trigger red flash
@@ -1424,13 +1476,13 @@ function update(dt) {
             // Pick next destination tile
             goblin.moveSteps++;
             if (goblin.targetRow < 0 || goblin.moveSteps > 5) {
-                goblin.targetRow = Math.floor(Math.random() * GRID_ROWS);
+                goblin.targetRow = Math.floor(Math.random() * getActiveRows());
                 goblin.targetCol = Math.floor(Math.random() * GRID_COLS);
                 goblin.moveSteps = 0;
             }
 
             const goalX = (GRID_X + goblin.targetCol) * TILE;
-            const goalY = (GRID_Y + goblin.targetRow) * TILE;
+            const goalY = rowPixelY(goblin.targetRow);
             const gdx = goalX - goblin.x;
             const gdy = goalY - goblin.y;
 
@@ -1555,7 +1607,8 @@ function update(dt) {
             ensureAudio();
             const t = audioCtx ? audioCtx.currentTime : 0;
             if (audioCtx) {
-                for (let r = 0; r < GRID_ROWS; r++) {
+                const ar = getActiveRows();
+                for (let r = 0; r < ar; r++) {
                     if (grid[r][currentStep]) drumFns[r](t);
                 }
             }
@@ -1668,9 +1721,9 @@ function resetGame() {
                 grid[r][c] = LEVELS[0].startPattern[r][c];
     }
 
-    // Reset player
+    // Reset player (currentLevel is set to 0 below, so use level 0 activeRows)
     player.x = (GRID_X + 7) * TILE;
-    player.y = (GRID_Y + GRID_ROWS + 1) * TILE;
+    player.y = (GRID_Y + LEVELS[0].activeRows + 1) * TILE;
     player.destX = player.x;
     player.destY = player.y;
     player.dir = 0;
@@ -1717,7 +1770,8 @@ function resetGame() {
 function checkLevelComplete() {
     if (currentLevel >= LEVELS.length) return false;
     const target = LEVELS[currentLevel].pattern;
-    for (let r = 0; r < GRID_ROWS; r++)
+    const ar = getActiveRows();
+    for (let r = 0; r < ar; r++)
         for (let c = 0; c < GRID_COLS; c++)
             if (grid[r][c] !== target[r][c]) return false;
     return true;
@@ -1787,9 +1841,9 @@ function advanceLevel() {
         for (let c = 0; c < GRID_COLS; c++)
             grid[r][c] = prevPattern[r][c];
 
-    // Reset player position
+    // Reset player position (below the active grid)
     player.x = (GRID_X + 7) * TILE;
-    player.y = (GRID_Y + GRID_ROWS + 1) * TILE;
+    player.y = (gridBottomTileY() + 1) * TILE;
     player.destX = player.x;
     player.destY = player.y;
     player.attacking = false;
@@ -1831,15 +1885,15 @@ function spawnCatapultGoblin() {
     const spawnY = cave.tileY === ROWS - 1 ? (ROWS - 2) * TILE : cave.tileY * TILE;
 
     // Pick a random grid cell as boulder target
-    const tRow = Math.floor(Math.random() * GRID_ROWS);
+    const tRow = Math.floor(Math.random() * getActiveRows());
     const tCol = Math.floor(Math.random() * GRID_COLS);
 
     // Calculate a stop position: 2 tiles outside the grid area
     let stopX, stopY;
     if (cave.tileX === 0) {
-        stopX = TILE * 2; stopY = (GRID_Y + tRow) * TILE;
+        stopX = TILE * 2; stopY = rowPixelY(tRow);
     } else if (cave.tileX === COLS - 1) {
-        stopX = (COLS - 3) * TILE; stopY = (GRID_Y + tRow) * TILE;
+        stopX = (COLS - 3) * TILE; stopY = rowPixelY(tRow);
     } else {
         stopX = (GRID_X + tCol) * TILE; stopY = (ROWS - 3) * TILE;
     }
@@ -1919,7 +1973,7 @@ function updateCatapultGoblin() {
             // Fire!
             cg.phase = "firing";
             const targetPixelX = (GRID_X + cg.targetCol) * TILE + TILE / 2;
-            const targetPixelY = (GRID_Y + cg.targetRow) * TILE + TILE / 2;
+            const targetPixelY = rowPixelY(cg.targetRow) + TILE / 2;
             cg.boulder = {
                 startX: cg.x + cg.w / 2,
                 startY: cg.y - 4, // launch from top of catapult
@@ -1942,7 +1996,7 @@ function updateCatapultGoblin() {
                 for (let dc = -1; dc <= 1; dc++) {
                     const r = cr + dr;
                     const c = cc + dc;
-                    if (r >= 0 && r < GRID_ROWS && c >= 0 && c < GRID_COLS) {
+                    if (r >= 0 && r < getActiveRows() && c >= 0 && c < GRID_COLS) {
                         grid[r][c] = !grid[r][c];
                         cellFlash[r][c] = 30;
                     }
@@ -1975,7 +2029,7 @@ function updateCatapultGoblin() {
 
             // Check if player is in the 3x3 impact zone — GAME OVER
             const pGridCol = Math.round(player.x / TILE) - GRID_X;
-            const pGridRow = Math.round(player.y / TILE) - GRID_Y;
+            const pGridRow = tileYToRow(Math.round(player.y / TILE));
             if (pGridCol >= cc - 1 && pGridCol <= cc + 1 && pGridRow >= cr - 1 && pGridRow <= cr + 1) {
                 // Player crushed by boulder!
                 triggerGameOver();
@@ -2120,19 +2174,20 @@ function render() {
         drawRect(lx - 1, ly, 3, 3, bulbColors[(c + 2) % bulbColors.length]);
     }
 
-    // Row labels (O, H, S, K) in the column just left of the first beat block
-    const ROW_LETTERS = ["O", "H", "S", "K"];
-    for (let r = 0; r < GRID_ROWS; r++) {
+    // Row labels (O, H, S, K, B, T) in the column just left of the first beat block
+    const ROW_LETTERS = ["O", "H", "S", "K", "B", "T"];
+    const ar = getActiveRows();
+    for (let r = 0; r < ar; r++) {
         const lx = (GRID_X - 1) * TILE + 3;
-        const ly = (GRID_Y + r) * TILE + 12;
+        const ly = rowPixelY(r) + 12;
         drawText(ROW_LETTERS[r], lx, ly, PAL.gridOn[r], 7);
     }
 
     // Grid blocks
-    for (let r = 0; r < GRID_ROWS; r++) {
+    for (let r = 0; r < ar; r++) {
         for (let c = 0; c < GRID_COLS; c++) {
             const bx = (GRID_X + c) * TILE;
-            const by = (GRID_Y + r) * TILE;
+            const by = rowPixelY(r);
             const on = grid[r][c];
 
             // Block background
@@ -2202,7 +2257,8 @@ function render() {
         const px = (GRID_X + currentStep) * TILE;
         ctx.fillStyle = PAL.playhead;
         ctx.globalAlpha = 0.25;
-        ctx.fillRect(px * SCALE, GRID_Y * TILE * SCALE, TILE * SCALE, GRID_ROWS * TILE * SCALE);
+        const playheadH = (gridBottomTileY() - GRID_Y) * TILE;
+        ctx.fillRect(px * SCALE, GRID_Y * TILE * SCALE, TILE * SCALE, playheadH * SCALE);
         ctx.globalAlpha = 1.0;
         // Top marker
         drawRect(px + 2, (GRID_Y - 1) * TILE + 10, TILE - 4, 4, PAL.playhead);
@@ -2212,12 +2268,12 @@ function render() {
     for (let c = 0; c < GRID_COLS; c++) {
         const num = String(c + 1);
         const tx = (GRID_X + c) * TILE + (c < 9 ? 4 : 1);
-        drawText(num, tx, (GRID_Y + GRID_ROWS) * TILE + 8, c === currentStep && playing ? PAL.playhead : "#5a8a8f", 3);
+        drawText(num, tx, gridBottomTileY() * TILE + 8, c === currentStep && playing ? PAL.playhead : "#5a8a8f", 3);
     }
 
     // Level counter (left) and Kill counter (right)
     {
-        const kcY = (GRID_Y + GRID_ROWS) * TILE + 16 + 4 * TILE;
+        const kcY = gridBottomTileY() * TILE + 16 + 4 * TILE;
         const baseX = GRID_X * TILE;
         const pxSz = 3;
         const digitW = (3 * pxSz + pxSz); // per digit width
@@ -2806,9 +2862,9 @@ function drawCatapultGoblin() {
                 for (let dc = -1; dc <= 1; dc++) {
                     const r = cg.targetRow + dr;
                     const c = cg.targetCol + dc;
-                    if (r >= 0 && r < GRID_ROWS && c >= 0 && c < GRID_COLS) {
+                    if (r >= 0 && r < getActiveRows() && c >= 0 && c < GRID_COLS) {
                         const tx = (GRID_X + c) * TILE;
-                        const ty = (GRID_Y + r) * TILE;
+                        const ty = rowPixelY(r);
                         ctx.fillStyle = "#ff4400";
                         ctx.globalAlpha = 0.35;
                         ctx.fillRect(tx * SCALE, ty * SCALE, TILE * SCALE, TILE * SCALE);
