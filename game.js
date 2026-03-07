@@ -353,7 +353,7 @@ if (LEVELS[0] && LEVELS[0].startPattern) {
         for (let c = 0; c < GRID_COLS; c++)
             grid[r][c] = LEVELS[0].startPattern[r][c];
 }
-const playing = true; // always playing — use RESET block to clear
+const playing = true;
 let currentStep = 0;
 let lastStepTime = 0;
 
@@ -496,12 +496,6 @@ function confirmHighScore() {
     startTitleDrums();
 }
 
-// ---- Control Blocks (physical buttons in the room) ----
-const CTRL_BLOCKS = {
-    tempoUp:   { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + GRID_ROWS + 1, label: "BPM+", color: "#E86A6A" },
-    tempoDown: { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + GRID_ROWS + 4, label: "BPM-", color: "#6AB8E8" },
-    reset:     { tileX: GRID_X + GRID_COLS + 1, tileY: GRID_Y + GRID_ROWS + 5, label: "RESET", color: "#BF7538" },
-};
 
 // ---- Pixel-art digit bitmaps (3 wide × 5 tall) ----
 const DIGIT_BITMAPS = [
@@ -674,16 +668,6 @@ function getSwordBox() {
 
 // ---- Helper: check if a tile is blocked by solid objects ----
 function isTileBlockedByObjects(tileX, tileY) {
-    // Control blocks (tempoUp, tempoDown, reset)
-    for (const key of ["tempoUp", "tempoDown", "reset"]) {
-        const blk = CTRL_BLOCKS[key];
-        if (tileX === blk.tileX && tileY === blk.tileY) return true;
-    }
-    // BPM display between tempo arrows (same x column, rows between tempoUp and tempoDown)
-    const ctrlX = CTRL_BLOCKS.tempoUp.tileX;
-    const bpmTop = CTRL_BLOCKS.tempoUp.tileY + 1;
-    const bpmBot = CTRL_BLOCKS.tempoDown.tileY - 1;
-    if (tileX === ctrlX && tileY >= bpmTop && tileY <= bpmBot) return true;
     // Level + Kill counter + Timer area (4 tiles below step numbers)
     const counterTileY = GRID_Y + GRID_ROWS + 5;
     if (tileX >= GRID_X && tileX <= GRID_X + 8 && tileY === counterTileY) return true;
@@ -797,85 +781,6 @@ function update(dt) {
             }
         }
 
-        // Check control blocks
-        const td = CTRL_BLOCKS.tempoDown;
-        const tu = CTRL_BLOCKS.tempoUp;
-        const rs = CTRL_BLOCKS.reset;
-        if (targetTileX === td.tileX && targetTileY === td.tileY) {
-            ensureAudio();
-            bpm = Math.max(40, bpm - 1);
-            stepMs = (60 / bpm / 4) * 1000;
-            p.swordHit = true;
-        }
-        if (targetTileX === tu.tileX && targetTileY === tu.tileY) {
-            ensureAudio();
-            bpm = Math.min(300, bpm + 1);
-            stepMs = (60 / bpm / 4) * 1000;
-            p.swordHit = true;
-        }
-        if (targetTileX === rs.tileX && targetTileY === rs.tileY) {
-            for (let r = 0; r < GRID_ROWS; r++)
-                for (let c = 0; c < GRID_COLS; c++)
-                    grid[r][c] = false;
-            p.swordHit = true;
-            // play a clear sound
-            if (audioCtx) {
-                const now = audioCtx.currentTime;
-                const osc = audioCtx.createOscillator();
-                const g = audioCtx.createGain();
-                osc.type = "sine";
-                osc.frequency.setValueAtTime(800, now);
-                osc.frequency.exponentialRampToValueAtTime(200, now + 0.2);
-                g.gain.setValueAtTime(0.1, now);
-                g.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-                osc.connect(g); g.connect(audioCtx.destination);
-                osc.start(now); osc.stop(now + 0.2);
-            }
-        }
-
-        // Easter egg: hit the timer panel to lose 5 seconds with a bonk!
-        const timerTileY = GRID_Y + GRID_ROWS + 5;
-        if (targetTileY === timerTileY && targetTileX >= GRID_X + 6 && targetTileX <= GRID_X + 8) {
-            p.swordHit = true;
-            levelTimer = Math.max(0, levelTimer - 5 * 60); // remove 5 seconds
-            ensureAudio();
-            if (audioCtx) {
-                const now = audioCtx.currentTime;
-                // Crazy bonk sound — descending metallic clang with wobble
-                const bonk = audioCtx.createOscillator();
-                const bg = audioCtx.createGain();
-                bonk.type = "square";
-                bonk.frequency.setValueAtTime(600, now);
-                bonk.frequency.exponentialRampToValueAtTime(80, now + 0.3);
-                bg.gain.setValueAtTime(0.2, now);
-                bg.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-                bonk.connect(bg); bg.connect(audioCtx.destination);
-                bonk.start(now); bonk.stop(now + 0.35);
-                // Metallic ring overtone
-                const ring = audioCtx.createOscillator();
-                const rg = audioCtx.createGain();
-                ring.type = "triangle";
-                ring.frequency.setValueAtTime(1200, now);
-                ring.frequency.linearRampToValueAtTime(900, now + 0.15);
-                rg.gain.setValueAtTime(0.1, now);
-                rg.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-                ring.connect(rg); rg.connect(audioCtx.destination);
-                ring.start(now); ring.stop(now + 0.2);
-                // Low thud underneath
-                const thud = audioCtx.createOscillator();
-                const tg2 = audioCtx.createGain();
-                thud.type = "sine";
-                thud.frequency.setValueAtTime(90, now);
-                tg2.gain.setValueAtTime(0.15, now);
-                tg2.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-                thud.connect(tg2); tg2.connect(audioCtx.destination);
-                thud.start(now); thud.stop(now + 0.15);
-            }
-            if (levelTimer <= 0) {
-                triggerGameOver();
-                return;
-            }
-        }
 
         // Check goblin hit (always check, even if we hit a grid block)
         const gobTileX = Math.round(goblin.x / TILE);
@@ -2218,74 +2123,6 @@ function render() {
             tick.connect(tg); tg.connect(audioCtx.destination);
             tick.start(now); tick.stop(now + 0.08);
         }
-    }
-
-    // Control blocks
-    for (const key of ["tempoUp", "tempoDown", "reset"]) {
-        const blk = CTRL_BLOCKS[key];
-        const bx = blk.tileX * TILE;
-        const by = blk.tileY * TILE;
-        // Block body
-        drawRect(bx, by, TILE, TILE, "#2a4448");
-        drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, blk.color);
-        // 3D effect
-        ctx.fillStyle = "rgba(255,255,255,0.25)";
-        ctx.fillRect((bx + 1) * SCALE, (by + 1) * SCALE, (TILE - 2) * SCALE, 2 * SCALE);
-        ctx.fillStyle = "rgba(0,0,0,0.25)";
-        ctx.fillRect((bx + 1) * SCALE, (by + TILE - 3) * SCALE, (TILE - 2) * SCALE, 2 * SCALE);
-
-        if (key === "tempoDown") {
-            // Down arrow icon
-            const iconColor = "#2a4448";
-            drawRect(bx + 6, by + 3, 4, 6, iconColor);          // shaft
-            ctx.fillStyle = iconColor;
-            ctx.beginPath();
-            ctx.moveTo((bx + 3) * SCALE, (by + 9) * SCALE);
-            ctx.lineTo((bx + 13) * SCALE, (by + 9) * SCALE);
-            ctx.lineTo((bx + 8) * SCALE, (by + 14) * SCALE);
-            ctx.fill();
-        } else if (key === "tempoUp") {
-            // Up arrow icon
-            const iconColor = "#2a4448";
-            drawRect(bx + 6, by + 7, 4, 6, iconColor);          // shaft
-            ctx.fillStyle = iconColor;
-            ctx.beginPath();
-            ctx.moveTo((bx + 3) * SCALE, (by + 7) * SCALE);
-            ctx.lineTo((bx + 13) * SCALE, (by + 7) * SCALE);
-            ctx.lineTo((bx + 8) * SCALE, (by + 2) * SCALE);
-            ctx.fill();
-        } else {
-            // Reset icon: X mark
-            const iconColor = "#2a4448";
-            // Diagonal line top-left to bottom-right
-            drawRect(bx + 4, by + 4, 2, 2, iconColor);
-            drawRect(bx + 6, by + 6, 2, 2, iconColor);
-            drawRect(bx + 8, by + 8, 2, 2, iconColor);
-            drawRect(bx + 10, by + 10, 2, 2, iconColor);
-            // Diagonal line top-right to bottom-left
-            drawRect(bx + 10, by + 4, 2, 2, iconColor);
-            drawRect(bx + 8, by + 6, 2, 2, iconColor);
-            drawRect(bx + 6, by + 8, 2, 2, iconColor);
-            drawRect(bx + 4, by + 10, 2, 2, iconColor);
-        }
-    }
-
-    // Large pixel-art BPM display between tempo arrows
-    {
-        const bpmBlockX = CTRL_BLOCKS.tempoUp.tileX * TILE;
-        const bpmAreaTop = (CTRL_BLOCKS.tempoUp.tileY + 1) * TILE;
-        const bpmAreaBottom = CTRL_BLOCKS.tempoDown.tileY * TILE;
-        const bpmCenterX = bpmBlockX + TILE / 2;
-        const bpmCenterY = (bpmAreaTop + bpmAreaBottom) / 2;
-        // Background panel
-        drawRect(bpmBlockX, bpmAreaTop, TILE, bpmAreaBottom - bpmAreaTop, "#1a3438");
-        drawRect(bpmBlockX + 1, bpmAreaTop + 1, TILE - 2, bpmAreaBottom - bpmAreaTop - 2, "#243e42");
-        // Digits
-        const pxSize = 3;
-        const digitH = 5 * pxSize;
-        drawPixelDigits(bpm, bpmCenterX, bpmCenterY - digitH / 2 - 4, "#F6CC60", pxSize);
-        // "BPM" label below digits
-        drawText("BPM", bpmCenterX - 7, bpmCenterY + digitH / 2 + 2, "#8ab0b4", 3);
     }
 
     // Dancers (rendered behind player/goblin)
