@@ -378,6 +378,7 @@ const player = {
     w: TILE,
     h: TILE,
     dir: 0,        // 0=down, 1=up, 2=left, 3=right
+    turnDelay: 0,  // frames to wait after turning before moving
     frame: 0,
     frameTimer: 0,
     attacking: false,
@@ -1087,6 +1088,10 @@ function update(dt) {
             if (p.dir !== wantDir) {
                 // Turn only, don't move
                 p.dir = wantDir;
+                p.turnDelay = 10;
+            } else if (p.turnDelay > 0) {
+                // Wait after turning before allowing movement
+                p.turnDelay--;
             } else {
             // Already facing this way — move one tile
             let nx = p.x, ny = p.y;
@@ -1487,6 +1492,7 @@ function resetGame() {
     player.destX = player.x;
     player.destY = player.y;
     player.dir = 0;
+    player.turnDelay = 0;
     player.frame = 0;
     player.attacking = false;
     player.attackTimer = 0;
