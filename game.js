@@ -781,8 +781,8 @@ function update(dt) {
 
                 // Hurt text
                 const hurtTexts = goblin.hp === 2
-                    ? ["OW!", "HEY!", "RUDE!", "OUCH!"]
-                    : ["STOP IT!", "AAAGH!", "IM MAD!", "GRRRR!"];
+                    ? ["OW FUCK!", "HEY!", "RUDE!", "OUCH!"]
+                    : ["OW FUCK!", "AAAGH!", "IM MAD!", "STOP IT!"];
                 const ht = hurtTexts[Math.floor(Math.random() * hurtTexts.length)];
                 const htCol = goblin.hp === 2 ? "#ffaacc" : "#ff6666";
                 deathText = { x: goblin.x - 8, y: goblin.y - 8, timer: 40, text: ht, color: htCol, scale: 4 };
@@ -1706,7 +1706,7 @@ function render() {
     for (let r = 0; r < GRID_ROWS; r++) {
         const lx = (GRID_X - 1) * TILE + 3;
         const ly = (GRID_Y + r) * TILE + 12;
-        drawText(ROW_LETTERS[r], lx, ly, PAL.gridOn[r], 5);
+        drawText(ROW_LETTERS[r], lx, ly, PAL.gridOn[r], 7);
     }
 
     // Grid blocks
@@ -2485,7 +2485,7 @@ function renderTitleScreen() {
     ctx.globalAlpha = 1;
 
     // === Centered Logo ===
-    const centerY = H / 2 - 50;
+    const centerY = H / 2 - 65;
 
     // "REVENGE OF THE" smaller above
     const logoColor1 = "#BF7538";
@@ -2714,28 +2714,31 @@ function renderStoryScreen() {
 
     // Story text — silly backstory
     const storyLines = [
-        { text: "Long ago, sick beats echoed through", color: "#BFCDC0", scale: 3, gap: 8 },
-        { text: "the hills and valleys of", color: "#BFCDC0", scale: 3, gap: 8 },
-        { text: "STUDIOLAND", color: "#F6CC60", scale: 6, gap: 10 },
-        { text: "and the people danced.", color: "#BFCDC0", scale: 3, gap: 10 },
-        { text: "But on one dark day,", color: "#BFCDC0", scale: 3, gap: 8 },
-        { text: "the GOBLINS got jealous.", color: "#66cc66", scale: 3, gap: 8 },
-        { text: "Now they sneak in and", color: "#BFCDC0", scale: 3, gap: 8 },
-        { text: "MESS UP YOUR BEATS.", color: "#ff6666", scale: 4, gap: 10 },
-        { text: "It's time for a brave soul to", color: "#BFCDC0", scale: 3, gap: 8 },
-        { text: "stop them once and for all!", color: "#BFCDC0", scale: 3, gap: 12 },
-        { text: "You are the DJ, and you have a sword.", color: "#F6CC60", scale: 3, gap: 10 },
-        { text: "Time to get stabbin'.", color: "#E86A6A", scale: 4, gap: 0 },
+        { text: "Sick beats ruled STUDIOLAND", color: "#F6CC60", scale: 5, gap: 14 },
+        { text: "and the people danced.", color: "#BFCDC0", scale: 5, gap: 16 },
+        { text: "Then the GOBLINS got jealous", color: "#66cc66", scale: 5, gap: 14 },
+        { text: "and MESSED UP YOUR BEATS.", color: "#ff6666", scale: 5, gap: 16 },
+        { text: "You are the DJ.", color: "#BFCDC0", scale: 5, gap: 14 },
+        { text: "You have a sword.", color: "#F6CC60", scale: 5, gap: 14 },
+        { text: "Time to get stabbin'.", color: "#E86A6A", scale: 6, gap: 0 },
     ];
 
-    let textY = 12;
+    // Calculate total height to vertically center the story block
+    let totalTextH = 0;
+    for (let i = 0; i < storyLines.length; i++) {
+        totalTextH += storyLines[i].scale + (i < storyLines.length - 1 ? storyLines[i].gap : 0);
+    }
+    const charY_story = H - 48; // match charY used below for characters
+    const availableH = charY_story - 20; // top margin of 20
+    let textY = Math.max(10, 20 + (availableH - totalTextH) / 2);
+
     for (let i = 0; i < storyLines.length; i++) {
         const line = storyLines[i];
         const textW = line.text.length * line.scale;
         const tx = W / 2 - textW / 2;
         // Fade in lines sequentially based on storyBlink
-        const fadeStart = i * 15; // each line fades in 15 frames after the last
-        const alpha = Math.min(1, Math.max(0, (storyBlink - fadeStart) / 20));
+        const fadeStart = i * 20; // each line fades in 20 frames after the last
+        const alpha = Math.min(1, Math.max(0, (storyBlink - fadeStart) / 25));
         ctx.globalAlpha = alpha;
         drawText(line.text, tx, textY, line.color, line.scale);
         ctx.globalAlpha = 1;
@@ -2983,7 +2986,7 @@ function renderGameOverScreen() {
     if (gameOverTimer >= 75 && gameOverTimer < 600) {
         const textAlpha = gameOverTimer >= 540 ? Math.max(0, 1 - (gameOverTimer - 540) / 60) : Math.min(1, (gameOverTimer - 75) / 30);
         ctx.globalAlpha = textAlpha;
-        const shitText = "well... shit.";
+        const shitText = "ummmmm RUDE!";
         const shitW = shitText.length * 5;
         // Position below the player
         const textY = player.y + player.h + 20;
