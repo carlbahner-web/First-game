@@ -2689,7 +2689,7 @@ function renderTitleScreen() {
     const subFontSize = 4;
     ctx.font = `${subFontSize * SCALE}px monospace`;
     const subMeasured = ctx.measureText(subTitle).width;
-    const subY = H / 2 - 80;
+    const subY = H / 2 - 150;
     // Draw each letter with wobble, centered as a group
     const subStartX = ((W * SCALE) - subMeasured) / (2 * SCALE);
     const subCharW = subMeasured / (SCALE * subTitle.length);
@@ -2704,7 +2704,7 @@ function renderTitleScreen() {
     ctx.font = `${bigFontSize * SCALE}px monospace`;
     const grooveMeasured = ctx.measureText(grooveText).width;
     const grooveCharW = grooveMeasured / (SCALE * grooveText.length);
-    const grooveY = subY + 14;
+    const grooveY = H / 2 - 66;
     const grooveStartX = ((W * SCALE) - grooveMeasured) / (2 * SCALE);
     for (let i = 0; i < grooveText.length; i++) {
         const charX = grooveStartX + i * grooveCharW;
@@ -2729,7 +2729,7 @@ function renderTitleScreen() {
     }
 
     // Pixel art goblin face below logo
-    const faceX = W / 2 - 24;
+    const faceX = W / 2 - 18;
     const faceY = gobY + 40;
     const fp = 3;
     drawRect(faceX + 2*fp, faceY, 4*fp, fp, "#44aa44");
