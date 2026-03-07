@@ -17,6 +17,43 @@ const GRID_Y = 4;          // grid start tile-y
 let bpm = 120;
 let stepMs = (60 / bpm / 4) * 1000; // 16th-note interval
 
+// ---- Level Definitions ----
+const LEVELS = [
+    {
+        name: "Level 1",
+        // Simple kick + snare backbeat
+        pattern: [
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false],
+            [true, false,false,false, false,false,false,false, true, false,false,false, false,false,false,false],
+        ],
+        goblinSpeed: 0.5,
+    },
+    {
+        name: "Level 2",
+        // Add hats and more complex kick/snare
+        pattern: [
+            [false,false,false,false, false,false,false,false, false,false,true, false, false,false,false,false],
+            [true, false,true, false, true, false,true, false, true, false,false,false, true, false,true, false],
+            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,true ],
+            [true, false,false,false, false,false,true, false, true, false,false,false, false,false,false,false],
+        ],
+        goblinSpeed: 0.6,
+    },
+    {
+        name: "Level 3",
+        // Full funky beat
+        pattern: [
+            [false,false,true, false, false,false,true, false, false,false,true, false, false,false,true, false],
+            [true, false,false,true,  true, false,false,true,  true, false,false,true,  true, false,false,true ],
+            [false,false,false,false, true, false,false,true,  false,false,false,false, true, false,false,false],
+            [true, false,false,true,  false,false,true, false, true, true, false,false, false,false,true, false],
+        ],
+        goblinSpeed: 0.75,
+    },
+];
+
 canvas.width = COLS * TILE * SCALE;
 canvas.height = ROWS * TILE * SCALE;
 ctx.imageSmoothingEnabled = false;
@@ -390,7 +427,10 @@ let catapultSpawnedThisCycle = false; // prevents re-spawning catapult after it 
 //   boulder: null | { startX, startY, targetX, targetY, progress } }
 
 let gamePaused = false;
-let gameState = "title"; // "title", "story", "playing", "gameover", "highscore"
+let gameState = "title"; // "title", "story", "playing", "gameover", "highscore", "levelcomplete"
+let currentLevel = 0;
+let levelComplete = false;
+let levelCelebrateTimer = 0;
 let titleBlink = 0; // blink timer for "PRESS ENTER"
 
 // ---- High Score System ----
@@ -517,6 +557,11 @@ window.addEventListener("keydown", (e) => {
             gameState = "playing";
             return;
         }
+        if (gameState === "levelcomplete" && levelCelebrateTimer > 120) {
+            advanceLevel();
+            return;
+        }
+        if (gameState === "levelcomplete") return; // let celebration play
         if (gameState === "gameover" && gameOverTimer > 180) {
             // Let player skip the rest of the sad song
             if (scoreQualifies(finalScore)) {
@@ -701,6 +746,10 @@ function update(dt) {
                 g.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
                 osc.connect(g); g.connect(audioCtx.destination);
                 osc.start(now); osc.stop(now + 0.06);
+            }
+            // Check if level pattern is now complete
+            if (!levelComplete && checkLevelComplete()) {
+                triggerLevelComplete();
             }
         }
 
@@ -1076,7 +1125,8 @@ function update(dt) {
             // Every 3rd goblin is elite (pink & fast), but not on catapult turns
             goblin.elite = (killCount % 3 === 2 && killCount % 6 !== 5);
             goblin.hp = goblin.elite ? 3 : 1;
-            goblin.speed = goblin.elite ? 0.75 : 0.5;
+            const baseSpeed = currentLevel < LEVELS.length ? LEVELS[currentLevel].goblinSpeed : 0.5;
+            goblin.speed = goblin.elite ? baseSpeed * 1.5 : baseSpeed;
             // Pick a random cave to spawn from
             goblin.spawnCave = Math.floor(Math.random() * CAVES.length);
             const cave = CAVES[goblin.spawnCave];
@@ -1154,6 +1204,10 @@ function update(dt) {
                     cellFlash[gr][gc] = 30; // trigger red flash
                     if (audioCtx) playSabotageSound(audioCtx.currentTime);
                     goblin.targetRow = -1;
+                    // Check if goblin accidentally completed the pattern
+                    if (!levelComplete && checkLevelComplete()) {
+                        triggerLevelComplete();
+                    }
                 }
             }
 
@@ -1365,12 +1419,10 @@ function playSadSong() {
 }
 
 function resetGame() {
-    // Reset grid to starter beat
+    // Reset grid to empty (levels define the target pattern)
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
             grid[r][c] = false;
-    grid[3][0] = true; grid[3][8] = true;
-    grid[2][4] = true; grid[2][12] = true;
 
     // Reset player
     player.x = (GRID_X + 7) * TILE;
@@ -1406,6 +1458,85 @@ function resetGame() {
     lastStepTime = performance.now();
     lastTime = 0;
     frameAccum = 0;
+
+    // Reset level progression
+    currentLevel = 0;
+    levelComplete = false;
+    levelCelebrateTimer = 0;
+}
+
+// ---- Level Progression ----
+function checkLevelComplete() {
+    if (currentLevel >= LEVELS.length) return false;
+    const target = LEVELS[currentLevel].pattern;
+    for (let r = 0; r < GRID_ROWS; r++)
+        for (let c = 0; c < GRID_COLS; c++)
+            if (grid[r][c] !== target[r][c]) return false;
+    return true;
+}
+
+function triggerLevelComplete() {
+    levelComplete = true;
+    levelCelebrateTimer = 0;
+    gameState = "levelcomplete";
+    // Kill the goblin so it stops sabotaging
+    goblin.dead = true;
+    goblin.respawnTimer = 9999;
+    // Kill catapult goblin too
+    catapultGoblin = null;
+    // Screen flash for celebration
+    screenFlash = 20;
+}
+
+function advanceLevel() {
+    currentLevel++;
+    if (currentLevel >= LEVELS.length) {
+        // Player beat all levels — victory!
+        finalScore = killCount;
+        if (scoreQualifies(finalScore)) {
+            enterHighScoreState();
+        } else {
+            resetGame();
+            gameState = "title";
+            startTitleDrums();
+        }
+        return;
+    }
+    // Reset grid to empty
+    for (let r = 0; r < GRID_ROWS; r++)
+        for (let c = 0; c < GRID_COLS; c++)
+            grid[r][c] = false;
+
+    // Reset player position
+    player.x = (GRID_X + 7) * TILE;
+    player.y = (GRID_Y + GRID_ROWS + 1) * TILE;
+    player.destX = player.x;
+    player.destY = player.y;
+    player.attacking = false;
+    player.attackTimer = 0;
+    player.swordHit = false;
+
+    // Reset goblin with new speed
+    goblin.dead = true;
+    goblin.respawnTimer = 300;
+    catapultGoblin = null;
+    catapultSpawnedThisCycle = false;
+
+    // DON'T reset: dancers, killCount (persist across levels)
+
+    // Reset effects
+    deathParticles = [];
+    deathText = null;
+    screenFlash = 0;
+    screenShake = 0;
+    hitFreeze = 0;
+    levelComplete = false;
+    levelCelebrateTimer = 0;
+    for (let r = 0; r < GRID_ROWS; r++)
+        for (let c = 0; c < GRID_COLS; c++)
+            cellFlash[r][c] = 0;
+
+    gameState = "playing";
 }
 
 // ---- Catapult Goblin Logic ----
@@ -1532,6 +1663,10 @@ function updateCatapultGoblin() {
                         cellFlash[r][c] = 30;
                     }
                 }
+            }
+            // Check if boulder accidentally completed the pattern
+            if (!levelComplete && checkLevelComplete()) {
+                triggerLevelComplete();
             }
             // Impact effects
             ensureAudio();
@@ -1701,6 +1836,13 @@ function render() {
         drawRect(lx - 1, ly, 3, 3, bulbColors[(c + 2) % bulbColors.length]);
     }
 
+    // Level indicator above the grid
+    if (currentLevel < LEVELS.length) {
+        const lvlText = "LEVEL " + (currentLevel + 1);
+        const lvlW = lvlText.length * 3;
+        drawText(lvlText, GRID_X * TILE, (GRID_Y - 1) * TILE + 4, "#8ab0b4", 3);
+    }
+
     // Row labels (O, H, S, K) in the column just left of the first beat block
     const ROW_LETTERS = ["O", "H", "S", "K"];
     for (let r = 0; r < GRID_ROWS; r++) {
@@ -1744,6 +1886,36 @@ function render() {
                     drawText("!", bx + 5, by - 4, "#ff4444", 4);
                 }
                 cellFlash[r][c]--;
+            }
+
+            // Target pattern indicator
+            if (currentLevel < LEVELS.length) {
+                const target = LEVELS[currentLevel].pattern[r][c];
+                if (target && !on) {
+                    // Needs to be ON — draw pulsing outline
+                    const pulse = 0.3 + Math.sin(performance.now() * 0.003) * 0.15;
+                    ctx.globalAlpha = pulse;
+                    const rowCol = PAL.gridOn[r];
+                    drawRect(bx + 1, by + 1, TILE - 2, 1, rowCol);
+                    drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, rowCol);
+                    drawRect(bx + 1, by + 1, 1, TILE - 2, rowCol);
+                    drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, rowCol);
+                    // Small dot in center
+                    drawRect(bx + 6, by + 6, 4, 4, rowCol);
+                    ctx.globalAlpha = 1.0;
+                } else if (!target && on) {
+                    // Needs to be OFF — draw red X indicator
+                    ctx.globalAlpha = 0.4 + Math.sin(performance.now() * 0.004) * 0.1;
+                    drawRect(bx + 3, by + 3, 2, 2, "#ff4444");
+                    drawRect(bx + 5, by + 5, 2, 2, "#ff4444");
+                    drawRect(bx + 7, by + 7, 2, 2, "#ff4444");
+                    drawRect(bx + 9, by + 9, 2, 2, "#ff4444");
+                    drawRect(bx + 9, by + 3, 2, 2, "#ff4444");
+                    drawRect(bx + 7, by + 5, 2, 2, "#ff4444");
+                    drawRect(bx + 5, by + 7, 2, 2, "#ff4444");
+                    drawRect(bx + 3, by + 9, 2, 2, "#ff4444");
+                    ctx.globalAlpha = 1.0;
+                }
             }
         }
     }
@@ -2925,6 +3097,97 @@ function renderHighScoreEntry() {
     drawText(hint, W / 2 - hintW / 2, H - 18, "#666666", 2);
 }
 
+function renderLevelComplete() {
+    const W = COLS * TILE;
+    const H = ROWS * TILE;
+
+    levelCelebrateTimer++;
+
+    // Keep the sequencer playing so you hear your completed beat
+    const now = performance.now();
+    if (now - lastStepTime >= stepMs) {
+        lastStepTime = now;
+        if (audioCtx) {
+            for (let r = 0; r < GRID_ROWS; r++) {
+                if (grid[r][currentStep]) {
+                    playDrumSound(r, audioCtx.currentTime);
+                }
+            }
+        }
+        currentStep = (currentStep + 1) % GRID_COLS;
+    }
+
+    // Render the game world underneath
+    render();
+
+    // Dark overlay
+    const overlayAlpha = Math.min(0.6, levelCelebrateTimer / 60);
+    ctx.fillStyle = "#000";
+    ctx.globalAlpha = overlayAlpha;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = 1.0;
+
+    // "LEVEL X COMPLETE!" text
+    if (levelCelebrateTimer > 30) {
+        const textAlpha = Math.min(1, (levelCelebrateTimer - 30) / 30);
+        ctx.globalAlpha = textAlpha;
+
+        const levelText = "LEVEL " + (currentLevel + 1) + " COMPLETE!";
+        const textScale = 6;
+        const textW = levelText.length * textScale;
+        const tx = W / 2 - textW / 2;
+        const ty = H / 2 - 20;
+        const bounce = Math.sin(levelCelebrateTimer * 0.05) * 2;
+
+        // Shadow
+        drawText(levelText, tx + 1, ty + bounce + 1, "#000000", textScale);
+        // Main
+        drawText(levelText, tx, ty + bounce, "#F6CC60", textScale);
+
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Celebration particles
+    if (levelCelebrateTimer % 5 === 0 && levelCelebrateTimer < 240) {
+        const colors = ["#F6CC60", "#ff88bb", "#66cc66", "#6AB8E8", "#EBEBE3", "#BF7538"];
+        for (let i = 0; i < 5; i++) {
+            deathParticles.push({
+                x: Math.random() * W,
+                y: -5,
+                vx: (Math.random() - 0.5) * 1.5,
+                vy: Math.random() * 1.5 + 0.5,
+                life: 80 + Math.random() * 40,
+                color: colors[Math.floor(Math.random() * colors.length)],
+                size: 2 + Math.random() * 3,
+                sparkle: Math.random() > 0.5,
+            });
+        }
+    }
+
+    // Update & render particles
+    for (let i = deathParticles.length - 1; i >= 0; i--) {
+        const p = deathParticles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life--;
+        if (p.life <= 0) { deathParticles.splice(i, 1); continue; }
+        ctx.globalAlpha = Math.min(1, p.life / 20);
+        const sz = p.sparkle && Math.sin(levelCelebrateTimer * 0.2 + i) > 0 ? p.size * 1.5 : p.size;
+        drawRect(p.x, p.y, sz, sz, p.color);
+    }
+    ctx.globalAlpha = 1.0;
+
+    // "PRESS ENTER" to continue
+    if (levelCelebrateTimer > 120) {
+        const blink = levelCelebrateTimer % 60 < 40;
+        if (blink) {
+            const pressText = "PRESS ENTER TO CONTINUE";
+            const pressW = pressText.length * 3;
+            drawText(pressText, W / 2 - pressW / 2, H / 2 + 20, "#EBEBE3", 3);
+        }
+    }
+}
+
 function renderGameOverScreen() {
     const W = COLS * TILE;
     const H = ROWS * TILE;
@@ -3027,6 +3290,8 @@ function gameLoop(timestamp) {
             renderTitleScreen();
         } else if (gameState === "story") {
             renderStoryScreen();
+        } else if (gameState === "levelcomplete") {
+            renderLevelComplete();
         } else if (gameState === "gameover") {
             renderGameOverScreen();
         } else if (gameState === "highscore") {
