@@ -1989,7 +1989,7 @@ function render() {
         const bulbY = TILE + 6;
         const bulbX = c * TILE + TILE / 2;
         // Wire
-        drawRect(c * TILE, TILE + 5, TILE, 1, "#2a2a2a");
+        drawRect(c * TILE, TILE + 5, TILE, 1, "#6a5a1a");
         // Bulb
         const bulbColors = ["#F6CC60", "#BF7538", "#BFCDC0", "#EBEBE3"];
         const bulbCol = bulbColors[c % bulbColors.length];
@@ -2009,13 +2009,6 @@ function render() {
         const ly = (ROWS - 1) * TILE + 2;
         const bulbColors = ["#F6CC60", "#BF7538", "#BFCDC0", "#EBEBE3"];
         drawRect(lx - 1, ly, 3, 3, bulbColors[(c + 2) % bulbColors.length]);
-    }
-
-    // Level indicator above the grid
-    if (currentLevel < LEVELS.length) {
-        const lvlText = "LEVEL " + (currentLevel + 1);
-        const lvlW = lvlText.length * 3;
-        drawText(lvlText, GRID_X * TILE, (GRID_Y - 1) * TILE + 4, "#8ab0b4", 3);
     }
 
     // Row labels (O, H, S, K) in the column just left of the first beat block
