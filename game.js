@@ -2186,13 +2186,13 @@ function drawPlayer() {
     const py = p.y;
     const bob = p.frame % 2 === 1 ? 1 : 0;
 
-    // Body
-    drawRect(px + 3, py + 2 - bob, 10, 10, PAL.player);
+    // Body (blue tunic)
+    drawRect(px + 3, py + 2 - bob, 10, 10, "#3a6a8a");
     // Darker sides
-    drawRect(px + 3, py + 2 - bob, 2, 10, PAL.playerDark);
-    drawRect(px + 11, py + 2 - bob, 2, 10, PAL.playerDark);
-    // Head
-    drawRect(px + 4, py - 2 - bob, 8, 6, PAL.player);
+    drawRect(px + 3, py + 2 - bob, 2, 10, "#2a4a6a");
+    drawRect(px + 11, py + 2 - bob, 2, 10, "#2a4a6a");
+    // Head (skin tone, wider to match story screen)
+    drawRect(px + 2, py - 4 - bob, 12, 7, "#F0D0B0");
     // Eyes
     const eyeDir = [
         [0, 2],  // down
@@ -2201,15 +2201,15 @@ function drawPlayer() {
         [1, 0],  // right
     ][p.dir];
     if (p.dir !== 1) { // don't draw eyes facing up
-        drawRect(px + 5 + eyeDir[0], py + bob + eyeDir[1], 2, 2, "#1f3a3f");
-        drawRect(px + 9 + eyeDir[0], py + bob + eyeDir[1], 2, 2, "#1f3a3f");
+        drawRect(px + 5 + eyeDir[0], py - 2 - bob + eyeDir[1], 2, 2, "#1a1a2e");
+        drawRect(px + 9 + eyeDir[0], py - 2 - bob + eyeDir[1], 2, 2, "#1a1a2e");
     }
-    // Hair/hat
-    drawRect(px + 3, py - 3 - bob, 10, 3, "#BF7538");
+    // Hair/hat (brown)
+    drawRect(px + 2, py - 5 - bob, 12, 3, "#8a5a2a");
     // Feet
     const walkOffset = p.frame === 1 ? 2 : p.frame === 3 ? -2 : 0;
-    drawRect(px + 4 + walkOffset, py + 12, 3, 3, PAL.playerDark);
-    drawRect(px + 9 - walkOffset, py + 12, 3, 3, PAL.playerDark);
+    drawRect(px + 4 + walkOffset, py + 12, 3, 2, "#2a4a6a");
+    drawRect(px + 9 - walkOffset, py + 12, 3, 2, "#2a4a6a");
 }
 
 function drawSword() {
