@@ -506,9 +506,12 @@ window.addEventListener("keydown", (e) => {
         if (gameState === "title") {
             ensureAudio();
             gameState = "story";
+            storyBlink = 0;
+            startStoryDrums();
             return;
         }
         if (gameState === "story") {
+            stopStoryDrums();
             gameState = "playing";
             return;
         }
@@ -2465,6 +2468,93 @@ function renderTitleScreen() {
 
 // ---- Story Screen (page 2: backstory + instructions + characters) ----
 let storyBlink = 0;
+let storyDrumTimer = null;
+let storyDrumStarted = false;
+
+// Marching snare cadence — plays a looping military-style pattern during story
+function startStoryDrums() {
+    if (storyDrumStarted) return;
+    storyDrumStarted = true;
+    ensureAudio();
+    if (!audioCtx) return;
+
+    const bpm = 120;
+    const beat = 60 / bpm; // 0.5s per beat
+    const sixteenth = beat / 4;
+
+    // Classic marching cadence pattern (16th note grid, 2 bars):
+    // Beat:   1 e & a 2 e & a 3 e & a 4 e & a | 1 e & a 2 e & a 3 e & a 4 e & a
+    // Hits:   X . X X X . X X X . X . X X X . | X . X X X . X X X X . . X . . .
+    const pattern = [
+        1,0,1,1, 1,0,1,1, 1,0,1,0, 1,1,1,0,
+        1,0,1,1, 1,0,1,1, 1,1,0,0, 1,0,0,0,
+    ];
+    // Accent pattern (louder hits on main beats)
+    const accents = [
+        3,0,1,1, 2,0,1,1, 2,0,1,0, 1,1,2,0,
+        3,0,1,1, 2,0,1,1, 2,1,0,0, 3,0,0,0,
+    ];
+
+    function scheduleLoop() {
+        if (!storyDrumStarted || !audioCtx) return;
+        const now = audioCtx.currentTime;
+        const loopLen = pattern.length * sixteenth;
+
+        for (let i = 0; i < pattern.length; i++) {
+            if (pattern[i]) {
+                const t = now + i * sixteenth;
+                const vol = accents[i] / 3; // 0.33 to 1.0
+
+                // Snare hit with varying volume
+                const bufferSize = audioCtx.sampleRate * 0.1;
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let s = 0; s < bufferSize; s++) data[s] = Math.random() * 2 - 1;
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buffer;
+                const noiseGain = audioCtx.createGain();
+                noiseGain.gain.setValueAtTime(0.25 * vol, t);
+                noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+                const filt = audioCtx.createBiquadFilter();
+                filt.type = "highpass";
+                filt.frequency.value = 1200;
+                noise.connect(filt);
+                filt.connect(noiseGain);
+                noiseGain.connect(audioCtx.destination);
+                noise.start(t);
+                noise.stop(t + 0.1);
+
+                // Snare body (lower tone for accented hits)
+                if (accents[i] >= 2) {
+                    const osc = audioCtx.createOscillator();
+                    const oscGain = audioCtx.createGain();
+                    osc.type = "triangle";
+                    osc.frequency.setValueAtTime(200, t);
+                    osc.frequency.exponentialRampToValueAtTime(80, t + 0.06);
+                    oscGain.gain.setValueAtTime(0.2 * vol, t);
+                    oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+                    osc.connect(oscGain);
+                    oscGain.connect(audioCtx.destination);
+                    osc.start(t);
+                    osc.stop(t + 0.06);
+                }
+            }
+        }
+
+        // Schedule next loop iteration
+        storyDrumTimer = setTimeout(scheduleLoop, loopLen * 900); // slightly early to avoid gaps
+    }
+
+    scheduleLoop();
+}
+
+function stopStoryDrums() {
+    storyDrumStarted = false;
+    if (storyDrumTimer !== null) {
+        clearTimeout(storyDrumTimer);
+        storyDrumTimer = null;
+    }
+}
 function renderStoryScreen() {
     const W = COLS * TILE;
     const H = ROWS * TILE;
