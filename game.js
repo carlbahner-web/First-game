@@ -3138,15 +3138,8 @@ function renderLevelComplete() {
         currentStep = (currentStep + 1) % GRID_COLS;
     }
 
-    // Render the game world underneath
-    render();
-
-    // Dark overlay
-    const overlayAlpha = Math.min(0.6, levelCelebrateTimer / 60);
-    ctx.fillStyle = "#000";
-    ctx.globalAlpha = overlayAlpha;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.globalAlpha = 1.0;
+    // Dark background (avoid calling render() to prevent errors)
+    drawRect(0, 0, COLS * TILE, ROWS * TILE, "#1a2a2e");
 
     // "LEVEL X COMPLETE!" text
     if (levelCelebrateTimer > 30) {
@@ -3307,19 +3300,23 @@ function gameLoop(timestamp) {
     if (frameAccum >= FRAME_MS) {
         frameAccum -= FRAME_MS;
         if (frameAccum > FRAME_MS) frameAccum = 0; // prevent spiral
-        if (gameState === "title") {
-            renderTitleScreen();
-        } else if (gameState === "story") {
-            renderStoryScreen();
-        } else if (gameState === "levelcomplete") {
-            renderLevelComplete();
-        } else if (gameState === "gameover") {
-            renderGameOverScreen();
-        } else if (gameState === "highscore") {
-            renderHighScoreEntry();
-        } else {
-            update(dt);
-            render();
+        try {
+            if (gameState === "title") {
+                renderTitleScreen();
+            } else if (gameState === "story") {
+                renderStoryScreen();
+            } else if (gameState === "levelcomplete") {
+                renderLevelComplete();
+            } else if (gameState === "gameover") {
+                renderGameOverScreen();
+            } else if (gameState === "highscore") {
+                renderHighScoreEntry();
+            } else {
+                update(dt);
+                render();
+            }
+        } catch (e) {
+            console.error("Game loop error:", e);
         }
     }
     requestAnimationFrame(gameLoop);
