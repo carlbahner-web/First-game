@@ -382,6 +382,7 @@ const player = {
     attackDuration: 12,
     swordHit: false, // did this swing already toggle a block?
     speed: 2.0, // pixels per frame at 60fps — snappy tile-to-tile glide
+    blinkTimer: 0, // counts up each frame, blinks at 180
 };
 
 // ---- Caves (goblin spawn points) ----
@@ -1131,6 +1132,10 @@ function update(dt) {
             p.frame = (p.frame + 1) % 4;
         }
     }
+
+    // Player blink timer
+    p.blinkTimer++;
+    if (p.blinkTimer >= 186) p.blinkTimer = 0; // 180 open + 6 closed
 
     // Update goblin
     if (goblin.dead) {
@@ -2280,7 +2285,8 @@ function drawPlayer() {
     drawRect(px + 11, py + 2 - bob, 2, 10, "#2a4a6a");
     // Head (skin tone, wider to match story screen)
     drawRect(px + 2, py - 4 - bob, 12, 7, "#F0D0B0");
-    // Eyes
+    // Eyes (blink every 180 frames — closed for 6 frames)
+    const isBlinking = p.blinkTimer >= 180;
     const eyeDir = [
         [0, 2],  // down
         [0, -2], // up
@@ -2288,8 +2294,14 @@ function drawPlayer() {
         [1, 0],  // right
     ][p.dir];
     if (p.dir !== 1) { // don't draw eyes facing up
-        drawRect(px + 5 + eyeDir[0], py - 2 - bob + eyeDir[1], 2, 2, "#1a1a2e");
-        drawRect(px + 9 + eyeDir[0], py - 2 - bob + eyeDir[1], 2, 2, "#1a1a2e");
+        if (isBlinking) {
+            // Closed eyes — thin horizontal line
+            drawRect(px + 4 + eyeDir[0], py - 1 - bob + eyeDir[1], 3, 1, "#1a1a2e");
+            drawRect(px + 9 + eyeDir[0], py - 1 - bob + eyeDir[1], 3, 1, "#1a1a2e");
+        } else {
+            drawRect(px + 5 + eyeDir[0], py - 2 - bob + eyeDir[1], 2, 2, "#1a1a2e");
+            drawRect(px + 9 + eyeDir[0], py - 2 - bob + eyeDir[1], 2, 2, "#1a1a2e");
+        }
     }
     // Hair/hat (brown)
     drawRect(px + 2, py - 5 - bob, 12, 3, "#8a5a2a");
@@ -3435,9 +3447,10 @@ function renderEnemyWarning() {
         const nameY = titleY + 30;
         drawText(nameText, nameX, nameY, "#FF88CC", nameScale);
 
-        // Draw a little pink goblin preview (just a colored square with eyes)
+        // Draw a little pink goblin preview with bobbing animation
         const previewX = bannerX + bannerW / 2 - TILE / 2;
-        const previewY = nameY + 20;
+        const bobOffset = Math.round(Math.sin(enemyWarningBlink * 0.08) * 3);
+        const previewY = nameY + 20 + bobOffset;
         drawRect(previewX, previewY, TILE, TILE, "#D34FB5");
         drawRect(previewX + 3, previewY + 3, 4, 4, "#ffee44"); // left eye
         drawRect(previewX + TILE - 7, previewY + 3, 4, 4, "#ffee44"); // right eye
@@ -3473,9 +3486,10 @@ function renderEnemyWarning() {
         const nameY = titleY + 30;
         drawText(nameText, nameX, nameY, "#88AAFF", nameScale);
 
-        // Draw a little catapult goblin preview
+        // Draw a little catapult goblin preview with bobbing animation
         const previewX = bannerX + bannerW / 2 - TILE / 2;
-        const previewY = nameY + 20;
+        const bobOffset = Math.round(Math.sin(enemyWarningBlink * 0.08) * 3);
+        const previewY = nameY + 20 + bobOffset;
         drawRect(previewX, previewY, TILE, TILE, "#4A8A3A");
         drawRect(previewX + 3, previewY + 3, 4, 4, "#cc2222"); // left eye
         drawRect(previewX + TILE - 7, previewY + 3, 4, 4, "#cc2222"); // right eye
