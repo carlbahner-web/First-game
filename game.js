@@ -2470,6 +2470,7 @@ function renderTitleScreen() {
 let storyBlink = 0;
 let storyDrumTimer = null;
 let storyDrumStarted = false;
+let storyDrumGain = null; // master gain node to mute on stop
 
 // Marching snare cadence — plays a looping military-style pattern during story
 function startStoryDrums() {
@@ -2478,34 +2479,39 @@ function startStoryDrums() {
     ensureAudio();
     if (!audioCtx) return;
 
+    // Master gain for all drum sounds so we can cut them instantly
+    storyDrumGain = audioCtx.createGain();
+    storyDrumGain.gain.setValueAtTime(1, audioCtx.currentTime);
+    storyDrumGain.connect(audioCtx.destination);
+
     const bpm = 120;
     const beat = 60 / bpm; // 0.5s per beat
     const sixteenth = beat / 4;
 
-    // Classic marching cadence pattern (16th note grid, 2 bars):
+    // Classic marching cadence pattern (16th note grid, 2 bars of 4/4 = 32 sixteenths):
     // Beat:   1 e & a 2 e & a 3 e & a 4 e & a | 1 e & a 2 e & a 3 e & a 4 e & a
-    // Hits:   X . X X X . X X X . X . X X X . | X . X X X . X X X X . . X . . .
     const pattern = [
         1,0,1,1, 1,0,1,1, 1,0,1,0, 1,1,1,0,
         1,0,1,1, 1,0,1,1, 1,1,0,0, 1,0,0,0,
     ];
-    // Accent pattern (louder hits on main beats)
     const accents = [
         3,0,1,1, 2,0,1,1, 2,0,1,0, 1,1,2,0,
         3,0,1,1, 2,0,1,1, 2,1,0,0, 3,0,0,0,
     ];
 
+    const loopLen = pattern.length * sixteenth; // exactly 4.0s at 120bpm
+
     function scheduleLoop() {
-        if (!storyDrumStarted || !audioCtx) return;
+        if (!storyDrumStarted || !audioCtx || !storyDrumGain) return;
         const now = audioCtx.currentTime;
-        const loopLen = pattern.length * sixteenth;
+        const dest = storyDrumGain;
 
         for (let i = 0; i < pattern.length; i++) {
             if (pattern[i]) {
                 const t = now + i * sixteenth;
-                const vol = accents[i] / 3; // 0.33 to 1.0
+                const vol = accents[i] / 3;
 
-                // Snare hit with varying volume
+                // Snare noise burst
                 const bufferSize = audioCtx.sampleRate * 0.1;
                 const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
                 const data = buffer.getChannelData(0);
@@ -2520,7 +2526,7 @@ function startStoryDrums() {
                 filt.frequency.value = 1200;
                 noise.connect(filt);
                 filt.connect(noiseGain);
-                noiseGain.connect(audioCtx.destination);
+                noiseGain.connect(dest);
                 noise.start(t);
                 noise.stop(t + 0.1);
 
@@ -2534,15 +2540,15 @@ function startStoryDrums() {
                     oscGain.gain.setValueAtTime(0.2 * vol, t);
                     oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
                     osc.connect(oscGain);
-                    oscGain.connect(audioCtx.destination);
+                    oscGain.connect(dest);
                     osc.start(t);
                     osc.stop(t + 0.06);
                 }
             }
         }
 
-        // Schedule next loop iteration
-        storyDrumTimer = setTimeout(scheduleLoop, loopLen * 900); // slightly early to avoid gaps
+        // Schedule next loop after this one finishes (exact timing)
+        storyDrumTimer = setTimeout(scheduleLoop, loopLen * 1000);
     }
 
     scheduleLoop();
@@ -2553,6 +2559,12 @@ function stopStoryDrums() {
     if (storyDrumTimer !== null) {
         clearTimeout(storyDrumTimer);
         storyDrumTimer = null;
+    }
+    // Instantly silence any pre-scheduled drum hits
+    if (storyDrumGain && audioCtx) {
+        storyDrumGain.gain.setValueAtTime(0, audioCtx.currentTime);
+        storyDrumGain.disconnect();
+        storyDrumGain = null;
     }
 }
 function renderStoryScreen() {
