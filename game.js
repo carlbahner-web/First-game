@@ -1,5 +1,5 @@
 // ============================================================
-// REVENGE OF THE GROOVE GOBLINS - A 16-bit Zelda-style drum sequencer game
+// ATTACK OF THE GROOVE GOBLINS - A 16-bit Zelda-style drum sequencer game
 // ============================================================
 
 const canvas = document.getElementById("game");
@@ -2685,7 +2685,7 @@ function renderTitleScreen() {
     const bigFontSize = 20; // font size for GROOVE/GOBLINS
 
     // "REVENGE OF THE" — smaller, well above GROOVE
-    const subTitle = "REVENGE OF THE";
+    const subTitle = "ATTACK OF THE";
     const subFontSize = 4;
     ctx.font = `${subFontSize * SCALE}px monospace`;
     const subMeasured = ctx.measureText(subTitle).width;
