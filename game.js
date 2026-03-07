@@ -36,7 +36,7 @@ const LEVELS = [
             [true, false,false,false, false,false,false,false, true, false,true, false, false,false,false,false], // K
         ],
         goblinSpeed: 0.5,
-        timerSeconds: 90,
+        timerSeconds: 99,
     },
     {
         name: "Level 2",
@@ -48,7 +48,7 @@ const LEVELS = [
             [true, false,false,false, false,false,true, false, true, false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.6,
-        timerSeconds: 75,
+        timerSeconds: 99,
     },
     {
         name: "Level 3",
@@ -60,7 +60,7 @@ const LEVELS = [
             [true, false,false,true,  false,false,true, false, true, true, false,false, false,false,true, false],
         ],
         goblinSpeed: 0.75,
-        timerSeconds: 60,
+        timerSeconds: 99,
     },
 ];
 
@@ -243,30 +243,44 @@ function playDonk(time) {
 
 function playWarningDonk(time) {
     const ctx = audioCtx;
-    // Deep ominous thud — lower and longer than the attack donk
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(100, time);
-    osc.frequency.exponentialRampToValueAtTime(30, time + 0.4);
-    gain.gain.setValueAtTime(0.6, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.5);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(time);
-    osc.stop(time + 0.5);
-    // Metallic clang on top
-    const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
-    osc2.type = "square";
-    osc2.frequency.setValueAtTime(400, time);
-    osc2.frequency.exponentialRampToValueAtTime(120, time + 0.15);
-    gain2.gain.setValueAtTime(0.2, time);
-    gain2.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
-    osc2.connect(gain2);
-    gain2.connect(ctx.destination);
-    osc2.start(time);
-    osc2.stop(time + 0.2);
+    // "Dun dun dunnnnn" — three ominous descending notes
+    function playNote(freq, start, duration, vol, sustained) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(freq, start);
+        if (sustained) {
+            // Long sustain then fade for the final "dunnnnn"
+            osc.frequency.exponentialRampToValueAtTime(freq * 0.85, start + duration);
+            gain.gain.setValueAtTime(vol, start);
+            gain.gain.setValueAtTime(vol * 0.8, start + duration * 0.6);
+            gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+        } else {
+            gain.gain.setValueAtTime(vol, start);
+            gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+        }
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + duration);
+        // Add a sub-bass layer for weight
+        const sub = ctx.createOscillator();
+        const subGain = ctx.createGain();
+        sub.type = "sine";
+        sub.frequency.setValueAtTime(freq * 0.5, start);
+        subGain.gain.setValueAtTime(vol * 0.4, start);
+        subGain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+        sub.connect(subGain);
+        subGain.connect(ctx.destination);
+        sub.start(start);
+        sub.stop(start + duration);
+    }
+    // Dun (high)
+    playNote(220, time, 0.15, 0.4, false);
+    // Dun (mid)
+    playNote(185, time + 0.18, 0.15, 0.45, false);
+    // Dunnnnn (low, sustained)
+    playNote(130, time + 0.36, 0.5, 0.5, true);
 }
 
 function playSabotageSound(time) {
@@ -3863,7 +3877,7 @@ function renderTutorialScreen() {
 }
 
 function renderEnemyWarningIntro() {
-    const INTRO_FRAMES = 55;
+    const INTRO_FRAMES = 70; // ~0.78s at 90fps, matches "dun dun dunnnnn" timing
     enemyWarningIntroTimer++;
     const t = enemyWarningIntroTimer;
     const progress = Math.min(1, t / INTRO_FRAMES); // 0 to 1
@@ -3891,13 +3905,12 @@ function renderEnemyWarningIntro() {
             if (sx >= W) sx = W - 1;
             const di = (y * W + x) * 4;
             const si = (y * W + sx) * 4;
-            // Desaturate toward red/dark as transition progresses
+            // Wash out toward white as transition progresses
             const r = src[si], g = src[si + 1], b = src[si + 2];
-            const gray = (r * 0.3 + g * 0.59 + b * 0.11);
-            const desat = progress * 0.7;
-            dst[di]     = Math.round(r + (gray * 0.9 - r) * desat + progress * 30); // push red
-            dst[di + 1] = Math.round(g + (gray * 0.7 - g) * desat - progress * 15);
-            dst[di + 2] = Math.round(b + (gray * 0.7 - b) * desat - progress * 15);
+            const wash = progress * 0.7;
+            dst[di]     = Math.round(r + (255 - r) * wash);
+            dst[di + 1] = Math.round(g + (255 - g) * wash);
+            dst[di + 2] = Math.round(b + (255 - b) * wash);
             dst[di + 3] = 255;
         }
     }
@@ -3913,8 +3926,8 @@ function renderEnemyWarningIntro() {
         ctx.putImageData(shifted, Math.round(sx), Math.round(sy));
     }
 
-    // Darkening overlay that increases over time
-    ctx.fillStyle = "#000";
+    // White-out overlay that increases over time
+    ctx.fillStyle = "#FFF";
     ctx.globalAlpha = progress * 0.5;
     ctx.fillRect(0, 0, W, H);
     ctx.globalAlpha = 1;
