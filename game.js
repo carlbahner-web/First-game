@@ -2724,7 +2724,7 @@ function renderTitleScreen() {
     }
 
     // Pixel art goblin face below logo
-    const faceX = W / 2 - 18;
+    const faceX = W / 2 - 10;
     const faceY = gobY + 40;
     const fp = 3;
     drawRect(faceX + 2*fp, faceY, 4*fp, fp, "#44aa44");
