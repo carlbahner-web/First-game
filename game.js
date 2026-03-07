@@ -2327,6 +2327,39 @@ function render() {
         ctx.globalAlpha = 1.0;
     }
 
+    // Sword target tile indicator (gold corner brackets)
+    if (!player.attacking && player.x === player.destX && player.y === player.destY) {
+        const ptx = Math.round(player.x / TILE);
+        const pty = Math.round(player.y / TILE);
+        let ttx = ptx, tty = pty;
+        switch (player.dir) {
+            case 0: tty += 1; break;
+            case 1: tty -= 1; break;
+            case 2: ttx -= 1; break;
+            case 3: ttx += 1; break;
+        }
+        const tx = ttx * TILE;
+        const ty = tty * TILE;
+        const pulse = 0.25 + Math.sin(performance.now() * 0.004) * 0.15;
+        ctx.globalAlpha = pulse;
+        const c = PAL.sword; // "#F6CC60"
+        const s = 1; // bracket stroke width
+        const L = 4; // bracket arm length
+        // Top-left corner
+        drawRect(tx, ty, L, s, c);
+        drawRect(tx, ty, s, L, c);
+        // Top-right corner
+        drawRect(tx + TILE - L, ty, L, s, c);
+        drawRect(tx + TILE - s, ty, s, L, c);
+        // Bottom-left corner
+        drawRect(tx, ty + TILE - s, L, s, c);
+        drawRect(tx, ty + TILE - L, s, L, c);
+        // Bottom-right corner
+        drawRect(tx + TILE - L, ty + TILE - s, L, s, c);
+        drawRect(tx + TILE - s, ty + TILE - L, s, L, c);
+        ctx.globalAlpha = 1.0;
+    }
+
     // Player shadow
     drawRect(player.x + 2, player.y + player.h - 2, player.w - 4, 4, PAL.shadow);
 
