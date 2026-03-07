@@ -1110,6 +1110,8 @@ function update(dt) {
                 // Screen shake for impact feel
                 screenShake = 8;
                 shakeIntensity = 3;
+                // "WHAT THE...?" floating text above player
+                deathText = { x: p.x - 16, y: p.y - 14, timer: 50, text: "WHAT THE...?", color: "#FFFFFF", scale: 3 };
             }
         }
 
