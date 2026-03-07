@@ -216,6 +216,7 @@ const PAL = {
     floorAlt:  "#2f4f53",
     gridOff:   "#2a4448",
     gridOn:    ["#BF7538", "#F6CC60", "#BFCDC0", "#EBEBE3", "#E86A6A", "#6AB8E8"], // per-row colors (O,H,S,K,B,T)
+    gridX:     ["#4088C7", "#0933A0", "#403230", "#14141C", "#17959F", "#954717"], // per-row X indicator colors (complementary)
     gridBorder:"#3A6168",
     playhead:  "#F6CC60",
     player:    "#EBEBE3",
@@ -624,7 +625,7 @@ let catapultSpawnedThisCycle = false; // prevents re-spawning catapult after it 
 //   boulder: null | { startX, startY, targetX, targetY, progress } }
 
 let gamePaused = false;
-let gameState = "title"; // "title", "story", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning"
+let gameState = "title"; // "title", "story", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument-intro", "newinstrument"
 let enemyWarningType = null;   // "elite" or "catapult"
 let enemyWarningShown = { elite: false, catapult: false }; // track which warnings have been shown
 let enemyWarningBlink = 0;     // blink timer for "PRESS ENTER"
@@ -635,6 +636,11 @@ let levelComplete = false;
 let levelCelebrateTimer = 0;
 let titleBlink = 0; // blink timer for "PRESS ENTER"
 let tutorialTimer = 0; // animation frame counter for tutorial screen
+let tutorialPage = 0;  // current tutorial page (0-3)
+let newInstrumentType = null;   // "cowbell" or "tom"
+let newInstrumentTimer = 0;     // animation timer for new instrument popup
+let newInstrumentIntroTimer = 0; // transition timer before instrument popup
+let newInstrumentShown = { cowbell: false, tom: false }; // track which popups have been shown
 
 // ---- High Score System ----
 let highScores = []; // Array of { name: "AAA", score: 0 }, max 5, sorted desc
@@ -719,6 +725,7 @@ window.addEventListener("keydown", (e) => {
     if (e.code === "Space") {
         e.preventDefault();
         if (gameState === "enemywarning" || gameState === "enemywarning-intro") return; // ignore Space on warning screen
+        if (gameState === "newinstrument" || gameState === "newinstrument-intro") return; // ignore Space on instrument popup
         if (!keys[e.code]) spaceJustPressed = true; // only on initial press
     }
     keys[e.code] = true;
@@ -749,6 +756,11 @@ window.addEventListener("keydown", (e) => {
             lastStepTime = performance.now(); // reset sequencer timing
             return;
         }
+        if (gameState === "newinstrument") {
+            gameState = "playing";
+            lastStepTime = performance.now();
+            return;
+        }
         if (gameState === "title") {
             ensureAudio();
             stopTitleDrums();
@@ -761,12 +773,17 @@ window.addEventListener("keydown", (e) => {
             stopStoryDrums();
             gameState = "tutorial";
             tutorialTimer = 0;
+            tutorialPage = 0;
             return;
         }
         if (gameState === "tutorial") {
-            gameState = "playing";
-            currentStep = 0;
-            lastStepTime = performance.now();
+            tutorialPage++;
+            tutorialTimer = 0;
+            if (tutorialPage > 3) {
+                gameState = "playing";
+                currentStep = 0;
+                lastStepTime = performance.now();
+            }
             return;
         }
         if (gameState === "levelcomplete" && levelCelebrateTimer > 120) {
@@ -1741,6 +1758,7 @@ function resetGame() {
     catapultGoblin = null;
     catapultSpawnedThisCycle = false;
     enemyWarningShown = { elite: false, catapult: false };
+    newInstrumentShown = { cowbell: false, tom: false };
     levelTimer = LEVELS[0].timerSeconds * 90;
 
     // Clear dancers and effects
@@ -1873,6 +1891,26 @@ function advanceLevel() {
     // Reset sequencer timing to prevent catch-up
     currentStep = 0;
     lastStepTime = performance.now();
+
+    // Check if we need to introduce a new instrument
+    if (currentLevel === 4 && !newInstrumentShown.cowbell) {
+        newInstrumentType = "cowbell";
+        newInstrumentShown.cowbell = true;
+        newInstrumentIntroTimer = 0;
+        newInstrumentTimer = 0;
+        gameState = "newinstrument-intro";
+        if (audioCtx) playWarningDonk(audioCtx.currentTime);
+        return;
+    }
+    if (currentLevel === 8 && !newInstrumentShown.tom) {
+        newInstrumentType = "tom";
+        newInstrumentShown.tom = true;
+        newInstrumentIntroTimer = 0;
+        newInstrumentTimer = 0;
+        gameState = "newinstrument-intro";
+        if (audioCtx) playWarningDonk(audioCtx.currentTime);
+        return;
+    }
 
     gameState = "playing";
 }
@@ -2236,16 +2274,17 @@ function render() {
                     drawRect(bx + 6, by + 6, 4, 4, rowCol);
                     ctx.globalAlpha = 1.0;
                 } else if (!target && on) {
-                    // Needs to be OFF — draw red X indicator
-                    ctx.globalAlpha = 0.4 + Math.sin(performance.now() * 0.004) * 0.1;
-                    drawRect(bx + 3, by + 3, 2, 2, "#ff4444");
-                    drawRect(bx + 5, by + 5, 2, 2, "#ff4444");
-                    drawRect(bx + 7, by + 7, 2, 2, "#ff4444");
-                    drawRect(bx + 9, by + 9, 2, 2, "#ff4444");
-                    drawRect(bx + 9, by + 3, 2, 2, "#ff4444");
-                    drawRect(bx + 7, by + 5, 2, 2, "#ff4444");
-                    drawRect(bx + 5, by + 7, 2, 2, "#ff4444");
-                    drawRect(bx + 3, by + 9, 2, 2, "#ff4444");
+                    // Needs to be OFF — draw X indicator in complementary color
+                    const xCol = PAL.gridX[r];
+                    ctx.globalAlpha = 0.6 + Math.sin(performance.now() * 0.004) * 0.15;
+                    drawRect(bx + 3, by + 3, 2, 2, xCol);
+                    drawRect(bx + 5, by + 5, 2, 2, xCol);
+                    drawRect(bx + 7, by + 7, 2, 2, xCol);
+                    drawRect(bx + 9, by + 9, 2, 2, xCol);
+                    drawRect(bx + 9, by + 3, 2, 2, xCol);
+                    drawRect(bx + 7, by + 5, 2, 2, xCol);
+                    drawRect(bx + 5, by + 7, 2, 2, xCol);
+                    drawRect(bx + 3, by + 9, 2, 2, xCol);
                     ctx.globalAlpha = 1.0;
                 }
             }
@@ -3338,17 +3377,16 @@ function renderStoryScreen() {
 
     // Story text
     const storyLines = [
-        { text: "ONCE UPON A TIME,", color: "#F6CC60", scale: 5, gap: 14 },
-        { text: "SICK BEATS ECHOED THROUGH", color: "#BFCDC0", scale: 5, gap: 14 },
-        { text: "THE HILLS AND VALLEYS", color: "#BFCDC0", scale: 5, gap: 14 },
-        { text: "OF STUDIOLAND.", color: "#F6CC60", scale: 5, gap: 16 },
-        { text: "THAT IS, UNTIL THE DAY", color: "#66cc66", scale: 5, gap: 14 },
-        { text: "GOBLINS BECAME JEALOUS", color: "#66cc66", scale: 5, gap: 14 },
-        { text: "AND STARTED TO", color: "#ff6666", scale: 5, gap: 14 },
-        { text: "SABOTAGE THE MUSIC.", color: "#E86A6A", scale: 5, gap: 18 },
-        { text: "YOU ARE THE DJ,", color: "#BFCDC0", scale: 5, gap: 14 },
-        { text: "AND YOU HAVE A SWORD.", color: "#F6CC60", scale: 5, gap: 18 },
-        { text: "IT'S TIME TO GET STABBIN'!", color: "#E86A6A", scale: 6, gap: 0 },
+        { text: "ONCE UPON A TIME,", color: "#F6CC60", scale: 7, gap: 16 },
+        { text: "SICK BEATS ECHOED", color: "#BFCDC0", scale: 7, gap: 14 },
+        { text: "THROUGH STUDIOLAND.", color: "#F6CC60", scale: 7, gap: 20 },
+        { text: "UNTIL THE GOBLINS", color: "#66cc66", scale: 7, gap: 14 },
+        { text: "BECAME JEALOUS", color: "#66cc66", scale: 7, gap: 14 },
+        { text: "AND STARTED TO", color: "#ff6666", scale: 7, gap: 14 },
+        { text: "SABOTAGE THE MUSIC.", color: "#E86A6A", scale: 7, gap: 22 },
+        { text: "YOU ARE THE DJ,", color: "#BFCDC0", scale: 7, gap: 14 },
+        { text: "AND YOU HAVE A SWORD.", color: "#F6CC60", scale: 7, gap: 22 },
+        { text: "IT'S TIME TO GET STABBIN'!", color: "#E86A6A", scale: 8, gap: 0 },
     ];
 
     // Calculate total height to vertically center story block
@@ -3702,7 +3740,7 @@ function renderTutorialScreen() {
     // Dark background
     drawRect(0, 0, W, H, "#0a0a12");
 
-    // Starfield (same as story screen)
+    // Starfield
     for (let i = 0; i < 60; i++) {
         const sx = ((i * 137 + 50) % W);
         const sy = ((i * 97 + 30) % H);
@@ -3721,316 +3759,414 @@ function renderTutorialScreen() {
         ctx.textAlign = "start";
     }
 
-    // Title — fades in
-    const titleAlpha = Math.min(1, t / 30);
-    ctx.globalAlpha = titleAlpha;
-    drawCenteredText("HOW TO PLAY", 20, "#F6CC60", 7);
-    ctx.globalAlpha = 1;
-
-    // --- PHASE 1 + 2: Animated demo — player walks to blocks and hits them ---
-    const gridStartX = W / 2 - 4 * TILE / 2; // 4 columns wide
-    const gridStartY = 50;
-    const miniRows = 2;
-    const miniCols = 4;
-    const rowColors = ["#F6CC60", "#BFCDC0"]; // H and S row colors
-
-    // Demo target pattern (simple: 2 rows x 4 cols)
-    const demoTarget = [
-        [true, false, true, false],
-        [false, true, false, true],
-    ];
-    // Order blocks get hit: [row, col]
-    const toggleOrder = [[0,0], [0,2], [1,1], [1,3]];
-
-    // Animation cycle — player walks to each block, swings, toggles it
-    // Only cardinal movement (no diagonals), matching real gameplay
-    const WALK_FRAMES = 35;
-    const ATTACK_AT = 38;
-    const ATTACK_DUR = 15;
-    const HIT_OFFSET = 45;
-    const ATTACK_STEP_LEN = 80;
-    const WALK_STEP_LEN = 40;
-
-    const demoSteps = [
-        { x: gridStartX - TILE, y: gridStartY, attack: true, toggleIdx: 0, dur: ATTACK_STEP_LEN },
-        { x: gridStartX + TILE, y: gridStartY, attack: true, toggleIdx: 1, dur: ATTACK_STEP_LEN },
-        { x: gridStartX + TILE, y: gridStartY + TILE, attack: false, toggleIdx: -1, dur: WALK_STEP_LEN },
-        { x: gridStartX, y: gridStartY + TILE, attack: true, toggleIdx: 2, dur: ATTACK_STEP_LEN },
-        { x: gridStartX + 2 * TILE, y: gridStartY + TILE, attack: true, toggleIdx: 3, dur: ATTACK_STEP_LEN },
-    ];
-
-    // Precompute cumulative start frames
-    const stepStart = [0];
-    for (let i = 1; i < demoSteps.length; i++) stepStart.push(stepStart[i - 1] + demoSteps[i - 1].dur);
-    const STEPS_TOTAL = stepStart[demoSteps.length - 1] + demoSteps[demoSteps.length - 1].dur;
-    const CYCLE = STEPS_TOTAL + 60;
-
-    // Precompute hit frames for block toggling
-    const hitFrames = [];
-    for (let i = 0; i < demoSteps.length; i++) {
-        if (demoSteps[i].attack) hitFrames.push({ toggleIdx: demoSteps[i].toggleIdx, frame: stepStart[i] + HIT_OFFSET });
+    // Page indicator dots
+    const dotY = H - 22;
+    for (let i = 0; i < 4; i++) {
+        const dx = W / 2 - 12 + i * 8;
+        const active = i === tutorialPage;
+        drawRect(dx, dotY, 3, 3, active ? "#F6CC60" : "#555555");
     }
 
-    if (t > 30) {
-        const demoAlpha = Math.min(1, (t - 30) / 20);
-        ctx.globalAlpha = demoAlpha;
+    // ======== PAGE 0: SWING YOUR SWORD ========
+    if (tutorialPage === 0) {
+        // Title
+        const titleAlpha = Math.min(1, t / 30);
+        ctx.globalAlpha = titleAlpha;
+        drawCenteredText("SWING YOUR SWORD", 18, "#F6CC60", 8);
+        drawCenteredText("TO TOGGLE BEATS", 32, "#F6CC60", 8);
+        ctx.globalAlpha = 1;
 
-        // "MATCH THE PATTERN" text
-        drawCenteredText("MATCH THE PATTERN!", gridStartY - 10, "#BFCDC0", 5);
-
-        // Cycle timing (demo starts at t=50 so player has time to fade in)
-        const demoT = Math.max(0, t - 50);
-        const cycleT = demoT % CYCLE;
-
-        // Determine which blocks are toggled on based on cycle progress
-        const blockOn = [false, false, false, false];
-        for (const hf of hitFrames) {
-            if (cycleT >= hf.frame && cycleT < CYCLE - 30) blockOn[hf.toggleIdx] = true;
+        // Animated demo grid — player walks to blocks and hits them
+        const gridStartX = W / 2 - 4 * TILE / 2;
+        const gridStartY = 58;
+        const miniRows = 2;
+        const rowColors = ["#F6CC60", "#BFCDC0"];
+        const demoTarget = [[true, false, true, false], [false, true, false, true]];
+        const toggleOrder = [[0,0], [0,2], [1,1], [1,3]];
+        const WALK_FRAMES = 35, ATTACK_AT = 38, ATTACK_DUR = 15, HIT_OFFSET = 45;
+        const ATTACK_STEP_LEN = 80, WALK_STEP_LEN = 40;
+        const demoSteps = [
+            { x: gridStartX - TILE, y: gridStartY, attack: true, toggleIdx: 0, dur: ATTACK_STEP_LEN },
+            { x: gridStartX + TILE, y: gridStartY, attack: true, toggleIdx: 1, dur: ATTACK_STEP_LEN },
+            { x: gridStartX + TILE, y: gridStartY + TILE, attack: false, toggleIdx: -1, dur: WALK_STEP_LEN },
+            { x: gridStartX, y: gridStartY + TILE, attack: true, toggleIdx: 2, dur: ATTACK_STEP_LEN },
+            { x: gridStartX + 2 * TILE, y: gridStartY + TILE, attack: true, toggleIdx: 3, dur: ATTACK_STEP_LEN },
+        ];
+        const stepStart = [0];
+        for (let i = 1; i < demoSteps.length; i++) stepStart.push(stepStart[i - 1] + demoSteps[i - 1].dur);
+        const STEPS_TOTAL = stepStart[demoSteps.length - 1] + demoSteps[demoSteps.length - 1].dur;
+        const CYCLE = STEPS_TOTAL + 60;
+        const hitFrames = [];
+        for (let i = 0; i < demoSteps.length; i++) {
+            if (demoSteps[i].attack) hitFrames.push({ toggleIdx: demoSteps[i].toggleIdx, frame: stepStart[i] + HIT_OFFSET });
         }
 
-        // Draw grid cells
-        for (let r = 0; r < miniRows; r++) {
-            for (let c = 0; c < miniCols; c++) {
-                const bx = gridStartX + c * TILE;
-                const by = gridStartY + r * TILE;
-                const target = demoTarget[r][c];
+        if (t > 20) {
+            const demoAlpha = Math.min(1, (t - 20) / 20);
+            ctx.globalAlpha = demoAlpha;
+            const demoT = Math.max(0, t - 30);
+            const cycleT = demoT % CYCLE;
+            const blockOn = [false, false, false, false];
+            for (const hf of hitFrames) {
+                if (cycleT >= hf.frame && cycleT < CYCLE - 30) blockOn[hf.toggleIdx] = true;
+            }
 
-                // Check if this block is toggled on
-                let isOn = false;
-                for (let i = 0; i < toggleOrder.length; i++) {
-                    if (toggleOrder[i][0] === r && toggleOrder[i][1] === c && blockOn[i]) isOn = true;
-                }
-
-                // Draw cell
-                drawRect(bx, by, TILE, TILE, PAL.gridBorder);
-                drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? rowColors[r] : PAL.gridOff);
-
-                // Target indicator (pulsing outline) if not yet matched
-                if (target && !isOn) {
-                    const pulse = 0.3 + Math.sin(t * 0.06) * 0.15;
-                    ctx.globalAlpha = pulse;
-                    drawRect(bx + 1, by + 1, TILE - 2, 1, rowColors[r]);
-                    drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, rowColors[r]);
-                    drawRect(bx + 1, by + 1, 1, TILE - 2, rowColors[r]);
-                    drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, rowColors[r]);
-                    drawRect(bx + 6, by + 6, 4, 4, rowColors[r]);
-                    ctx.globalAlpha = demoAlpha;
-                }
-
-                // Flash when block gets hit
-                if (isOn) {
-                    for (const hf of hitFrames) {
-                        if (toggleOrder[hf.toggleIdx][0] === r && toggleOrder[hf.toggleIdx][1] === c) {
-                            const flashAge = cycleT - hf.frame;
-                            if (flashAge >= 0 && flashAge < 10) {
-                                ctx.globalAlpha = (1 - flashAge / 10) * 0.6;
-                                drawRect(bx, by, TILE, TILE, "#ffffff");
-                                ctx.globalAlpha = demoAlpha;
+            // Draw grid cells
+            for (let r = 0; r < miniRows; r++) {
+                for (let c = 0; c < 4; c++) {
+                    const bx = gridStartX + c * TILE;
+                    const by = gridStartY + r * TILE;
+                    let isOn = false;
+                    for (let i = 0; i < toggleOrder.length; i++) {
+                        if (toggleOrder[i][0] === r && toggleOrder[i][1] === c && blockOn[i]) isOn = true;
+                    }
+                    drawRect(bx, by, TILE, TILE, PAL.gridBorder);
+                    drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? rowColors[r] : PAL.gridOff);
+                    if (demoTarget[r][c] && !isOn) {
+                        const pulse = 0.3 + Math.sin(t * 0.06) * 0.15;
+                        ctx.globalAlpha = pulse;
+                        drawRect(bx + 1, by + 1, TILE - 2, 1, rowColors[r]);
+                        drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, rowColors[r]);
+                        drawRect(bx + 1, by + 1, 1, TILE - 2, rowColors[r]);
+                        drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, rowColors[r]);
+                        drawRect(bx + 6, by + 6, 4, 4, rowColors[r]);
+                        ctx.globalAlpha = demoAlpha;
+                    }
+                    if (isOn) {
+                        for (const hf of hitFrames) {
+                            if (toggleOrder[hf.toggleIdx][0] === r && toggleOrder[hf.toggleIdx][1] === c) {
+                                const flashAge = cycleT - hf.frame;
+                                if (flashAge >= 0 && flashAge < 10) {
+                                    ctx.globalAlpha = (1 - flashAge / 10) * 0.6;
+                                    drawRect(bx, by, TILE, TILE, "#ffffff");
+                                    ctx.globalAlpha = demoAlpha;
+                                }
                             }
                         }
                     }
                 }
             }
-        }
 
-        // --- Animated player ---
-        if (t > 50) {
-            const playerAlpha = Math.min(1, (t - 50) / 20);
-            ctx.globalAlpha = demoAlpha * playerAlpha;
-
-            // Figure out which step we're on
-            let stepIdx = demoSteps.length - 1;
-            for (let i = 0; i < demoSteps.length; i++) {
-                if (cycleT < stepStart[i] + demoSteps[i].dur) { stepIdx = i; break; }
-            }
-            const step = demoSteps[stepIdx];
-            const stepT = cycleT - stepStart[stepIdx];
-            const prevPos = stepIdx === 0
-                ? { x: gridStartX - 3 * TILE, y: gridStartY }
-                : demoSteps[stepIdx - 1];
-
-            let px, py, isWalking, isAttacking, walkDir;
-
-            // Determine walk direction from delta
-            const dx = step.x - prevPos.x;
-            const dy = step.y - prevPos.y;
-            if (Math.abs(dx) >= Math.abs(dy)) {
-                walkDir = dx >= 0 ? 3 : 2; // right or left
-            } else {
-                walkDir = dy >= 0 ? 0 : 1; // down or up
-            }
-
-            if (cycleT >= STEPS_TOTAL) {
-                // Pause at end — player stands at last step
-                px = demoSteps[demoSteps.length - 1].x;
-                py = demoSteps[demoSteps.length - 1].y;
-                isWalking = false;
-                isAttacking = false;
-                walkDir = 3;
-            } else if (stepT < WALK_FRAMES) {
-                // Walking
-                const prog = stepT / WALK_FRAMES;
-                const eased = prog * prog * (3 - 2 * prog);
-                px = prevPos.x + (step.x - prevPos.x) * eased;
-                py = prevPos.y + (step.y - prevPos.y) * eased;
-                isWalking = true;
-                isAttacking = false;
-            } else if (step.attack && stepT >= ATTACK_AT && stepT < ATTACK_AT + ATTACK_DUR) {
-                px = step.x;
-                py = step.y;
-                isWalking = false;
-                isAttacking = true;
-            } else {
-                px = step.x;
-                py = step.y;
-                isWalking = false;
-                isAttacking = false;
-            }
-
-            // Walk animation frame
-            const walkFrame = isWalking ? Math.floor(t / 6) % 4 : 0;
-            const bob = walkFrame % 2 === 1 ? 1 : 0;
-
-            // Player facing direction: face walk direction while walking, face right for attack
-            const faceDir = isAttacking ? 3 : (isWalking ? walkDir : 3);
-            const eyeOfs = [[0, 2], [0, -2], [-1, 0], [1, 0]][faceDir];
-
-            // Draw player body
-            drawRect(px + 3, py + 2 - bob, 10, 10, "#3a6a8a");
-            drawRect(px + 3, py + 2 - bob, 2, 10, "#2a4a6a");
-            drawRect(px + 11, py + 2 - bob, 2, 10, "#2a4a6a");
-            // Head
-            drawRect(px + 2, py - 4 - bob, 12, 7, "#F0D0B0");
-            // Eyes (direction-aware)
-            if (faceDir !== 1) { // don't draw eyes facing up
-                drawRect(px + 5 + eyeOfs[0], py - 2 - bob + eyeOfs[1], 2, 2, "#1a1a2e");
-                drawRect(px + 9 + eyeOfs[0], py - 2 - bob + eyeOfs[1], 2, 2, "#1a1a2e");
-            }
-            // Hair
-            drawRect(px + 2, py - 5 - bob, 12, 3, "#8a5a2a");
-            // Feet (alternate when walking)
-            const footOff = isWalking ? (walkFrame === 1 ? 2 : walkFrame === 3 ? -2 : 0) : 0;
-            drawRect(px + 4 + footOff, py + 12, 3, 2, "#2a4a6a");
-            drawRect(px + 9 - footOff, py + 12, 3, 2, "#2a4a6a");
-
-            // Sword
-            if (isAttacking) {
-                // Swing animation — arc from up to right
-                const swingProg = (stepT - ATTACK_AT) / ATTACK_DUR;
-                const angle = -Math.PI * 0.7 + swingProg * Math.PI * 0.9;
-                const shoulderX = px + 8;
-                const shoulderY = py + 2 - bob;
-                const bladeLen = 13;
-                const cosA = Math.cos(angle);
-                const sinA = Math.sin(angle);
-                const tipX = shoulderX + cosA * bladeLen;
-                const tipY = shoulderY + sinA * bladeLen;
-                // Blade
-                ctx.strokeStyle = "#F6CC60";
-                ctx.lineWidth = 3 * SCALE;
-                ctx.lineCap = "round";
-                ctx.beginPath();
-                ctx.moveTo(shoulderX * SCALE, shoulderY * SCALE);
-                ctx.lineTo(tipX * SCALE, tipY * SCALE);
-                ctx.stroke();
-                // Crossguard
-                const perpX = -sinA * 3;
-                const perpY = cosA * 3;
-                ctx.strokeStyle = "#8a7040";
-                ctx.lineWidth = 2 * SCALE;
-                ctx.beginPath();
-                ctx.moveTo((shoulderX + perpX) * SCALE, (shoulderY + perpY) * SCALE);
-                ctx.lineTo((shoulderX - perpX) * SCALE, (shoulderY - perpY) * SCALE);
-                ctx.stroke();
-                // Swing glow
-                const swing = Math.sin(swingProg * Math.PI);
-                if (swing > 0.3) {
-                    ctx.globalAlpha = 0.3 * swing * demoAlpha * playerAlpha;
-                    drawRect(px - 2, py - 8, 20, 22, "#F6CC60");
-                    ctx.globalAlpha = demoAlpha * playerAlpha;
+            // Animated player
+            if (t > 30) {
+                const playerAlpha = Math.min(1, (t - 30) / 20);
+                ctx.globalAlpha = demoAlpha * playerAlpha;
+                let stepIdx = demoSteps.length - 1;
+                for (let i = 0; i < demoSteps.length; i++) {
+                    if (cycleT < stepStart[i] + demoSteps[i].dur) { stepIdx = i; break; }
                 }
-            } else {
-                // Sword at rest (held up)
-                drawRect(px + 14, py - 8 - bob, 2, 10, "#F6CC60");
-                drawRect(px + 12, py - 2 - bob, 6, 2, "#BF7538");
-            }
-
-            // Gold bracket target indicator on the block the player will hit next
-            if (!isAttacking && step.attack && step.toggleIdx >= 0 && cycleT < STEPS_TOTAL) {
-                const targetR = toggleOrder[step.toggleIdx][0];
-                const targetC = toggleOrder[step.toggleIdx][1];
-                // Only show if block isn't already on
-                if (!blockOn[step.toggleIdx]) {
-                    const btx = gridStartX + targetC * TILE;
-                    const bty = gridStartY + targetR * TILE;
-                    const bPulse = 0.25 + Math.sin(t * 0.1) * 0.15;
-                    ctx.globalAlpha = demoAlpha * playerAlpha * bPulse;
+                const step = demoSteps[stepIdx];
+                const stepT = cycleT - stepStart[stepIdx];
+                const prevPos = stepIdx === 0 ? { x: gridStartX - 3 * TILE, y: gridStartY } : demoSteps[stepIdx - 1];
+                const ddx = step.x - prevPos.x;
+                const ddy = step.y - prevPos.y;
+                let walkDir = Math.abs(ddx) >= Math.abs(ddy) ? (ddx >= 0 ? 3 : 2) : (ddy >= 0 ? 0 : 1);
+                let px, py, isWalking = false, isAttacking = false;
+                if (cycleT >= STEPS_TOTAL) {
+                    px = demoSteps[demoSteps.length - 1].x; py = demoSteps[demoSteps.length - 1].y; walkDir = 3;
+                } else if (stepT < WALK_FRAMES) {
+                    const prog = stepT / WALK_FRAMES; const eased = prog * prog * (3 - 2 * prog);
+                    px = prevPos.x + (step.x - prevPos.x) * eased; py = prevPos.y + (step.y - prevPos.y) * eased; isWalking = true;
+                } else if (step.attack && stepT >= ATTACK_AT && stepT < ATTACK_AT + ATTACK_DUR) {
+                    px = step.x; py = step.y; isAttacking = true;
+                } else { px = step.x; py = step.y; }
+                const walkFrame = isWalking ? Math.floor(t / 6) % 4 : 0;
+                const bob = walkFrame % 2 === 1 ? 1 : 0;
+                const faceDir = isAttacking ? 3 : (isWalking ? walkDir : 3);
+                const eyeOfs = [[0, 2], [0, -2], [-1, 0], [1, 0]][faceDir];
+                drawRect(px + 3, py + 2 - bob, 10, 10, "#3a6a8a");
+                drawRect(px + 3, py + 2 - bob, 2, 10, "#2a4a6a");
+                drawRect(px + 11, py + 2 - bob, 2, 10, "#2a4a6a");
+                drawRect(px + 2, py - 4 - bob, 12, 7, "#F0D0B0");
+                if (faceDir !== 1) {
+                    drawRect(px + 5 + eyeOfs[0], py - 2 - bob + eyeOfs[1], 2, 2, "#1a1a2e");
+                    drawRect(px + 9 + eyeOfs[0], py - 2 - bob + eyeOfs[1], 2, 2, "#1a1a2e");
+                }
+                drawRect(px + 2, py - 5 - bob, 12, 3, "#8a5a2a");
+                const footOff = isWalking ? (walkFrame === 1 ? 2 : walkFrame === 3 ? -2 : 0) : 0;
+                drawRect(px + 4 + footOff, py + 12, 3, 2, "#2a4a6a");
+                drawRect(px + 9 - footOff, py + 12, 3, 2, "#2a4a6a");
+                if (isAttacking) {
+                    const swingProg = (stepT - ATTACK_AT) / ATTACK_DUR;
+                    const angle = -Math.PI * 0.7 + swingProg * Math.PI * 0.9;
+                    const sx = px + 8, sy = py + 2 - bob, bl = 13;
+                    const cosA = Math.cos(angle), sinA = Math.sin(angle);
+                    ctx.strokeStyle = "#F6CC60"; ctx.lineWidth = 3 * SCALE; ctx.lineCap = "round";
+                    ctx.beginPath(); ctx.moveTo(sx * SCALE, sy * SCALE); ctx.lineTo((sx + cosA * bl) * SCALE, (sy + sinA * bl) * SCALE); ctx.stroke();
+                    ctx.strokeStyle = "#8a7040"; ctx.lineWidth = 2 * SCALE;
+                    ctx.beginPath(); ctx.moveTo((sx - sinA * 3) * SCALE, (sy + cosA * 3) * SCALE); ctx.lineTo((sx + sinA * 3) * SCALE, (sy - cosA * 3) * SCALE); ctx.stroke();
+                    const swing = Math.sin(swingProg * Math.PI);
+                    if (swing > 0.3) { ctx.globalAlpha = 0.3 * swing * demoAlpha * playerAlpha; drawRect(px - 2, py - 8, 20, 22, "#F6CC60"); ctx.globalAlpha = demoAlpha * playerAlpha; }
+                } else {
+                    drawRect(px + 14, py - 8 - bob, 2, 10, "#F6CC60");
+                    drawRect(px + 12, py - 2 - bob, 6, 2, "#BF7538");
+                }
+                // Gold bracket indicator
+                if (!isAttacking && step.attack && step.toggleIdx >= 0 && cycleT < STEPS_TOTAL && !blockOn[step.toggleIdx]) {
+                    const btx = gridStartX + toggleOrder[step.toggleIdx][1] * TILE;
+                    const bty = gridStartY + toggleOrder[step.toggleIdx][0] * TILE;
+                    ctx.globalAlpha = demoAlpha * playerAlpha * (0.25 + Math.sin(t * 0.1) * 0.15);
                     const bc = "#F6CC60";
-                    const bs = 1;
-                    const bL = 4;
-                    drawRect(btx, bty, bL, bs, bc);
-                    drawRect(btx, bty, bs, bL, bc);
-                    drawRect(btx + TILE - bL, bty, bL, bs, bc);
-                    drawRect(btx + TILE - bs, bty, bs, bL, bc);
-                    drawRect(btx, bty + TILE - bs, bL, bs, bc);
-                    drawRect(btx, bty + TILE - bL, bs, bL, bc);
-                    drawRect(btx + TILE - bL, bty + TILE - bs, bL, bs, bc);
-                    drawRect(btx + TILE - bs, bty + TILE - bL, bs, bL, bc);
+                    drawRect(btx, bty, 4, 1, bc); drawRect(btx, bty, 1, 4, bc);
+                    drawRect(btx + TILE - 4, bty, 4, 1, bc); drawRect(btx + TILE - 1, bty, 1, 4, bc);
+                    drawRect(btx, bty + TILE - 1, 4, 1, bc); drawRect(btx, bty + TILE - 4, 1, 4, bc);
+                    drawRect(btx + TILE - 4, bty + TILE - 1, 4, 1, bc); drawRect(btx + TILE - 1, bty + TILE - 4, 1, 4, bc);
+                }
+                ctx.globalAlpha = demoAlpha;
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        // Subtitle
+        if (t > 40) {
+            ctx.globalAlpha = Math.min(1, (t - 40) / 25);
+            drawCenteredText("USE ARROW KEYS + SPACE", gridStartY + miniRows * TILE + 20, "#BFCDC0", 5);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // ======== PAGE 1: MATCH THE PATTERN ========
+    else if (tutorialPage === 1) {
+        const titleAlpha = Math.min(1, t / 30);
+        ctx.globalAlpha = titleAlpha;
+        drawCenteredText("MATCH THE PATTERN", 18, "#F6CC60", 8);
+        ctx.globalAlpha = 1;
+
+        // Show a mini grid with pulsing outlines that get filled in
+        const gx = W / 2 - 3 * TILE;
+        const gy = 55;
+        const patRows = 2;
+        const patCols = 6;
+        const patColors = ["#F6CC60", "#BFCDC0"];
+        const patTarget = [[true, false, true, false, true, false], [false, true, false, true, false, true]];
+        // Fill in blocks over time
+        const fillOrder = [[0,0],[1,1],[0,2],[1,3],[0,4],[1,5]];
+        const FILL_INTERVAL = 50;
+        const FILL_CYCLE = fillOrder.length * FILL_INTERVAL + 90;
+        const cT = Math.max(0, t - 40) % FILL_CYCLE;
+        const filledCount = Math.min(fillOrder.length, Math.floor(cT / FILL_INTERVAL));
+        const allFilled = filledCount >= fillOrder.length;
+
+        if (t > 20) {
+            const dA = Math.min(1, (t - 20) / 20);
+            ctx.globalAlpha = dA;
+            for (let r = 0; r < patRows; r++) {
+                for (let c = 0; c < patCols; c++) {
+                    const bx = gx + c * TILE, by = gy + r * TILE;
+                    let isOn = false;
+                    for (let i = 0; i < filledCount; i++) {
+                        if (fillOrder[i][0] === r && fillOrder[i][1] === c) isOn = true;
+                    }
+                    drawRect(bx, by, TILE, TILE, PAL.gridBorder);
+                    drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? patColors[r] : PAL.gridOff);
+                    // Pulsing outline for unfilled targets
+                    if (patTarget[r][c] && !isOn) {
+                        ctx.globalAlpha = 0.3 + Math.sin(t * 0.06) * 0.15;
+                        drawRect(bx + 1, by + 1, TILE - 2, 1, patColors[r]);
+                        drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, patColors[r]);
+                        drawRect(bx + 1, by + 1, 1, TILE - 2, patColors[r]);
+                        drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, patColors[r]);
+                        drawRect(bx + 6, by + 6, 4, 4, patColors[r]);
+                        ctx.globalAlpha = dA;
+                    }
+                    // Flash when just filled
+                    if (isOn) {
+                        const fIdx = fillOrder.findIndex(f => f[0] === r && f[1] === c);
+                        if (fIdx >= 0) {
+                            const flashAge = cT - fIdx * FILL_INTERVAL;
+                            if (flashAge >= 0 && flashAge < 12) {
+                                ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
+                                drawRect(bx, by, TILE, TILE, "#ffffff");
+                                ctx.globalAlpha = dA;
+                            }
+                        }
+                    }
+                }
+            }
+            // "COMPLETE!" flash when all filled
+            if (allFilled && cT < FILL_CYCLE - 30) {
+                const flashT = cT - fillOrder.length * FILL_INTERVAL;
+                if (flashT > 0 && flashT < 60) {
+                    ctx.globalAlpha = Math.min(1, flashT / 10) * (1 - Math.max(0, flashT - 40) / 20);
+                    drawCenteredText("COMPLETE!", gy + patRows * TILE + 16, "#66cc66", 7);
+                }
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        // Explanation text
+        if (t > 30) {
+            ctx.globalAlpha = Math.min(1, (t - 30) / 25);
+            drawCenteredText("PULSING OUTLINES SHOW", gy + patRows * TILE + 38, "#BFCDC0", 5);
+            drawCenteredText("WHERE BEATS NEED TO GO", gy + patRows * TILE + 52, "#BFCDC0", 5);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // ======== PAGE 2: BEWARE THE GOBLINS ========
+    else if (tutorialPage === 2) {
+        const titleAlpha = Math.min(1, t / 30);
+        ctx.globalAlpha = titleAlpha;
+        drawCenteredText("BEWARE THE GOBLINS!", 18, "#E86A6A", 8);
+        ctx.globalAlpha = 1;
+
+        // Animated goblin walking to a grid cell, sabotaging it, then player killing it
+        const gx = W / 2 - 2 * TILE;
+        const gy = 65;
+        const SCENE_CYCLE = 240;
+        const sceneT = Math.max(0, t - 30) % SCENE_CYCLE;
+        const gobFrame = Math.floor(t / 10) % 4;
+
+        if (t > 20) {
+            const dA = Math.min(1, (t - 20) / 20);
+            ctx.globalAlpha = dA;
+
+            // Draw a small 1x4 grid
+            for (let c = 0; c < 4; c++) {
+                const bx = gx + c * TILE;
+                const sabotaged = (c === 1 && sceneT > 80 && sceneT < 160);
+                drawRect(bx, gy, TILE, TILE, PAL.gridBorder);
+                drawRect(bx + 1, gy + 1, TILE - 2, TILE - 2, (c === 0 || c === 2) ? "#F6CC60" : PAL.gridOff);
+                // Red flash on sabotage
+                if (c === 1 && sceneT > 80 && sceneT < 95) {
+                    ctx.globalAlpha = (1 - (sceneT - 80) / 15) * 0.6;
+                    drawRect(bx, gy, TILE, TILE, "#ff2222");
+                    ctx.globalAlpha = dA;
+                }
+                // Block turns on from sabotage
+                if (sabotaged) {
+                    drawRect(bx + 1, gy + 1, TILE - 2, TILE - 2, "#F6CC60");
                 }
             }
 
-            ctx.globalAlpha = demoAlpha;
+            // Goblin walks in from left, sabotages cell 1
+            const gobStartX = gx - 3 * TILE;
+            const gobTargetX = gx + TILE;
+            let gobX, gobVisible = true;
+            if (sceneT < 60) {
+                // Walking in
+                const prog = sceneT / 60;
+                gobX = gobStartX + (gobTargetX - gobStartX) * prog;
+            } else if (sceneT < 80) {
+                gobX = gobTargetX;
+            } else if (sceneT < 160) {
+                gobX = gobTargetX;
+            } else {
+                // Death animation
+                gobVisible = false;
+                if (sceneT < 180) {
+                    // Death particles
+                    const dp = (sceneT - 160) / 20;
+                    ctx.globalAlpha = (1 - dp) * dA;
+                    for (let i = 0; i < 6; i++) {
+                        const angle = (i / 6) * Math.PI * 2 + sceneT * 0.1;
+                        const dist = dp * 12;
+                        drawRect(gobTargetX + 4 + Math.cos(angle) * dist, gy - 4 + Math.sin(angle) * dist, 3, 3, "#66cc66");
+                    }
+                    ctx.globalAlpha = dA;
+                }
+            }
+            if (gobVisible) {
+                drawGoblinSprite("normal", gobX, gy - 2, gobFrame, { showShadow: false });
+            }
+
+            // Player comes in and slays after sabotage
+            if (sceneT > 120 && sceneT < 200) {
+                const pProg = Math.min(1, (sceneT - 120) / 30);
+                const ppx = gx + 4 * TILE + (1 - pProg) * 2 * TILE;
+                const pBob = Math.floor(t / 6) % 2;
+                const pAttacking = sceneT > 150 && sceneT < 165;
+                drawRect(ppx + 3, gy - bob + 2, 10, 10, "#3a6a8a");
+                drawRect(ppx + 2, gy - 4 - pBob, 12, 7, "#F0D0B0");
+                drawRect(ppx + 5 - 1, gy - 2 - pBob, 2, 2, "#1a1a2e");
+                drawRect(ppx + 9 - 1, gy - 2 - pBob, 2, 2, "#1a1a2e");
+                drawRect(ppx + 2, gy - 5 - pBob, 12, 3, "#8a5a2a");
+                if (pAttacking) {
+                    const sp = (sceneT - 150) / 15;
+                    const ang = -Math.PI * 0.7 + sp * Math.PI * 0.9;
+                    ctx.strokeStyle = "#F6CC60"; ctx.lineWidth = 3 * SCALE; ctx.lineCap = "round";
+                    ctx.beginPath(); ctx.moveTo((ppx + 4) * SCALE, (gy + 2 - pBob) * SCALE);
+                    ctx.lineTo((ppx + 4 + Math.cos(ang) * 13) * SCALE, (gy + 2 - pBob + Math.sin(ang) * 13) * SCALE); ctx.stroke();
+                } else {
+                    drawRect(ppx - 2, gy - 8 - pBob, 2, 10, "#F6CC60");
+                    drawRect(ppx - 4, gy - 2 - pBob, 6, 2, "#BF7538");
+                }
+            }
+            ctx.globalAlpha = 1;
         }
 
-        ctx.globalAlpha = 1;
+        // Explanation text
+        if (t > 30) {
+            ctx.globalAlpha = Math.min(1, (t - 30) / 25);
+            drawCenteredText("THEY SABOTAGE YOUR BEATS!", gy + TILE + 22, "#BFCDC0", 5);
+            drawCenteredText("SLAY THEM WITH YOUR SWORD!", gy + TILE + 38, "#F6CC60", 5);
+            ctx.globalAlpha = 1;
+        }
     }
 
-    // --- PHASE 3: Instruction text (t > 40) ---
-    if (t > 40) {
-        const textAlpha = Math.min(1, (t - 40) / 25);
-        ctx.globalAlpha = textAlpha;
-
-        const instrY = gridStartY + miniRows * TILE + 18;
-        drawCenteredText("SWING YOUR SWORD AT", instrY, "#BFCDC0", 5);
-        drawCenteredText("BLOCKS TO TOGGLE THEM", instrY + 14, "#BFCDC0", 5);
+    // ======== PAGE 3: BEAT THE CLOCK ========
+    else if (tutorialPage === 3) {
+        const titleAlpha = Math.min(1, t / 30);
+        ctx.globalAlpha = titleAlpha;
+        drawCenteredText("BEAT THE CLOCK!", 18, "#FF8844", 8);
         ctx.globalAlpha = 1;
+
+        // Animated countdown timer
+        const timerY = 70;
+        const TIMER_CYCLE = 180;
+        const cT = Math.max(0, t - 30) % TIMER_CYCLE;
+        const timerVal = Math.max(5, 30 - Math.floor(cT / 6));
+        const isLow = timerVal <= 10;
+        const timerColor = isLow ? "#FF4466" : "#F6CC60";
+
+        if (t > 20) {
+            const dA = Math.min(1, (t - 20) / 20);
+            ctx.globalAlpha = dA;
+
+            // Draw timer display (big centered digits)
+            const timerStr = String(timerVal);
+            const pulse = isLow ? (Math.sin(t * 0.2) * 0.3 + 0.7) : 1;
+            ctx.globalAlpha = dA * pulse;
+
+            // Timer icon (clock-like circle)
+            const cx = W / 2;
+            const cy = timerY + 20;
+            ctx.strokeStyle = timerColor;
+            ctx.lineWidth = 2 * SCALE;
+            ctx.beginPath();
+            ctx.arc(cx * SCALE, cy * SCALE, 18 * SCALE, 0, Math.PI * 2);
+            ctx.stroke();
+            // Clock hand
+            const handAngle = -Math.PI / 2 + (1 - (timerVal - 5) / 25) * Math.PI * 2;
+            ctx.beginPath();
+            ctx.moveTo(cx * SCALE, cy * SCALE);
+            ctx.lineTo((cx + Math.cos(handAngle) * 12) * SCALE, (cy + Math.sin(handAngle) * 12) * SCALE);
+            ctx.stroke();
+
+            // Timer number
+            drawCenteredText(timerStr, cy + 30, timerColor, 10);
+
+            // Red flash when very low
+            if (isLow && timerVal % 2 === 0) {
+                ctx.globalAlpha = 0.15 * dA;
+                drawRect(0, 0, W, H, "#FF4466");
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        // Explanation text
+        if (t > 30) {
+            ctx.globalAlpha = Math.min(1, (t - 30) / 25);
+            drawCenteredText("COMPLETE THE PATTERN", timerY + 80, "#BFCDC0", 5);
+            drawCenteredText("BEFORE TIME RUNS OUT!", timerY + 94, "#BFCDC0", 5);
+            ctx.globalAlpha = 1;
+        }
     }
 
-    // --- PHASE 4: Target explanation (t > 90) ---
-    if (t > 90) {
-        const text2Alpha = Math.min(1, (t - 90) / 25);
-        ctx.globalAlpha = text2Alpha;
-
-        const tgtY = gridStartY + miniRows * TILE + 50;
-        drawCenteredText("PULSING OUTLINES SHOW", tgtY, "#F6CC60", 4);
-        drawCenteredText("WHERE BEATS NEED TO GO", tgtY + 12, "#F6CC60", 4);
-        ctx.globalAlpha = 1;
-    }
-
-    // --- PHASE 5: Goblin warning (t > 140) ---
-    if (t > 140) {
-        const text3Alpha = Math.min(1, (t - 140) / 25);
-        ctx.globalAlpha = text3Alpha;
-
-        const warnY = gridStartY + miniRows * TILE + 78;
-        drawCenteredText("WATCH OUT FOR GOBLINS", warnY, "#E86A6A", 4);
-        drawCenteredText("THEY'LL SABOTAGE YOUR BEATS!", warnY + 12, "#E86A6A", 4);
-        ctx.globalAlpha = 1;
-    }
-
-    // --- PHASE 6: Timer warning (t > 190) ---
-    if (t > 190) {
-        const text4Alpha = Math.min(1, (t - 190) / 25);
-        ctx.globalAlpha = text4Alpha;
-
-        const timerY = gridStartY + miniRows * TILE + 106;
-        drawCenteredText("FINISH BEFORE TIME RUNS OUT!", timerY, "#FF8844", 4);
-        ctx.globalAlpha = 1;
-    }
-
-    // Blinking "PRESS ENTER TO START"
-    if (t > 80 && t % 60 < 40) {
-        drawCenteredText("PRESS ENTER TO START", H - 10, "#EBEBE3", 5);
+    // Blinking prompt
+    const promptText = tutorialPage < 3 ? "PRESS ENTER" : "PRESS ENTER TO START";
+    if (t > 40 && t % 60 < 40) {
+        drawCenteredText(promptText, H - 10, "#EBEBE3", 5);
     }
 }
 
@@ -4212,6 +4348,221 @@ function renderEnemyWarning() {
     }
 }
 
+// ---- New Instrument Popup ----
+function renderNewInstrumentIntro() {
+    const INTRO_FRAMES = 70;
+    newInstrumentIntroTimer++;
+    const t = newInstrumentIntroTimer;
+    const progress = Math.min(1, t / INTRO_FRAMES);
+
+    // Render the game underneath
+    render();
+
+    const W = canvas.width;
+    const H = canvas.height;
+
+    // Grab the rendered frame for distortion
+    const imageData = ctx.getImageData(0, 0, W, H);
+    const copy = ctx.createImageData(W, H);
+    const src = imageData.data;
+    const dst = copy.data;
+
+    // Horizontal wave distortion — gets stronger over time
+    const waveAmp = progress * 6 * SCALE;
+    const waveFreq = 0.03 + progress * 0.02;
+    for (let y = 0; y < H; y++) {
+        const offset = Math.round(Math.sin(y * waveFreq + t * 0.15) * waveAmp);
+        for (let x = 0; x < W; x++) {
+            let sx = x - offset;
+            if (sx < 0) sx = 0;
+            if (sx >= W) sx = W - 1;
+            const di = (y * W + x) * 4;
+            const si = (y * W + sx) * 4;
+            const r = src[si], g = src[si + 1], b = src[si + 2];
+            const wash = progress * 0.7;
+            dst[di]     = Math.round(r + (255 - r) * wash);
+            dst[di + 1] = Math.round(g + (255 - g) * wash);
+            dst[di + 2] = Math.round(b + (255 - b) * wash);
+            dst[di + 3] = 255;
+        }
+    }
+    ctx.putImageData(copy, 0, 0);
+
+    // Screen shake
+    const shakeAmt = progress * 4 * SCALE;
+    if (shakeAmt > 0.5) {
+        const sx = (Math.random() - 0.5) * 2 * shakeAmt;
+        const sy = (Math.random() - 0.5) * 2 * shakeAmt;
+        const shifted = ctx.getImageData(0, 0, W, H);
+        ctx.clearRect(0, 0, W, H);
+        ctx.putImageData(shifted, Math.round(sx), Math.round(sy));
+    }
+
+    // White-out overlay
+    ctx.fillStyle = "#FFF";
+    ctx.globalAlpha = progress * 0.5;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+
+    // Auto-transition
+    if (t >= INTRO_FRAMES) {
+        gameState = "newinstrument";
+        newInstrumentTimer = 0;
+    }
+}
+
+function renderNewInstrument() {
+    // Render the game underneath (frozen)
+    render();
+
+    newInstrumentTimer++;
+    const t = newInstrumentTimer;
+    const W = COLS * TILE;
+    const H = ROWS * TILE;
+
+    // Heavy dim overlay
+    ctx.fillStyle = "#000";
+    ctx.globalAlpha = 0.75;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = 1.0;
+
+    function drawCenteredText(text, y, color, scale) {
+        ctx.font = `${scale * SCALE}px monospace`;
+        ctx.fillStyle = color;
+        ctx.textAlign = "center";
+        ctx.fillText(text, (W * SCALE) / 2, y * SCALE);
+        ctx.textAlign = "start";
+    }
+
+    if (newInstrumentType === "cowbell") {
+        // Title
+        const titleAlpha = Math.min(1, t / 20);
+        ctx.globalAlpha = titleAlpha;
+        drawCenteredText("NEW INSTRUMENT!", 30, "#F6CC60", 8);
+        ctx.globalAlpha = 1;
+
+        // Instrument name
+        if (t > 15) {
+            ctx.globalAlpha = Math.min(1, (t - 15) / 20);
+            drawCenteredText("COWBELL", 55, "#E86A6A", 6);
+            ctx.globalAlpha = 1;
+        }
+
+        // Animated cowbell icon — a simple bell shape
+        if (t > 25) {
+            ctx.globalAlpha = Math.min(1, (t - 25) / 20);
+            const cx = (W * SCALE) / 2;
+            const cy = 90 * SCALE;
+            const bob = Math.sin(t * 0.1) * 3 * SCALE;
+            const swing = Math.sin(t * 0.12) * 0.15; // subtle rotation
+            ctx.save();
+            ctx.translate(cx, cy + bob);
+            ctx.rotate(swing);
+            // Bell body (trapezoid)
+            ctx.fillStyle = "#E86A6A";
+            ctx.beginPath();
+            ctx.moveTo(-8 * SCALE, -6 * SCALE);
+            ctx.lineTo(8 * SCALE, -6 * SCALE);
+            ctx.lineTo(10 * SCALE, 6 * SCALE);
+            ctx.lineTo(-10 * SCALE, 6 * SCALE);
+            ctx.closePath();
+            ctx.fill();
+            // Highlight stripe
+            ctx.fillStyle = "#F09090";
+            ctx.fillRect(-6 * SCALE, -4 * SCALE, 12 * SCALE, 2 * SCALE);
+            // Handle on top
+            ctx.fillStyle = "#EBEBE3";
+            ctx.fillRect(-3 * SCALE, -10 * SCALE, 6 * SCALE, 4 * SCALE);
+            // Clapper at bottom
+            ctx.fillStyle = "#EBEBE3";
+            ctx.beginPath();
+            ctx.arc(0, 8 * SCALE, 2 * SCALE, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            ctx.globalAlpha = 1;
+        }
+
+        // Description text
+        if (t > 45) {
+            ctx.globalAlpha = Math.min(1, (t - 45) / 25);
+            drawCenteredText("A NEW ROW APPEARS", 125, "#BFCDC0", 5);
+            drawCenteredText("BELOW THE KICK!", 139, "#BFCDC0", 5);
+            ctx.globalAlpha = 1;
+        }
+        if (t > 60) {
+            ctx.globalAlpha = Math.min(1, (t - 60) / 25);
+            drawCenteredText("FILL IN THE COWBELL", 159, "#E86A6A", 5);
+            drawCenteredText("BEATS TO COMPLETE", 173, "#E86A6A", 5);
+            drawCenteredText("THE PATTERN!", 187, "#E86A6A", 5);
+            ctx.globalAlpha = 1;
+        }
+
+    } else if (newInstrumentType === "tom") {
+        // Title
+        const titleAlpha = Math.min(1, t / 20);
+        ctx.globalAlpha = titleAlpha;
+        drawCenteredText("NEW INSTRUMENT!", 30, "#F6CC60", 8);
+        ctx.globalAlpha = 1;
+
+        // Instrument name
+        if (t > 15) {
+            ctx.globalAlpha = Math.min(1, (t - 15) / 20);
+            drawCenteredText("TOM DRUM", 55, "#6AB8E8", 6);
+            ctx.globalAlpha = 1;
+        }
+
+        // Animated tom drum icon — a cylindrical drum
+        if (t > 25) {
+            ctx.globalAlpha = Math.min(1, (t - 25) / 20);
+            const cx = (W * SCALE) / 2;
+            const cy = 90 * SCALE;
+            const bob = Math.sin(t * 0.1) * 3 * SCALE;
+            // Drum hit flash
+            const hitFlash = (t % 30 < 5 && t > 40) ? 1 : 0;
+            ctx.save();
+            ctx.translate(cx, cy + bob);
+            // Drum body
+            ctx.fillStyle = hitFlash ? "#8AD0FF" : "#6AB8E8";
+            ctx.fillRect(-10 * SCALE, -4 * SCALE, 20 * SCALE, 12 * SCALE);
+            // Drum head (top ellipse)
+            ctx.fillStyle = hitFlash ? "#FFFFFF" : "#EBEBE3";
+            ctx.beginPath();
+            ctx.ellipse(0, -4 * SCALE, 10 * SCALE, 4 * SCALE, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Drum bottom rim
+            ctx.fillStyle = "#4A8AB0";
+            ctx.beginPath();
+            ctx.ellipse(0, 8 * SCALE, 10 * SCALE, 4 * SCALE, 0, 0, Math.PI);
+            ctx.fill();
+            // Side stripes
+            ctx.fillStyle = "#4A8AB0";
+            ctx.fillRect(-10 * SCALE, -4 * SCALE, 2 * SCALE, 12 * SCALE);
+            ctx.fillRect(8 * SCALE, -4 * SCALE, 2 * SCALE, 12 * SCALE);
+            ctx.restore();
+            ctx.globalAlpha = 1;
+        }
+
+        // Description text
+        if (t > 45) {
+            ctx.globalAlpha = Math.min(1, (t - 45) / 25);
+            drawCenteredText("THE TOM DRUM JOINS", 125, "#BFCDC0", 5);
+            drawCenteredText("THE MIX!", 139, "#BFCDC0", 5);
+            ctx.globalAlpha = 1;
+        }
+        if (t > 60) {
+            ctx.globalAlpha = Math.min(1, (t - 60) / 25);
+            drawCenteredText("EVEN MORE BEATS", 159, "#6AB8E8", 5);
+            drawCenteredText("TO MASTER!", 173, "#6AB8E8", 5);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // Blinking "PRESS ENTER TO CONTINUE"
+    if (t > 60 && t % 60 < 40) {
+        drawCenteredText("PRESS ENTER TO CONTINUE", H - 10, "#EBEBE3", 5);
+    }
+}
+
 function gameLoop(timestamp) {
     const dt = timestamp - lastTime;
     lastTime = timestamp;
@@ -4230,6 +4581,10 @@ function gameLoop(timestamp) {
                 renderEnemyWarningIntro();
             } else if (gameState === "enemywarning") {
                 renderEnemyWarning();
+            } else if (gameState === "newinstrument-intro") {
+                renderNewInstrumentIntro();
+            } else if (gameState === "newinstrument") {
+                renderNewInstrument();
             } else if (gameState === "levelcomplete") {
                 renderLevelComplete();
             } else if (gameState === "gameover") {
