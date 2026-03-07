@@ -2891,10 +2891,10 @@ function renderStoryScreen() {
     const W = COLS * TILE;
     const H = ROWS * TILE;
 
-    // Dark background with slightly warmer tone
+    // Dark background
     drawRect(0, 0, W, H, "#0a0a12");
 
-    // Starfield (same as title for consistency)
+    // Starfield
     for (let i = 0; i < 60; i++) {
         const sx = ((i * 137 + 50) % W);
         const sy = ((i * 97 + 30) % H);
@@ -2905,7 +2905,15 @@ function renderStoryScreen() {
     }
     ctx.globalAlpha = 1;
 
-    // Story text — silly backstory
+    // Helper to center text: measure with canvas and draw centered
+    function drawCenteredText(text, y, color, scale) {
+        ctx.font = `${scale * SCALE}px monospace`;
+        const measured = ctx.measureText(text).width;
+        ctx.fillStyle = color;
+        ctx.fillText(text, (W * SCALE - measured) / 2, y * SCALE);
+    }
+
+    // Story text
     const storyLines = [
         { text: "Sick beats ruled STUDIOLAND", color: "#F6CC60", scale: 5, gap: 14 },
         { text: "and the people danced.", color: "#BFCDC0", scale: 5, gap: 16 },
@@ -2916,54 +2924,35 @@ function renderStoryScreen() {
         { text: "Time to get stabbin'.", color: "#E86A6A", scale: 6, gap: 0 },
     ];
 
-    // Calculate total height to vertically center the story block
+    // Calculate total height to vertically center story block
     let totalTextH = 0;
     for (let i = 0; i < storyLines.length; i++) {
         totalTextH += storyLines[i].scale + (i < storyLines.length - 1 ? storyLines[i].gap : 0);
     }
-    const charY_story = H - 48; // match charY used below for characters
-    const availableH = charY_story - 20; // top margin of 20
-    let textY = Math.max(10, 20 + (availableH - totalTextH) / 2);
+    const charY = H - 36;
+    const availableH = charY - 30;
+    let textY = Math.max(10, 15 + (availableH - totalTextH) / 2);
 
     for (let i = 0; i < storyLines.length; i++) {
         const line = storyLines[i];
-        const textW = line.text.length * line.scale;
-        const tx = W / 2 - textW / 2;
-        // Fade in lines sequentially based on storyBlink
-        const fadeStart = i * 20; // each line fades in 20 frames after the last
+        const fadeStart = i * 20;
         const alpha = Math.min(1, Math.max(0, (storyBlink - fadeStart) / 25));
         ctx.globalAlpha = alpha;
-        drawText(line.text, tx, textY, line.color, line.scale);
+        drawCenteredText(line.text, textY, line.color, line.scale);
         ctx.globalAlpha = 1;
         textY += line.scale + line.gap;
     }
 
-    // Animated characters at the bottom — goblin on left, dancers on right, player in middle
-    const charY = H - 48;
-
-    // Goblin (left side, sneaking)
+    // Characters at the bottom — evenly spaced: goblins, player, dancers
+    // Layout: [elite goblin] [goblin] ... [dancer] [player] [dancer] ... [dancer]
+    //  Spread 5 characters evenly across the width
+    const charSlots = 5; // elite, goblin, player, dancer1, dancer2
+    const slotW = W / (charSlots + 1);
     const gobFrame = Math.floor(storyBlink / 10) % 4;
     const gobBob = gobFrame % 2 === 1 ? 1 : 0;
-    const gobX = 30 + Math.sin(storyBlink * 0.03) * 15;
-    // Body
-    drawRect(gobX + 4, charY + 3 - gobBob, 8, 9, "#4a8a3a");
-    drawRect(gobX + 4, charY + 3 - gobBob, 2, 9, "#3a6a2a");
-    drawRect(gobX + 10, charY + 3 - gobBob, 2, 9, "#3a6a2a");
-    // Head
-    drawRect(gobX + 3, charY - 1 - gobBob, 10, 6, "#5a9a4a");
-    // Ears
-    drawRect(gobX + 1, charY - gobBob, 3, 3, "#5a9a4a");
-    drawRect(gobX + 12, charY - gobBob, 3, 3, "#5a9a4a");
-    // Eyes
-    drawRect(gobX + 5, charY + 1 - gobBob, 2, 2, "#cc2222");
-    drawRect(gobX + 9, charY + 1 - gobBob, 2, 2, "#cc2222");
-    // Feet
-    const gwo = gobFrame === 1 ? 2 : gobFrame === 3 ? -2 : 0;
-    drawRect(gobX + 5 + gwo, charY + 12, 3, 2, "#3a6a2a");
-    drawRect(gobX + 8 - gwo, charY + 12, 3, 2, "#3a6a2a");
 
-    // Elite goblin (behind and to the left, pink)
-    const eliteX = 12 + Math.sin(storyBlink * 0.025 + 1) * 10;
+    // Elite goblin (slot 1)
+    const eliteX = slotW * 1 - 8 + Math.sin(storyBlink * 0.025 + 1) * 3;
     const eliteBob = (gobFrame + 1) % 2 === 1 ? 1 : 0;
     drawRect(eliteX + 4, charY + 3 - eliteBob, 8, 9, "#c45a8a");
     drawRect(eliteX + 4, charY + 3 - eliteBob, 2, 9, "#a43a6a");
@@ -2973,49 +2962,55 @@ function renderStoryScreen() {
     drawRect(eliteX + 12, charY - eliteBob, 3, 3, "#d46a9a");
     drawRect(eliteX + 5, charY + 1 - eliteBob, 2, 2, "#ffee44");
     drawRect(eliteX + 9, charY + 1 - eliteBob, 2, 2, "#ffee44");
+    const efo = gobFrame === 1 ? 2 : gobFrame === 3 ? -2 : 0;
+    drawRect(eliteX + 5 + efo, charY + 12, 3, 2, "#a43a6a");
+    drawRect(eliteX + 8 - efo, charY + 12, 3, 2, "#a43a6a");
 
-    // Player (center, with sword raised)
-    const playerX = W / 2 - 8;
+    // Goblin (slot 2)
+    const gobX = slotW * 2 - 8 + Math.sin(storyBlink * 0.03) * 3;
+    drawRect(gobX + 4, charY + 3 - gobBob, 8, 9, "#4a8a3a");
+    drawRect(gobX + 4, charY + 3 - gobBob, 2, 9, "#3a6a2a");
+    drawRect(gobX + 10, charY + 3 - gobBob, 2, 9, "#3a6a2a");
+    drawRect(gobX + 3, charY - 1 - gobBob, 10, 6, "#5a9a4a");
+    drawRect(gobX + 1, charY - gobBob, 3, 3, "#5a9a4a");
+    drawRect(gobX + 12, charY - gobBob, 3, 3, "#5a9a4a");
+    drawRect(gobX + 5, charY + 1 - gobBob, 2, 2, "#cc2222");
+    drawRect(gobX + 9, charY + 1 - gobBob, 2, 2, "#cc2222");
+    const gwo = gobFrame === 1 ? 2 : gobFrame === 3 ? -2 : 0;
+    drawRect(gobX + 5 + gwo, charY + 12, 3, 2, "#3a6a2a");
+    drawRect(gobX + 8 - gwo, charY + 12, 3, 2, "#3a6a2a");
+
+    // Player (center, slot 3)
+    const playerX = slotW * 3 - 8;
     const playerBob = Math.floor(storyBlink / 12) % 2 === 0 ? 0 : 1;
-    // Body
     drawRect(playerX + 3, charY + 2 - playerBob, 10, 10, "#3a6a8a");
     drawRect(playerX + 3, charY + 2 - playerBob, 2, 10, "#2a4a6a");
     drawRect(playerX + 11, charY + 2 - playerBob, 2, 10, "#2a4a6a");
-    // Head
     drawRect(playerX + 2, charY - 4 - playerBob, 12, 7, "#F0D0B0");
-    // Eyes
     drawRect(playerX + 5, charY - 2 - playerBob, 2, 2, "#1a1a2e");
     drawRect(playerX + 9, charY - 2 - playerBob, 2, 2, "#1a1a2e");
-    // Hair
     drawRect(playerX + 2, charY - 5 - playerBob, 12, 3, "#8a5a2a");
-    // Feet
     const pwo = Math.floor(storyBlink / 12) % 2 === 0 ? 1 : -1;
     drawRect(playerX + 4 + pwo, charY + 12, 3, 2, "#2a4a6a");
     drawRect(playerX + 9 - pwo, charY + 12, 3, 2, "#2a4a6a");
-    // Sword (held up)
     drawRect(playerX + 14, charY - 8 - playerBob, 2, 12, "#BFCDC0");
     drawRect(playerX + 12, charY - 2 - playerBob, 6, 2, "#BF7538");
 
-    // Dancers (right side, dancing)
+    // Dancers (slots 4 and 5)
     const dancerPals = [
         { body: "#E86A6A", dark: "#C05050", head: "#F09090" },
         { body: "#6AB8E8", dark: "#4A98C8", head: "#F0D0B0" },
-        { body: "#F6CC60", dark: "#D6AC40", head: "#F0D0B0" },
     ];
-    for (let d = 0; d < 3; d++) {
+    for (let d = 0; d < 2; d++) {
         const dp = dancerPals[d];
-        const dx = W - 70 + d * 22;
+        const dx = slotW * (4 + d) - 6;
         const dBob = Math.floor((storyBlink + d * 5) / 8) % 2 === 0 ? 0 : 2;
         const armUp = Math.floor((storyBlink + d * 5) / 8) % 2 === 0;
-        // Body
         drawRect(dx + 3, charY + 4 - dBob, 6, 7, dp.body);
         drawRect(dx + 3, charY + 4 - dBob, 2, 7, dp.dark);
-        // Head
         drawRect(dx + 2, charY - dBob, 8, 5, dp.head);
-        // Eyes
         drawRect(dx + 4, charY + 2 - dBob, 1, 1, "#1a1a2e");
         drawRect(dx + 7, charY + 2 - dBob, 1, 1, "#1a1a2e");
-        // Arms
         if (armUp) {
             drawRect(dx + 1, charY + 2 - dBob, 2, 2, dp.body);
             drawRect(dx + 9, charY + 2 - dBob, 2, 2, dp.body);
@@ -3023,23 +3018,15 @@ function renderStoryScreen() {
             drawRect(dx + 1, charY + 6 - dBob, 2, 2, dp.body);
             drawRect(dx + 9, charY + 6 - dBob, 2, 2, dp.body);
         }
-        // Feet
         const dfo = (Math.floor((storyBlink + d * 5) / 8) % 2 === 0) ? 1 : -1;
         drawRect(dx + 3 + dfo, charY + 11, 2, 2, dp.dark);
         drawRect(dx + 7 - dfo, charY + 11, 2, 2, dp.dark);
     }
 
-    // Controls section at bottom
-    const ctrlY = H - 28;
-    const ctrlCol = "#8ab0b4";
-    drawText("ARROWS:Move  SPACE:Sword  ENTER:Pause", W/2 - 76, ctrlY, ctrlCol, 3);
-
     // Blinking "PRESS ENTER TO BEGIN"
     storyBlink++;
     if (storyBlink % 60 < 40) {
-        const pressText = "PRESS ENTER TO BEGIN";
-        const pressW = pressText.length * 5;
-        drawText(pressText, W/2 - pressW/2, H - 14, "#EBEBE3", 5);
+        drawCenteredText("PRESS ENTER TO BEGIN", H - 10, "#EBEBE3", 5);
     }
 }
 
