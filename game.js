@@ -2689,15 +2689,10 @@ function renderTitleScreen() {
     const subFontSize = 4;
     ctx.font = `${subFontSize * SCALE}px monospace`;
     const subMeasured = ctx.measureText(subTitle).width;
-    const subY = H / 2 - 82;
-    // Draw each letter with wobble, centered as a group
+    const subY = H / 2 - 90;
+    // Draw static centered subtitle
     const subStartX = ((W * SCALE) - subMeasured) / (2 * SCALE);
-    const subCharW = subMeasured / (SCALE * subTitle.length);
-    for (let i = 0; i < subTitle.length; i++) {
-        const charX = subStartX + i * subCharW;
-        const wobble = Math.sin(titleBlink * 0.08 + i * 0.5) * 1;
-        drawText(subTitle[i], charX, subY + wobble, logoColor1, subFontSize);
-    }
+    drawText(subTitle, subStartX, subY, logoColor1, subFontSize);
 
     // Big "GROOVE" — use textAlign center for the whole word block
     const grooveText = "GROOVE";
