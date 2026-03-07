@@ -3508,20 +3508,33 @@ function renderTutorialScreen() {
     const toggleOrder = [[0,0], [0,2], [1,1], [1,3]];
 
     // Animation cycle — player walks to each block, swings, toggles it
-    const ACTION_LEN = 80; // frames per target (walk + attack + pause)
+    // Only cardinal movement (no diagonals), matching real gameplay
     const WALK_FRAMES = 35;
-    const ATTACK_AT = 38; // frame within action when swing starts
+    const ATTACK_AT = 38;
     const ATTACK_DUR = 15;
-    const HIT_AT = 45; // frame within action when block toggles
-    const CYCLE = ACTION_LEN * 4 + 60; // 4 actions + pause before loop
+    const HIT_OFFSET = 45;
+    const ATTACK_STEP_LEN = 80;
+    const WALK_STEP_LEN = 40;
 
-    // Player positions to hit each target (stand left of block, face right)
-    const demoWaypoints = [
-        { x: gridStartX - TILE, y: gridStartY },         // hits [0,0]
-        { x: gridStartX + TILE, y: gridStartY },         // hits [0,2]
-        { x: gridStartX,        y: gridStartY + TILE },  // hits [1,1]
-        { x: gridStartX + 2 * TILE, y: gridStartY + TILE }, // hits [1,3]
+    const demoSteps = [
+        { x: gridStartX - TILE, y: gridStartY, attack: true, toggleIdx: 0, dur: ATTACK_STEP_LEN },
+        { x: gridStartX + TILE, y: gridStartY, attack: true, toggleIdx: 1, dur: ATTACK_STEP_LEN },
+        { x: gridStartX + TILE, y: gridStartY + TILE, attack: false, toggleIdx: -1, dur: WALK_STEP_LEN },
+        { x: gridStartX, y: gridStartY + TILE, attack: true, toggleIdx: 2, dur: ATTACK_STEP_LEN },
+        { x: gridStartX + 2 * TILE, y: gridStartY + TILE, attack: true, toggleIdx: 3, dur: ATTACK_STEP_LEN },
     ];
+
+    // Precompute cumulative start frames
+    const stepStart = [0];
+    for (let i = 1; i < demoSteps.length; i++) stepStart.push(stepStart[i - 1] + demoSteps[i - 1].dur);
+    const STEPS_TOTAL = stepStart[demoSteps.length - 1] + demoSteps[demoSteps.length - 1].dur;
+    const CYCLE = STEPS_TOTAL + 60;
+
+    // Precompute hit frames for block toggling
+    const hitFrames = [];
+    for (let i = 0; i < demoSteps.length; i++) {
+        if (demoSteps[i].attack) hitFrames.push({ toggleIdx: demoSteps[i].toggleIdx, frame: stepStart[i] + HIT_OFFSET });
+    }
 
     if (t > 30) {
         const demoAlpha = Math.min(1, (t - 30) / 20);
@@ -3536,9 +3549,8 @@ function renderTutorialScreen() {
 
         // Determine which blocks are toggled on based on cycle progress
         const blockOn = [false, false, false, false];
-        for (let i = 0; i < 4; i++) {
-            const hitFrame = i * ACTION_LEN + HIT_AT;
-            if (cycleT >= hitFrame && cycleT < CYCLE - 30) blockOn[i] = true;
+        for (const hf of hitFrames) {
+            if (cycleT >= hf.frame && cycleT < CYCLE - 30) blockOn[hf.toggleIdx] = true;
         }
 
         // Draw grid cells
@@ -3572,9 +3584,9 @@ function renderTutorialScreen() {
 
                 // Flash when block gets hit
                 if (isOn) {
-                    for (let i = 0; i < toggleOrder.length; i++) {
-                        if (toggleOrder[i][0] === r && toggleOrder[i][1] === c) {
-                            const flashAge = cycleT - (i * ACTION_LEN + HIT_AT);
+                    for (const hf of hitFrames) {
+                        if (toggleOrder[hf.toggleIdx][0] === r && toggleOrder[hf.toggleIdx][1] === c) {
+                            const flashAge = cycleT - hf.frame;
                             if (flashAge >= 0 && flashAge < 10) {
                                 ctx.globalAlpha = (1 - flashAge / 10) * 0.6;
                                 drawRect(bx, by, TILE, TILE, "#ffffff");
@@ -3591,40 +3603,51 @@ function renderTutorialScreen() {
             const playerAlpha = Math.min(1, (t - 50) / 20);
             ctx.globalAlpha = demoAlpha * playerAlpha;
 
-            // Figure out player position from cycle
-            const actionIdx = Math.min(3, Math.floor(cycleT / ACTION_LEN));
-            const actionT = cycleT - actionIdx * ACTION_LEN;
-            const currWP = demoWaypoints[actionIdx];
-            const prevWP = actionIdx === 0
+            // Figure out which step we're on
+            let stepIdx = demoSteps.length - 1;
+            for (let i = 0; i < demoSteps.length; i++) {
+                if (cycleT < stepStart[i] + demoSteps[i].dur) { stepIdx = i; break; }
+            }
+            const step = demoSteps[stepIdx];
+            const stepT = cycleT - stepStart[stepIdx];
+            const prevPos = stepIdx === 0
                 ? { x: gridStartX - 3 * TILE, y: gridStartY }
-                : demoWaypoints[actionIdx - 1];
+                : demoSteps[stepIdx - 1];
 
-            let px, py, isWalking, isAttacking;
+            let px, py, isWalking, isAttacking, walkDir;
 
-            if (cycleT >= ACTION_LEN * 4) {
-                // Pause at end — player stands at last waypoint
-                px = demoWaypoints[3].x;
-                py = demoWaypoints[3].y;
+            // Determine walk direction from delta
+            const dx = step.x - prevPos.x;
+            const dy = step.y - prevPos.y;
+            if (Math.abs(dx) >= Math.abs(dy)) {
+                walkDir = dx >= 0 ? 3 : 2; // right or left
+            } else {
+                walkDir = dy >= 0 ? 0 : 1; // down or up
+            }
+
+            if (cycleT >= STEPS_TOTAL) {
+                // Pause at end — player stands at last step
+                px = demoSteps[demoSteps.length - 1].x;
+                py = demoSteps[demoSteps.length - 1].y;
                 isWalking = false;
                 isAttacking = false;
-            } else if (actionT < WALK_FRAMES) {
-                // Walking to target
-                const prog = actionT / WALK_FRAMES;
-                const eased = prog * prog * (3 - 2 * prog); // smoothstep
-                px = prevWP.x + (currWP.x - prevWP.x) * eased;
-                py = prevWP.y + (currWP.y - prevWP.y) * eased;
+                walkDir = 3;
+            } else if (stepT < WALK_FRAMES) {
+                // Walking
+                const prog = stepT / WALK_FRAMES;
+                const eased = prog * prog * (3 - 2 * prog);
+                px = prevPos.x + (step.x - prevPos.x) * eased;
+                py = prevPos.y + (step.y - prevPos.y) * eased;
                 isWalking = true;
                 isAttacking = false;
-            } else if (actionT >= ATTACK_AT && actionT < ATTACK_AT + ATTACK_DUR) {
-                // Attacking
-                px = currWP.x;
-                py = currWP.y;
+            } else if (step.attack && stepT >= ATTACK_AT && stepT < ATTACK_AT + ATTACK_DUR) {
+                px = step.x;
+                py = step.y;
                 isWalking = false;
                 isAttacking = true;
             } else {
-                // Standing (pre-attack pause or post-attack)
-                px = currWP.x;
-                py = currWP.y;
+                px = step.x;
+                py = step.y;
                 isWalking = false;
                 isAttacking = false;
             }
@@ -3633,15 +3656,21 @@ function renderTutorialScreen() {
             const walkFrame = isWalking ? Math.floor(t / 6) % 4 : 0;
             const bob = walkFrame % 2 === 1 ? 1 : 0;
 
-            // Draw player body (facing right, dir=3)
+            // Player facing direction: face walk direction while walking, face right for attack
+            const faceDir = isAttacking ? 3 : (isWalking ? walkDir : 3);
+            const eyeOfs = [[0, 2], [0, -2], [-1, 0], [1, 0]][faceDir];
+
+            // Draw player body
             drawRect(px + 3, py + 2 - bob, 10, 10, "#3a6a8a");
             drawRect(px + 3, py + 2 - bob, 2, 10, "#2a4a6a");
             drawRect(px + 11, py + 2 - bob, 2, 10, "#2a4a6a");
             // Head
             drawRect(px + 2, py - 4 - bob, 12, 7, "#F0D0B0");
-            // Eyes (facing right: offset +1,0)
-            drawRect(px + 6, py - 2 - bob, 2, 2, "#1a1a2e");
-            drawRect(px + 10, py - 2 - bob, 2, 2, "#1a1a2e");
+            // Eyes (direction-aware)
+            if (faceDir !== 1) { // don't draw eyes facing up
+                drawRect(px + 5 + eyeOfs[0], py - 2 - bob + eyeOfs[1], 2, 2, "#1a1a2e");
+                drawRect(px + 9 + eyeOfs[0], py - 2 - bob + eyeOfs[1], 2, 2, "#1a1a2e");
+            }
             // Hair
             drawRect(px + 2, py - 5 - bob, 12, 3, "#8a5a2a");
             // Feet (alternate when walking)
@@ -3652,7 +3681,7 @@ function renderTutorialScreen() {
             // Sword
             if (isAttacking) {
                 // Swing animation — arc from up to right
-                const swingProg = (actionT - ATTACK_AT) / ATTACK_DUR;
+                const swingProg = (stepT - ATTACK_AT) / ATTACK_DUR;
                 const angle = -Math.PI * 0.7 + swingProg * Math.PI * 0.9;
                 const shoulderX = px + 8;
                 const shoulderY = py + 2 - bob;
@@ -3692,11 +3721,11 @@ function renderTutorialScreen() {
             }
 
             // Gold bracket target indicator on the block the player will hit next
-            if (!isAttacking && cycleT < ACTION_LEN * 4) {
-                const targetR = toggleOrder[actionIdx][0];
-                const targetC = toggleOrder[actionIdx][1];
+            if (!isAttacking && step.attack && step.toggleIdx >= 0 && cycleT < STEPS_TOTAL) {
+                const targetR = toggleOrder[step.toggleIdx][0];
+                const targetC = toggleOrder[step.toggleIdx][1];
                 // Only show if block isn't already on
-                if (!blockOn[actionIdx]) {
+                if (!blockOn[step.toggleIdx]) {
                     const btx = gridStartX + targetC * TILE;
                     const bty = gridStartY + targetR * TILE;
                     const bPulse = 0.25 + Math.sin(t * 0.1) * 0.15;
