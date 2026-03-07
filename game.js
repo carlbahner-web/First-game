@@ -2404,7 +2404,7 @@ function renderStoryScreen() {
     let textY = 12;
     for (let i = 0; i < storyLines.length; i++) {
         const line = storyLines[i];
-        const textW = line.text.length * (line.scale * 0.9);
+        const textW = line.text.length * line.scale;
         const tx = W / 2 - textW / 2;
         // Fade in lines sequentially based on storyBlink
         const fadeStart = i * 15; // each line fades in 15 frames after the last
