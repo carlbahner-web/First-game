@@ -451,11 +451,13 @@ window.addEventListener("keydown", (e) => {
             gameState = "playing";
             return;
         }
-        if (gameState === "gameover" && gameOverTimer > 90) {
+        if (gameState === "gameover" && gameOverTimer > 180) {
+            // Let player skip the rest of the sad song
             resetGame();
+            gameState = "title";
             return;
         }
-        if (gameState === "gameover") return; // ignore Enter during death animation
+        if (gameState === "gameover") return; // let the cinematic play
         ensureAudio();
         gamePaused = !gamePaused;
         // Reset sequencer timing so it doesn't fast-forward on unpause
@@ -1188,46 +1190,94 @@ function update(dt) {
 
 // ---- Game Over ----
 let gameOverTimer = 0; // counts up for animation timing
+let sadSongStarted = false;
 
 function triggerGameOver() {
     gameState = "gameover";
     gameOverTimer = 0;
+    sadSongStarted = false;
 
-    // Big screen effects
-    screenFlash = 30;
-    screenShake = 20;
+    // Initial hit freeze + shake
+    screenShake = 15;
     shakeIntensity = 6;
+    hitFreeze = 10; // dramatic pause
 
-    // Player explosion particles
-    for (let i = 0; i < 40; i++) {
-        deathParticles.push({
-            x: player.x + player.w / 2,
-            y: player.y + player.h / 2,
-            vx: (Math.random() - 0.5) * 4,
-            vy: (Math.random() - 0.5) * 4 - 1,
-            life: 40 + Math.random() * 40,
-            color: Math.random() > 0.5 ? "#EBEBE3" : (Math.random() > 0.5 ? "#F6CC60" : "#BF7538"),
-            size: 2 + Math.random() * 3,
-            sparkle: Math.random() > 0.5,
-        });
-    }
-
-    // Death sound — sad descending tones
+    // Impact thud sound
     ensureAudio();
     if (audioCtx) {
         const now = audioCtx.currentTime;
-        const notes = [440, 370, 311, 261, 220];
-        notes.forEach((freq, i) => {
-            const osc = audioCtx.createOscillator();
-            const g = audioCtx.createGain();
-            osc.type = "triangle";
-            osc.frequency.setValueAtTime(freq, now + i * 0.15);
-            g.gain.setValueAtTime(0.15, now + i * 0.15);
-            g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.15 + 0.3);
-            osc.connect(g); g.connect(audioCtx.destination);
-            osc.start(now + i * 0.15); osc.stop(now + i * 0.15 + 0.3);
-        });
+        // Heavy impact
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(60, now);
+        osc.frequency.exponentialRampToValueAtTime(20, now + 0.5);
+        g.gain.setValueAtTime(0.5, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+        osc.connect(g); g.connect(audioCtx.destination);
+        osc.start(now); osc.stop(now + 0.5);
     }
+}
+
+function playSadSong() {
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    // A slow, melancholy melody — Am pentatonic, sparse and lonely
+    // Each note is a simple triangle wave with long decay
+    const melody = [
+        // [freq, startTime, duration, gain]
+        [440, 0.0, 2.0, 0.12],     // A4
+        [392, 1.5, 1.5, 0.10],     // G4
+        [330, 2.8, 2.0, 0.12],     // E4
+        [294, 4.5, 1.5, 0.10],     // D4
+        [262, 5.8, 2.5, 0.12],     // C4
+        [294, 7.5, 1.0, 0.08],     // D4 (brief)
+        [262, 8.2, 2.5, 0.10],     // C4
+        [220, 9.5, 3.0, 0.12],     // A3 (resolve down)
+    ];
+    melody.forEach(([freq, start, dur, vol]) => {
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(freq, now + start);
+        // Gentle vibrato
+        const lfo = audioCtx.createOscillator();
+        const lfoGain = audioCtx.createGain();
+        lfo.frequency.value = 4.5;
+        lfoGain.gain.value = 3;
+        lfo.connect(lfoGain);
+        lfoGain.connect(osc.frequency);
+        lfo.start(now + start); lfo.stop(now + start + dur);
+        g.gain.setValueAtTime(0.001, now + start);
+        g.gain.linearRampToValueAtTime(vol, now + start + 0.15);
+        g.gain.exponentialRampToValueAtTime(0.001, now + start + dur);
+        osc.connect(g); g.connect(audioCtx.destination);
+        osc.start(now + start); osc.stop(now + start + dur + 0.1);
+    });
+
+    // Underneath: very quiet low pad for atmosphere
+    const pad = audioCtx.createOscillator();
+    const padG = audioCtx.createGain();
+    pad.type = "sine";
+    pad.frequency.setValueAtTime(110, now); // A2
+    padG.gain.setValueAtTime(0.001, now);
+    padG.gain.linearRampToValueAtTime(0.06, now + 1);
+    padG.gain.setValueAtTime(0.06, now + 8);
+    padG.gain.exponentialRampToValueAtTime(0.001, now + 11);
+    pad.connect(padG); padG.connect(audioCtx.destination);
+    pad.start(now); pad.stop(now + 11);
+
+    // Second pad note for minor feel
+    const pad2 = audioCtx.createOscillator();
+    const pad2G = audioCtx.createGain();
+    pad2.type = "sine";
+    pad2.frequency.setValueAtTime(131, now); // C3
+    pad2G.gain.setValueAtTime(0.001, now);
+    pad2G.gain.linearRampToValueAtTime(0.04, now + 1.5);
+    pad2G.gain.setValueAtTime(0.04, now + 8);
+    pad2G.gain.exponentialRampToValueAtTime(0.001, now + 11);
+    pad2.connect(pad2G); pad2G.connect(audioCtx.destination);
+    pad2.start(now); pad2.stop(now + 11);
 }
 
 function resetGame() {
@@ -1269,8 +1319,6 @@ function resetGame() {
     // Reset sequencer
     currentStep = 0;
     lastStepTime = performance.now();
-
-    gameState = "playing";
 }
 
 // ---- Catapult Goblin Logic ----
@@ -2476,62 +2524,85 @@ function renderGameOverScreen() {
     const W = COLS * TILE;
     const H = ROWS * TILE;
 
+    // Handle hit freeze (dramatic pause at the start)
+    if (hitFreeze > 0) {
+        hitFreeze--;
+        // During freeze, just render the frozen game world + shake
+        render();
+        if (screenShake > 0) screenShake--;
+        return;
+    }
+
     gameOverTimer++;
 
-    // Keep rendering the game world underneath (frozen)
-    render();
+    // === TIMELINE ===
+    // 0-75:    Screen fades to black (except player stays visible)
+    // 75:      "well… shit." appears
+    // 90:      Sad song starts
+    // 90-690:  Song plays, everything slowly visible
+    // 600-690: Player + text fade out
+    // 690:     Auto-reset to title
 
-    // Dark overlay (fades in)
-    const overlayAlpha = Math.min(0.7, gameOverTimer / 60);
-    ctx.fillStyle = "#000";
-    ctx.globalAlpha = overlayAlpha;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.globalAlpha = 1.0;
-
-    // Still update particles for the death explosion effect
-    deathParticles = deathParticles.filter(p => {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += 0.15;
-        if (p.sparkle) p.vx *= 0.98;
-        p.life--;
-        return p.life > 0;
-    });
-    for (const p of deathParticles) {
-        if (p.sparkle && Math.random() > 0.6) continue;
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = p.life / 60;
-        ctx.fillRect(p.x * SCALE, p.y * SCALE, p.size * SCALE, p.size * SCALE);
-    }
-    ctx.globalAlpha = 1.0;
-
-    // Screen shake (still running from impact)
-    if (screenShake > 0) screenShake--;
-    if (screenFlash > 0) screenFlash--;
-
-    if (gameOverTimer > 30) {
-        // "GAME OVER" text — big, red, with shadow
-        const goText = "GAME OVER";
-        const goW = goText.length * 8;
-        const goY = H / 2 - 20;
-        drawText(goText, W / 2 - goW / 2 + 1, goY + 1, "#000000", 8);
-        drawText(goText, W / 2 - goW / 2, goY, "#cc2222", 8);
+    // Phase 1: Render frozen game world + fade to black around player
+    if (gameOverTimer <= 150) {
+        render(); // draw the frozen world
     }
 
-    if (gameOverTimer > 60) {
-        // Kill count
-        const countText = "GOBLINS SLAIN: " + killCount;
-        const countW = countText.length * 5;
-        drawText(countText, W / 2 - countW / 2, H / 2 + 4, "#F6CC60", 5);
-    }
+    // Fade overlay — everything goes black except a spotlight on the player
+    const fadeProgress = Math.min(1, gameOverTimer / 75); // 0→1 over ~1.25 seconds
 
-    if (gameOverTimer > 90) {
-        // Blinking "PRESS ENTER TO RETRY"
-        if (Math.floor(gameOverTimer / 20) % 2 === 0) {
-            const retryText = "PRESS ENTER TO RETRY";
-            const retryW = retryText.length * 5;
-            drawText(retryText, W / 2 - retryW / 2, H / 2 + 20, "#EBEBE3", 5);
+    if (fadeProgress > 0) {
+        // Full dark overlay
+        ctx.fillStyle = "#000";
+        ctx.globalAlpha = fadeProgress * 0.95;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1.0;
+
+        // Redraw the player on top of the darkness (spotlight effect)
+        if (gameOverTimer < 600) {
+            // Player fades out during final phase
+            const playerAlpha = gameOverTimer >= 540 ? Math.max(0, 1 - (gameOverTimer - 540) / 150) : 1.0;
+            ctx.globalAlpha = playerAlpha;
+            // Player shadow
+            drawRect(player.x + 2, player.y + player.h - 2, player.w - 4, 4, PAL.shadow);
+            drawPlayer();
+            ctx.globalAlpha = 1.0;
         }
+    }
+
+    // Start sad song
+    if (gameOverTimer >= 90 && !sadSongStarted) {
+        sadSongStarted = true;
+        ensureAudio();
+        playSadSong();
+    }
+
+    // "well… shit." text — appears at frame 75, stays until fade
+    if (gameOverTimer >= 75 && gameOverTimer < 600) {
+        const textAlpha = gameOverTimer >= 540 ? Math.max(0, 1 - (gameOverTimer - 540) / 60) : Math.min(1, (gameOverTimer - 75) / 30);
+        ctx.globalAlpha = textAlpha;
+        const shitText = "well... shit.";
+        const shitW = shitText.length * 5;
+        // Position below the player
+        const textY = player.y + player.h + 20;
+        drawText(shitText, W / 2 - shitW / 2 + 1, textY + 1, "#000000", 5);
+        drawText(shitText, W / 2 - shitW / 2, textY, "#BFCDC0", 5);
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Final full black
+    if (gameOverTimer >= 600) {
+        const finalAlpha = Math.min(1, (gameOverTimer - 600) / 60);
+        ctx.fillStyle = "#000";
+        ctx.globalAlpha = finalAlpha;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Auto-reset after ~11 seconds (660 frames at 60fps)
+    if (gameOverTimer >= 690) {
+        resetGame();
+        gameState = "title";
     }
 }
 
