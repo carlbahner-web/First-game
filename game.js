@@ -3492,7 +3492,7 @@ function renderTutorialScreen() {
     drawCenteredText("HOW TO PLAY", 20, "#F6CC60", 7);
     ctx.globalAlpha = 1;
 
-    // --- PHASE 1: Show mini grid with target pattern (t > 30) ---
+    // --- PHASE 1 + 2: Animated demo — player walks to blocks and hits them ---
     const gridStartX = W / 2 - 4 * TILE / 2; // 4 columns wide
     const gridStartY = 50;
     const miniRows = 2;
@@ -3504,30 +3504,54 @@ function renderTutorialScreen() {
         [true, false, true, false],
         [false, true, false, true],
     ];
-    // Demo current state — blocks toggle on over time
-    const toggleOrder = [[0,0], [0,2], [1,1], [1,3]]; // order blocks appear
-    const toggleDelay = 80; // frames between toggles
-    const toggleStart = 60; // when first toggle happens
+    // Order blocks get hit: [row, col]
+    const toggleOrder = [[0,0], [0,2], [1,1], [1,3]];
+
+    // Animation cycle — player walks to each block, swings, toggles it
+    const ACTION_LEN = 80; // frames per target (walk + attack + pause)
+    const WALK_FRAMES = 35;
+    const ATTACK_AT = 38; // frame within action when swing starts
+    const ATTACK_DUR = 15;
+    const HIT_AT = 45; // frame within action when block toggles
+    const CYCLE = ACTION_LEN * 4 + 60; // 4 actions + pause before loop
+
+    // Player positions to hit each target (stand left of block, face right)
+    const demoWaypoints = [
+        { x: gridStartX - TILE, y: gridStartY },         // hits [0,0]
+        { x: gridStartX + TILE, y: gridStartY },         // hits [0,2]
+        { x: gridStartX,        y: gridStartY + TILE },  // hits [1,1]
+        { x: gridStartX + 2 * TILE, y: gridStartY + TILE }, // hits [1,3]
+    ];
 
     if (t > 30) {
-        const gridAlpha = Math.min(1, (t - 30) / 20);
-        ctx.globalAlpha = gridAlpha;
+        const demoAlpha = Math.min(1, (t - 30) / 20);
+        ctx.globalAlpha = demoAlpha;
 
         // "MATCH THE PATTERN" text
         drawCenteredText("MATCH THE PATTERN!", gridStartY - 10, "#BFCDC0", 5);
 
+        // Cycle timing (demo starts at t=50 so player has time to fade in)
+        const demoT = Math.max(0, t - 50);
+        const cycleT = demoT % CYCLE;
+
+        // Determine which blocks are toggled on based on cycle progress
+        const blockOn = [false, false, false, false];
+        for (let i = 0; i < 4; i++) {
+            const hitFrame = i * ACTION_LEN + HIT_AT;
+            if (cycleT >= hitFrame && cycleT < CYCLE - 30) blockOn[i] = true;
+        }
+
+        // Draw grid cells
         for (let r = 0; r < miniRows; r++) {
             for (let c = 0; c < miniCols; c++) {
                 const bx = gridStartX + c * TILE;
                 const by = gridStartY + r * TILE;
                 const target = demoTarget[r][c];
 
-                // Figure out if this block has been "toggled on" by the animation
+                // Check if this block is toggled on
                 let isOn = false;
                 for (let i = 0; i < toggleOrder.length; i++) {
-                    if (toggleOrder[i][0] === r && toggleOrder[i][1] === c) {
-                        if (t > toggleStart + i * toggleDelay) isOn = true;
-                    }
+                    if (toggleOrder[i][0] === r && toggleOrder[i][1] === c && blockOn[i]) isOn = true;
                 }
 
                 // Draw cell
@@ -3543,84 +3567,155 @@ function renderTutorialScreen() {
                     drawRect(bx + 1, by + 1, 1, TILE - 2, rowColors[r]);
                     drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, rowColors[r]);
                     drawRect(bx + 6, by + 6, 4, 4, rowColors[r]);
-                    ctx.globalAlpha = gridAlpha;
+                    ctx.globalAlpha = demoAlpha;
                 }
 
-                // Flash when toggled on
+                // Flash when block gets hit
                 if (isOn) {
                     for (let i = 0; i < toggleOrder.length; i++) {
                         if (toggleOrder[i][0] === r && toggleOrder[i][1] === c) {
-                            const flashAge = t - (toggleStart + i * toggleDelay);
+                            const flashAge = cycleT - (i * ACTION_LEN + HIT_AT);
                             if (flashAge >= 0 && flashAge < 10) {
                                 ctx.globalAlpha = (1 - flashAge / 10) * 0.6;
                                 drawRect(bx, by, TILE, TILE, "#ffffff");
-                                ctx.globalAlpha = gridAlpha;
+                                ctx.globalAlpha = demoAlpha;
                             }
                         }
                     }
                 }
             }
         }
-        ctx.globalAlpha = 1;
-    }
 
-    // --- PHASE 2: Show player + sword explanation (t > 50) ---
-    if (t > 50) {
-        const phase2Alpha = Math.min(1, (t - 50) / 20);
-        ctx.globalAlpha = phase2Alpha;
+        // --- Animated player ---
+        if (t > 50) {
+            const playerAlpha = Math.min(1, (t - 50) / 20);
+            ctx.globalAlpha = demoAlpha * playerAlpha;
 
-        // Player character next to the grid, animated
-        const demoPlayerX = gridStartX - TILE * 2;
-        const demoPlayerY = gridStartY + 2;
-        const pBob = Math.floor(t / 12) % 2 === 0 ? 0 : 1;
+            // Figure out player position from cycle
+            const actionIdx = Math.min(3, Math.floor(cycleT / ACTION_LEN));
+            const actionT = cycleT - actionIdx * ACTION_LEN;
+            const currWP = demoWaypoints[actionIdx];
+            const prevWP = actionIdx === 0
+                ? { x: gridStartX - 3 * TILE, y: gridStartY }
+                : demoWaypoints[actionIdx - 1];
 
-        // Body
-        drawRect(demoPlayerX + 3, demoPlayerY + 2 - pBob, 10, 10, "#3a6a8a");
-        drawRect(demoPlayerX + 3, demoPlayerY + 2 - pBob, 2, 10, "#2a4a6a");
-        drawRect(demoPlayerX + 11, demoPlayerY + 2 - pBob, 2, 10, "#2a4a6a");
-        // Head
-        drawRect(demoPlayerX + 2, demoPlayerY - 4 - pBob, 12, 7, "#F0D0B0");
-        // Eyes (facing right toward grid)
-        drawRect(demoPlayerX + 6, demoPlayerY - 2 - pBob, 2, 2, "#1a1a2e");
-        drawRect(demoPlayerX + 10, demoPlayerY - 2 - pBob, 2, 2, "#1a1a2e");
-        // Hair
-        drawRect(demoPlayerX + 2, demoPlayerY - 5 - pBob, 12, 3, "#8a5a2a");
-        // Feet
-        const pfo = Math.floor(t / 12) % 2 === 0 ? 1 : -1;
-        drawRect(demoPlayerX + 4 + pfo, demoPlayerY + 12, 3, 2, "#2a4a6a");
-        drawRect(demoPlayerX + 9 - pfo, demoPlayerY + 12, 3, 2, "#2a4a6a");
+            let px, py, isWalking, isAttacking;
 
-        // Sword — swings periodically
-        const swingCycle = t % 60;
-        if (swingCycle < 15) {
-            // Sword extended right (attacking pose)
-            drawRect(demoPlayerX + 14, demoPlayerY - 2 - pBob, 12, 2, "#F6CC60");
-            drawRect(demoPlayerX + 13, demoPlayerY - 1 - pBob, 3, 4, "#BF7538");
-        } else {
-            // Sword at rest (held up)
-            drawRect(demoPlayerX + 14, demoPlayerY - 8 - pBob, 2, 10, "#F6CC60");
-            drawRect(demoPlayerX + 12, demoPlayerY - 2 - pBob, 6, 2, "#BF7538");
+            if (cycleT >= ACTION_LEN * 4) {
+                // Pause at end — player stands at last waypoint
+                px = demoWaypoints[3].x;
+                py = demoWaypoints[3].y;
+                isWalking = false;
+                isAttacking = false;
+            } else if (actionT < WALK_FRAMES) {
+                // Walking to target
+                const prog = actionT / WALK_FRAMES;
+                const eased = prog * prog * (3 - 2 * prog); // smoothstep
+                px = prevWP.x + (currWP.x - prevWP.x) * eased;
+                py = prevWP.y + (currWP.y - prevWP.y) * eased;
+                isWalking = true;
+                isAttacking = false;
+            } else if (actionT >= ATTACK_AT && actionT < ATTACK_AT + ATTACK_DUR) {
+                // Attacking
+                px = currWP.x;
+                py = currWP.y;
+                isWalking = false;
+                isAttacking = true;
+            } else {
+                // Standing (pre-attack pause or post-attack)
+                px = currWP.x;
+                py = currWP.y;
+                isWalking = false;
+                isAttacking = false;
+            }
 
-            // Gold bracket target indicator on the grid cell the player faces
-            const btx = gridStartX;
-            const bty = gridStartY;
-            const bPulse = 0.25 + Math.sin(t * 0.1) * 0.15;
-            ctx.globalAlpha = phase2Alpha * bPulse;
-            const bc = "#F6CC60";
-            const bs = 1;
-            const bL = 4;
-            // Top-left corner
-            drawRect(btx, bty, bL, bs, bc);
-            drawRect(btx, bty, bs, bL, bc);
-            // Top-right corner
-            drawRect(btx + TILE - bL, bty, bL, bs, bc);
-            drawRect(btx + TILE - bs, bty, bs, bL, bc);
-            // Bottom-left corner
-            drawRect(btx, bty + TILE - bs, bL, bs, bc);
-            drawRect(btx, bty + TILE - bL, bs, bL, bc);
-            // Bottom-right corner
-            drawRect(btx + TILE - bL, bty + TILE - bs, bL, bs, bc);
-            drawRect(btx + TILE - bs, bty + TILE - bL, bs, bL, bc);
+            // Walk animation frame
+            const walkFrame = isWalking ? Math.floor(t / 6) % 4 : 0;
+            const bob = walkFrame % 2 === 1 ? 1 : 0;
+
+            // Draw player body (facing right, dir=3)
+            drawRect(px + 3, py + 2 - bob, 10, 10, "#3a6a8a");
+            drawRect(px + 3, py + 2 - bob, 2, 10, "#2a4a6a");
+            drawRect(px + 11, py + 2 - bob, 2, 10, "#2a4a6a");
+            // Head
+            drawRect(px + 2, py - 4 - bob, 12, 7, "#F0D0B0");
+            // Eyes (facing right: offset +1,0)
+            drawRect(px + 6, py - 2 - bob, 2, 2, "#1a1a2e");
+            drawRect(px + 10, py - 2 - bob, 2, 2, "#1a1a2e");
+            // Hair
+            drawRect(px + 2, py - 5 - bob, 12, 3, "#8a5a2a");
+            // Feet (alternate when walking)
+            const footOff = isWalking ? (walkFrame === 1 ? 2 : walkFrame === 3 ? -2 : 0) : 0;
+            drawRect(px + 4 + footOff, py + 12, 3, 2, "#2a4a6a");
+            drawRect(px + 9 - footOff, py + 12, 3, 2, "#2a4a6a");
+
+            // Sword
+            if (isAttacking) {
+                // Swing animation — arc from up to right
+                const swingProg = (actionT - ATTACK_AT) / ATTACK_DUR;
+                const angle = -Math.PI * 0.7 + swingProg * Math.PI * 0.9;
+                const shoulderX = px + 8;
+                const shoulderY = py + 2 - bob;
+                const bladeLen = 13;
+                const cosA = Math.cos(angle);
+                const sinA = Math.sin(angle);
+                const tipX = shoulderX + cosA * bladeLen;
+                const tipY = shoulderY + sinA * bladeLen;
+                // Blade
+                ctx.strokeStyle = "#F6CC60";
+                ctx.lineWidth = 3 * SCALE;
+                ctx.lineCap = "round";
+                ctx.beginPath();
+                ctx.moveTo(shoulderX * SCALE, shoulderY * SCALE);
+                ctx.lineTo(tipX * SCALE, tipY * SCALE);
+                ctx.stroke();
+                // Crossguard
+                const perpX = -sinA * 3;
+                const perpY = cosA * 3;
+                ctx.strokeStyle = "#8a7040";
+                ctx.lineWidth = 2 * SCALE;
+                ctx.beginPath();
+                ctx.moveTo((shoulderX + perpX) * SCALE, (shoulderY + perpY) * SCALE);
+                ctx.lineTo((shoulderX - perpX) * SCALE, (shoulderY - perpY) * SCALE);
+                ctx.stroke();
+                // Swing glow
+                const swing = Math.sin(swingProg * Math.PI);
+                if (swing > 0.3) {
+                    ctx.globalAlpha = 0.3 * swing * demoAlpha * playerAlpha;
+                    drawRect(px - 2, py - 8, 20, 22, "#F6CC60");
+                    ctx.globalAlpha = demoAlpha * playerAlpha;
+                }
+            } else {
+                // Sword at rest (held up)
+                drawRect(px + 14, py - 8 - bob, 2, 10, "#F6CC60");
+                drawRect(px + 12, py - 2 - bob, 6, 2, "#BF7538");
+            }
+
+            // Gold bracket target indicator on the block the player will hit next
+            if (!isAttacking && cycleT < ACTION_LEN * 4) {
+                const targetR = toggleOrder[actionIdx][0];
+                const targetC = toggleOrder[actionIdx][1];
+                // Only show if block isn't already on
+                if (!blockOn[actionIdx]) {
+                    const btx = gridStartX + targetC * TILE;
+                    const bty = gridStartY + targetR * TILE;
+                    const bPulse = 0.25 + Math.sin(t * 0.1) * 0.15;
+                    ctx.globalAlpha = demoAlpha * playerAlpha * bPulse;
+                    const bc = "#F6CC60";
+                    const bs = 1;
+                    const bL = 4;
+                    drawRect(btx, bty, bL, bs, bc);
+                    drawRect(btx, bty, bs, bL, bc);
+                    drawRect(btx + TILE - bL, bty, bL, bs, bc);
+                    drawRect(btx + TILE - bs, bty, bs, bL, bc);
+                    drawRect(btx, bty + TILE - bs, bL, bs, bc);
+                    drawRect(btx, bty + TILE - bL, bs, bL, bc);
+                    drawRect(btx + TILE - bL, bty + TILE - bs, bL, bs, bc);
+                    drawRect(btx + TILE - bs, bty + TILE - bL, bs, bL, bc);
+                }
+            }
+
+            ctx.globalAlpha = demoAlpha;
         }
 
         ctx.globalAlpha = 1;
