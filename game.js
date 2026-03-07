@@ -472,9 +472,11 @@ function enterHighScoreState() {
     initialsEntry = ["A", "A", "A"];
     initialsPos = 0;
     initialsBlink = 0;
+    startStoryDrums();
 }
 
 function confirmHighScore() {
+    stopStoryDrums();
     const name = initialsEntry.join("");
     highScores.push({ name: name, score: finalScore });
     highScores.sort((a, b) => b.score - a.score);
