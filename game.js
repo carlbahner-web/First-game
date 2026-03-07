@@ -431,6 +431,7 @@ function confirmHighScore() {
     saveHighScores();
     resetGame();
     gameState = "title";
+    startTitleDrums();
 }
 
 // ---- Control Blocks (physical buttons in the room) ----
@@ -505,6 +506,7 @@ window.addEventListener("keydown", (e) => {
         e.preventDefault();
         if (gameState === "title") {
             ensureAudio();
+            stopTitleDrums();
             gameState = "story";
             storyBlink = 0;
             startStoryDrums();
@@ -522,6 +524,7 @@ window.addEventListener("keydown", (e) => {
             } else {
                 resetGame();
                 gameState = "title";
+                startTitleDrums();
             }
             return;
         }
@@ -2338,6 +2341,130 @@ function drawDancer(d) {
 let lastTime = 0;
 const FRAME_MS = 1000 / 60;
 let frameAccum = 0;
+// ---- Title Screen Drum Groove ----
+let titleDrumTimer = null;
+let titleDrumStarted = false;
+let titleDrumGain = null;
+
+function startTitleDrums() {
+    if (titleDrumStarted) return;
+    titleDrumStarted = true;
+    ensureAudio();
+    if (!audioCtx) return;
+
+    titleDrumGain = audioCtx.createGain();
+    titleDrumGain.gain.setValueAtTime(1, audioCtx.currentTime);
+    titleDrumGain.connect(audioCtx.destination);
+
+    const bpm = 120;
+    const sixteenth = 60 / bpm / 4;
+
+    //         1 . . . 2 . . . 3 . . . 4 . . .
+    const K = [1,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0];
+    const S = [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0];
+    const H = [0,1,1,1,0,1,1,0,1,1,0,1,0,1,1,1];
+    // O is all rests
+
+    const loopLen = 16 * sixteenth;
+
+    function scheduleLoop() {
+        if (!titleDrumStarted || !audioCtx || !titleDrumGain) return;
+        const now = audioCtx.currentTime;
+        const dest = titleDrumGain;
+
+        for (let i = 0; i < 16; i++) {
+            const t = now + i * sixteenth;
+
+            if (K[i]) {
+                // Kick
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = "sine";
+                osc.frequency.setValueAtTime(150, t);
+                osc.frequency.exponentialRampToValueAtTime(30, t + 0.12);
+                gain.gain.setValueAtTime(1.0, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+                osc.connect(gain);
+                gain.connect(dest);
+                osc.start(t);
+                osc.stop(t + 0.3);
+            }
+
+            if (S[i]) {
+                // Snare (noise burst + body)
+                const bufSz = audioCtx.sampleRate * 0.15;
+                const buf = audioCtx.createBuffer(1, bufSz, audioCtx.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let s = 0; s < bufSz; s++) data[s] = Math.random() * 2 - 1;
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buf;
+                const nGain = audioCtx.createGain();
+                nGain.gain.setValueAtTime(0.6, t);
+                nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+                const filt = audioCtx.createBiquadFilter();
+                filt.type = "highpass";
+                filt.frequency.value = 1000;
+                noise.connect(filt);
+                filt.connect(nGain);
+                nGain.connect(dest);
+                noise.start(t);
+                noise.stop(t + 0.15);
+                // body
+                const osc = audioCtx.createOscillator();
+                const oGain = audioCtx.createGain();
+                osc.type = "triangle";
+                osc.frequency.setValueAtTime(180, t);
+                osc.frequency.exponentialRampToValueAtTime(60, t + 0.08);
+                oGain.gain.setValueAtTime(0.5, t);
+                oGain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+                osc.connect(oGain);
+                oGain.connect(dest);
+                osc.start(t);
+                osc.stop(t + 0.1);
+            }
+
+            if (H[i]) {
+                // Closed hi-hat
+                const bufSz = audioCtx.sampleRate * 0.06;
+                const buf = audioCtx.createBuffer(1, bufSz, audioCtx.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let s = 0; s < bufSz; s++) data[s] = Math.random() * 2 - 1;
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buf;
+                const gain = audioCtx.createGain();
+                gain.gain.setValueAtTime(0.25, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+                const filt = audioCtx.createBiquadFilter();
+                filt.type = "bandpass";
+                filt.frequency.value = 10000;
+                filt.Q.value = 1.0;
+                noise.connect(filt);
+                filt.connect(gain);
+                gain.connect(dest);
+                noise.start(t);
+                noise.stop(t + 0.06);
+            }
+        }
+
+        titleDrumTimer = setTimeout(scheduleLoop, loopLen * 1000);
+    }
+
+    scheduleLoop();
+}
+
+function stopTitleDrums() {
+    titleDrumStarted = false;
+    if (titleDrumTimer !== null) {
+        clearTimeout(titleDrumTimer);
+        titleDrumTimer = null;
+    }
+    if (titleDrumGain && audioCtx) {
+        titleDrumGain.gain.setValueAtTime(0, audioCtx.currentTime);
+        titleDrumGain.disconnect();
+        titleDrumGain = null;
+    }
+}
+
 // ---- Title Screen (page 1: logo only) ----
 function renderTitleScreen() {
     const W = COLS * TILE;
@@ -2881,6 +3008,7 @@ function renderGameOverScreen() {
         } else {
             resetGame();
             gameState = "title";
+            startTitleDrums();
         }
     }
 }
