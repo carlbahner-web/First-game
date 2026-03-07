@@ -1682,15 +1682,11 @@ function advanceLevel() {
         return;
     }
     levelTimer = LEVELS[currentLevel].timerSeconds * 60;
-    // Load starting pattern for next level (or empty if none)
+    // Start with previous level's completed pattern (each level builds on the last)
+    const prevPattern = LEVELS[currentLevel - 1].pattern;
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
-            grid[r][c] = false;
-    if (LEVELS[currentLevel] && LEVELS[currentLevel].startPattern) {
-        for (let r = 0; r < GRID_ROWS; r++)
-            for (let c = 0; c < GRID_COLS; c++)
-                grid[r][c] = LEVELS[currentLevel].startPattern[r][c];
-    }
+            grid[r][c] = prevPattern[r][c];
 
     // Reset player position
     player.x = (GRID_X + 7) * TILE;
