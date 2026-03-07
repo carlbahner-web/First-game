@@ -389,8 +389,48 @@ let catapultGoblin = null; // null when inactive
 //   boulder: null | { startX, startY, targetX, targetY, progress } }
 
 let gamePaused = false;
-let gameState = "title"; // "title", "story", or "playing"
+let gameState = "title"; // "title", "story", "playing", "gameover", "highscore"
 let titleBlink = 0; // blink timer for "PRESS ENTER"
+
+// ---- High Score System ----
+let highScores = []; // Array of { name: "AAA", score: 0 }, max 5, sorted desc
+let initialsEntry = ["A", "A", "A"];
+let initialsPos = 0;       // which letter slot is active (0-2)
+let initialsBlink = 0;     // blink timer for active letter
+let finalScore = 0;        // killCount captured at game over
+
+function loadHighScores() {
+    try {
+        const data = JSON.parse(localStorage.getItem("grooveGoblinsHighScores"));
+        if (Array.isArray(data)) highScores = data.slice(0, 5);
+        else highScores = [];
+    } catch (e) { highScores = []; }
+}
+
+function saveHighScores() {
+    localStorage.setItem("grooveGoblinsHighScores", JSON.stringify(highScores));
+}
+
+function scoreQualifies(score) {
+    return score > 0 && (highScores.length < 5 || score > highScores[highScores.length - 1].score);
+}
+
+function enterHighScoreState() {
+    gameState = "highscore";
+    initialsEntry = ["A", "A", "A"];
+    initialsPos = 0;
+    initialsBlink = 0;
+}
+
+function confirmHighScore() {
+    const name = initialsEntry.join("");
+    highScores.push({ name: name, score: finalScore });
+    highScores.sort((a, b) => b.score - a.score);
+    if (highScores.length > 5) highScores.length = 5;
+    saveHighScores();
+    resetGame();
+    gameState = "title";
+}
 
 // ---- Control Blocks (physical buttons in the room) ----
 const CTRL_BLOCKS = {
@@ -440,6 +480,26 @@ window.addEventListener("keydown", (e) => {
         if (!keys[e.code]) spaceJustPressed = true; // only on initial press
     }
     keys[e.code] = true;
+
+    // High score initials entry input
+    if (gameState === "highscore") {
+        e.preventDefault();
+        if (e.code === "ArrowUp" || e.code === "KeyW") {
+            const c = initialsEntry[initialsPos].charCodeAt(0);
+            initialsEntry[initialsPos] = String.fromCharCode(c >= 90 ? 65 : c + 1); // A-Z wrap
+        } else if (e.code === "ArrowDown" || e.code === "KeyS") {
+            const c = initialsEntry[initialsPos].charCodeAt(0);
+            initialsEntry[initialsPos] = String.fromCharCode(c <= 65 ? 90 : c - 1); // Z-A wrap
+        } else if (e.code === "ArrowLeft" || e.code === "KeyA") {
+            initialsPos = Math.max(0, initialsPos - 1);
+        } else if (e.code === "ArrowRight" || e.code === "KeyD") {
+            initialsPos = Math.min(2, initialsPos + 1);
+        } else if (e.code === "Enter") {
+            confirmHighScore();
+        }
+        return;
+    }
+
     if (e.code === "Enter") {
         e.preventDefault();
         if (gameState === "title") {
@@ -453,8 +513,12 @@ window.addEventListener("keydown", (e) => {
         }
         if (gameState === "gameover" && gameOverTimer > 180) {
             // Let player skip the rest of the sad song
-            resetGame();
-            gameState = "title";
+            if (scoreQualifies(finalScore)) {
+                enterHighScoreState();
+            } else {
+                resetGame();
+                gameState = "title";
+            }
             return;
         }
         if (gameState === "gameover") return; // let the cinematic play
@@ -1196,6 +1260,7 @@ function triggerGameOver() {
     gameState = "gameover";
     gameOverTimer = 0;
     sadSongStarted = false;
+    finalScore = killCount;
 
     // Initial hit freeze + shake
     screenShake = 15;
@@ -2358,10 +2423,27 @@ function renderTitleScreen() {
 
     // Blinking "PRESS ENTER"
     titleBlink++;
+    const hasScores = highScores.length > 0;
+    const pressY = hasScores ? H - 80 : H - 30;
     if (titleBlink % 60 < 40) {
         const pressText = "PRESS ENTER";
         const pressW = pressText.length * 5;
-        drawText(pressText, W/2 - pressW/2, H - 30, "#EBEBE3", 5);
+        drawText(pressText, W/2 - pressW/2, pressY, "#EBEBE3", 5);
+    }
+
+    // High score leaderboard
+    if (hasScores) {
+        const headerText = "HIGH SCORES";
+        const headerW = headerText.length * 3;
+        drawText(headerText, W / 2 - headerW / 2, H - 68, "#F6CC60", 3);
+
+        for (let i = 0; i < highScores.length; i++) {
+            const entry = highScores[i];
+            const rank = (i + 1) + ". " + entry.name + "  " + String(entry.score).padStart(3, "0");
+            const rankW = rank.length * 3;
+            const color = i === 0 ? "#F6CC60" : "#BFCDC0";
+            drawText(rank, W / 2 - rankW / 2, H - 58 + i * 10, color, 3);
+        }
     }
 }
 
@@ -2520,6 +2602,81 @@ function renderStoryScreen() {
     }
 }
 
+function renderHighScoreEntry() {
+    const W = COLS * TILE;
+    const H = ROWS * TILE;
+
+    // Dark background with starfield
+    drawRect(0, 0, W, H, "#0a0a12");
+    for (let i = 0; i < 60; i++) {
+        const sx = ((i * 137 + 50) % W);
+        const sy = ((i * 97 + 30) % H);
+        const twinkle = Math.sin(initialsBlink * 0.05 + i) * 0.5 + 0.5;
+        ctx.globalAlpha = 0.3 + twinkle * 0.7;
+        const starSize = (i % 3 === 0) ? 2 : 1;
+        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#F6CC60" : "#EBEBE3");
+    }
+    ctx.globalAlpha = 1;
+
+    initialsBlink++;
+
+    // "NEW HIGH SCORE!" header
+    const header = "NEW HIGH SCORE!";
+    const headerW = header.length * 5;
+    drawText(header, W / 2 - headerW / 2, 20, "#F6CC60", 5);
+
+    // Kill count display
+    const scoreStr = String(finalScore);
+    const scoreW = scoreStr.length * 6;
+    drawText(scoreStr, W / 2 - scoreW / 2, 40, "#EBEBE3", 6);
+
+    // "ENTER YOUR INITIALS" label
+    const label = "ENTER YOUR INITIALS";
+    const labelW = label.length * 3;
+    drawText(label, W / 2 - labelW / 2, 65, "#BFCDC0", 3);
+
+    // Three letter slots
+    const letterScale = 8;
+    const letterSpacing = letterScale * 3; // space between letters
+    const totalLettersW = 3 * letterScale + 2 * letterSpacing;
+    const startX = W / 2 - totalLettersW / 2;
+
+    for (let i = 0; i < 3; i++) {
+        const lx = startX + i * (letterScale + letterSpacing);
+        const ly = 85;
+
+        // Active letter blinks
+        if (i === initialsPos) {
+            const blinkAlpha = Math.sin(initialsBlink * 0.12) * 0.3 + 0.7;
+            ctx.globalAlpha = blinkAlpha;
+
+            // Up arrow indicator above
+            drawText("^", lx + letterScale * 0.1, ly - 12, "#F6CC60", 4);
+            // Down arrow indicator below
+            drawText("v", lx + letterScale * 0.1, ly + letterScale + 6, "#F6CC60", 4);
+        }
+
+        // Draw the letter
+        drawText(initialsEntry[i], lx, ly, i === initialsPos ? "#F6CC60" : "#EBEBE3", letterScale);
+        ctx.globalAlpha = 1;
+
+        // Underline
+        drawRect(lx, ly + letterScale + 2, letterScale, 1, i === initialsPos ? "#F6CC60" : "#555555");
+    }
+
+    // "PRESS ENTER TO CONFIRM" blinking
+    const confirmText = "PRESS ENTER TO CONFIRM";
+    const confirmW = confirmText.length * 3;
+    if (initialsBlink % 60 < 40) {
+        drawText(confirmText, W / 2 - confirmW / 2, H - 30, "#BFCDC0", 3);
+    }
+
+    // Controls hint
+    const hint = "UP/DOWN:Letter  LEFT/RIGHT:Slot";
+    const hintW = hint.length * 2;
+    drawText(hint, W / 2 - hintW / 2, H - 18, "#666666", 2);
+}
+
 function renderGameOverScreen() {
     const W = COLS * TILE;
     const H = ROWS * TILE;
@@ -2601,8 +2758,12 @@ function renderGameOverScreen() {
 
     // Auto-reset after ~11 seconds (660 frames at 60fps)
     if (gameOverTimer >= 690) {
-        resetGame();
-        gameState = "title";
+        if (scoreQualifies(finalScore)) {
+            enterHighScoreState();
+        } else {
+            resetGame();
+            gameState = "title";
+        }
     }
 }
 
@@ -2619,6 +2780,8 @@ function gameLoop(timestamp) {
             renderStoryScreen();
         } else if (gameState === "gameover") {
             renderGameOverScreen();
+        } else if (gameState === "highscore") {
+            renderHighScoreEntry();
         } else {
             update(dt);
             render();
@@ -2627,4 +2790,5 @@ function gameLoop(timestamp) {
     requestAnimationFrame(gameLoop);
 }
 
+loadHighScores();
 requestAnimationFrame(gameLoop);
