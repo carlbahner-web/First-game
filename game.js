@@ -451,6 +451,11 @@ window.addEventListener("keydown", (e) => {
             gameState = "playing";
             return;
         }
+        if (gameState === "gameover" && gameOverTimer > 90) {
+            resetGame();
+            return;
+        }
+        if (gameState === "gameover") return; // ignore Enter during death animation
         ensureAudio();
         gamePaused = !gamePaused;
         // Reset sequencer timing so it doesn't fast-forward on unpause
@@ -1181,6 +1186,93 @@ function update(dt) {
     }
 }
 
+// ---- Game Over ----
+let gameOverTimer = 0; // counts up for animation timing
+
+function triggerGameOver() {
+    gameState = "gameover";
+    gameOverTimer = 0;
+
+    // Big screen effects
+    screenFlash = 30;
+    screenShake = 20;
+    shakeIntensity = 6;
+
+    // Player explosion particles
+    for (let i = 0; i < 40; i++) {
+        deathParticles.push({
+            x: player.x + player.w / 2,
+            y: player.y + player.h / 2,
+            vx: (Math.random() - 0.5) * 4,
+            vy: (Math.random() - 0.5) * 4 - 1,
+            life: 40 + Math.random() * 40,
+            color: Math.random() > 0.5 ? "#EBEBE3" : (Math.random() > 0.5 ? "#F6CC60" : "#BF7538"),
+            size: 2 + Math.random() * 3,
+            sparkle: Math.random() > 0.5,
+        });
+    }
+
+    // Death sound — sad descending tones
+    ensureAudio();
+    if (audioCtx) {
+        const now = audioCtx.currentTime;
+        const notes = [440, 370, 311, 261, 220];
+        notes.forEach((freq, i) => {
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = "triangle";
+            osc.frequency.setValueAtTime(freq, now + i * 0.15);
+            g.gain.setValueAtTime(0.15, now + i * 0.15);
+            g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.15 + 0.3);
+            osc.connect(g); g.connect(audioCtx.destination);
+            osc.start(now + i * 0.15); osc.stop(now + i * 0.15 + 0.3);
+        });
+    }
+}
+
+function resetGame() {
+    // Reset grid to starter beat
+    for (let r = 0; r < GRID_ROWS; r++)
+        for (let c = 0; c < GRID_COLS; c++)
+            grid[r][c] = false;
+    grid[3][0] = true; grid[3][8] = true;
+    grid[2][4] = true; grid[2][12] = true;
+
+    // Reset player
+    player.x = (GRID_X + 7) * TILE;
+    player.y = (GRID_Y + GRID_ROWS + 1) * TILE;
+    player.destX = player.x;
+    player.destY = player.y;
+    player.dir = 0;
+    player.frame = 0;
+    player.attacking = false;
+    player.attackTimer = 0;
+    player.swordHit = false;
+
+    // Reset enemies
+    killCount = 0;
+    goblin.dead = true;
+    goblin.respawnTimer = 300;
+    catapultGoblin = null;
+
+    // Clear dancers and effects
+    dancers.length = 0;
+    deathParticles = [];
+    deathText = null;
+    screenFlash = 0;
+    screenShake = 0;
+    hitFreeze = 0;
+    for (let r = 0; r < GRID_ROWS; r++)
+        for (let c = 0; c < GRID_COLS; c++)
+            cellFlash[r][c] = 0;
+
+    // Reset sequencer
+    currentStep = 0;
+    lastStepTime = performance.now();
+
+    gameState = "playing";
+}
+
 // ---- Catapult Goblin Logic ----
 function spawnCatapultGoblin() {
     const caveIdx = Math.floor(Math.random() * CAVES.length);
@@ -1326,6 +1418,16 @@ function updateCatapultGoblin() {
                 });
             }
             cg.boulder = null;
+
+            // Check if player is in the 3x3 impact zone — GAME OVER
+            const pGridCol = Math.round(player.x / TILE) - GRID_X;
+            const pGridRow = Math.round(player.y / TILE) - GRID_Y;
+            if (pGridCol >= cc - 1 && pGridCol <= cc + 1 && pGridRow >= cr - 1 && pGridRow <= cr + 1) {
+                // Player crushed by boulder!
+                triggerGameOver();
+                return;
+            }
+
             cg.phase = "retreating";
             // Set retreat destination back to cave
             const cave = CAVES[cg.caveIndex];
@@ -2370,6 +2472,69 @@ function renderStoryScreen() {
     }
 }
 
+function renderGameOverScreen() {
+    const W = COLS * TILE;
+    const H = ROWS * TILE;
+
+    gameOverTimer++;
+
+    // Keep rendering the game world underneath (frozen)
+    render();
+
+    // Dark overlay (fades in)
+    const overlayAlpha = Math.min(0.7, gameOverTimer / 60);
+    ctx.fillStyle = "#000";
+    ctx.globalAlpha = overlayAlpha;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = 1.0;
+
+    // Still update particles for the death explosion effect
+    deathParticles = deathParticles.filter(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.15;
+        if (p.sparkle) p.vx *= 0.98;
+        p.life--;
+        return p.life > 0;
+    });
+    for (const p of deathParticles) {
+        if (p.sparkle && Math.random() > 0.6) continue;
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.life / 60;
+        ctx.fillRect(p.x * SCALE, p.y * SCALE, p.size * SCALE, p.size * SCALE);
+    }
+    ctx.globalAlpha = 1.0;
+
+    // Screen shake (still running from impact)
+    if (screenShake > 0) screenShake--;
+    if (screenFlash > 0) screenFlash--;
+
+    if (gameOverTimer > 30) {
+        // "GAME OVER" text — big, red, with shadow
+        const goText = "GAME OVER";
+        const goW = goText.length * 8;
+        const goY = H / 2 - 20;
+        drawText(goText, W / 2 - goW / 2 + 1, goY + 1, "#000000", 8);
+        drawText(goText, W / 2 - goW / 2, goY, "#cc2222", 8);
+    }
+
+    if (gameOverTimer > 60) {
+        // Kill count
+        const countText = "GOBLINS SLAIN: " + killCount;
+        const countW = countText.length * 5;
+        drawText(countText, W / 2 - countW / 2, H / 2 + 4, "#F6CC60", 5);
+    }
+
+    if (gameOverTimer > 90) {
+        // Blinking "PRESS ENTER TO RETRY"
+        if (Math.floor(gameOverTimer / 20) % 2 === 0) {
+            const retryText = "PRESS ENTER TO RETRY";
+            const retryW = retryText.length * 5;
+            drawText(retryText, W / 2 - retryW / 2, H / 2 + 20, "#EBEBE3", 5);
+        }
+    }
+}
+
 function gameLoop(timestamp) {
     const dt = timestamp - lastTime;
     lastTime = timestamp;
@@ -2381,6 +2546,8 @@ function gameLoop(timestamp) {
             renderTitleScreen();
         } else if (gameState === "story") {
             renderStoryScreen();
+        } else if (gameState === "gameover") {
+            renderGameOverScreen();
         } else {
             update(dt);
             render();
