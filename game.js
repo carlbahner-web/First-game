@@ -241,6 +241,34 @@ function playDonk(time) {
     osc2.stop(time + 0.08);
 }
 
+function playWarningDonk(time) {
+    const ctx = audioCtx;
+    // Deep ominous thud — lower and longer than the attack donk
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(100, time);
+    osc.frequency.exponentialRampToValueAtTime(30, time + 0.4);
+    gain.gain.setValueAtTime(0.6, time);
+    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.5);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(time);
+    osc.stop(time + 0.5);
+    // Metallic clang on top
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = "square";
+    osc2.frequency.setValueAtTime(400, time);
+    osc2.frequency.exponentialRampToValueAtTime(120, time + 0.15);
+    gain2.gain.setValueAtTime(0.2, time);
+    gain2.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(time);
+    osc2.stop(time + 0.2);
+}
+
 function playSabotageSound(time) {
     const ctx = audioCtx;
     if (!ctx) return;
@@ -443,10 +471,11 @@ let catapultSpawnedThisCycle = false; // prevents re-spawning catapult after it 
 //   boulder: null | { startX, startY, targetX, targetY, progress } }
 
 let gamePaused = false;
-let gameState = "title"; // "title", "story", "playing", "gameover", "highscore", "levelcomplete", "enemywarning"
+let gameState = "title"; // "title", "story", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning"
 let enemyWarningType = null;   // "elite" or "catapult"
 let enemyWarningShown = { elite: false, catapult: false }; // track which warnings have been shown
 let enemyWarningBlink = 0;     // blink timer for "PRESS ENTER"
+let enemyWarningIntroTimer = 0; // transition timer before warning popup
 let currentLevel = 0;
 let levelTimer = LEVELS[0].timerSeconds * 90; // countdown in frames (seconds * 90)
 let levelComplete = false;
@@ -536,7 +565,7 @@ let spaceJustPressed = false;
 window.addEventListener("keydown", (e) => {
     if (e.code === "Space") {
         e.preventDefault();
-        if (gameState === "enemywarning") return; // ignore Space on warning screen
+        if (gameState === "enemywarning" || gameState === "enemywarning-intro") return; // ignore Space on warning screen
         if (!keys[e.code]) spaceJustPressed = true; // only on initial press
     }
     keys[e.code] = true;
@@ -1155,13 +1184,17 @@ function update(dt) {
                 enemyWarningType = "catapult";
                 enemyWarningShown.catapult = true;
                 enemyWarningBlink = 0;
-                gameState = "enemywarning";
+                enemyWarningIntroTimer = 0;
+                gameState = "enemywarning-intro";
+                if (audioCtx) playWarningDonk(audioCtx.currentTime);
                 goblin.respawnTimer = 60; // will respawn shortly after warning dismissed
             } else if (wouldBeElite && !enemyWarningShown.elite) {
                 enemyWarningType = "elite";
                 enemyWarningShown.elite = true;
                 enemyWarningBlink = 0;
-                gameState = "enemywarning";
+                enemyWarningIntroTimer = 0;
+                gameState = "enemywarning-intro";
+                if (audioCtx) playWarningDonk(audioCtx.currentTime);
                 goblin.respawnTimer = 60;
             }
             // Every 6th goblin is a catapult goblin instead of normal/elite
@@ -3829,6 +3862,70 @@ function renderTutorialScreen() {
     }
 }
 
+function renderEnemyWarningIntro() {
+    const INTRO_FRAMES = 55;
+    enemyWarningIntroTimer++;
+    const t = enemyWarningIntroTimer;
+    const progress = Math.min(1, t / INTRO_FRAMES); // 0 to 1
+
+    // Render the game underneath
+    render();
+
+    const W = canvas.width;
+    const H = canvas.height;
+
+    // Grab the rendered frame for distortion
+    const imageData = ctx.getImageData(0, 0, W, H);
+    const copy = ctx.createImageData(W, H);
+    const src = imageData.data;
+    const dst = copy.data;
+
+    // Horizontal wave distortion — gets stronger over time
+    const waveAmp = progress * 6 * SCALE;
+    const waveFreq = 0.03 + progress * 0.02;
+    for (let y = 0; y < H; y++) {
+        const offset = Math.round(Math.sin(y * waveFreq + t * 0.15) * waveAmp);
+        for (let x = 0; x < W; x++) {
+            let sx = x - offset;
+            if (sx < 0) sx = 0;
+            if (sx >= W) sx = W - 1;
+            const di = (y * W + x) * 4;
+            const si = (y * W + sx) * 4;
+            // Desaturate toward red/dark as transition progresses
+            const r = src[si], g = src[si + 1], b = src[si + 2];
+            const gray = (r * 0.3 + g * 0.59 + b * 0.11);
+            const desat = progress * 0.7;
+            dst[di]     = Math.round(r + (gray * 0.9 - r) * desat + progress * 30); // push red
+            dst[di + 1] = Math.round(g + (gray * 0.7 - g) * desat - progress * 15);
+            dst[di + 2] = Math.round(b + (gray * 0.7 - b) * desat - progress * 15);
+            dst[di + 3] = 255;
+        }
+    }
+    ctx.putImageData(copy, 0, 0);
+
+    // Screen shake — starts mild, grows
+    const shakeAmt = progress * 4 * SCALE;
+    if (shakeAmt > 0.5) {
+        const sx = (Math.random() - 0.5) * 2 * shakeAmt;
+        const sy = (Math.random() - 0.5) * 2 * shakeAmt;
+        const shifted = ctx.getImageData(0, 0, W, H);
+        ctx.clearRect(0, 0, W, H);
+        ctx.putImageData(shifted, Math.round(sx), Math.round(sy));
+    }
+
+    // Darkening overlay that increases over time
+    ctx.fillStyle = "#000";
+    ctx.globalAlpha = progress * 0.5;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+
+    // Auto-transition to the actual warning popup
+    if (t >= INTRO_FRAMES) {
+        gameState = "enemywarning";
+        enemyWarningBlink = 0;
+    }
+}
+
 function renderEnemyWarning() {
     // Render the game underneath (frozen)
     render();
@@ -3958,6 +4055,8 @@ function gameLoop(timestamp) {
                 renderStoryScreen();
             } else if (gameState === "tutorial") {
                 renderTutorialScreen();
+            } else if (gameState === "enemywarning-intro") {
+                renderEnemyWarningIntro();
             } else if (gameState === "enemywarning") {
                 renderEnemyWarning();
             } else if (gameState === "levelcomplete") {
