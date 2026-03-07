@@ -770,7 +770,6 @@ window.addEventListener("keydown", (e) => {
             return;
         }
         if (gameState === "story") {
-            stopStoryDrums();
             gameState = "tutorial";
             tutorialTimer = 0;
             tutorialPage = 0;
@@ -780,6 +779,7 @@ window.addEventListener("keydown", (e) => {
             tutorialPage++;
             tutorialTimer = 0;
             if (tutorialPage > 3) {
+                stopStoryDrums();
                 gameState = "playing";
                 currentStep = 0;
                 lastStepTime = performance.now();
