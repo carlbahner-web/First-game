@@ -2002,9 +2002,9 @@ function render() {
         drawText(num, tx, (GRID_Y + GRID_ROWS) * TILE + 8, c === currentStep && playing ? PAL.playhead : "#5a8a8f", 3);
     }
 
-    // Kill counter — large pixel-art number with skull
+    // Kill counter — large pixel-art number with skull (moved down 2 tiles)
     {
-        const kcY = (GRID_Y + GRID_ROWS) * TILE + 16;
+        const kcY = (GRID_Y + GRID_ROWS) * TILE + 16 + 2 * TILE;
         const kcX = GRID_X * TILE;
         // Background panel
         const pxSz = 3;
@@ -2030,6 +2030,23 @@ function render() {
         const numX = kcX + 14;
         const numY = kcY + 3;
         drawPixelDigits(killCount, numX + (numDigits * digitW) / 2, numY, "#EBEBE3", pxSz);
+
+        // Level counter — next to kill counter
+        const lvlX = kcX + panelW + 8;
+        const lvlDigits = String(currentLevel + 1).length;
+        const lvlPanelW = 14 + lvlDigits * digitW + 10;
+        drawRect(lvlX - 2, kcY - 2, lvlPanelW + 4, panelH + 4, "#1a3438");
+        drawRect(lvlX, kcY, lvlPanelW, panelH, "#243e42");
+        drawRect(lvlX, kcY, lvlPanelW, 1, "#3a6a70");
+        // Flag icon (10x10 pixel art)
+        const fx = lvlX + 2, fy = kcY + 3;
+        drawRect(fx, fy, 2, 10, "#EBEBE3");          // pole
+        drawRect(fx + 2, fy, 6, 2, "#F6CC60");       // flag top
+        drawRect(fx + 2, fy + 2, 6, 2, "#BF7538");   // flag bottom
+        drawRect(fx + 2, fy + 4, 4, 1, "#BF7538");   // flag taper
+        // Level number
+        const lvlNumX = lvlX + 14;
+        drawPixelDigits(currentLevel + 1, lvlNumX + (lvlDigits * digitW) / 2, numY, "#EBEBE3", pxSz);
     }
 
     // Control blocks
