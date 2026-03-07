@@ -678,8 +678,8 @@ function isTileBlockedByObjects(tileX, tileY) {
     const bpmTop = CTRL_BLOCKS.tempoUp.tileY + 1;
     const bpmBot = CTRL_BLOCKS.tempoDown.tileY - 1;
     if (tileX === ctrlX && tileY >= bpmTop && tileY <= bpmBot) return true;
-    // Level + Kill counter + Timer area (2 tiles below step numbers)
-    const counterTileY = GRID_Y + GRID_ROWS + 3;
+    // Level + Kill counter + Timer area (4 tiles below step numbers)
+    const counterTileY = GRID_Y + GRID_ROWS + 5;
     if (tileX >= GRID_X && tileX <= GRID_X + 8 && tileY === counterTileY) return true;
     return false;
 }
@@ -828,7 +828,7 @@ function update(dt) {
         }
 
         // Easter egg: hit the timer panel to lose 5 seconds with a bonk!
-        const timerTileY = GRID_Y + GRID_ROWS + 3;
+        const timerTileY = GRID_Y + GRID_ROWS + 5;
         if (targetTileY === timerTileY && targetTileX >= GRID_X + 6 && targetTileX <= GRID_X + 8) {
             p.swordHit = true;
             levelTimer = Math.max(0, levelTimer - 5 * 60); // remove 5 seconds
@@ -2127,7 +2127,7 @@ function render() {
 
     // Level counter (left) and Kill counter (right)
     {
-        const kcY = (GRID_Y + GRID_ROWS) * TILE + 16 + 2 * TILE;
+        const kcY = (GRID_Y + GRID_ROWS) * TILE + 16 + 4 * TILE;
         const baseX = GRID_X * TILE;
         const pxSz = 3;
         const digitW = (3 * pxSz + pxSz); // per digit width
