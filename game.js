@@ -780,12 +780,10 @@ function update(dt) {
                 }
 
                 // Hurt text
-                const hurtTexts = goblin.hp === 2
-                    ? ["OW FUCK!", "HEY!", "RUDE!", "OUCH!"]
-                    : ["OW FUCK!", "AAAGH!", "IM MAD!", "STOP IT!"];
-                const ht = hurtTexts[Math.floor(Math.random() * hurtTexts.length)];
+                const owTexts = ["OW MY SPLEEN!", "OW MY WEENIS!", "OW MY SKULL!", "OW MY FACE!", "OW MY EVERYTHING!"];
+                const ht = owTexts[Math.floor(Math.random() * owTexts.length)];
                 const htCol = goblin.hp === 2 ? "#ffaacc" : "#ff6666";
-                deathText = { x: goblin.x - 8, y: goblin.y - 8, timer: 40, text: ht, color: htCol, scale: 4 };
+                deathText = { x: goblin.x - 20, y: goblin.y - 8, timer: 40, text: ht, color: htCol, scale: 4 };
 
                 // Hurt sound — descending pitch, angrier each hit
                 if (audioCtx) {
@@ -828,9 +826,11 @@ function update(dt) {
             }
 
             // Death text
+            const deathOwTexts = ["OW MY SPLEEN!", "OW MY WEENIS!", "OW MY SKULL!", "OW MY FACE!", "OW MY EVERYTHING!"];
+            const deathOw = deathOwTexts[Math.floor(Math.random() * deathOwTexts.length)];
             deathText = wasElite
                 ? { x: goblin.x - 40, y: goblin.y - 12, timer: 120, text: "bro why you gotta stab me?", color: "#ffee44", scale: 4 }
-                : { x: goblin.x - 8, y: goblin.y - 8, timer: 60, text: "OW FUCK!", color: "#cc2222", scale: 5 };
+                : { x: goblin.x - 20, y: goblin.y - 8, timer: 60, text: deathOw, color: "#cc2222", scale: 5 };
 
             // Screen flash for elite kill
             if (wasElite) screenFlash = 15;
