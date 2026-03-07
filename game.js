@@ -3164,17 +3164,29 @@ function renderLevelComplete() {
         const textAlpha = Math.min(1, (levelCelebrateTimer - 30) / 30);
         ctx.globalAlpha = textAlpha;
 
-        const levelText = "LEVEL " + (currentLevel + 1) + " COMPLETE!";
-        const textScale = 6;
-        const textW = levelText.length * textScale;
-        const tx = W / 2 - textW / 2;
-        const ty = H / 2 - 20;
+        const levelText = "LEVEL " + (currentLevel + 1);
+        const completeText = "COMPLETE!";
+        const textScale = 14;
+        const ty = H / 2 - 30;
         const bounce = Math.sin(levelCelebrateTimer * 0.05) * 2;
 
+        // Draw centered using textAlign
+        ctx.textAlign = "center";
+        ctx.font = `${textScale * SCALE}px monospace`;
         // Shadow
-        drawText(levelText, tx + 1, ty + bounce + 1, "#000000", textScale);
+        ctx.fillStyle = "#000000";
+        ctx.fillText(levelText, (W * SCALE) / 2 + SCALE, (ty + bounce + 1) * SCALE);
         // Main
-        drawText(levelText, tx, ty + bounce, "#F6CC60", textScale);
+        ctx.fillStyle = "#F6CC60";
+        ctx.fillText(levelText, (W * SCALE) / 2, (ty + bounce) * SCALE);
+
+        // "COMPLETE!" below
+        const cy = ty + 20;
+        ctx.fillStyle = "#000000";
+        ctx.fillText(completeText, (W * SCALE) / 2 + SCALE, (cy + bounce + 1) * SCALE);
+        ctx.fillStyle = "#F6CC60";
+        ctx.fillText(completeText, (W * SCALE) / 2, (cy + bounce) * SCALE);
+        ctx.textAlign = "start";
 
         ctx.globalAlpha = 1.0;
     }
@@ -3214,8 +3226,11 @@ function renderLevelComplete() {
         const blink = levelCelebrateTimer % 60 < 40;
         if (blink) {
             const pressText = "PRESS ENTER TO CONTINUE";
-            const pressW = pressText.length * 3;
-            drawText(pressText, W / 2 - pressW / 2, H / 2 + 20, "#EBEBE3", 3);
+            ctx.textAlign = "center";
+            ctx.font = `${5 * SCALE}px monospace`;
+            ctx.fillStyle = "#EBEBE3";
+            ctx.fillText(pressText, (W * SCALE) / 2, (H / 2 + 30) * SCALE);
+            ctx.textAlign = "start";
         }
     }
 }
