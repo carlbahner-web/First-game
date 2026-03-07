@@ -3506,7 +3506,10 @@ function renderEnemyWarning() {
         drawText("BOULDERS!", bannerX + 16 + 19 * descScale * 1.1, descY, highlightCol, descScale);
         drawText("It will hurl rocks at", bannerX + 16, descY + 14, descCol, descScale);
         drawText("your beat grid from a", bannerX + 16, descY + 28, descCol, descScale);
-        drawText("distance. Watch out!", bannerX + 16, descY + 42, descCol, descScale);
+        drawText("distance.", bannerX + 16, descY + 42, descCol, descScale);
+        const warnCol = "#FF4466";
+        drawText("It CAN'T be killed,", bannerX + 16, descY + 60, warnCol, descScale);
+        drawText("but it CAN kill YOU!", bannerX + 16, descY + 74, warnCol, descScale);
     }
 
     // "PRESS ENTER TO CONTINUE" blinking
