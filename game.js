@@ -36,6 +36,7 @@ const LEVELS = [
             [true, false,false,false, false,false,false,false, true, false,true, false, false,false,false,false], // K
         ],
         goblinSpeed: 0.5,
+        timerSeconds: 90,
     },
     {
         name: "Level 2",
@@ -47,6 +48,7 @@ const LEVELS = [
             [true, false,false,false, false,false,true, false, true, false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.6,
+        timerSeconds: 75,
     },
     {
         name: "Level 3",
@@ -58,6 +60,7 @@ const LEVELS = [
             [true, false,false,true,  false,false,true, false, true, true, false,false, false,false,true, false],
         ],
         goblinSpeed: 0.75,
+        timerSeconds: 60,
     },
 ];
 
@@ -444,6 +447,7 @@ let enemyWarningType = null;   // "elite" or "catapult"
 let enemyWarningShown = { elite: false, catapult: false }; // track which warnings have been shown
 let enemyWarningBlink = 0;     // blink timer for "PRESS ENTER"
 let currentLevel = 0;
+let levelTimer = 0; // countdown in frames (seconds * 60)
 let levelComplete = false;
 let levelCelebrateTimer = 0;
 let titleBlink = 0; // blink timer for "PRESS ENTER"
@@ -708,6 +712,15 @@ function getBlockRect(row, col) {
 // ---- Update ----
 function update(dt) {
     if (gamePaused) return;
+
+    // Level countdown timer
+    if (levelTimer > 0) {
+        levelTimer--;
+        if (levelTimer <= 0) {
+            triggerGameOver();
+            return;
+        }
+    }
 
     // Hit freeze: skip update but keep rendering for dramatic pause
     if (hitFreeze > 0) {
@@ -1497,6 +1510,7 @@ function resetGame() {
     catapultGoblin = null;
     catapultSpawnedThisCycle = false;
     enemyWarningShown = { elite: false, catapult: false };
+    levelTimer = LEVELS[0].timerSeconds * 60;
 
     // Clear dancers and effects
     dancers.length = 0;
@@ -1588,6 +1602,7 @@ function advanceLevel() {
         }
         return;
     }
+    levelTimer = LEVELS[currentLevel].timerSeconds * 60;
     // Load starting pattern for next level (or empty if none)
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
@@ -2079,6 +2094,49 @@ function render() {
         // Large pixel-art kill number
         const numX = kcX + 14;
         drawPixelDigits(killCount, numX + (numDigits * digitW) / 2, numY, "#EBEBE3", pxSz);
+
+        // Timer counter — right of kill counter
+        const timerSec = Math.max(0, Math.ceil(levelTimer / 60));
+        const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
+        const timerDigits = timerStr.length;
+        const timerX = kcX + panelW + 8;
+        const timerPanelW = 14 + timerDigits * digitW + 10;
+        // Urgency colors
+        const isUrgent = timerSec <= 30;
+        const isCritical = timerSec <= 10;
+        const blinkRate = isCritical ? 15 : 30;
+        const blinkOn = !isUrgent || Math.floor(levelTimer / blinkRate) % 2 === 0;
+        const timerColor = isUrgent ? "#FF4466" : "#EBEBE3";
+        const timerBorderColor = isUrgent ? "#4a1a1a" : "#1a3438";
+        const timerBgColor = isUrgent ? "#3a1a22" : "#243e42";
+        const timerHighlight = isUrgent ? "#6a2a3a" : "#3a6a70";
+        // Panel
+        drawRect(timerX - 2, kcY - 2, timerPanelW + 4, panelH + 4, timerBorderColor);
+        drawRect(timerX, kcY, timerPanelW, panelH, timerBgColor);
+        drawRect(timerX, kcY, timerPanelW, 1, timerHighlight);
+        // "T" letter icon (pixel art, same style as "L")
+        const tx2 = timerX + 2, ty2 = kcY + 3;
+        drawRect(tx2, ty2, 8, 2, blinkOn ? timerColor : timerBgColor);           // horizontal top bar
+        drawRect(tx2 + 3, ty2 + 2, 2, 8, blinkOn ? timerColor : timerBgColor);   // vertical stroke
+        // Timer digits
+        if (blinkOn) {
+            const tNumX = timerX + 14;
+            drawPixelDigits(parseInt(timerStr), tNumX + (timerDigits * digitW) / 2, numY, timerColor, pxSz);
+        }
+
+        // Tick sound during last 10 seconds (once per second)
+        if (isCritical && timerSec > 0 && levelTimer % 60 === 0 && audioCtx) {
+            const now = audioCtx.currentTime;
+            const tick = audioCtx.createOscillator();
+            const tg = audioCtx.createGain();
+            tick.type = "square";
+            tick.frequency.setValueAtTime(880, now);
+            tick.frequency.exponentialRampToValueAtTime(660, now + 0.06);
+            tg.gain.setValueAtTime(0.15, now);
+            tg.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+            tick.connect(tg); tg.connect(audioCtx.destination);
+            tick.start(now); tick.stop(now + 0.08);
+        }
     }
 
     // Control blocks
