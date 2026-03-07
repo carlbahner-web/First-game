@@ -2091,7 +2091,7 @@ function render() {
     // Screen flash (elite kill)
     if (screenFlash > 0) {
         ctx.fillStyle = "#fff";
-        ctx.globalAlpha = screenFlash / 15 * 0.6;
+        ctx.globalAlpha = Math.min(1, screenFlash / 15) * 0.6;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.globalAlpha = 1.0;
     }
@@ -3123,6 +3123,7 @@ function renderLevelComplete() {
     const H = ROWS * TILE;
 
     levelCelebrateTimer++;
+    if (screenFlash > 0) screenFlash--;
 
     // Keep the sequencer playing so you hear your completed beat
     const now = performance.now();
