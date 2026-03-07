@@ -3130,10 +3130,9 @@ function renderLevelComplete() {
     if (now - lastStepTime >= stepMs) {
         lastStepTime = now;
         if (audioCtx) {
+            const t = audioCtx.currentTime;
             for (let r = 0; r < GRID_ROWS; r++) {
-                if (grid[r][currentStep]) {
-                    playDrumSound(r, audioCtx.currentTime);
-                }
+                if (grid[r][currentStep]) drumFns[r](t);
             }
         }
         currentStep = (currentStep + 1) % GRID_COLS;
