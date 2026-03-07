@@ -2982,13 +2982,14 @@ function renderStoryScreen() {
 
     // Story text
     const storyLines = [
-        { text: "Sick beats ruled STUDIOLAND", color: "#F6CC60", scale: 5, gap: 14 },
-        { text: "and the people danced.", color: "#BFCDC0", scale: 5, gap: 16 },
-        { text: "Then the GOBLINS got jealous", color: "#66cc66", scale: 5, gap: 14 },
-        { text: "and MESSED UP YOUR BEATS.", color: "#ff6666", scale: 5, gap: 16 },
-        { text: "You are the DJ.", color: "#BFCDC0", scale: 5, gap: 14 },
-        { text: "You have a sword.", color: "#F6CC60", scale: 5, gap: 14 },
-        { text: "Time to get stabbin'.", color: "#E86A6A", scale: 6, gap: 0 },
+        { text: "ONCE UPON A TIME,", color: "#F6CC60", scale: 5, gap: 14 },
+        { text: "SICK BEATS ECHOED THROUGH", color: "#BFCDC0", scale: 5, gap: 14 },
+        { text: "THE HILLS AND VALLEYS", color: "#BFCDC0", scale: 5, gap: 14 },
+        { text: "OF STUDIOLAND.", color: "#F6CC60", scale: 5, gap: 16 },
+        { text: "THAT IS, UNTIL THE DAY", color: "#66cc66", scale: 5, gap: 14 },
+        { text: "GOBLINS BECAME JEALOUS", color: "#66cc66", scale: 5, gap: 14 },
+        { text: "AND STARTED TO", color: "#ff6666", scale: 5, gap: 14 },
+        { text: "SABOTAGE THE MUSIC.", color: "#E86A6A", scale: 6, gap: 0 },
     ];
 
     // Calculate total height to vertically center story block
