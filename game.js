@@ -438,7 +438,10 @@ let catapultSpawnedThisCycle = false; // prevents re-spawning catapult after it 
 //   boulder: null | { startX, startY, targetX, targetY, progress } }
 
 let gamePaused = false;
-let gameState = "title"; // "title", "story", "playing", "gameover", "highscore", "levelcomplete"
+let gameState = "title"; // "title", "story", "playing", "gameover", "highscore", "levelcomplete", "enemywarning"
+let enemyWarningType = null;   // "elite" or "catapult"
+let enemyWarningShown = { elite: false, catapult: false }; // track which warnings have been shown
+let enemyWarningBlink = 0;     // blink timer for "PRESS ENTER"
 let currentLevel = 0;
 let levelComplete = false;
 let levelCelebrateTimer = 0;
@@ -532,6 +535,11 @@ let spaceJustPressed = false;
 window.addEventListener("keydown", (e) => {
     if (e.code === "Space") {
         e.preventDefault();
+        if (gameState === "enemywarning") {
+            gameState = "playing";
+            lastStepTime = performance.now();
+            return;
+        }
         if (!keys[e.code]) spaceJustPressed = true; // only on initial press
     }
     keys[e.code] = true;
@@ -557,6 +565,11 @@ window.addEventListener("keydown", (e) => {
 
     if (e.code === "Enter") {
         e.preventDefault();
+        if (gameState === "enemywarning") {
+            gameState = "playing";
+            lastStepTime = performance.now(); // reset sequencer timing
+            return;
+        }
         if (gameState === "title") {
             ensureAudio();
             stopTitleDrums();
@@ -1127,8 +1140,24 @@ function update(dt) {
     if (goblin.dead) {
         goblin.respawnTimer--;
         if (goblin.respawnTimer <= 0) {
+            // Check if we need to show a warning before spawning a new enemy type
+            const wouldBeElite = (killCount % 3 === 2 && killCount % 6 !== 5);
+            const wouldBeCatapult = (killCount % 6 === 5 && !catapultGoblin && !catapultSpawnedThisCycle);
+            if (wouldBeCatapult && !enemyWarningShown.catapult) {
+                enemyWarningType = "catapult";
+                enemyWarningShown.catapult = true;
+                enemyWarningBlink = 0;
+                gameState = "enemywarning";
+                goblin.respawnTimer = 60; // will respawn shortly after warning dismissed
+            } else if (wouldBeElite && !enemyWarningShown.elite) {
+                enemyWarningType = "elite";
+                enemyWarningShown.elite = true;
+                enemyWarningBlink = 0;
+                gameState = "enemywarning";
+                goblin.respawnTimer = 60;
+            }
             // Every 6th goblin is a catapult goblin instead of normal/elite
-            if (killCount % 6 === 5 && !catapultGoblin && !catapultSpawnedThisCycle) {
+            else if (killCount % 6 === 5 && !catapultGoblin && !catapultSpawnedThisCycle) {
                 spawnCatapultGoblin();
                 catapultSpawnedThisCycle = true;
                 goblin.respawnTimer = 300; // wait until catapult goblin finishes
@@ -1466,6 +1495,7 @@ function resetGame() {
     goblin.respawnTimer = 300;
     catapultGoblin = null;
     catapultSpawnedThisCycle = false;
+    enemyWarningShown = { elite: false, catapult: false };
 
     // Clear dancers and effects
     dancers.length = 0;
@@ -3359,6 +3389,127 @@ function renderGameOverScreen() {
     }
 }
 
+function renderEnemyWarning() {
+    // Render the game underneath (frozen)
+    render();
+
+    enemyWarningBlink++;
+
+    // Dim the screen
+    ctx.fillStyle = "#000";
+    ctx.globalAlpha = 0.65;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = 1.0;
+
+    // Banner dimensions
+    const bannerX = 3 * TILE;
+    const bannerY = 4 * TILE;
+    const bannerW = (COLS - 6) * TILE;
+    const bannerH = 10 * TILE;
+
+    // Outer border
+    drawRect(bannerX - 2, bannerY - 2, bannerW + 4, bannerH + 4, "#3a1a1a");
+    // Inner fill
+    drawRect(bannerX, bannerY, bannerW, bannerH, "#2a1a2a");
+    // Highlight edges
+    drawRect(bannerX, bannerY, bannerW, 2, "#6a2a4a");
+    drawRect(bannerX, bannerY + bannerH - 2, bannerW, 2, "#1a0a1a");
+    // Warning stripes at top
+    for (let i = 0; i < bannerW; i += 8) {
+        if (Math.floor(i / 8) % 2 === 0) {
+            drawRect(bannerX + i, bannerY, Math.min(8, bannerW - i), 2, "#F6CC60");
+        }
+    }
+
+    if (enemyWarningType === "elite") {
+        // Title: "WARNING!"
+        const titleText = "WARNING!";
+        const titleScale = 7;
+        const titleW = titleText.length * titleScale * 1.1;
+        const titleX = bannerX + bannerW / 2 - titleW / 2;
+        const titleY = bannerY + 14;
+        drawText(titleText, titleX + 1, titleY + 1, "#1a0a0a", titleScale);
+        drawText(titleText, titleX, titleY, "#FF4466", titleScale);
+
+        // Enemy name
+        const nameText = "ELITE GOBLIN";
+        const nameScale = 5;
+        const nameW = nameText.length * nameScale * 1.1;
+        const nameX = bannerX + bannerW / 2 - nameW / 2;
+        const nameY = titleY + 30;
+        drawText(nameText, nameX, nameY, "#FF88CC", nameScale);
+
+        // Draw a little pink goblin preview (just a colored square with eyes)
+        const previewX = bannerX + bannerW / 2 - TILE / 2;
+        const previewY = nameY + 20;
+        drawRect(previewX, previewY, TILE, TILE, "#D34FB5");
+        drawRect(previewX + 3, previewY + 3, 4, 4, "#ffee44"); // left eye
+        drawRect(previewX + TILE - 7, previewY + 3, 4, 4, "#ffee44"); // right eye
+        drawRect(previewX + 4, previewY + TILE - 5, TILE - 8, 3, "#1a0a1a"); // mouth
+
+        // Description lines
+        const descY = previewY + TILE + 12;
+        const descCol = "#BFCDC0";
+        const highlightCol = "#FF88CC";
+        const descScale = 4;
+        drawText("This goblin is EXTRA", bannerX + 16, descY, descCol, descScale);
+        drawText("STRONG!", bannerX + 16 + 21 * descScale * 1.1, descY, highlightCol, descScale);
+        drawText("It takes 3 HITS to", bannerX + 16, descY + 14, descCol, descScale);
+        drawText("defeat it!", bannerX + 16, descY + 28, descCol, descScale);
+        drawText("It also moves FASTER", bannerX + 16, descY + 46, descCol, descScale);
+        drawText("than normal goblins.", bannerX + 16, descY + 60, descCol, descScale);
+
+    } else if (enemyWarningType === "catapult") {
+        // Title
+        const titleText = "WARNING!";
+        const titleScale = 7;
+        const titleW = titleText.length * titleScale * 1.1;
+        const titleX = bannerX + bannerW / 2 - titleW / 2;
+        const titleY = bannerY + 14;
+        drawText(titleText, titleX + 1, titleY + 1, "#1a0a0a", titleScale);
+        drawText(titleText, titleX, titleY, "#FF4466", titleScale);
+
+        // Enemy name
+        const nameText = "CATAPULT GOBLIN";
+        const nameScale = 5;
+        const nameW = nameText.length * nameScale * 1.1;
+        const nameX = bannerX + bannerW / 2 - nameW / 2;
+        const nameY = titleY + 30;
+        drawText(nameText, nameX, nameY, "#88AAFF", nameScale);
+
+        // Draw a little catapult goblin preview
+        const previewX = bannerX + bannerW / 2 - TILE / 2;
+        const previewY = nameY + 20;
+        drawRect(previewX, previewY, TILE, TILE, "#4A8A3A");
+        drawRect(previewX + 3, previewY + 3, 4, 4, "#cc2222"); // left eye
+        drawRect(previewX + TILE - 7, previewY + 3, 4, 4, "#cc2222"); // right eye
+        // Little catapult arm
+        drawRect(previewX + TILE / 2 - 2, previewY - 6, 4, 8, "#8B6914");
+        drawRect(previewX + TILE / 2 - 5, previewY - 6, 10, 3, "#A07818");
+
+        // Description lines
+        const descY = previewY + TILE + 12;
+        const descCol = "#BFCDC0";
+        const highlightCol = "#88AAFF";
+        const descScale = 4;
+        drawText("This goblin THROWS", bannerX + 16, descY, descCol, descScale);
+        drawText("BOULDERS!", bannerX + 16 + 19 * descScale * 1.1, descY, highlightCol, descScale);
+        drawText("It will hurl rocks at", bannerX + 16, descY + 14, descCol, descScale);
+        drawText("your beat grid from a", bannerX + 16, descY + 28, descCol, descScale);
+        drawText("distance. Watch out!", bannerX + 16, descY + 42, descCol, descScale);
+    }
+
+    // "PRESS ENTER TO CONTINUE" blinking
+    if (Math.floor(enemyWarningBlink / 30) % 2 === 0) {
+        const hintText = "PRESS ENTER OR SPACE";
+        const hintScale = 3;
+        const hintW = hintText.length * hintScale * 1.1;
+        const hintX = bannerX + bannerW / 2 - hintW / 2;
+        const hintY = bannerY + bannerH - 12;
+        drawText(hintText, hintX, hintY, "#F6CC60", hintScale);
+    }
+}
+
 function gameLoop(timestamp) {
     const dt = timestamp - lastTime;
     lastTime = timestamp;
@@ -3371,6 +3522,8 @@ function gameLoop(timestamp) {
                 renderTitleScreen();
             } else if (gameState === "story") {
                 renderStoryScreen();
+            } else if (gameState === "enemywarning") {
+                renderEnemyWarning();
             } else if (gameState === "levelcomplete") {
                 renderLevelComplete();
             } else if (gameState === "gameover") {
