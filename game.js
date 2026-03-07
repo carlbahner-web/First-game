@@ -1491,6 +1491,34 @@ function checkLevelComplete() {
     return true;
 }
 
+function playLevelFanfare() {
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    // Triumphant ascending arpeggio (C major -> high C)
+    const notes = [523, 659, 784, 1047, 1319, 1568, 2093];
+    notes.forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(freq, now + i * 0.1);
+        g.gain.setValueAtTime(0.18 - i * 0.02, now + i * 0.1);
+        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.5);
+        osc.connect(g); g.connect(audioCtx.destination);
+        osc.start(now + i * 0.1); osc.stop(now + i * 0.1 + 0.5);
+    });
+    // Held major chord at the end
+    [1047, 1319, 1568].forEach((freq) => {
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(freq, now + 0.7);
+        g.gain.setValueAtTime(0.08, now + 0.7);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 2.0);
+        osc.connect(g); g.connect(audioCtx.destination);
+        osc.start(now + 0.7); osc.stop(now + 2.0);
+    });
+}
+
 function triggerLevelComplete() {
     levelComplete = true;
     levelCelebrateTimer = 0;
@@ -1502,6 +1530,8 @@ function triggerLevelComplete() {
     catapultGoblin = null;
     // Screen flash for celebration
     screenFlash = 20;
+    // Play fanfare instead of drums
+    playLevelFanfare();
 }
 
 function advanceLevel() {
@@ -1849,8 +1879,10 @@ function render() {
         ctx.globalAlpha = 1.0;
     }
 
-    // Banner lights along bottom wall
+    // Banner lights along bottom wall (skip cave entrance column)
+    const caveCol = Math.floor(COLS / 2);
     for (let c = 1; c < COLS - 1; c++) {
+        if (c === caveCol) continue;
         const lx = c * TILE + TILE / 2;
         const ly = (ROWS - 1) * TILE + 2;
         const bulbColors = ["#F6CC60", "#BF7538", "#BFCDC0", "#EBEBE3"];
@@ -3120,21 +3152,12 @@ function renderLevelComplete() {
     levelCelebrateTimer++;
     if (screenFlash > 0) screenFlash--;
 
-    // Keep the sequencer playing so you hear your completed beat
-    const now = performance.now();
-    if (now - lastStepTime >= stepMs) {
-        lastStepTime = now;
-        if (audioCtx) {
-            const t = audioCtx.currentTime;
-            for (let r = 0; r < GRID_ROWS; r++) {
-                if (grid[r][currentStep]) drumFns[r](t);
-            }
-        }
-        currentStep = (currentStep + 1) % GRID_COLS;
-    }
-
-    // Dark background (avoid calling render() to prevent errors)
+    // Render the game map underneath, then fade to black over time
+    render();
+    const fadeAlpha = Math.min(1, levelCelebrateTimer / 90);
+    ctx.globalAlpha = fadeAlpha;
     drawRect(0, 0, COLS * TILE, ROWS * TILE, "#1a2a2e");
+    ctx.globalAlpha = 1.0;
 
     // "LEVEL X COMPLETE!" text
     if (levelCelebrateTimer > 30) {
