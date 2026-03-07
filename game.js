@@ -2689,7 +2689,7 @@ function renderTitleScreen() {
     const subFontSize = 4;
     ctx.font = `${subFontSize * SCALE}px monospace`;
     const subMeasured = ctx.measureText(subTitle).width;
-    const subY = H / 2 - 150;
+    const subY = H / 2 - 100;
     // Draw each letter with wobble, centered as a group
     const subStartX = ((W * SCALE) - subMeasured) / (2 * SCALE);
     const subCharW = subMeasured / (SCALE * subTitle.length);
