@@ -21,12 +21,19 @@ let stepMs = (60 / bpm / 4) * 1000; // 16th-note interval
 const LEVELS = [
     {
         name: "Level 1",
-        // Simple kick + snare backbeat
+        // Start: basic kick + snare backbeat
+        startPattern: [
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // O
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // H
+            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // S
+            [true, false,false,false, false,false,false,false, true, false,false,false, false,false,false,false], // K
+        ],
+        // Goal: add 8th-note hats + extra kick pickup
         pattern: [
-            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
-            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
-            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false],
-            [true, false,false,false, false,false,false,false, true, false,false,false, false,false,false,false],
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // O
+            [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // H
+            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // S
+            [true, false,false,false, false,false,false,false, true, false,true, false, false,false,false,false], // K
         ],
         goblinSpeed: 0.5,
     },
@@ -337,8 +344,12 @@ const drumFns = [
 // ---- Sequencer State ----
 const grid = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).fill(false));
 // Starter beat: kick on 1,9 and snare on 5,13 (0-indexed: row 3=kick, row 2=snare)
-grid[3][0] = true; grid[3][8] = true;   // Kick on steps 1 and 9
-grid[2][4] = true; grid[2][12] = true;  // Snare on steps 5 and 13
+// Load level 1 starting pattern
+if (LEVELS[0] && LEVELS[0].startPattern) {
+    for (let r = 0; r < GRID_ROWS; r++)
+        for (let c = 0; c < GRID_COLS; c++)
+            grid[r][c] = LEVELS[0].startPattern[r][c];
+}
 const playing = true; // always playing — use RESET block to clear
 let currentStep = 0;
 let lastStepTime = 0;
@@ -1419,10 +1430,15 @@ function playSadSong() {
 }
 
 function resetGame() {
-    // Reset grid to empty (levels define the target pattern)
+    // Load starting pattern for current level (or empty if none)
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
             grid[r][c] = false;
+    if (LEVELS[0] && LEVELS[0].startPattern) {
+        for (let r = 0; r < GRID_ROWS; r++)
+            for (let c = 0; c < GRID_COLS; c++)
+                grid[r][c] = LEVELS[0].startPattern[r][c];
+    }
 
     // Reset player
     player.x = (GRID_X + 7) * TILE;
@@ -1502,10 +1518,15 @@ function advanceLevel() {
         }
         return;
     }
-    // Reset grid to empty
+    // Load starting pattern for next level (or empty if none)
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
             grid[r][c] = false;
+    if (LEVELS[currentLevel] && LEVELS[currentLevel].startPattern) {
+        for (let r = 0; r < GRID_ROWS; r++)
+            for (let c = 0; c < GRID_COLS; c++)
+                grid[r][c] = LEVELS[currentLevel].startPattern[r][c];
+    }
 
     // Reset player position
     player.x = (GRID_X + 7) * TILE;
