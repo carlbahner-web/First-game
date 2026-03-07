@@ -384,6 +384,7 @@ let pendingShakeElite = false;
 const cellFlash = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).fill(0));
 // ---- Catapult Goblin State ----
 let catapultGoblin = null; // null when inactive
+let catapultSpawnedThisCycle = false; // prevents re-spawning catapult after it finishes
 // When active: { x, y, destX, destY, dir, frame, frameTimer, speed,
 //   phase, phaseTimer, caveIndex, targetRow, targetCol,
 //   boulder: null | { startX, startY, targetX, targetY, progress } }
@@ -885,6 +886,7 @@ function update(dt) {
 
             // Kill counter & dancer spawn
             killCount++;
+            catapultSpawnedThisCycle = false; // allow catapult to spawn on next qualifying kill
             if (killCount % 3 === 0) {
                 // Spawn 3 dancers from different edges, no overlapping destinations
                 const edges = [0, 1, 2]; // left, right, bottom
@@ -902,13 +904,15 @@ function update(dt) {
                 }
                 for (let di = 0; di < 3; di++) {
                     const palette = DANCER_PALETTES[dancers.length % DANCER_PALETTES.length];
-                    // Find a target tile not already taken
+                    // Find a target tile not already taken and not blocking a cave
                     let targetTX, targetTY, attempts = 0;
                     do {
                         targetTX = 2 + Math.floor(Math.random() * (COLS - 5));
                         targetTY = 14 + Math.floor(Math.random() * 3);
                         attempts++;
-                    } while (occupied.has(targetTX + "," + targetTY) && attempts < 50);
+                    } while ((occupied.has(targetTX + "," + targetTY) ||
+                        CAVES.some(c => Math.abs(c.tileX - targetTX) <= 1 && Math.abs(c.tileY - targetTY) <= 1)) &&
+                        attempts < 50);
                     occupied.add(targetTX + "," + targetTY);
                     const targetX = targetTX * TILE;
                     const targetY = targetTY * TILE;
@@ -955,7 +959,7 @@ function update(dt) {
             }
         }
 
-        // Check dancer hit — donk! They're immune
+        // Check dancer hit — donk + knockback one tile
         for (const d of dancers) {
             const dTileX = Math.round(d.x / TILE);
             const dTileY = Math.round(d.y / TILE);
@@ -964,6 +968,14 @@ function update(dt) {
                 if (audioCtx) {
                     playDonk(audioCtx.currentTime);
                 }
+                // Knock dancer back one tile away from player
+                const knockDx = dTileX - Math.round(p.x / TILE);
+                const knockDy = dTileY - Math.round(p.y / TILE);
+                const newX = d.x + Math.sign(knockDx) * TILE;
+                const newY = d.y + Math.sign(knockDy) * TILE;
+                d.targetX = Math.max(TILE, Math.min((COLS - 2) * TILE, newX));
+                d.targetY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, newY));
+                d.walkingIn = true; // reuse walk-in movement to slide to new position
                 break;
             }
         }
@@ -1046,8 +1058,9 @@ function update(dt) {
         goblin.respawnTimer--;
         if (goblin.respawnTimer <= 0) {
             // Every 6th goblin is a catapult goblin instead of normal/elite
-            if (killCount % 6 === 5 && !catapultGoblin) {
+            if (killCount % 6 === 5 && !catapultGoblin && !catapultSpawnedThisCycle) {
                 spawnCatapultGoblin();
+                catapultSpawnedThisCycle = true;
                 goblin.respawnTimer = 300; // wait until catapult goblin finishes
             } else if (catapultGoblin) {
                 // Wait for catapult goblin to finish before spawning next
@@ -1369,6 +1382,7 @@ function resetGame() {
     goblin.dead = true;
     goblin.respawnTimer = 300;
     catapultGoblin = null;
+    catapultSpawnedThisCycle = false;
 
     // Clear dancers and effects
     dancers.length = 0;
@@ -1381,9 +1395,11 @@ function resetGame() {
         for (let c = 0; c < GRID_COLS; c++)
             cellFlash[r][c] = 0;
 
-    // Reset sequencer
+    // Reset sequencer and frame timing
     currentStep = 0;
     lastStepTime = performance.now();
+    lastTime = 0;
+    frameAccum = 0;
 }
 
 // ---- Catapult Goblin Logic ----
