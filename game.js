@@ -2905,12 +2905,13 @@ function renderStoryScreen() {
     }
     ctx.globalAlpha = 1;
 
-    // Helper to center text: measure with canvas and draw centered
+    // Helper to center text using canvas textAlign
     function drawCenteredText(text, y, color, scale) {
         ctx.font = `${scale * SCALE}px monospace`;
-        const measured = ctx.measureText(text).width;
         ctx.fillStyle = color;
-        ctx.fillText(text, (W * SCALE - measured) / 2, y * SCALE);
+        ctx.textAlign = "center";
+        ctx.fillText(text, (W * SCALE) / 2, y * SCALE);
+        ctx.textAlign = "start";
     }
 
     // Story text
@@ -2943,16 +2944,16 @@ function renderStoryScreen() {
         textY += line.scale + line.gap;
     }
 
-    // Characters at the bottom — evenly spaced: goblins, player, dancers
-    // Layout: [elite goblin] [goblin] ... [dancer] [player] [dancer] ... [dancer]
-    //  Spread 5 characters evenly across the width
-    const charSlots = 5; // elite, goblin, player, dancer1, dancer2
-    const slotW = W / (charSlots + 1);
+    // Characters at the bottom — evenly spaced across center area
+    const charMargin = W * 0.15; // 15% margin on each side
+    const charArea = W - charMargin * 2;
+    const charSlots = 5;
+    const slotW = charArea / (charSlots - 1); // space between characters
     const gobFrame = Math.floor(storyBlink / 10) % 4;
     const gobBob = gobFrame % 2 === 1 ? 1 : 0;
 
-    // Elite goblin (slot 1)
-    const eliteX = slotW * 1 - 8 + Math.sin(storyBlink * 0.025 + 1) * 3;
+    // Elite goblin (slot 0 — left)
+    const eliteX = charMargin + slotW * 0 - 8 + Math.sin(storyBlink * 0.025 + 1) * 3;
     const eliteBob = (gobFrame + 1) % 2 === 1 ? 1 : 0;
     drawRect(eliteX + 4, charY + 3 - eliteBob, 8, 9, "#c45a8a");
     drawRect(eliteX + 4, charY + 3 - eliteBob, 2, 9, "#a43a6a");
@@ -2966,8 +2967,8 @@ function renderStoryScreen() {
     drawRect(eliteX + 5 + efo, charY + 12, 3, 2, "#a43a6a");
     drawRect(eliteX + 8 - efo, charY + 12, 3, 2, "#a43a6a");
 
-    // Goblin (slot 2)
-    const gobX = slotW * 2 - 8 + Math.sin(storyBlink * 0.03) * 3;
+    // Goblin (slot 1)
+    const gobX = charMargin + slotW * 1 - 8 + Math.sin(storyBlink * 0.03) * 3;
     drawRect(gobX + 4, charY + 3 - gobBob, 8, 9, "#4a8a3a");
     drawRect(gobX + 4, charY + 3 - gobBob, 2, 9, "#3a6a2a");
     drawRect(gobX + 10, charY + 3 - gobBob, 2, 9, "#3a6a2a");
@@ -2980,8 +2981,8 @@ function renderStoryScreen() {
     drawRect(gobX + 5 + gwo, charY + 12, 3, 2, "#3a6a2a");
     drawRect(gobX + 8 - gwo, charY + 12, 3, 2, "#3a6a2a");
 
-    // Player (center, slot 3)
-    const playerX = slotW * 3 - 8;
+    // Player (center, slot 2)
+    const playerX = charMargin + slotW * 2 - 8;
     const playerBob = Math.floor(storyBlink / 12) % 2 === 0 ? 0 : 1;
     drawRect(playerX + 3, charY + 2 - playerBob, 10, 10, "#3a6a8a");
     drawRect(playerX + 3, charY + 2 - playerBob, 2, 10, "#2a4a6a");
@@ -3003,7 +3004,7 @@ function renderStoryScreen() {
     ];
     for (let d = 0; d < 2; d++) {
         const dp = dancerPals[d];
-        const dx = slotW * (4 + d) - 6;
+        const dx = charMargin + slotW * (3 + d) - 6;
         const dBob = Math.floor((storyBlink + d * 5) / 8) % 2 === 0 ? 0 : 2;
         const armUp = Math.floor((storyBlink + d * 5) / 8) % 2 === 0;
         drawRect(dx + 3, charY + 4 - dBob, 6, 7, dp.body);
