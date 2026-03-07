@@ -1291,17 +1291,41 @@ function update(dt) {
             ny = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, ny));
 
             // Don't walk into player, dancers, or solid objects
-            const gntx = Math.round(nx / TILE);
-            const gnty = Math.round(ny / TILE);
             const cgBlockX = catapultGoblin ? Math.round(catapultGoblin.x / TILE) * TILE : -999;
             const cgBlockY = catapultGoblin ? Math.round(catapultGoblin.y / TILE) * TILE : -999;
-            const gobBlocked = (nx === p.x && ny === p.y)
-                || isTileBlockedByObjects(gntx, gnty)
-                || isTileOccupiedByDancer(gntx, gnty)
-                || (catapultGoblin && nx === cgBlockX && ny === cgBlockY);
-            if (!gobBlocked) {
+            function isGobTileBlocked(tx, ty) {
+                const ttx = Math.round(tx / TILE);
+                const tty = Math.round(ty / TILE);
+                return (tx === p.x && ty === p.y)
+                    || isTileBlockedByObjects(ttx, tty)
+                    || isTileOccupiedByDancer(ttx, tty)
+                    || (catapultGoblin && tx === cgBlockX && ty === cgBlockY);
+            }
+            if (!isGobTileBlocked(nx, ny)) {
                 goblin.destX = nx;
                 goblin.destY = ny;
+            } else {
+                // Try the other axis instead of getting stuck
+                let ax = goblin.x, ay = goblin.y;
+                if (nx !== goblin.x) {
+                    // Was trying horizontal, try vertical instead
+                    if (gdy !== 0) {
+                        ay += Math.sign(gdy) * TILE;
+                        goblin.dir = gdy > 0 ? 0 : 1;
+                    }
+                } else {
+                    // Was trying vertical, try horizontal instead
+                    if (gdx !== 0) {
+                        ax += Math.sign(gdx) * TILE;
+                        goblin.dir = gdx > 0 ? 3 : 2;
+                    }
+                }
+                ax = Math.max(TILE, Math.min((COLS - 2) * TILE, ax));
+                ay = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, ay));
+                if ((ax !== goblin.x || ay !== goblin.y) && !isGobTileBlocked(ax, ay)) {
+                    goblin.destX = ax;
+                    goblin.destY = ay;
+                }
             }
         } else {
             // Move toward destination smoothly
