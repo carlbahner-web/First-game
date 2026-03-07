@@ -3727,124 +3727,148 @@ function renderEnemyWarning() {
     render();
 
     enemyWarningBlink++;
+    const t = enemyWarningBlink;
+    const W = COLS * TILE;
+    const H = ROWS * TILE;
 
-    // Dim the screen
+    // Heavy dim overlay
     ctx.fillStyle = "#000";
-    ctx.globalAlpha = 0.65;
+    ctx.globalAlpha = 0.75;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.globalAlpha = 1.0;
 
-    // Banner dimensions
-    const bannerX = 3 * TILE;
-    const bannerY = 4 * TILE;
-    const bannerW = (COLS - 6) * TILE;
-    const bannerH = 10 * TILE;
+    // Centered text helper (same as story/tutorial screens)
+    function drawCenteredText(text, y, color, scale) {
+        ctx.font = `${scale * SCALE}px monospace`;
+        ctx.fillStyle = color;
+        ctx.textAlign = "center";
+        ctx.fillText(text, (W * SCALE) / 2, y * SCALE);
+        ctx.textAlign = "start";
+    }
 
-    // Outer border
-    drawRect(bannerX - 2, bannerY - 2, bannerW + 4, bannerH + 4, "#3a1a1a");
-    // Inner fill
-    drawRect(bannerX, bannerY, bannerW, bannerH, "#2a1a2a");
-    // Highlight edges
-    drawRect(bannerX, bannerY, bannerW, 2, "#6a2a4a");
-    drawRect(bannerX, bannerY + bannerH - 2, bannerW, 2, "#1a0a1a");
-    // Warning stripes at top
-    for (let i = 0; i < bannerW; i += 8) {
-        if (Math.floor(i / 8) % 2 === 0) {
-            drawRect(bannerX + i, bannerY, Math.min(8, bannerW - i), 2, "#F6CC60");
+    // Bobbing sprite offset
+    const bobOffset = Math.round(Math.sin(t * 0.08) * 3);
+    const gobFrame = Math.floor(t / 10) % 4;
+    const gobBob = gobFrame % 2 === 1 ? 1 : 0;
+
+    if (enemyWarningType === "elite") {
+        // "WARNING!" title — fades in
+        const titleAlpha = Math.min(1, t / 20);
+        ctx.globalAlpha = titleAlpha;
+        drawCenteredText("WARNING!", 30, "#FF4466", 8);
+        ctx.globalAlpha = 1;
+
+        // Enemy name — fades in
+        if (t > 15) {
+            ctx.globalAlpha = Math.min(1, (t - 15) / 20);
+            drawCenteredText("ELITE GOBLIN", 55, "#FF88CC", 6);
+            ctx.globalAlpha = 1;
+        }
+
+        // Large animated elite goblin sprite (centered, story-screen style)
+        if (t > 25) {
+            ctx.globalAlpha = Math.min(1, (t - 25) / 20);
+            const gx = W / 2 - 8;
+            const gy = 80 + bobOffset;
+            // Body
+            drawRect(gx + 4, gy + 3 - gobBob, 8, 9, "#c45a8a");
+            drawRect(gx + 4, gy + 3 - gobBob, 2, 9, "#a43a6a");
+            drawRect(gx + 10, gy + 3 - gobBob, 2, 9, "#a43a6a");
+            // Head with horns
+            drawRect(gx + 3, gy - 1 - gobBob, 10, 6, "#d46a9a");
+            drawRect(gx + 1, gy - gobBob, 3, 3, "#d46a9a");
+            drawRect(gx + 12, gy - gobBob, 3, 3, "#d46a9a");
+            // Eyes
+            drawRect(gx + 5, gy + 1 - gobBob, 2, 2, "#ffee44");
+            drawRect(gx + 9, gy + 1 - gobBob, 2, 2, "#ffee44");
+            // Feet
+            const efo = gobFrame === 1 ? 2 : gobFrame === 3 ? -2 : 0;
+            drawRect(gx + 5 + efo, gy + 12, 3, 2, "#a43a6a");
+            drawRect(gx + 8 - efo, gy + 12, 3, 2, "#a43a6a");
+            ctx.globalAlpha = 1;
+        }
+
+        // Description text — staggered fade-ins
+        if (t > 40) {
+            ctx.globalAlpha = Math.min(1, (t - 40) / 25);
+            drawCenteredText("THIS GOBLIN IS EXTRA STRONG!", 115, "#BFCDC0", 5);
+            ctx.globalAlpha = 1;
+        }
+        if (t > 55) {
+            ctx.globalAlpha = Math.min(1, (t - 55) / 25);
+            drawCenteredText("IT TAKES 3 HITS TO DEFEAT!", 132, "#FF88CC", 5);
+            ctx.globalAlpha = 1;
+        }
+        if (t > 70) {
+            ctx.globalAlpha = Math.min(1, (t - 70) / 25);
+            drawCenteredText("IT ALSO MOVES FASTER", 149, "#BFCDC0", 5);
+            drawCenteredText("THAN NORMAL GOBLINS.", 163, "#BFCDC0", 5);
+            ctx.globalAlpha = 1;
+        }
+
+    } else if (enemyWarningType === "catapult") {
+        // "WARNING!" title — fades in
+        const titleAlpha = Math.min(1, t / 20);
+        ctx.globalAlpha = titleAlpha;
+        drawCenteredText("WARNING!", 30, "#FF4466", 8);
+        ctx.globalAlpha = 1;
+
+        // Enemy name
+        if (t > 15) {
+            ctx.globalAlpha = Math.min(1, (t - 15) / 20);
+            drawCenteredText("CATAPULT GOBLIN", 55, "#88AAFF", 6);
+            ctx.globalAlpha = 1;
+        }
+
+        // Large animated catapult goblin sprite
+        if (t > 25) {
+            ctx.globalAlpha = Math.min(1, (t - 25) / 20);
+            const gx = W / 2 - 8;
+            const gy = 80 + bobOffset;
+            // Body
+            drawRect(gx + 4, gy + 3 - gobBob, 8, 9, "#4a8a3a");
+            drawRect(gx + 4, gy + 3 - gobBob, 2, 9, "#3a6a2a");
+            drawRect(gx + 10, gy + 3 - gobBob, 2, 9, "#3a6a2a");
+            // Head with horns
+            drawRect(gx + 3, gy - 1 - gobBob, 10, 6, "#5a9a4a");
+            drawRect(gx + 1, gy - gobBob, 3, 3, "#5a9a4a");
+            drawRect(gx + 12, gy - gobBob, 3, 3, "#5a9a4a");
+            // Eyes
+            drawRect(gx + 5, gy + 1 - gobBob, 2, 2, "#cc2222");
+            drawRect(gx + 9, gy + 1 - gobBob, 2, 2, "#cc2222");
+            // Catapult arm
+            drawRect(gx + TILE / 2 - 2, gy - 6 - gobBob, 4, 8, "#8B6914");
+            drawRect(gx + TILE / 2 - 5, gy - 6 - gobBob, 10, 3, "#A07818");
+            // Feet
+            const gfo = gobFrame === 1 ? 2 : gobFrame === 3 ? -2 : 0;
+            drawRect(gx + 5 + gfo, gy + 12, 3, 2, "#3a6a2a");
+            drawRect(gx + 8 - gfo, gy + 12, 3, 2, "#3a6a2a");
+            ctx.globalAlpha = 1;
+        }
+
+        // Description text — staggered fade-ins
+        if (t > 40) {
+            ctx.globalAlpha = Math.min(1, (t - 40) / 25);
+            drawCenteredText("THIS GOBLIN THROWS BOULDERS!", 115, "#BFCDC0", 5);
+            ctx.globalAlpha = 1;
+        }
+        if (t > 55) {
+            ctx.globalAlpha = Math.min(1, (t - 55) / 25);
+            drawCenteredText("IT HURLS ROCKS AT YOUR", 132, "#BFCDC0", 5);
+            drawCenteredText("BEAT GRID FROM A DISTANCE.", 146, "#BFCDC0", 5);
+            ctx.globalAlpha = 1;
+        }
+        if (t > 70) {
+            ctx.globalAlpha = Math.min(1, (t - 70) / 25);
+            drawCenteredText("IT CAN'T BE KILLED,", 166, "#FF4466", 5);
+            drawCenteredText("BUT IT CAN KILL YOU!", 180, "#FF4466", 5);
+            ctx.globalAlpha = 1;
         }
     }
 
-    if (enemyWarningType === "elite") {
-        // Title: "WARNING!"
-        const titleText = "WARNING!";
-        const titleScale = 7;
-        const titleW = titleText.length * titleScale * 1.1;
-        const titleX = bannerX + bannerW / 2 - titleW / 2;
-        const titleY = bannerY + 14;
-        drawText(titleText, titleX + 1, titleY + 1, "#1a0a0a", titleScale);
-        drawText(titleText, titleX, titleY, "#FF4466", titleScale);
-
-        // Enemy name
-        const nameText = "ELITE GOBLIN";
-        const nameScale = 5;
-        const nameW = nameText.length * nameScale * 1.1;
-        const nameX = bannerX + bannerW / 2 - nameW / 2;
-        const nameY = titleY + 30;
-        drawText(nameText, nameX, nameY, "#FF88CC", nameScale);
-
-        // Draw a little pink goblin preview with bobbing animation
-        const previewX = bannerX + bannerW / 2 - TILE / 2;
-        const bobOffset = Math.round(Math.sin(enemyWarningBlink * 0.08) * 3);
-        const previewY = nameY + 20 + bobOffset;
-        drawRect(previewX, previewY, TILE, TILE, "#D34FB5");
-        drawRect(previewX + 3, previewY + 3, 4, 4, "#ffee44"); // left eye
-        drawRect(previewX + TILE - 7, previewY + 3, 4, 4, "#ffee44"); // right eye
-        drawRect(previewX + 4, previewY + TILE - 5, TILE - 8, 3, "#1a0a1a"); // mouth
-
-        // Description lines
-        const descY = previewY + TILE + 12;
-        const descCol = "#BFCDC0";
-        const highlightCol = "#FF88CC";
-        const descScale = 4;
-        drawText("This goblin is EXTRA", bannerX + 16, descY, descCol, descScale);
-        drawText("STRONG!", bannerX + 16 + 21 * descScale * 1.1, descY, highlightCol, descScale);
-        drawText("It takes 3 HITS to", bannerX + 16, descY + 14, descCol, descScale);
-        drawText("defeat it!", bannerX + 16, descY + 28, descCol, descScale);
-        drawText("It also moves FASTER", bannerX + 16, descY + 46, descCol, descScale);
-        drawText("than normal goblins.", bannerX + 16, descY + 60, descCol, descScale);
-
-    } else if (enemyWarningType === "catapult") {
-        // Title
-        const titleText = "WARNING!";
-        const titleScale = 7;
-        const titleW = titleText.length * titleScale * 1.1;
-        const titleX = bannerX + bannerW / 2 - titleW / 2;
-        const titleY = bannerY + 14;
-        drawText(titleText, titleX + 1, titleY + 1, "#1a0a0a", titleScale);
-        drawText(titleText, titleX, titleY, "#FF4466", titleScale);
-
-        // Enemy name
-        const nameText = "CATAPULT GOBLIN";
-        const nameScale = 5;
-        const nameW = nameText.length * nameScale * 1.1;
-        const nameX = bannerX + bannerW / 2 - nameW / 2;
-        const nameY = titleY + 30;
-        drawText(nameText, nameX, nameY, "#88AAFF", nameScale);
-
-        // Draw a little catapult goblin preview with bobbing animation
-        const previewX = bannerX + bannerW / 2 - TILE / 2;
-        const bobOffset = Math.round(Math.sin(enemyWarningBlink * 0.08) * 3);
-        const previewY = nameY + 20 + bobOffset;
-        drawRect(previewX, previewY, TILE, TILE, "#4A8A3A");
-        drawRect(previewX + 3, previewY + 3, 4, 4, "#cc2222"); // left eye
-        drawRect(previewX + TILE - 7, previewY + 3, 4, 4, "#cc2222"); // right eye
-        // Little catapult arm
-        drawRect(previewX + TILE / 2 - 2, previewY - 6, 4, 8, "#8B6914");
-        drawRect(previewX + TILE / 2 - 5, previewY - 6, 10, 3, "#A07818");
-
-        // Description lines
-        const descY = previewY + TILE + 12;
-        const descCol = "#BFCDC0";
-        const highlightCol = "#88AAFF";
-        const descScale = 4;
-        drawText("This goblin THROWS", bannerX + 16, descY, descCol, descScale);
-        drawText("BOULDERS!", bannerX + 16 + 19 * descScale * 1.1, descY, highlightCol, descScale);
-        drawText("It will hurl rocks at", bannerX + 16, descY + 14, descCol, descScale);
-        drawText("your beat grid from a", bannerX + 16, descY + 28, descCol, descScale);
-        drawText("distance.", bannerX + 16, descY + 42, descCol, descScale);
-        const warnCol = "#FF4466";
-        drawText("It CAN'T be killed,", bannerX + 16, descY + 60, warnCol, descScale);
-        drawText("but it CAN kill YOU!", bannerX + 16, descY + 74, warnCol, descScale);
-    }
-
-    // "PRESS ENTER TO CONTINUE" blinking
-    if (Math.floor(enemyWarningBlink / 30) % 2 === 0) {
-        const hintText = "PRESS ENTER TO CONTINUE";
-        const hintScale = 3;
-        const hintW = hintText.length * hintScale * 1.1;
-        const hintX = bannerX + bannerW / 2 - hintW / 2;
-        const hintY = bannerY + bannerH - 12;
-        drawText(hintText, hintX, hintY, "#F6CC60", hintScale);
+    // Blinking "PRESS ENTER TO CONTINUE"
+    if (t > 60 && t % 60 < 40) {
+        drawCenteredText("PRESS ENTER TO CONTINUE", H - 10, "#EBEBE3", 5);
     }
 }
 
