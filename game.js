@@ -678,9 +678,9 @@ function isTileBlockedByObjects(tileX, tileY) {
     const bpmTop = CTRL_BLOCKS.tempoUp.tileY + 1;
     const bpmBot = CTRL_BLOCKS.tempoDown.tileY - 1;
     if (tileX === ctrlX && tileY >= bpmTop && tileY <= bpmBot) return true;
-    // Level + Kill counter area (2 tiles below step numbers)
+    // Level + Kill counter + Timer area (2 tiles below step numbers)
     const counterTileY = GRID_Y + GRID_ROWS + 3;
-    if (tileX >= GRID_X && tileX <= GRID_X + 4 && tileY === counterTileY) return true;
+    if (tileX >= GRID_X && tileX <= GRID_X + 8 && tileY === counterTileY) return true;
     return false;
 }
 
@@ -824,6 +824,50 @@ function update(dt) {
                 g.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
                 osc.connect(g); g.connect(audioCtx.destination);
                 osc.start(now); osc.stop(now + 0.2);
+            }
+        }
+
+        // Easter egg: hit the timer panel to lose 5 seconds with a bonk!
+        const timerTileY = GRID_Y + GRID_ROWS + 3;
+        if (targetTileY === timerTileY && targetTileX >= GRID_X + 6 && targetTileX <= GRID_X + 8) {
+            p.swordHit = true;
+            levelTimer = Math.max(0, levelTimer - 5 * 60); // remove 5 seconds
+            ensureAudio();
+            if (audioCtx) {
+                const now = audioCtx.currentTime;
+                // Crazy bonk sound — descending metallic clang with wobble
+                const bonk = audioCtx.createOscillator();
+                const bg = audioCtx.createGain();
+                bonk.type = "square";
+                bonk.frequency.setValueAtTime(600, now);
+                bonk.frequency.exponentialRampToValueAtTime(80, now + 0.3);
+                bg.gain.setValueAtTime(0.2, now);
+                bg.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+                bonk.connect(bg); bg.connect(audioCtx.destination);
+                bonk.start(now); bonk.stop(now + 0.35);
+                // Metallic ring overtone
+                const ring = audioCtx.createOscillator();
+                const rg = audioCtx.createGain();
+                ring.type = "triangle";
+                ring.frequency.setValueAtTime(1200, now);
+                ring.frequency.linearRampToValueAtTime(900, now + 0.15);
+                rg.gain.setValueAtTime(0.1, now);
+                rg.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                ring.connect(rg); rg.connect(audioCtx.destination);
+                ring.start(now); ring.stop(now + 0.2);
+                // Low thud underneath
+                const thud = audioCtx.createOscillator();
+                const tg2 = audioCtx.createGain();
+                thud.type = "sine";
+                thud.frequency.setValueAtTime(90, now);
+                tg2.gain.setValueAtTime(0.15, now);
+                tg2.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                thud.connect(tg2); tg2.connect(audioCtx.destination);
+                thud.start(now); thud.stop(now + 0.15);
+            }
+            if (levelTimer <= 0) {
+                triggerGameOver();
+                return;
             }
         }
 
