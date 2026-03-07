@@ -566,6 +566,8 @@ window.addEventListener("keydown", (e) => {
         if (gameState === "story") {
             stopStoryDrums();
             gameState = "playing";
+            currentStep = 0;
+            lastStepTime = performance.now();
             return;
         }
         if (gameState === "levelcomplete" && levelCelebrateTimer > 120) {
@@ -1321,8 +1323,13 @@ function update(dt) {
     if (playing) {
         if (!lastStepTime) lastStepTime = performance.now();
         const now = performance.now();
+        const elapsed = now - lastStepTime;
+        // If we've fallen more than 2 steps behind, snap to now (prevent catch-up burst)
+        if (elapsed > stepMs * 2) {
+            lastStepTime = now;
+        }
         if (now - lastStepTime >= stepMs) {
-            lastStepTime += stepMs;
+            lastStepTime = now;
             // Play active drums for current step
             ensureAudio();
             const t = audioCtx ? audioCtx.currentTime : 0;
@@ -1586,6 +1593,10 @@ function advanceLevel() {
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
             cellFlash[r][c] = 0;
+
+    // Reset sequencer timing to prevent catch-up
+    currentStep = 0;
+    lastStepTime = performance.now();
 
     gameState = "playing";
 }
