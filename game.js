@@ -2876,14 +2876,16 @@ function drawPx(x, y, w, h, color) {
     ctx.fillRect(x, y, w, h);
 }
 
-function drawPlayer() {
-    const p = player;
-    // Screen-pixel base position
-    const sx = p.x * SCALE;
-    const sy = p.y * SCALE;
-    const bob = (p.frame % 2 === 1 ? 1 : 0) * SCALE;
+// Reusable 48x48 player sprite for all screens
+// gx, gy: top-left position (game coords)
+// frame: animation frame (0-3), dir: facing direction (0-3)
+// options: { showSword, isBlinking }
+function drawPlayerSprite(gx, gy, frame, dir, options) {
+    const opts = options || {};
+    const sx = gx * SCALE;
+    const sy = gy * SCALE;
+    const bob = (frame % 2 === 1 ? 1 : 0) * SCALE;
 
-    // Helper: draw relative to player position with bob
     function px(x, y, w, h, color) {
         drawPx(sx + x, sy + y - bob, w, h, color);
     }
@@ -2915,67 +2917,61 @@ function drawPlayer() {
     px(42, -6, 3, 3, "#D4B08A");
 
     // === EYES & BEARD (direction-aware — beard only on front of face) ===
-    const isBlinking = p.blinkTimer >= 180;
+    const isBlinking = opts.isBlinking || false;
     const eyeDir = [
         [0, 3],   // down
         [0, -6],  // up
         [-3, 0],  // left
         [3, 0],   // right
-    ][p.dir];
+    ][dir];
 
-    if (p.dir === 1) {
+    if (dir === 1) {
         // Facing UP — show back of bald head, no eyes, no beard
-        px(12, -18, 24, 6, "#DFC09E");  // Back-of-head shading
-        px(15, -3, 18, 6, "#E8CBA8");   // Back of neck/skin below head
+        px(12, -18, 24, 6, "#DFC09E");
+        px(15, -3, 18, 6, "#E8CBA8");
     } else {
         // Facing DOWN, LEFT, or RIGHT — show beard and eyes
-        // Beard (#BF7538)
-        px(9, -3, 30, 12, "#BF7538");       // Main beard
-        px(6, -3, 6, 9, "#BF7538");         // Beard left side
-        px(36, -3, 6, 9, "#BF7538");        // Beard right side
-        px(12, 9, 24, 6, "#BF7538");        // Beard bottom
-        px(15, 15, 18, 3, "#A86430");        // Beard rounded bottom (darker)
-        // Beard texture highlights
+        px(9, -3, 30, 12, "#BF7538");
+        px(6, -3, 6, 9, "#BF7538");
+        px(36, -3, 6, 9, "#BF7538");
+        px(12, 9, 24, 6, "#BF7538");
+        px(15, 15, 18, 3, "#A86430");
         px(12, 0, 3, 3, "#D08040");
         px(21, 3, 3, 3, "#D08040");
         px(30, 0, 3, 3, "#D08040");
-        // Mustache area (slightly darker)
         px(12, -6, 24, 3, "#A86430");
-        // Mouth (shifts with direction)
-        const mouthOfs = p.dir === 2 ? -3 : p.dir === 3 ? 3 : 0;
-        px(18 + mouthOfs, -3, 12, 2, "#8A5228");  // Mouth gap
-        px(20 + mouthOfs, -4, 8, 1, "#6A3A18");   // Upper lip shadow
+        const mouthOfs = dir === 2 ? -3 : dir === 3 ? 3 : 0;
+        px(18 + mouthOfs, -3, 12, 2, "#8A5228");
+        px(20 + mouthOfs, -4, 8, 1, "#6A3A18");
 
-        // Eyes
         if (isBlinking) {
             px(12 + eyeDir[0], -7 + eyeDir[1], 8, 2, "#1a1a2e");
             px(28 + eyeDir[0], -7 + eyeDir[1], 8, 2, "#1a1a2e");
         } else {
-            // Eye whites
             px(11 + eyeDir[0], -12 + eyeDir[1], 10, 8, "#F0F0E8");
             px(27 + eyeDir[0], -12 + eyeDir[1], 10, 8, "#F0F0E8");
-            // Pupils
             px(14 + eyeDir[0], -10 + eyeDir[1], 5, 5, "#1a1a2e");
             px(30 + eyeDir[0], -10 + eyeDir[1], 5, 5, "#1a1a2e");
-            // Pupil highlights
             px(15 + eyeDir[0], -10 + eyeDir[1], 2, 2, "#F0F0E8");
             px(31 + eyeDir[0], -10 + eyeDir[1], 2, 2, "#F0F0E8");
-            // Eyebrow ridges
             px(10 + eyeDir[0], -14 + eyeDir[1], 12, 2, "#D4B08A");
             px(26 + eyeDir[0], -14 + eyeDir[1], 12, 2, "#D4B08A");
         }
     }
 
     // === FEET / SHOES (tan) ===
-    const walkPx = (p.frame === 1 ? 2 : p.frame === 3 ? -2 : 0) * SCALE;
-    px(12 + walkPx, 36, 9, 6, "#C4A882");   // Left shoe
-    px(27 - walkPx, 36, 9, 6, "#C4A882");   // Right shoe
-    // Shoe soles (darker)
+    const walkPx = (frame === 1 ? 2 : frame === 3 ? -2 : 0) * SCALE;
+    px(12 + walkPx, 36, 9, 6, "#C4A882");
+    px(27 - walkPx, 36, 9, 6, "#C4A882");
     px(12 + walkPx, 40, 9, 2, "#A08868");
     px(27 - walkPx, 40, 9, 2, "#A08868");
-    // Pants cuff above shoes
     px(12 + walkPx, 34, 9, 3, "#1e5454");
     px(27 - walkPx, 34, 9, 3, "#1e5454");
+}
+
+function drawPlayer() {
+    const p = player;
+    drawPlayerSprite(p.x, p.y, p.frame, p.dir, { isBlinking: p.blinkTimer >= 180 });
 }
 
 function drawSword() {
@@ -3803,19 +3799,10 @@ function renderStoryScreen() {
 
     // Player (center, slot 2)
     const playerX = charMargin + slotW * 2 - 8;
-    const playerBob = Math.floor(storyBlink / 12) % 2 === 0 ? 0 : 1;
-    drawRect(playerX + 3, charY + 2 - playerBob, 10, 10, "#2a6a6a");
-    drawRect(playerX + 3, charY + 2 - playerBob, 2, 10, "#1a4a4a");
-    drawRect(playerX + 11, charY + 2 - playerBob, 2, 10, "#1a4a4a");
-    drawRect(playerX + 2, charY - 5 - playerBob, 12, 7, "#E8CBA8");
-    drawRect(playerX + 5, charY - 5 - playerBob, 6, 1, "#F2DCC0");
-    drawRect(playerX + 3, charY - 1 - playerBob, 10, 4, "#1a1a2e");
-    drawRect(playerX + 4, charY + 3 - playerBob, 8, 1, "#1a1a2e");
-    drawRect(playerX + 5, charY - 3 - playerBob, 2, 2, "#1a1a2e");
-    drawRect(playerX + 9, charY - 3 - playerBob, 2, 2, "#1a1a2e");
-    const pwo = Math.floor(storyBlink / 12) % 2 === 0 ? 1 : -1;
-    drawRect(playerX + 4 + pwo, charY + 12, 3, 2, "#C4A882");
-    drawRect(playerX + 9 - pwo, charY + 12, 3, 2, "#C4A882");
+    const playerFrame = Math.floor(storyBlink / 12) % 4;
+    drawPlayerSprite(playerX, charY, playerFrame, 0, {});
+    // Sword (held upright)
+    const playerBob = playerFrame % 2 === 1 ? 1 : 0;
     drawRect(playerX + 14, charY - 8 - playerBob, 2, 12, "#BFCDC0");
     drawRect(playerX + 12, charY - 2 - playerBob, 6, 2, "#BF7538");
 
@@ -4249,21 +4236,7 @@ function renderTutorialScreen() {
                 const walkFrame = isWalking ? Math.floor(t / 6) % 4 : 0;
                 const bob = walkFrame % 2 === 1 ? 1 : 0;
                 const faceDir = isAttacking ? 3 : (isWalking ? walkDir : 3);
-                const eyeOfs = [[0, 2], [0, -2], [-1, 0], [1, 0]][faceDir];
-                drawRect(px + 3, py + 2 - bob, 10, 10, "#2a6a6a");
-                drawRect(px + 3, py + 2 - bob, 2, 10, "#1a4a4a");
-                drawRect(px + 11, py + 2 - bob, 2, 10, "#1a4a4a");
-                drawRect(px + 2, py - 5 - bob, 12, 7, "#E8CBA8");
-                drawRect(px + 5, py - 5 - bob, 6, 1, "#F2DCC0");
-                drawRect(px + 3, py - 1 - bob, 10, 4, "#1a1a2e");
-                drawRect(px + 4, py + 3 - bob, 8, 1, "#1a1a2e");
-                if (faceDir !== 1) {
-                    drawRect(px + 5 + eyeOfs[0], py - 3 - bob + eyeOfs[1], 2, 2, "#1a1a2e");
-                    drawRect(px + 9 + eyeOfs[0], py - 3 - bob + eyeOfs[1], 2, 2, "#1a1a2e");
-                }
-                const footOff = isWalking ? (walkFrame === 1 ? 2 : walkFrame === 3 ? -2 : 0) : 0;
-                drawRect(px + 4 + footOff, py + 12, 3, 2, "#C4A882");
-                drawRect(px + 9 - footOff, py + 12, 3, 2, "#C4A882");
+                drawPlayerSprite(px, py, walkFrame, faceDir, {});
                 if (isAttacking) {
                     const swingProg = (stepT - ATTACK_AT) / ATTACK_DUR;
                     const angle = -Math.PI * 0.7 + swingProg * Math.PI * 0.9;
@@ -4529,15 +4502,10 @@ function renderTutorialScreen() {
                 const playerStartX = playerStopX + 3 * TILE; // starts 3 tiles further right
                 const pProg = Math.min(1, (sceneT - 120) / 30);
                 const ppx = playerStartX + (playerStopX - playerStartX) * pProg;
-                const pBob = Math.floor(t / 6) % 2;
+                const pWalkFrame = pProg < 1 ? Math.floor(t / 6) % 4 : 0;
+                const pBob = pWalkFrame % 2 === 1 ? 1 : 0;
                 const pAttacking = sceneT > 150 && sceneT < 165;
-                drawRect(ppx + 3, gy - pBob + 2, 10, 10, "#2a6a6a");
-                drawRect(ppx + 2, gy - 5 - pBob, 12, 7, "#E8CBA8");
-                drawRect(ppx + 5, gy - 5 - pBob, 6, 1, "#F2DCC0");
-                drawRect(ppx + 3, gy - 1 - pBob, 10, 4, "#1a1a2e");
-                drawRect(ppx + 4, gy + 3 - pBob, 8, 1, "#1a1a2e");
-                drawRect(ppx + 4, gy - 3 - pBob, 2, 2, "#1a1a2e");
-                drawRect(ppx + 8, gy - 3 - pBob, 2, 2, "#1a1a2e");
+                drawPlayerSprite(ppx, gy, pWalkFrame, 2, {});
                 if (pAttacking) {
                     const sp = (sceneT - 150) / 15;
                     const ang = -Math.PI * 0.7 + sp * Math.PI * 0.9;
@@ -4665,16 +4633,11 @@ function renderTutorialScreen() {
             if (sceneT > 100 && sceneT < 200) {
                 const pProg = Math.min(1, (sceneT - 100) / 40);
                 const ppx = gx + 7 * TILE - pProg * 2 * TILE;
-                const pBob = Math.floor(t / 6) % 2;
+                const pWalkFrame = pProg < 1 ? Math.floor(t / 6) % 4 : 0;
+                const pBob = pWalkFrame % 2 === 1 ? 1 : 0;
                 const pAttacking = sceneT > 145 && sceneT < 165;
                 ctx.globalAlpha = dA;
-                drawRect(ppx + 3, gy - pBob + 2, 10, 10, "#2a6a6a");
-                drawRect(ppx + 2, gy - 5 - pBob, 12, 7, "#E8CBA8");
-                drawRect(ppx + 5, gy - 5 - pBob, 6, 1, "#F2DCC0");
-                drawRect(ppx + 3, gy - 1 - pBob, 10, 4, "#1a1a2e");
-                drawRect(ppx + 4, gy + 3 - pBob, 8, 1, "#1a1a2e");
-                drawRect(ppx + 4, gy - 3 - pBob, 2, 2, "#1a1a2e");
-                drawRect(ppx + 8, gy - 3 - pBob, 2, 2, "#1a1a2e");
+                drawPlayerSprite(ppx, gy, pWalkFrame, 2, {});
                 if (pAttacking) {
                     const sp = (sceneT - 145) / 20;
                     const ang = -Math.PI * 0.7 + sp * Math.PI * 0.9;
