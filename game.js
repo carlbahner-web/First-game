@@ -649,7 +649,7 @@ let tomatoes = []; // { x, y, targetX, targetY, speed, life }
 let tomatoSplats = []; // { x, y, timer }
 
 let gamePaused = false;
-let gameState = "title"; // "title", "story", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument-intro", "newinstrument"
+let gameState = "title"; // "title", "story", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument-intro", "newinstrument", "sabotage-anim"
 let enemyWarningType = null;   // "elite" or "catapult"
 let enemyWarningShown = { elite: false, catapult: false }; // track which warnings have been shown
 let enemyWarningBlink = 0;     // blink timer for "PRESS ENTER"
@@ -666,6 +666,13 @@ let newInstrumentType = null;   // "cowbell" or "tom"
 let newInstrumentTimer = 0;     // animation timer for new instrument popup
 let newInstrumentIntroTimer = 0; // transition timer before instrument popup
 let newInstrumentShown = { cowbell: false, tom: false }; // track which popups have been shown
+
+// Sabotage animation state (goblin zigzags across grid scrambling cells)
+let sabotageAnimTimer = 0;
+let sabotageNextState = "playing";
+let sabotageCells = [];              // [{r, c, flip: bool}] in zigzag order
+let sabotageFlipIndex = 0;
+const SABOTAGE_FRAMES_PER_CELL = 2;  // 2 frames/cell at 90fps
 
 // ---- High Score System ----
 let highScores = []; // Array of { name: "AAA", score: 0 }, max 5, sorted desc
@@ -751,6 +758,7 @@ window.addEventListener("keydown", (e) => {
         e.preventDefault();
         if (gameState === "enemywarning" || gameState === "enemywarning-intro") return; // ignore Space on warning screen
         if (gameState === "newinstrument" || gameState === "newinstrument-intro") return; // ignore Space on instrument popup
+        if (gameState === "sabotage-anim") return; // ignore input during sabotage animation
         if (!keys[e.code]) spaceJustPressed = true; // only on initial press
     }
     keys[e.code] = true;
@@ -776,6 +784,7 @@ window.addEventListener("keydown", (e) => {
 
     if (e.code === "Enter") {
         e.preventDefault();
+        if (gameState === "sabotage-anim") return; // ignore input during sabotage animation
         if (gameState === "enemywarning") {
             gameState = "playing";
             lastStepTime = performance.now(); // reset sequencer timing
@@ -2031,6 +2040,16 @@ function advanceLevel() {
         for (let c = 0; c < GRID_COLS; c++)
             grid[r][c] = prevPattern[r][c];
 
+    // Build zigzag cell list for sabotage animation
+    sabotageCells = [];
+    const ar = LEVELS[currentLevel].activeRows;
+    for (let r = 0; r < ar; r++) {
+        for (let i = 0; i < GRID_COLS; i++) {
+            const c = r % 2 === 0 ? i : GRID_COLS - 1 - i;
+            sabotageCells.push({ r, c, flip: Math.random() < 0.35 });
+        }
+    }
+
     // Reset player position (below the active grid)
     player.x = (GRID_X + 7) * TILE;
     player.y = (gridBottomTileY() + 1) * TILE;
@@ -2071,31 +2090,31 @@ function advanceLevel() {
     // Set tempo for new level
     setLevelTempo(currentLevel);
 
-    // Check if we need to introduce a new instrument (detect when activeRows increases)
+    // Determine post-sabotage destination (new instrument intro or straight to playing)
     const prevRows = currentLevel > 0 ? LEVELS[currentLevel - 1].activeRows : LEVELS[0].activeRows;
     const newRows = LEVELS[currentLevel].activeRows;
+    sabotageNextState = "playing";
     if (newRows > prevRows) {
         if (newRows === 5 && !newInstrumentShown.cowbell) {
             newInstrumentType = "cowbell";
             newInstrumentShown.cowbell = true;
             newInstrumentIntroTimer = 0;
             newInstrumentTimer = 0;
-            gameState = "newinstrument-intro";
-            if (audioCtx) playWarningDonk(audioCtx.currentTime);
-            return;
+            sabotageNextState = "newinstrument-intro";
         }
         if (newRows === 6 && !newInstrumentShown.tom) {
             newInstrumentType = "tom";
             newInstrumentShown.tom = true;
             newInstrumentIntroTimer = 0;
             newInstrumentTimer = 0;
-            gameState = "newinstrument-intro";
-            if (audioCtx) playWarningDonk(audioCtx.currentTime);
-            return;
+            sabotageNextState = "newinstrument-intro";
         }
     }
 
-    gameState = "playing";
+    // Start sabotage animation (goblin zigzags across grid scrambling cells)
+    sabotageAnimTimer = 0;
+    sabotageFlipIndex = 0;
+    gameState = "sabotage-anim";
 }
 
 // ---- Catapult Goblin Logic ----
@@ -4758,6 +4777,49 @@ function renderTutorialScreen() {
     }
 }
 
+function renderSabotageAnim() {
+    sabotageAnimTimer++;
+    const t = sabotageAnimTimer;
+
+    // Determine which cell the goblin is "at"
+    const cellIndex = Math.floor(t / SABOTAGE_FRAMES_PER_CELL);
+
+    // Flip cells as the goblin passes them
+    while (sabotageFlipIndex < sabotageCells.length && sabotageFlipIndex <= cellIndex) {
+        const cell = sabotageCells[sabotageFlipIndex];
+        if (cell.flip) {
+            grid[cell.r][cell.c] = !grid[cell.r][cell.c];
+            cellFlash[cell.r][cell.c] = 30;
+            if (sabotageFlipIndex % 4 === 0) screenShake = 2;
+        }
+        sabotageFlipIndex++;
+    }
+
+    // Render the normal game board (grid reflects real-time flips)
+    render();
+
+    // Draw goblin sprite on top at current position
+    if (cellIndex < sabotageCells.length) {
+        const current = sabotageCells[Math.min(cellIndex, sabotageCells.length - 1)];
+        const gx = (GRID_X + current.c) * TILE;
+        const gy = rowPixelY(current.r);
+        const frame = Math.floor(t / 6) % 4;
+        const dir = current.r % 2 === 0 ? 3 : 2; // 3=right, 2=left
+        drawGoblinSprite("normal", gx, gy, frame, { dir: dir, showShadow: false });
+    }
+
+    // Animation complete — wait a brief pause then transition
+    if (sabotageFlipIndex >= sabotageCells.length) {
+        const endFrame = sabotageCells.length * SABOTAGE_FRAMES_PER_CELL;
+        if (t > endFrame + 20) {
+            if (sabotageNextState === "newinstrument-intro") {
+                if (audioCtx) playWarningDonk(audioCtx.currentTime);
+            }
+            gameState = sabotageNextState;
+        }
+    }
+}
+
 function renderEnemyWarningIntro() {
     const INTRO_FRAMES = 70; // ~0.78s at 90fps, matches "dun dun dunnnnn" timing
     enemyWarningIntroTimer++;
@@ -5165,6 +5227,8 @@ function gameLoop(timestamp) {
                 renderNewInstrumentIntro();
             } else if (gameState === "newinstrument") {
                 renderNewInstrument();
+            } else if (gameState === "sabotage-anim") {
+                renderSabotageAnim();
             } else if (gameState === "levelcomplete") {
                 renderLevelComplete();
             } else if (gameState === "gameover") {
