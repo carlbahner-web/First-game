@@ -664,7 +664,7 @@ let patternMatched = false; // pattern correct but goblins may still be alive
 let levelCelebrateTimer = 0;
 let titleBlink = 0; // blink timer for "PRESS ENTER"
 let tutorialTimer = 0; // animation frame counter for tutorial screen
-let tutorialPage = 0;  // current tutorial page (0-3)
+let tutorialPage = 0;  // current tutorial page (0-2)
 let newInstrumentType = null;   // "cowbell" or "tom"
 let newInstrumentTimer = 0;     // animation timer for new instrument popup
 let newInstrumentIntroTimer = 0; // transition timer before instrument popup
@@ -793,20 +793,15 @@ window.addEventListener("keydown", (e) => {
 
     if (e.code === "Enter") {
         e.preventDefault();
-        if (sceneFadeOut > 0) return; // ignore input during fade-out
         if (gameState === "sabotage-anim") return; // ignore input during sabotage animation
         if (gameState === "enemywarning") {
-            startSceneFadeOut(() => {
-                gameState = "playing";
-                lastStepTime = performance.now();
-            });
+            gameState = "playing";
+            lastStepTime = performance.now();
             return;
         }
         if (gameState === "newinstrument") {
-            startSceneFadeOut(() => {
-                gameState = "playing";
-                lastStepTime = performance.now();
-            });
+            gameState = "playing";
+            lastStepTime = performance.now();
             return;
         }
         if (gameState === "title") {
@@ -818,24 +813,20 @@ window.addEventListener("keydown", (e) => {
             return;
         }
         if (gameState === "story") {
-            startSceneFadeOut(() => {
-                gameState = "tutorial";
-                tutorialTimer = 0;
-                tutorialPage = 0;
-            });
+            gameState = "tutorial";
+            tutorialTimer = 0;
+            tutorialPage = 0;
             return;
         }
         if (gameState === "tutorial") {
-            startSceneFadeOut(() => {
-                tutorialPage++;
-                tutorialTimer = 0;
-                if (tutorialPage > 5) {
-                    stopStoryDrums();
-                    gameState = "playing";
-                    currentStep = 0;
-                    lastStepTime = performance.now();
-                }
-            });
+            tutorialPage++;
+            tutorialTimer = 0;
+            if (tutorialPage > 2) {
+                stopStoryDrums();
+                gameState = "playing";
+                currentStep = 0;
+                lastStepTime = performance.now();
+            }
             return;
         }
         if (gameState === "levelcomplete" && levelCelebrateTimer > 120) {
@@ -4098,8 +4089,6 @@ function renderStoryScreen() {
         drawCenteredText("PRESS ENTER TO BEGIN", H - 10, "#EBEBE3", 5);
     }
 
-    updateSceneFadeOut();
-    applySceneFade(storyBlink);
 }
 
 function renderHighScoreEntry() {
@@ -4492,10 +4481,10 @@ function renderTutorialScreen() {
         ctx.textAlign = "start";
     }
 
-    // Page indicator dots
+    // Page indicator dots (3 pages now)
     const dotY = H - 22;
-    for (let i = 0; i < 6; i++) {
-        const dx = W / 2 - 22 + i * 8;
+    for (let i = 0; i < 3; i++) {
+        const dx = W / 2 - 10 + i * 8;
         const active = i === tutorialPage;
         drawRect(dx, dotY, 3, 3, active ? "#F6CC60" : "#555555");
     }
@@ -4686,13 +4675,13 @@ function renderTutorialScreen() {
         }
     }
 
-    // ======== PAGE 1: MATCH THE PATTERN ========
+    // ======== PAGE 1: MATCH THE PATTERN + BEAT THE CLOCK ========
     else if (tutorialPage === 1) {
-        drawCenteredText("MATCH THE PATTERN", 18, "#F6CC60", 8);
+        drawCenteredText("MATCH THE PATTERN", 15, "#F6CC60", 7);
 
-        // --- TOP SECTION: Pulsing outlines (beats to ADD) ---
-        const gx = W / 2 - 2 * TILE;
-        const gy = 42;
+        // --- TOP LEFT: Pulsing outlines (beats to ADD) ---
+        const gx = W / 2 - 4 * TILE;
+        const gy = 36;
         const patCols = 4;
         const addColor = "#F6CC60";
         const addTarget = [true, false, true, false];
@@ -4702,199 +4691,85 @@ function renderTutorialScreen() {
         const addT = Math.max(0, t - 40) % ADD_CYCLE;
         const addFilled = Math.min(addFillOrder.length, Math.floor(addT / ADD_INTERVAL));
 
-        {
-            for (let c = 0; c < patCols; c++) {
-                const bx = gx + c * TILE, by = gy;
-                let isOn = false;
-                for (let i = 0; i < addFilled; i++) {
-                    if (addFillOrder[i] === c) isOn = true;
-                }
-                drawRect(bx, by, TILE, TILE, PAL.gridBorder);
-                drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? addColor : PAL.gridOff);
-                // Pulsing outline for unfilled targets
-                if (addTarget[c] && !isOn) {
-                    ctx.globalAlpha = 0.3 + Math.sin(t * 0.06) * 0.15;
-                    drawRect(bx + 1, by + 1, TILE - 2, 1, addColor);
-                    drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, addColor);
-                    drawRect(bx + 1, by + 1, 1, TILE - 2, addColor);
-                    drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, addColor);
-                    drawRect(bx + 6, by + 6, 4, 4, addColor);
-                    ctx.globalAlpha = 1;
-                }
-                // Flash when just filled
-                if (isOn) {
-                    const fIdx = addFillOrder.indexOf(c);
-                    if (fIdx >= 0) {
-                        const flashAge = addT - fIdx * ADD_INTERVAL;
-                        if (flashAge >= 0 && flashAge < 12) {
-                            ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
-                            drawRect(bx, by, TILE, TILE, "#ffffff");
-                            ctx.globalAlpha = 1;
-                        }
+        for (let c = 0; c < patCols; c++) {
+            const bx = gx + c * TILE, by = gy;
+            let isOn = false;
+            for (let i = 0; i < addFilled; i++) {
+                if (addFillOrder[i] === c) isOn = true;
+            }
+            drawRect(bx, by, TILE, TILE, PAL.gridBorder);
+            drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? addColor : PAL.gridOff);
+            if (addTarget[c] && !isOn) {
+                ctx.globalAlpha = 0.3 + Math.sin(t * 0.06) * 0.15;
+                drawRect(bx + 1, by + 1, TILE - 2, 1, addColor);
+                drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, addColor);
+                drawRect(bx + 1, by + 1, 1, TILE - 2, addColor);
+                drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, addColor);
+                drawRect(bx + 6, by + 6, 4, 4, addColor);
+                ctx.globalAlpha = 1;
+            }
+            if (isOn) {
+                const fIdx = addFillOrder.indexOf(c);
+                if (fIdx >= 0) {
+                    const flashAge = addT - fIdx * ADD_INTERVAL;
+                    if (flashAge >= 0 && flashAge < 12) {
+                        ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
+                        drawRect(bx, by, TILE, TILE, "#ffffff");
+                        ctx.globalAlpha = 1;
                     }
                 }
             }
         }
+        drawText("OUTLINES = ADD", gx - 2, gy + TILE + 10, "#BFCDC0", 4);
 
-        // Add explanation text
-        drawCenteredText("PULSING OUTLINES SHOW WHERE BEATS NEED TO GO", gy + TILE + 18, "#BFCDC0", 4);
-
-        // --- BOTTOM SECTION: X marks (beats to REMOVE) ---
-        const xgy = gy + TILE + 52;
+        // --- TOP RIGHT: X marks (beats to REMOVE) ---
+        const xgx = W / 2 + TILE;
         const xColor = "#BFCDC0";
         const xIndicatorColor = "#0933A0";
-        // Cells start ON, X marks show which to remove, then they get removed
         const xStartOn = [true, true, false, true];
         const xTarget = [true, false, false, true];
-        const xRemoveOrder = [1]; // column 1 needs to be removed
+        const xRemoveOrder = [1];
         const X_INTERVAL = 80;
         const X_CYCLE = xRemoveOrder.length * X_INTERVAL + 100;
         const xT = Math.max(0, t - 60) % X_CYCLE;
         const xRemoved = Math.min(xRemoveOrder.length, Math.floor(xT / X_INTERVAL));
 
-        {
-            for (let c = 0; c < patCols; c++) {
-                const bx = gx + c * TILE, by = xgy;
-                let isOn = xStartOn[c];
-                // Remove cells that have been toggled off
-                for (let i = 0; i < xRemoved; i++) {
-                    if (xRemoveOrder[i] === c) isOn = false;
-                }
-                drawRect(bx, by, TILE, TILE, PAL.gridBorder);
-                drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? xColor : PAL.gridOff);
-
-                // Draw X indicator on cells that need to be removed
-                if (isOn && !xTarget[c]) {
-                    ctx.globalAlpha = 0.6 + Math.sin(t * 0.04) * 0.15;
-                    // Draw X shape (diagonal pixels)
-                    drawRect(bx + 3, by + 3, 2, 2, xIndicatorColor);
-                    drawRect(bx + 5, by + 5, 2, 2, xIndicatorColor);
-                    drawRect(bx + 7, by + 7, 2, 2, xIndicatorColor);
-                    drawRect(bx + 9, by + 9, 2, 2, xIndicatorColor);
-                    drawRect(bx + 9, by + 3, 2, 2, xIndicatorColor);
-                    drawRect(bx + 7, by + 5, 2, 2, xIndicatorColor);
-                    drawRect(bx + 5, by + 7, 2, 2, xIndicatorColor);
-                    drawRect(bx + 3, by + 9, 2, 2, xIndicatorColor);
-                    ctx.globalAlpha = 1;
-                }
-
-                // Flash when just removed
-                if (!isOn && xStartOn[c]) {
-                    const fIdx = xRemoveOrder.indexOf(c);
-                    if (fIdx >= 0) {
-                        const flashAge = xT - fIdx * X_INTERVAL;
-                        if (flashAge >= 0 && flashAge < 12) {
-                            ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
-                            drawRect(bx, by, TILE, TILE, "#ffffff");
-                            ctx.globalAlpha = 1;
-                        }
+        for (let c = 0; c < patCols; c++) {
+            const bx = xgx + c * TILE, by = gy;
+            let isOn = xStartOn[c];
+            for (let i = 0; i < xRemoved; i++) {
+                if (xRemoveOrder[i] === c) isOn = false;
+            }
+            drawRect(bx, by, TILE, TILE, PAL.gridBorder);
+            drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? xColor : PAL.gridOff);
+            if (isOn && !xTarget[c]) {
+                ctx.globalAlpha = 0.6 + Math.sin(t * 0.04) * 0.15;
+                drawRect(bx + 3, by + 3, 2, 2, xIndicatorColor);
+                drawRect(bx + 5, by + 5, 2, 2, xIndicatorColor);
+                drawRect(bx + 7, by + 7, 2, 2, xIndicatorColor);
+                drawRect(bx + 9, by + 9, 2, 2, xIndicatorColor);
+                drawRect(bx + 9, by + 3, 2, 2, xIndicatorColor);
+                drawRect(bx + 7, by + 5, 2, 2, xIndicatorColor);
+                drawRect(bx + 5, by + 7, 2, 2, xIndicatorColor);
+                drawRect(bx + 3, by + 9, 2, 2, xIndicatorColor);
+                ctx.globalAlpha = 1;
+            }
+            if (!isOn && xStartOn[c]) {
+                const fIdx = xRemoveOrder.indexOf(c);
+                if (fIdx >= 0) {
+                    const flashAge = xT - fIdx * X_INTERVAL;
+                    if (flashAge >= 0 && flashAge < 12) {
+                        ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
+                        drawRect(bx, by, TILE, TILE, "#ffffff");
+                        ctx.globalAlpha = 1;
                     }
                 }
             }
         }
+        drawText("X MARKS = REMOVE", xgx, gy + TILE + 10, "#BFCDC0", 4);
 
-        // X explanation text
-        drawCenteredText("X MARKS SHOW BEATS THAT NEED TO BE REMOVED", xgy + TILE + 18, "#BFCDC0", 4);
-    }
-
-    // ======== PAGE 2: BEWARE THE GOBLINS ========
-    else if (tutorialPage === 2) {
-        drawCenteredText("BEWARE THE GOBLINS!", 18, "#E86A6A", 8);
-
-        // Animated goblin walking to a grid cell, sabotaging it, then player killing it
-        const gx = W / 2 - 2 * TILE;
-        const gy = 65;
-        const SCENE_CYCLE = 240;
-        const sceneT = Math.max(0, t - 30) % SCENE_CYCLE;
-        const gobFrame = Math.floor(t / 10) % 4;
-
-        {
-            const dA = 1;
-
-            // Draw a small 1x4 grid
-            for (let c = 0; c < 4; c++) {
-                const bx = gx + c * TILE;
-                const sabotaged = (c === 1 && sceneT > 80 && sceneT < 160);
-                drawRect(bx, gy, TILE, TILE, PAL.gridBorder);
-                drawRect(bx + 1, gy + 1, TILE - 2, TILE - 2, (c === 0 || c === 2) ? "#F6CC60" : PAL.gridOff);
-                // Red flash on sabotage
-                if (c === 1 && sceneT > 80 && sceneT < 95) {
-                    ctx.globalAlpha = (1 - (sceneT - 80) / 15) * 0.6;
-                    drawRect(bx, gy, TILE, TILE, "#ff2222");
-                    ctx.globalAlpha = dA;
-                }
-                // Block turns on from sabotage
-                if (sabotaged) {
-                    drawRect(bx + 1, gy + 1, TILE - 2, TILE - 2, "#F6CC60");
-                }
-            }
-
-            // Goblin walks in from left, sabotages cell 1
-            const gobStartX = gx - 3 * TILE;
-            const gobTargetX = gx + TILE;
-            let gobX, gobVisible = true;
-            if (sceneT < 60) {
-                // Walking in
-                const prog = sceneT / 60;
-                gobX = gobStartX + (gobTargetX - gobStartX) * prog;
-            } else if (sceneT < 80) {
-                gobX = gobTargetX;
-            } else if (sceneT < 160) {
-                gobX = gobTargetX;
-            } else {
-                // Death animation
-                gobVisible = false;
-                if (sceneT < 180) {
-                    // Death particles
-                    const dp = (sceneT - 160) / 20;
-                    ctx.globalAlpha = (1 - dp) * dA;
-                    for (let i = 0; i < 6; i++) {
-                        const angle = (i / 6) * Math.PI * 2 + sceneT * 0.1;
-                        const dist = dp * 12;
-                        drawRect(gobTargetX + 4 + Math.cos(angle) * dist, gy - 4 + Math.sin(angle) * dist, 3, 3, "#66cc66");
-                    }
-                    ctx.globalAlpha = dA;
-                }
-            }
-            if (gobVisible) {
-                drawGoblinSprite("normal", gobX, gy - 2, gobFrame, { showShadow: false });
-            }
-
-            // Player comes in and slays after sabotage — walks to tile adjacent to goblin
-            if (sceneT > 120 && sceneT < 200) {
-                const playerStopX = gobTargetX + TILE; // one tile right of goblin
-                const playerStartX = playerStopX + 3 * TILE; // starts 3 tiles further right
-                const pProg = Math.min(1, (sceneT - 120) / 30);
-                const ppx = playerStartX + (playerStopX - playerStartX) * pProg;
-                const pWalkFrame = pProg < 1 ? Math.floor(t / 6) % 4 : 0;
-                const pBob = pWalkFrame % 2 === 1 ? 1 : 0;
-                const pAttacking = sceneT > 150 && sceneT < 165;
-                drawPlayerSprite(ppx, gy, pWalkFrame, 2, {});
-                if (pAttacking) {
-                    const sp = (sceneT - 150) / 15;
-                    const ang = -Math.PI * 0.7 + sp * Math.PI * 0.9;
-                    ctx.strokeStyle = "#F6CC60"; ctx.lineWidth = 3 * SCALE; ctx.lineCap = "round";
-                    ctx.beginPath(); ctx.moveTo((ppx + 4) * SCALE, (gy + 2 - pBob) * SCALE);
-                    ctx.lineTo((ppx + 4 + Math.cos(ang) * 13) * SCALE, (gy + 2 - pBob + Math.sin(ang) * 13) * SCALE); ctx.stroke();
-                } else {
-                    drawRect(ppx - 2, gy - 8 - pBob, 2, 10, "#F6CC60");
-                    drawRect(ppx - 4, gy - 2 - pBob, 6, 2, "#BF7538");
-                }
-            }
-            ctx.globalAlpha = 1;
-        }
-
-        // Explanation text
-        drawCenteredText("THEY SABOTAGE YOUR BEATS!", gy + TILE + 22, "#BFCDC0", 5);
-        drawCenteredText("SLAY THEM WITH YOUR SWORD!", gy + TILE + 38, "#F6CC60", 5);
-    }
-
-    // ======== PAGE 3: BEAT THE CLOCK ========
-    else if (tutorialPage === 3) {
-        drawCenteredText("BEAT THE CLOCK!", 18, "#FF8844", 8);
-
-        // Animated countdown timer — matches actual in-game HUD style
-        const timerY = 60;
+        // --- BOTTOM: Timer countdown ---
+        const timerY = gy + TILE + 30;
         const TIMER_CYCLE = 180;
         const cT = Math.max(0, t - 30) % TIMER_CYCLE;
         const timerVal = Math.max(5, 30 - Math.floor(cT / 6));
@@ -4906,226 +4781,144 @@ function renderTutorialScreen() {
         const hlCol = isUrgent ? "#6a2a3a" : "#3a6a70";
         const blinkOn = !isUrgent || Math.floor(cT / (isLow ? 8 : 15)) % 2 === 0;
 
-        {
-            const dA = 1;
+        const pxSz = 4;
+        const digitW = 3 * pxSz + pxSz;
+        const timerStr = timerVal < 10 ? "0" + timerVal : String(timerVal);
+        const panelW = 16 + timerStr.length * digitW + 10;
+        const panelH = 5 * pxSz + 8;
+        const tpx = W / 2 - panelW / 2;
+        const tpy = timerY;
 
-            // Draw large version of the actual HUD timer panel, centered
-            const pxSz = 5; // bigger than in-game for visibility
-            const digitW = 3 * pxSz + pxSz;
-            const timerStr = timerVal < 10 ? "0" + timerVal : String(timerVal);
-            const panelW = 20 + timerStr.length * digitW + 14;
-            const panelH = 5 * pxSz + 10;
-            const px = W / 2 - panelW / 2;
-            const py = timerY;
+        drawRect(tpx - 2, tpy - 2, panelW + 4, panelH + 4, borderCol);
+        drawRect(tpx, tpy, panelW, panelH, bgCol);
+        drawRect(tpx, tpy, panelW, 2, hlCol);
 
-            // Panel background
-            drawRect(px - 3, py - 3, panelW + 6, panelH + 6, borderCol);
-            drawRect(px, py, panelW, panelH, bgCol);
-            drawRect(px, py, panelW, 2, hlCol);
+        const tix = tpx + 3, tiy = tpy + 4;
+        drawRect(tix, tiy, 10, 2, blinkOn ? timerColor : bgCol);
+        drawRect(tix + 4, tiy + 2, 2, 10, blinkOn ? timerColor : bgCol);
 
-            // "T" icon (scaled up)
-            const tix = px + 4, tiy = py + 5;
-            drawRect(tix, tiy, 12, 3, blinkOn ? timerColor : bgCol);
-            drawRect(tix + 5, tiy + 3, 3, 12, blinkOn ? timerColor : bgCol);
-
-            // Digits
-            if (blinkOn) {
-                const numX = px + 20;
-                const numY2 = py + 5;
-                drawPixelDigits(timerStr, numX + (timerStr.length * digitW) / 2, numY2, timerColor, pxSz);
-            }
-
-            // Red flash when very low
-            if (isLow && !blinkOn) {
-                ctx.globalAlpha = 0.12 * dA;
-                drawRect(0, 0, W, H, "#FF4466");
-            }
-            ctx.globalAlpha = 1;
+        if (blinkOn) {
+            const numX = tpx + 16;
+            const numY2 = tpy + 4;
+            drawPixelDigits(timerStr, numX + (timerStr.length * digitW) / 2, numY2, timerColor, pxSz);
         }
 
-        // Explanation text
-        drawCenteredText("COMPLETE THE PATTERN BEFORE TIME RUNS OUT!", timerY + 66, "#BFCDC0", 4);
-        drawCenteredText("IF THE TIMER HITS ZERO, IT'S GAME OVER!", timerY + 92, "#FF4466", 4);
+        if (isLow && !blinkOn) {
+            ctx.globalAlpha = 0.08;
+            drawRect(0, 0, W, H, "#FF4466");
+        }
+        ctx.globalAlpha = 1;
+
+        drawCenteredText("COMPLETE THE PATTERN BEFORE TIME RUNS OUT!", timerY + panelH + 12, "#BFCDC0", 4);
     }
 
-    // ======== PAGE 4: CLEAR ALL GOBLINS ========
-    else if (tutorialPage === 4) {
-        drawCenteredText("CLEAR THE STAGE!", 18, "#E86A6A", 8);
+    // ======== PAGE 2: GOBLINS (MERGED: SABOTAGE + CLEAR STAGE) ========
+    else if (tutorialPage === 2) {
+        drawCenteredText("BEWARE THE GOBLINS!", 15, "#E86A6A", 7);
 
-        // Animated demo: pattern completes, "SLAY THE GOBLIN!" blinks, player kills goblin, level ends
+        // --- TOP: Goblin sabotages a cell, player kills it ---
         const gx = W / 2 - 2 * TILE;
-        const gy = 48;
-        const SCENE_CYCLE = 260;
-        const sceneT = Math.max(0, t - 30) % SCENE_CYCLE;
+        const gy = 36;
+        const SCENE_CYCLE = 240;
+        const sceneT = Math.max(0, t - 20) % SCENE_CYCLE;
+        const gobFrame = Math.floor(t / 10) % 4;
 
-        {
-            const dA = 1;
-
-            // Mini 1x4 grid — all cells match by default (all gold)
-            for (let c = 0; c < 4; c++) {
-                const bx = gx + c * TILE;
-                drawRect(bx, gy, TILE, TILE, PAL.gridBorder);
+        // Draw a small 1x4 grid
+        for (let c = 0; c < 4; c++) {
+            const bx = gx + c * TILE;
+            const sabotaged = (c === 1 && sceneT > 80 && sceneT < 160);
+            drawRect(bx, gy, TILE, TILE, PAL.gridBorder);
+            drawRect(bx + 1, gy + 1, TILE - 2, TILE - 2, (c === 0 || c === 2) ? "#F6CC60" : PAL.gridOff);
+            if (c === 1 && sceneT > 80 && sceneT < 95) {
+                ctx.globalAlpha = (1 - (sceneT - 80) / 15) * 0.6;
+                drawRect(bx, gy, TILE, TILE, "#ff2222");
+                ctx.globalAlpha = 1;
+            }
+            if (sabotaged) {
                 drawRect(bx + 1, gy + 1, TILE - 2, TILE - 2, "#F6CC60");
             }
+        }
 
-            // Checkmark appears on grid to show it's complete
-            if (sceneT > 10 && sceneT < 200) {
-                const checkAlpha = Math.min(1, (sceneT - 10) / 15);
-                ctx.globalAlpha = checkAlpha * dA;
-                drawCenteredText("PATTERN DONE!", gy - 8, "#66cc66", 5);
-                ctx.globalAlpha = dA;
-            }
-
-            // Goblin lurking to the right
-            const gobX = gx + 5 * TILE;
-            const gobFrame = Math.floor(t / 10) % 4;
-            let gobVisible = sceneT < 160;
-            if (gobVisible) {
-                drawGoblinSprite("normal", gobX, gy - 2, gobFrame, { showShadow: false });
-            }
-
-            // "SLAY THE GOBLIN!" blinks while goblin alive
-            if (sceneT > 30 && sceneT < 160) {
-                const blink = Math.floor(sceneT / 20) % 2 === 0;
-                if (blink) {
-                    ctx.globalAlpha = dA;
-                    drawCenteredText("SLAY THE GOBLIN!", gy + TILE + 14, "#E86A6A", 5);
-                }
-            }
-
-            // Player walks in and kills goblin
-            if (sceneT > 100 && sceneT < 200) {
-                const pProg = Math.min(1, (sceneT - 100) / 40);
-                const ppx = gx + 7 * TILE - pProg * 2 * TILE;
-                const pWalkFrame = pProg < 1 ? Math.floor(t / 6) % 4 : 0;
-                const pBob = pWalkFrame % 2 === 1 ? 1 : 0;
-                const pAttacking = sceneT > 145 && sceneT < 165;
-                ctx.globalAlpha = dA;
-                drawPlayerSprite(ppx, gy, pWalkFrame, 2, {});
-                if (pAttacking) {
-                    const sp = (sceneT - 145) / 20;
-                    const ang = -Math.PI * 0.7 + sp * Math.PI * 0.9;
-                    ctx.strokeStyle = "#F6CC60"; ctx.lineWidth = 3 * SCALE; ctx.lineCap = "round";
-                    ctx.beginPath(); ctx.moveTo((ppx + 4) * SCALE, (gy + 2 - pBob) * SCALE);
-                    ctx.lineTo((ppx + 4 + Math.cos(ang) * 13) * SCALE, (gy + 2 - pBob + Math.sin(ang) * 13) * SCALE);
-                    ctx.stroke();
-                } else {
-                    drawRect(ppx - 2, gy - 8 - pBob, 2, 10, "#F6CC60");
-                    drawRect(ppx - 4, gy - 2 - pBob, 6, 2, "#BF7538");
-                }
-            }
-
-            // Death particles when goblin dies
-            if (sceneT >= 160 && sceneT < 180) {
+        // Goblin walks in, sabotages, gets killed
+        const gobStartX = gx - 3 * TILE;
+        const gobTargetX = gx + TILE;
+        let gobX, gobVisible = true;
+        if (sceneT < 60) {
+            gobX = gobStartX + (gobTargetX - gobStartX) * (sceneT / 60);
+        } else if (sceneT < 160) {
+            gobX = gobTargetX;
+        } else {
+            gobVisible = false;
+            if (sceneT < 180) {
                 const dp = (sceneT - 160) / 20;
-                ctx.globalAlpha = (1 - dp) * dA;
+                ctx.globalAlpha = 1 - dp;
                 for (let i = 0; i < 6; i++) {
                     const angle = (i / 6) * Math.PI * 2 + sceneT * 0.1;
                     const dist = dp * 12;
-                    drawRect(gobX + 4 + Math.cos(angle) * dist, gy - 4 + Math.sin(angle) * dist, 3, 3, "#cc2222");
+                    drawRect(gobTargetX + 4 + Math.cos(angle) * dist, gy - 4 + Math.sin(angle) * dist, 3, 3, "#66cc66");
                 }
+                ctx.globalAlpha = 1;
             }
-
-            // "COMPLETE!" flash after goblin cleared
-            if (sceneT >= 175 && sceneT < 230) {
-                const flashT = sceneT - 175;
-                ctx.globalAlpha = Math.min(1, flashT / 10) * (1 - Math.max(0, flashT - 35) / 20) * dA;
-                drawCenteredText("LEVEL COMPLETE!", gy + TILE + 14, "#66cc66", 6);
-            }
-            ctx.globalAlpha = 1;
+        }
+        if (gobVisible) {
+            drawGoblinSprite("normal", gobX, gy - 2, gobFrame, { showShadow: false });
         }
 
-        // Explanation text
-        drawCenteredText("FINISHING THE PATTERN ISN'T ENOUGH!", gy + TILE + 46, "#BFCDC0", 4);
-        drawCenteredText("CLEAR ALL GOBLINS TO FINISH THE LEVEL!", gy + TILE + 72, "#F6CC60", 4);
-    }
-
-    // ======== PAGE 5: FANS / DANCERS ========
-    else if (tutorialPage === 5) {
-        drawCenteredText("YOUR FANS!", 18, "#9B59B6", 8);
-
-        // Show mini dancers bobbing, with a tomato throw
-        const dcY = 55;
-        const DANCER_PALS = [
-            { body: "#E86A6A", dark: "#C05050", head: "#F09090", hair: "#8B4513" },
-            { body: "#6AB8E8", dark: "#4A98C8", head: "#F0D0B0", hair: "#2a2a2a" },
-            { body: "#9B59B6", dark: "#7B3996", head: "#F09090", hair: "#F6CC60" },
-        ];
-
-        {
-            const dA = 1;
-
-            // Draw 3 mini dancers bobbing
-            for (let i = 0; i < 3; i++) {
-                const dx = W / 2 - 2 * TILE + i * (TILE + 8);
-                const dBob = Math.sin(t * 0.06 + i * 2) * 2;
-                const armsUp = Math.sin(t * 0.06 + i * 2) > 0.3;
-                const footOff = Math.sin(t * 0.08 + i) * 1.5;
-                drawRect(dx + 2, dcY + 13, 8, 2, PAL.shadow);
-                drawDancerSprite(dx, dcY, DANCER_PALS[i], { bob: dBob, armBlend: armsUp ? 1 : 0, footOffset: footOff });
+        // Player walks in and slays
+        if (sceneT > 120 && sceneT < 200) {
+            const playerStopX = gobTargetX + TILE;
+            const playerStartX = playerStopX + 3 * TILE;
+            const pProg = Math.min(1, (sceneT - 120) / 30);
+            const ppx = playerStartX + (playerStopX - playerStartX) * pProg;
+            const pWalkFrame = pProg < 1 ? Math.floor(t / 6) % 4 : 0;
+            const pBob = pWalkFrame % 2 === 1 ? 1 : 0;
+            const pAttacking = sceneT > 150 && sceneT < 165;
+            drawPlayerSprite(ppx, gy, pWalkFrame, 2, {});
+            if (pAttacking) {
+                const sp = (sceneT - 150) / 15;
+                const ang = -Math.PI * 0.7 + sp * Math.PI * 0.9;
+                ctx.strokeStyle = "#F6CC60"; ctx.lineWidth = 3 * SCALE; ctx.lineCap = "round";
+                ctx.beginPath(); ctx.moveTo((ppx + 4) * SCALE, (gy + 2 - pBob) * SCALE);
+                ctx.lineTo((ppx + 4 + Math.cos(ang) * 13) * SCALE, (gy + 2 - pBob + Math.sin(ang) * 13) * SCALE); ctx.stroke();
+            } else {
+                drawRect(ppx - 2, gy - 8 - pBob, 2, 10, "#F6CC60");
+                drawRect(ppx - 4, gy - 2 - pBob, 6, 2, "#BF7538");
             }
+        }
+        ctx.globalAlpha = 1;
 
-            // Animated tomato throw from middle dancer at a goblin
-            const THROW_CYCLE = 180;
-            const throwT = Math.max(0, t - 50) % THROW_CYCLE;
-            const gobX = W / 2 + 4 * TILE;
-            const gobFrame = Math.floor(t / 10) % 4;
+        drawCenteredText("THEY SABOTAGE YOUR BEATS! SLAY THEM!", gy + TILE + 14, "#BFCDC0", 4);
 
-            // Draw mini goblin target
-            drawGoblinSprite("normal", gobX, dcY - 2, gobFrame, { showShadow: false });
+        // --- BOTTOM: Must clear all goblins to finish level ---
+        const gy2 = gy + TILE + 36;
+        drawCenteredText("CLEAR ALL GOBLINS TO COMPLETE EACH LEVEL", gy2, "#F6CC60", 4);
 
-            // Tomato in flight
-            if (throwT > 20 && throwT < 70) {
-                const tProg = (throwT - 20) / 50;
-                const startX = W / 2 - TILE + 8;
-                const tomatoX = startX + (gobX + 4 - startX) * tProg;
-                const tomatoBaseY = dcY + 4;
-                const arcH = 20;
-                const arcOffset = -4 * arcH * tProg * (1 - tProg);
-                const tomatoY = tomatoBaseY + arcOffset;
-                const rot = Math.floor(tProg * 4) % 4;
-                // Draw tomato at rotation
-                if (rot === 0) {
-                    drawRect(tomatoX - 2, tomatoY - 1, 4, 3, "#cc2222");
-                    drawRect(tomatoX, tomatoY - 3, 1, 1, "#44aa22");
-                } else if (rot === 1) {
-                    drawRect(tomatoX - 1, tomatoY - 2, 3, 4, "#cc2222");
-                    drawRect(tomatoX + 3, tomatoY, 1, 1, "#44aa22");
-                } else if (rot === 2) {
-                    drawRect(tomatoX - 2, tomatoY - 1, 4, 3, "#cc2222");
-                    drawRect(tomatoX, tomatoY + 3, 1, 1, "#44aa22");
-                } else {
-                    drawRect(tomatoX - 1, tomatoY - 2, 3, 4, "#cc2222");
-                    drawRect(tomatoX - 3, tomatoY, 1, 1, "#44aa22");
-                }
-            }
+        // Mini 1x4 grid all gold + level complete flash
+        const gx2 = W / 2 - 2 * TILE;
+        const gy3 = gy2 + 14;
+        const SCENE2_CYCLE = 200;
+        const scene2T = Math.max(0, t - 20) % SCENE2_CYCLE;
 
-            // Splat on goblin
-            if (throwT >= 70 && throwT < 95) {
-                const sA = (95 - throwT) / 25;
-                ctx.globalAlpha = sA * dA;
-                drawRect(gobX + 2, dcY + 1, 6, 3, "#cc2222");
-                drawRect(gobX + 4, dcY - 1, 3, 6, "#aa1111");
-                drawRect(gobX + 1, dcY + 2, 1, 1, "#F6CC60");
-                ctx.globalAlpha = dA;
-            }
-
-            ctx.globalAlpha = 1;
+        for (let c = 0; c < 4; c++) {
+            const bx = gx2 + c * TILE;
+            drawRect(bx, gy3, TILE, TILE, PAL.gridBorder);
+            drawRect(bx + 1, gy3 + 1, TILE - 2, TILE - 2, "#F6CC60");
         }
 
-        // Explanation text
-        drawCenteredText("SLAY GOBLINS TO ATTRACT FANS!", dcY + TILE + 34, "#BFCDC0", 5);
-        drawCenteredText("THEY'LL THROW TOMATOES AT NEARBY GOBLINS!", dcY + TILE + 60, "#F6CC60", 4);
+        // "LEVEL COMPLETE!" flashes periodically
+        if (scene2T > 60 && scene2T < 160) {
+            const flashT = scene2T - 60;
+            ctx.globalAlpha = Math.min(1, flashT / 10) * (1 - Math.max(0, flashT - 70) / 30);
+            drawCenteredText("LEVEL COMPLETE!", gy3 + TILE + 10, "#66cc66", 5);
+            ctx.globalAlpha = 1;
+        }
     }
 
     // Blinking prompt
-    const promptText = tutorialPage < 5 ? "PRESS ENTER" : "PRESS ENTER TO START";
-    if (t > 40 && t % 60 < 40) {
+    const promptText = tutorialPage < 2 ? "PRESS ENTER" : "PRESS ENTER TO START";
+    if (t > 20 && t % 60 < 40) {
         drawCenteredText(promptText, H - 10, "#EBEBE3", 5);
     }
-
-    updateSceneFadeOut();
-    applySceneFade(t);
 }
 
 function renderSabotageAnim() {
@@ -5285,8 +5078,6 @@ function renderEnemyWarning() {
         drawCenteredText("PRESS ENTER TO CONTINUE", H - 10, "#EBEBE3", 5);
     }
 
-    updateSceneFadeOut();
-    applySceneFade(t);
 }
 
 // ---- New Instrument Popup ----
@@ -5464,8 +5255,6 @@ function renderNewInstrument() {
         drawCenteredText("PRESS ENTER TO CONTINUE", H - 10, "#EBEBE3", 5);
     }
 
-    updateSceneFadeOut();
-    applySceneFade(t);
 }
 
 function gameLoop(timestamp) {
