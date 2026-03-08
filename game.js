@@ -228,15 +228,15 @@ ctx.imageSmoothingEnabled = false;
 // #EBEBE3 Ticket Paper, #F6CC60 Midway Mustard, #BFCDC0 Foggy Mint
 // #3A6168 Harbor Teal, #BF7538 Rusty Turnstile
 const PAL = {
-    bg:        "#2c4a4f",
-    wall:      "#3A6168",
-    wallTop:   "#4a7a82",
-    floor:     "#345558",
-    floorAlt:  "#2f4f53",
-    gridOff:   "#2a4448",
+    bg:        "#243a3e",
+    wall:      "#2e4a4e",
+    wallTop:   "#384f54",
+    floor:     "#2a4245",
+    floorAlt:  "#263e42",
+    gridOff:   "#223a3e",
     gridOn:    ["#BF7538", "#F6CC60", "#BFCDC0", "#EBEBE3", "#E86A6A", "#6AB8E8"], // per-row colors (O,H,S,K,B,T)
     gridX:     ["#4088C7", "#0933A0", "#403230", "#14141C", "#17959F", "#954717"], // per-row X indicator colors (complementary)
-    gridBorder:"#3A6168",
+    gridBorder:"#2e4448",
     playhead:  "#F6CC60",
     player:    "#EBEBE3",
     playerDark:"#BFCDC0",
@@ -2363,7 +2363,7 @@ function render() {
     // Wooden plank floor
     for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
-            const col = (r + c) % 2 === 0 ? "#8B6914" : "#7A5C12";
+            const col = (r + c) % 2 === 0 ? "#5a4a2a" : "#504228";
             drawRect(c * TILE, r * TILE, TILE, TILE, col);
             // Plank line
             drawRect(c * TILE, r * TILE + TILE - 1, TILE, 1, "rgba(0,0,0,0.15)");
@@ -2372,16 +2372,16 @@ function render() {
 
     // Tent-style walls — striped top border (red/cream carnival stripes)
     for (let c = 0; c < COLS; c++) {
-        const stripe = c % 2 === 0 ? "#BF7538" : "#EBEBE3";
+        const stripe = c % 2 === 0 ? "#7a5430" : "#9a998a";
         drawRect(c * TILE, 0, TILE, TILE, stripe);
 
         // Bottom wall — ticket booth style
-        drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#3A6168" : "#4a7a82");
+        drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#2e4a4e" : "#384f54");
     }
     // Side walls — booth posts
     for (let r = 0; r < ROWS; r++) {
-        drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#3A6168" : "#4a7a82");
-        drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#3A6168" : "#4a7a82");
+        drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+        drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
         // Post highlight
         drawRect(2, r * TILE, 2, TILE, "rgba(255,255,255,0.1)");
         drawRect((COLS - 1) * TILE + 2, r * TILE, 2, TILE, "rgba(255,255,255,0.1)");
@@ -2423,12 +2423,12 @@ function render() {
         const bulbY = TILE + 6;
         const bulbX = c * TILE + TILE / 2;
         // Bulb
-        const bulbColors = ["#F6CC60", "#BF7538", "#BFCDC0", "#EBEBE3"];
+        const bulbColors = ["#8a7a40", "#6a4a28", "#7a8a7a", "#8a8a82"];
         const bulbCol = bulbColors[c % bulbColors.length];
         drawRect(bulbX - 2, bulbY, 4, 4, bulbCol);
         // Glow
         ctx.fillStyle = bulbCol;
-        ctx.globalAlpha = 0.15;
+        ctx.globalAlpha = 0.10;
         ctx.fillRect((bulbX - 4) * SCALE, (bulbY - 2) * SCALE, 8 * SCALE, 8 * SCALE);
         ctx.globalAlpha = 1.0;
     }
@@ -2439,7 +2439,7 @@ function render() {
         if (c === caveCol) continue;
         const lx = c * TILE + TILE / 2;
         const ly = (ROWS - 1) * TILE + 2;
-        const bulbColors = ["#F6CC60", "#BF7538", "#BFCDC0", "#EBEBE3"];
+        const bulbColors = ["#8a7a40", "#6a4a28", "#7a8a7a", "#8a8a82"];
         drawRect(lx - 1, ly, 3, 3, bulbColors[(c + 2) % bulbColors.length]);
     }
 
