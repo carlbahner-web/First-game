@@ -1688,6 +1688,9 @@ function update(dt) {
             const ddx = Math.abs(d.x - goblin.x);
             const ddy = Math.abs(d.y - goblin.y);
             if (ddx <= 3 * TILE && ddy <= 3 * TILE) {
+                // Staggered awareness: each dancer waits a random delay before reacting
+                if (d.throwDelay === undefined) d.throwDelay = 30 + Math.floor(Math.random() * 90); // 0.5-2s
+                if (d.throwDelay > 0) { d.throwDelay--; continue; }
                 // Random chance each frame (~1 throw per 2 seconds on average)
                 if (!d.throwCooldown) d.throwCooldown = 0;
                 if (d.throwCooldown > 0) { d.throwCooldown--; continue; }
@@ -1705,6 +1708,9 @@ function update(dt) {
                         spin: 0,           // rotation frame for tumble
                     });
                 }
+            } else {
+                // Goblin out of range — reset so it re-staggers next time
+                d.throwDelay = undefined;
             }
         }
     }
