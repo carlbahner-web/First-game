@@ -2611,8 +2611,8 @@ function render() {
         ctx.globalAlpha = 0.25;
         drawRect(t.x - 1, t.y + 1, 3, 1, "#000");
         ctx.globalAlpha = 1;
-        // Tumble: cycle through 4 rotation frames
-        const rot = Math.floor(t.spin / 4) % 4;
+        // Tumble: one lazy rotation over the entire flight
+        const rot = Math.floor(t.progress * 4) % 4;
         if (rot === 0) {
             // Upright
             drawRect(drawX - 2, drawY - 1, 4, 3, "#cc2222");
