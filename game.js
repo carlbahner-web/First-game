@@ -3530,33 +3530,34 @@ function renderHighScoreEntry() {
     const labelW = label.length * 3;
     drawText(label, W / 2 - labelW / 2, 65, "#BFCDC0", 3);
 
-    // Three letter slots
-    const letterScale = 8;
-    const letterSpacing = letterScale * 3; // space between letters
+    // Three letter slots — large and centered
+    const letterScale = 18;
+    const letterSpacing = letterScale * 2;
     const totalLettersW = 3 * letterScale + 2 * letterSpacing;
     const startX = W / 2 - totalLettersW / 2;
+    const ly = H / 2 - letterScale / 2;
 
     for (let i = 0; i < 3; i++) {
         const lx = startX + i * (letterScale + letterSpacing);
-        const ly = 85;
 
-        // Active letter blinks
+        // Active letter blinks with arrows
         if (i === initialsPos) {
             const blinkAlpha = Math.sin(initialsBlink * 0.12) * 0.3 + 0.7;
             ctx.globalAlpha = blinkAlpha;
 
             // Up arrow indicator above
-            drawText("^", lx + letterScale * 0.1, ly - 12, "#F6CC60", 4);
+            drawText("^", lx + letterScale * 0.1, ly - 20, "#F6CC60", 8);
             // Down arrow indicator below
-            drawText("v", lx + letterScale * 0.1, ly + letterScale + 6, "#F6CC60", 4);
+            drawText("v", lx + letterScale * 0.1, ly + letterScale + 10, "#F6CC60", 8);
         }
 
         // Draw the letter
-        drawText(initialsEntry[i], lx, ly, i === initialsPos ? "#F6CC60" : "#EBEBE3", letterScale);
+        const color = i < initialsPos ? "#88AA88" : (i === initialsPos ? "#F6CC60" : "#555555");
+        drawText(initialsEntry[i], lx, ly, color, letterScale);
         ctx.globalAlpha = 1;
 
         // Underline
-        drawRect(lx, ly + letterScale + 2, letterScale, 1, i === initialsPos ? "#F6CC60" : "#555555");
+        drawRect(lx, ly + letterScale + 4, letterScale, 2, i === initialsPos ? "#F6CC60" : "#555555");
     }
 
     // "PRESS ENTER TO CONFIRM" blinking
@@ -3567,7 +3568,7 @@ function renderHighScoreEntry() {
     }
 
     // Controls hint
-    const hint = "UP/DOWN:Letter  LEFT/RIGHT:Slot";
+    const hint = "UP/DOWN: LETTER   ENTER: CONFIRM";
     const hintW = hint.length * 2;
     drawText(hint, W / 2 - hintW / 2, H - 18, "#666666", 2);
 }
