@@ -3424,7 +3424,7 @@ function drawSword() {
 
     // Punch thrust: arm extends outward, peaks at progress=0.5
     const thrust = Math.sin(progress * Math.PI); // 0→1→0
-    const armLen = 6 + thrust * 10; // arm extends from 6 to 16 pixels
+    const armLen = 5 + thrust * 8; // arm extends from 5 to 13 pixels (shorter reach)
 
     // Direction vectors
     let dx = 0, dy = 0;
@@ -3435,14 +3435,18 @@ function drawSword() {
         case 3: dx = 1; break;  // right
     }
 
-    const shoulderX = cx * SCALE;
-    const shoulderY = cy * SCALE;
-    const fistX = (cx + dx * armLen) * SCALE;
-    const fistY = (cy + dy * armLen) * SCALE;
+    // Offset arm to shoulder (side of body) instead of center
+    // For vertical punches, offset to the right side; for horizontal, offset vertically
+    const shoulderOffX = (dy !== 0) ? 5 : 0;
+    const shoulderOffY = (dx !== 0) ? -2 : 0;
+    const shoulderX = (cx + shoulderOffX) * SCALE;
+    const shoulderY = (cy + shoulderOffY) * SCALE;
+    const fistX = (cx + shoulderOffX + dx * armLen) * SCALE;
+    const fistY = (cy + shoulderOffY + dy * armLen) * SCALE;
 
     // === ARM ===
     ctx.strokeStyle = "#E8CBA8"; // skin color
-    ctx.lineWidth = 5 * SCALE;
+    ctx.lineWidth = 4 * SCALE;
     ctx.lineCap = "round";
     ctx.beginPath();
     ctx.moveTo(shoulderX, shoulderY);
@@ -3451,7 +3455,7 @@ function drawSword() {
 
     // Arm outline
     ctx.strokeStyle = "#C4A882";
-    ctx.lineWidth = 6 * SCALE;
+    ctx.lineWidth = 5 * SCALE;
     ctx.globalAlpha = 0.3;
     ctx.beginPath();
     ctx.moveTo(shoulderX, shoulderY);
@@ -3460,7 +3464,7 @@ function drawSword() {
     ctx.globalAlpha = 1.0;
 
     // === FIST ===
-    const fistSize = 4.5;
+    const fistSize = 3.5;
     // Fist shadow
     ctx.fillStyle = "#C49870";
     ctx.beginPath();
@@ -3475,10 +3479,10 @@ function drawSword() {
     ctx.fillStyle = "#F0D8B8";
     const knucklePerp = dx === 0 ? 1 : 0; // perpendicular axis
     for (let i = -1; i <= 1; i++) {
-        const kx = fistX + (knucklePerp === 1 ? i * 2.2 * SCALE : dx * 3 * SCALE);
-        const ky = fistY + (knucklePerp === 0 ? i * 2.2 * SCALE : dy * 3 * SCALE);
+        const kx = fistX + (knucklePerp === 1 ? i * 1.8 * SCALE : dx * 2.5 * SCALE);
+        const ky = fistY + (knucklePerp === 0 ? i * 1.8 * SCALE : dy * 2.5 * SCALE);
         ctx.beginPath();
-        ctx.arc(kx, ky, 1.2 * SCALE, 0, Math.PI * 2);
+        ctx.arc(kx, ky, 1.0 * SCALE, 0, Math.PI * 2);
         ctx.fill();
     }
 
