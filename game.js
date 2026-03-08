@@ -620,6 +620,9 @@ const goblin = {
     elite: false, // true for every 3rd goblin (pink & fast)
     hp: 1,        // normal goblins have 1 hp, elites have 3
     hurtTimer: 0, // flash white when hit
+    deathAnimTimer: 0,  // poof animation countdown (24 frames)
+    deathAnimActive: false, // true while poof animation is playing
+    deathAnimElite: false,  // was elite when killed (for poof colors)
 };
 
 // Death particles
@@ -1153,32 +1156,16 @@ function update(dt) {
                     osc.start(now); osc.stop(now + 0.15);
                 }
             } else {
-            // Lethal hit — full death sequence
-            goblin.dead = true;
+            // Lethal hit — start poof animation, then full death
             const wasElite = goblin.elite;
+            goblin.deathAnimActive = true;
+            goblin.deathAnimTimer = 24; // 24 frames of shrink/spin/dissolve
+            goblin.deathAnimElite = wasElite;
+            goblin.dead = true;
             // Always 10s respawn
             goblin.respawnTimer = 600;
 
-            // Death particles — elite gets a big sparkly explosion
-            const particleCount = wasElite ? 50 : 20;
-            const spreadMul = wasElite ? 3 : 2;
-            for (let i = 0; i < particleCount; i++) {
-                const isSparkle = wasElite && Math.random() > 0.5;
-                deathParticles.push({
-                    x: goblin.x + goblin.w / 2,
-                    y: goblin.y + goblin.h / 2,
-                    vx: (Math.random() - 0.5) * spreadMul,
-                    vy: (Math.random() - 0.5) * spreadMul - 1,
-                    life: wasElite ? 50 + Math.random() * 50 : 30 + Math.random() * 30,
-                    color: wasElite
-                        ? (isSparkle ? "#ffee44" : Math.random() > 0.3 ? "#d46a9a" : "#ff88bb")
-                        : (Math.random() > 0.3 ? "#cc2222" : "#881111"),
-                    size: wasElite ? 2 + Math.random() * 4 : 2 + Math.random() * 3,
-                    sparkle: isSparkle, // sparkle particles twinkle
-                });
-            }
-
-            // Death text
+            // Death text (shows immediately)
             const deathOwTexts = ["OW MY SPLEEN!", "OW MY WEENIS!", "OW MY SKULL!", "OW MY FACE!", "OW MY EVERYTHING!"];
             const deathOw = deathOwTexts[Math.floor(Math.random() * deathOwTexts.length)];
             deathText = wasElite
@@ -1456,6 +1443,8 @@ function update(dt) {
                 goblin.respawnTimer = 60;
             } else {
             goblin.dead = false;
+            goblin.deathAnimActive = false;
+            goblin.deathAnimTimer = 0;
             // Every 3rd goblin is elite (pink & fast), but not on catapult turns
             goblin.elite = (killCount % 3 === 2 && killCount % 6 !== 5);
             goblin.hp = goblin.elite ? 3 : 1;
@@ -1681,6 +1670,55 @@ function update(dt) {
     // Decrement goblin hurt flash timer
     if (goblin.hurtTimer > 0) goblin.hurtTimer--;
 
+    // Update goblin death poof animation
+    if (goblin.deathAnimActive) {
+        goblin.deathAnimTimer--;
+        // Shed particles during the poof (dissolving into bits)
+        const progress = 1 - goblin.deathAnimTimer / 24; // 0→1
+        const wasElite = goblin.deathAnimElite;
+        if (goblin.deathAnimTimer % 2 === 0) {
+            const burstCount = wasElite ? 4 : 2;
+            for (let i = 0; i < burstCount; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 0.5 + progress * 2;
+                const isSparkle = wasElite && Math.random() > 0.5;
+                deathParticles.push({
+                    x: goblin.x + goblin.w / 2 + (Math.random() - 0.5) * 10,
+                    y: goblin.y + goblin.h / 2 + (Math.random() - 0.5) * 10,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 0.5,
+                    life: wasElite ? 40 + Math.random() * 30 : 20 + Math.random() * 20,
+                    color: wasElite
+                        ? (isSparkle ? "#ffee44" : Math.random() > 0.3 ? "#d46a9a" : "#ff88bb")
+                        : (Math.random() > 0.3 ? "#cc2222" : "#881111"),
+                    size: 1 + Math.random() * 2,
+                    sparkle: isSparkle,
+                });
+            }
+        }
+        // Final big burst when animation ends
+        if (goblin.deathAnimTimer <= 0) {
+            goblin.deathAnimActive = false;
+            const particleCount = wasElite ? 35 : 15;
+            const spreadMul = wasElite ? 3 : 2;
+            for (let i = 0; i < particleCount; i++) {
+                const isSparkle = wasElite && Math.random() > 0.5;
+                deathParticles.push({
+                    x: goblin.x + goblin.w / 2,
+                    y: goblin.y + goblin.h / 2,
+                    vx: (Math.random() - 0.5) * spreadMul,
+                    vy: (Math.random() - 0.5) * spreadMul - 1,
+                    life: wasElite ? 50 + Math.random() * 50 : 30 + Math.random() * 30,
+                    color: wasElite
+                        ? (isSparkle ? "#ffee44" : Math.random() > 0.3 ? "#d46a9a" : "#ff88bb")
+                        : (Math.random() > 0.3 ? "#cc2222" : "#881111"),
+                    size: wasElite ? 2 + Math.random() * 4 : 2 + Math.random() * 3,
+                    sparkle: isSparkle,
+                });
+            }
+        }
+    }
+
     // Update catapult goblin
     if (catapultGoblin) updateCatapultGoblin();
 
@@ -1807,12 +1845,34 @@ function update(dt) {
 // ---- Game Over ----
 let gameOverTimer = 0; // counts up for animation timing
 let sadSongStarted = false;
+let playerDeathAnim = {
+    active: false,
+    collapseProgress: 0,   // 0→1 player squishes flat
+    soulY: 0,              // soul float offset (pixels upward)
+    soulAlpha: 1,          // soul fade
+    soulWobble: 0,         // wobble phase
+    flashTimer: 0,         // red flash on hit
+    bounceCount: 0,        // player body bounce count
+    bounceVel: 0,          // vertical bounce velocity
+    bounceY: 0,            // vertical bounce offset
+};
 
 function triggerGameOver() {
     gameState = "gameover";
     gameOverTimer = 0;
     sadSongStarted = false;
     finalScore = killCount;
+
+    // Start player death animation
+    playerDeathAnim.active = true;
+    playerDeathAnim.collapseProgress = 0;
+    playerDeathAnim.soulY = 0;
+    playerDeathAnim.soulAlpha = 0;
+    playerDeathAnim.soulWobble = 0;
+    playerDeathAnim.flashTimer = 8;
+    playerDeathAnim.bounceCount = 0;
+    playerDeathAnim.bounceVel = -3;
+    playerDeathAnim.bounceY = 0;
 
     // Initial hit freeze + shake
     screenShake = 15;
@@ -1833,6 +1893,28 @@ function triggerGameOver() {
         g.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
         osc.connect(g); g.connect(audioCtx.destination);
         osc.start(now); osc.stop(now + 0.5);
+
+        // Ghostly ascending tone for soul departure (delayed ~0.5s)
+        const ghost = audioCtx.createOscillator();
+        const gg = audioCtx.createGain();
+        ghost.type = "sine";
+        ghost.frequency.setValueAtTime(300, now + 0.5);
+        ghost.frequency.exponentialRampToValueAtTime(1200, now + 2.0);
+        gg.gain.setValueAtTime(0.06, now + 0.5);
+        gg.gain.linearRampToValueAtTime(0.08, now + 1.0);
+        gg.gain.exponentialRampToValueAtTime(0.001, now + 2.5);
+        ghost.connect(gg); gg.connect(audioCtx.destination);
+        ghost.start(now + 0.5); ghost.stop(now + 2.5);
+        // Ethereal harmony
+        const ghost2 = audioCtx.createOscillator();
+        const gg2 = audioCtx.createGain();
+        ghost2.type = "sine";
+        ghost2.frequency.setValueAtTime(450, now + 0.7);
+        ghost2.frequency.exponentialRampToValueAtTime(1800, now + 2.2);
+        gg2.gain.setValueAtTime(0.03, now + 0.7);
+        gg2.gain.exponentialRampToValueAtTime(0.001, now + 2.5);
+        ghost2.connect(gg2); gg2.connect(audioCtx.destination);
+        ghost2.start(now + 0.7); ghost2.stop(now + 2.5);
     }
 }
 
@@ -1924,6 +2006,8 @@ function resetGame() {
     // Reset enemies
     killCount = 0;
     goblin.dead = true;
+    goblin.deathAnimActive = false;
+    goblin.deathAnimTimer = 0;
     goblin.respawnTimer = 300;
     catapultGoblin = null;
     catapultSpawnedThisCycle = false;
@@ -1941,6 +2025,7 @@ function resetGame() {
     screenFlash = 0;
     screenShake = 0;
     hitFreeze = 0;
+    playerDeathAnim.active = false;
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
             cellFlash[r][c] = 0;
@@ -2025,6 +2110,8 @@ function triggerLevelComplete() {
     gameState = "levelcomplete";
     // Kill the goblin so it stops sabotaging
     goblin.dead = true;
+    goblin.deathAnimActive = false;
+    goblin.deathAnimTimer = 0;
     goblin.respawnTimer = 9999;
     // Kill catapult goblin too
     catapultGoblin = null;
@@ -2076,6 +2163,8 @@ function advanceLevel() {
 
     // Reset goblin with new speed
     goblin.dead = true;
+    goblin.deathAnimActive = false;
+    goblin.deathAnimTimer = 0;
     goblin.respawnTimer = 300;
     catapultGoblin = null;
     catapultSpawnedThisCycle = false;
@@ -2658,6 +2747,31 @@ function render() {
     // Goblin
     if (!goblin.dead) {
         drawGoblin();
+    } else if (goblin.deathAnimActive) {
+        // Poof animation: shrink, spin, and dissolve
+        const progress = 1 - goblin.deathAnimTimer / 24; // 0→1
+        const scale = 1 - progress * 0.85; // shrink to 15%
+        const alpha = 1 - progress * 0.9;  // fade to 10%
+        const rotation = progress * Math.PI * 2.5; // 2.5 full spins
+        const cx = (goblin.x + goblin.w / 2) * SCALE;
+        const cy = (goblin.y + goblin.h / 2) * SCALE;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(rotation);
+        ctx.scale(scale, scale);
+        ctx.translate(-cx, -cy);
+        ctx.globalAlpha = alpha;
+        // Flash between normal colors and white as it dissolves
+        if (progress > 0.5 && Math.floor(goblin.deathAnimTimer) % 3 === 0) {
+            const g = goblin;
+            drawGoblinSprite(g.deathAnimElite ? "elite" : "normal", g.x, g.y, 0, {
+                dir: g.dir, bodyCol: "#ffffff", darkCol: "#dddddd", headCol: "#ffffff", eyeCol: "#ffee44"
+            });
+        } else {
+            drawGoblin();
+        }
+        ctx.restore();
+        ctx.globalAlpha = 1.0;
     }
 
     // Catapult goblin
@@ -2876,6 +2990,20 @@ function drawPx(x, y, w, h, color) {
     ctx.fillRect(x, y, w, h);
 }
 
+// Convert a color to a ghostly blue-white tint for soul/ghost effect
+function ghostTint(color) {
+    // Parse hex color
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    // Blend toward light blue-white (#ccddff)
+    const t = 0.7; // tint strength
+    const tr = Math.round(r + (0xcc - r) * t);
+    const tg = Math.round(g + (0xdd - g) * t);
+    const tb = Math.round(b + (0xff - b) * t);
+    return `#${tr.toString(16).padStart(2, '0')}${tg.toString(16).padStart(2, '0')}${tb.toString(16).padStart(2, '0')}`;
+}
+
 // Reusable 48x48 player sprite for all screens
 // gx, gy: top-left position (game coords)
 // frame: animation frame (0-3), dir: facing direction (0-3)
@@ -2885,9 +3013,10 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
     const sx = gx * SCALE;
     const sy = gy * SCALE;
     const bob = (frame % 2 === 1 ? 1 : 0) * SCALE;
+    const ghost = opts.ghostMode || false;
 
     function px(x, y, w, h, color) {
-        drawPx(sx + x, sy + y - bob, w, h, color);
+        drawPx(sx + x, sy + y - bob, w, h, ghost ? ghostTint(color) : color);
     }
 
     // === BODY (teal shirt — Studioland style) ===
@@ -4177,16 +4306,121 @@ function renderGameOverScreen() {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.globalAlpha = 1.0;
 
+        // Update player death animation
+        if (playerDeathAnim.active) {
+            const da = playerDeathAnim;
+            // Phase 1 (frames 0-30): Player bounces and collapses
+            if (da.collapseProgress < 1) {
+                da.collapseProgress = Math.min(1, da.collapseProgress + 0.033); // ~30 frames
+                // Bounce physics
+                da.bounceY += da.bounceVel;
+                da.bounceVel += 0.4; // gravity
+                if (da.bounceY >= 0 && da.bounceVel > 0) {
+                    da.bounceY = 0;
+                    da.bounceCount++;
+                    da.bounceVel = -da.bounceVel * 0.4; // dampen
+                    if (Math.abs(da.bounceVel) < 0.5) da.bounceVel = 0;
+                }
+            }
+            // Phase 2 (frames 30-150): Soul rises from body
+            if (da.collapseProgress >= 0.5 && da.soulAlpha < 1) {
+                da.soulAlpha = Math.min(1, da.soulAlpha + 0.04);
+            }
+            if (da.soulAlpha > 0) {
+                da.soulY += 0.35;
+                da.soulWobble += 0.08;
+            }
+            // Phase 3 (frames 150+): Soul fades away
+            if (da.soulY > 40) {
+                da.soulAlpha = Math.max(0, da.soulAlpha - 0.015);
+                if (da.soulAlpha <= 0) da.active = false;
+            }
+            // Red flash
+            if (da.flashTimer > 0) da.flashTimer--;
+        }
+
         // Redraw the player on top of the darkness (spotlight effect)
         if (gameOverTimer < 600) {
-            // Player fades out during final phase
             const playerAlpha = gameOverTimer >= 540 ? Math.max(0, 1 - (gameOverTimer - 540) / 150) : 1.0;
             ctx.globalAlpha = playerAlpha;
-            // Player shadow
-            drawRect(player.x + 2, player.y + player.h - 2, player.w - 4, 4, PAL.shadow);
+
+            const da = playerDeathAnim;
+            const px = player.x;
+            const py = player.y;
+            const pw = player.w;
+            const ph = player.h;
+
+            // Draw collapsed player body (squish effect)
+            const squish = da.collapseProgress;
+            const scaleY = 1 - squish * 0.6; // squish to 40% height
+            const scaleX = 1 + squish * 0.3;  // stretch wider
+            const cx = (px + pw / 2) * SCALE;
+            const baseY = (py + ph) * SCALE + da.bounceY * SCALE;
+            ctx.save();
+            ctx.translate(cx, baseY);
+            ctx.scale(scaleX, scaleY);
+            ctx.translate(-cx, -baseY);
+            // Player shadow (wider as squished)
+            drawRect(px + 2 - squish * 3, py + ph - 2, pw - 4 + squish * 6, 4, PAL.shadow);
             drawPlayer();
+            ctx.restore();
+
+            // Draw soul/ghost floating up from body
+            if (da.soulAlpha > 0) {
+                ctx.globalAlpha = playerAlpha * da.soulAlpha * 0.6;
+                const wobbleX = Math.sin(da.soulWobble) * 3;
+                const soulX = px + wobbleX;
+                const soulY = py - da.soulY;
+                // Ghost is a translucent white version of the player
+                const ghostCx = (soulX + pw / 2) * SCALE;
+                const ghostCy = (soulY + ph / 2) * SCALE;
+                ctx.save();
+                ctx.translate(ghostCx, ghostCy);
+                // Slight stretch vertically for ghostly look
+                ctx.scale(0.9, 1.1);
+                ctx.translate(-ghostCx, -ghostCy);
+                drawPlayerSprite(soulX, soulY, 0, 0, { isBlinking: false, ghostMode: true });
+                ctx.restore();
+
+                // Ghost trail particles
+                if (gameOverTimer % 4 === 0 && da.soulAlpha > 0.2) {
+                    deathParticles.push({
+                        x: soulX + pw / 2 + (Math.random() - 0.5) * 8,
+                        y: soulY + ph / 2 + Math.random() * 5,
+                        vx: (Math.random() - 0.5) * 0.3,
+                        vy: -0.2 - Math.random() * 0.3,
+                        life: 20 + Math.random() * 15,
+                        color: Math.random() > 0.5 ? "#aaddff" : "#ffffff",
+                        size: 1 + Math.random() * 2,
+                        sparkle: true,
+                    });
+                }
+            }
             ctx.globalAlpha = 1.0;
+
+            // Red flash overlay on initial impact
+            if (da.flashTimer > 0) {
+                ctx.fillStyle = "#cc2222";
+                ctx.globalAlpha = (da.flashTimer / 8) * 0.35;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.globalAlpha = 1.0;
+            }
         }
+
+        // Update & render death particles in game over
+        for (let i = deathParticles.length - 1; i >= 0; i--) {
+            const dp = deathParticles[i];
+            dp.x += dp.vx;
+            dp.y += dp.vy;
+            if (dp.sparkle) dp.vx *= 0.98;
+            dp.vy += 0.02; // very light gravity for ghost particles
+            dp.life--;
+            if (dp.life <= 0) { deathParticles.splice(i, 1); continue; }
+            ctx.globalAlpha = Math.min(1, dp.life / 15);
+            const sz = dp.sparkle && Math.sin(gameOverTimer * 0.2 + i) > 0 ? dp.size * 1.5 : dp.size;
+            drawRect(dp.x, dp.y, sz, sz, dp.color);
+        }
+        ctx.globalAlpha = 1.0;
     }
 
     // Start sad song
@@ -4202,7 +4436,7 @@ function renderGameOverScreen() {
         ctx.globalAlpha = textAlpha;
         const shitText = "ummmmm RUDE!";
         const shitW = shitText.length * 5;
-        // Position below the player
+        // Position below the player (offset by collapse)
         const textY = player.y + player.h + 20;
         drawText(shitText, W / 2 - shitW / 2 + 1, textY + 1, "#000000", 5);
         drawText(shitText, W / 2 - shitW / 2, textY, "#BFCDC0", 5);
