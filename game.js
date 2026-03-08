@@ -2046,7 +2046,7 @@ function advanceLevel() {
     for (let r = 0; r < ar; r++) {
         for (let i = 0; i < GRID_COLS; i++) {
             const c = r % 2 === 0 ? i : GRID_COLS - 1 - i;
-            sabotageCells.push({ r, c, flip: Math.random() < 0.35 });
+            sabotageCells.push({ r, c, flip: Math.random() < 0.12 });
         }
     }
 
