@@ -1286,6 +1286,30 @@ function getBlockRect(row, col) {
     };
 }
 
+// ---- Sequencer tick (extracted so it can run during sabotage-anim too) ----
+function tickSequencer() {
+    if (playing) {
+        if (!lastStepTime) lastStepTime = performance.now();
+        const now = performance.now();
+        const elapsed = now - lastStepTime;
+        if (elapsed > stepMs * 2) {
+            lastStepTime = now;
+        }
+        if (now - lastStepTime >= stepMs) {
+            lastStepTime = now;
+            ensureAudio();
+            const t = audioCtx ? audioCtx.currentTime : 0;
+            if (audioCtx) {
+                const ar = getActiveRows();
+                for (let r = 0; r < ar; r++) {
+                    if (grid[r][currentStep]) drumFns[r](t);
+                }
+            }
+            currentStep = (currentStep + 1) % GRID_COLS;
+        }
+    }
+}
+
 // ---- Update ----
 function update(dt) {
     if (gamePaused) return;
@@ -1321,18 +1345,31 @@ function update(dt) {
         p.attackTimer = p.attackDuration;
         p.swordHit = false;
         ensureAudio();
-        // play a subtle sword "whoosh"
+        // play a punchy impact sound
         if (audioCtx) {
             const now = audioCtx.currentTime;
+            // Low thump
             const osc = audioCtx.createOscillator();
             const g = audioCtx.createGain();
-            osc.type = "sawtooth";
-            osc.frequency.setValueAtTime(300, now);
-            osc.frequency.exponentialRampToValueAtTime(100, now + 0.08);
-            g.gain.setValueAtTime(0.08, now);
-            g.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.exponentialRampToValueAtTime(60, now + 0.1);
+            g.gain.setValueAtTime(0.15, now);
+            g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
             osc.connect(g); g.connect(audioCtx.destination);
-            osc.start(now); osc.stop(now + 0.08);
+            osc.start(now); osc.stop(now + 0.1);
+            // Noise burst for impact texture
+            const bufLen = audioCtx.sampleRate * 0.04;
+            const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+            const data = buf.getChannelData(0);
+            for (let i = 0; i < bufLen; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufLen);
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buf;
+            const ng = audioCtx.createGain();
+            ng.gain.setValueAtTime(0.06, now);
+            ng.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+            noise.connect(ng); ng.connect(audioCtx.destination);
+            noise.start(now); noise.stop(now + 0.04);
         }
 
         // Determine target tile directly in front of player
@@ -2096,28 +2133,7 @@ function update(dt) {
     });
 
     // Sequencer step
-    if (playing) {
-        if (!lastStepTime) lastStepTime = performance.now();
-        const now = performance.now();
-        const elapsed = now - lastStepTime;
-        // If we've fallen more than 2 steps behind, snap to now (prevent catch-up burst)
-        if (elapsed > stepMs * 2) {
-            lastStepTime = now;
-        }
-        if (now - lastStepTime >= stepMs) {
-            lastStepTime = now;
-            // Play active drums for current step
-            ensureAudio();
-            const t = audioCtx ? audioCtx.currentTime : 0;
-            if (audioCtx) {
-                const ar = getActiveRows();
-                for (let r = 0; r < ar; r++) {
-                    if (grid[r][currentStep]) drumFns[r](t);
-                }
-            }
-            currentStep = (currentStep + 1) % GRID_COLS;
-        }
-    }
+    tickSequencer();
 }
 
 // ---- Game Over ----
@@ -3184,13 +3200,13 @@ function render() {
     // Player shadow
     drawRect(player.x + 2, player.y + player.h - 2, player.w - 4, 4, PAL.shadow);
 
-    // Sword (draw behind player for up-facing, in front otherwise)
+    // Punch (draw behind player for up-facing, in front otherwise)
     if (player.attacking && player.dir === 1) drawSword();
 
     // Player sprite
     drawPlayer();
 
-    // Sword (in front for down/left/right)
+    // Punch (in front for down/left/right)
     if (player.attacking && player.dir !== 1) drawSword();
 
     // "SLAY THE GOBLIN!" indicator when pattern is done but goblins remain
@@ -3359,8 +3375,11 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         px(30, 0, 3, 3, "#D08040");
         px(12, -6, 24, 3, "#A86430");
         const mouthOfs = dir === 2 ? -3 : dir === 3 ? 3 : 0;
-        px(18 + mouthOfs, -3, 12, 2, "#8A5228");
-        px(20 + mouthOfs, -4, 8, 1, "#6A3A18");
+        px(16 + mouthOfs, -4, 16, 5, "#5A2010");      // mouth opening (dark)
+        px(17 + mouthOfs, -3, 14, 3, "#3A0A00");      // inner mouth (darker)
+        px(19 + mouthOfs, -2, 10, 1, "#C44040");      // tongue hint (red)
+        px(16 + mouthOfs, -5, 16, 1, "#A86430");      // upper lip
+        px(16 + mouthOfs, 1, 16, 1, "#A86430");       // lower lip
 
         if (isBlinking) {
             px(12 + eyeDir[0], -7 + eyeDir[1], 8, 2, "#1a1a2e");
@@ -3396,152 +3415,120 @@ function drawSword() {
     const p = player;
     const px = p.x;
     const py = p.y;
-    const cx = px + p.w / 2; // player center x
+    const cx = px + p.w / 2;
+    const cy = py + p.h * 0.35; // shoulder height
     const progress = 1 - (p.attackTimer / p.attackDuration);
-
-    const bladeLen = 15;
-    const hiltLen = 4;
 
     ctx.save();
     const sbox = getSwordBox();
 
-    // Sword glow aura
-    const swing = Math.sin(progress * Math.PI);
-    ctx.fillStyle = PAL.swordGlow;
-    ctx.globalAlpha = 0.35 * swing;
-    ctx.fillRect((sbox.x - 2) * SCALE, (sbox.y - 2) * SCALE, (sbox.w + 4) * SCALE, (sbox.h + 4) * SCALE);
-    ctx.globalAlpha = 1.0;
+    // Punch thrust: arm extends outward, peaks at progress=0.5
+    const thrust = Math.sin(progress * Math.PI); // 0→1→0
+    const armLen = 6 + thrust * 10; // arm extends from 6 to 16 pixels
 
-    // Calculate swing angle based on direction
-    let angle;
-    const shoulderX = cx, shoulderY = py + 2;
+    // Direction vectors
+    let dx = 0, dy = 0;
     switch (p.dir) {
-        case 0: angle = -Math.PI * 0.8 + progress * Math.PI * 1.2; break;
-        case 1: angle = Math.PI * 0.8 - progress * Math.PI * 1.2; break;
-        case 2: angle = -Math.PI * 0.3 - progress * Math.PI * 0.9; break;
-        case 3: angle = -Math.PI * 0.7 + progress * Math.PI * 0.9; break;
+        case 0: dy = 1; break;  // down
+        case 1: dy = -1; break; // up
+        case 2: dx = -1; break; // left
+        case 3: dx = 1; break;  // right
     }
 
-    const cosA = Math.cos(angle);
-    const sinA = Math.sin(angle);
-    const perpX = -sinA;
-    const perpY = cosA;
+    const shoulderX = cx * SCALE;
+    const shoulderY = cy * SCALE;
+    const fistX = (cx + dx * armLen) * SCALE;
+    const fistY = (cy + dy * armLen) * SCALE;
 
-    // Key points along the sword
-    const sx0 = shoulderX * SCALE;
-    const sy0 = shoulderY * SCALE;
-    const tipX = (shoulderX + cosA * bladeLen) * SCALE;
-    const tipY = (shoulderY + sinA * bladeLen) * SCALE;
-    const hiltX = (shoulderX - cosA * hiltLen) * SCALE;
-    const hiltY = (shoulderY - sinA * hiltLen) * SCALE;
-
-    // === HILT GRIP (wrapped leather) ===
-    ctx.strokeStyle = "#5C3A1E";
-    ctx.lineWidth = 4 * SCALE;
+    // === ARM ===
+    ctx.strokeStyle = "#E8CBA8"; // skin color
+    ctx.lineWidth = 5 * SCALE;
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(sx0, sy0);
-    ctx.lineTo(hiltX, hiltY);
+    ctx.moveTo(shoulderX, shoulderY);
+    ctx.lineTo(fistX, fistY);
     ctx.stroke();
-    // Wrap lines on grip
-    ctx.strokeStyle = "#7B5A3A";
-    ctx.lineWidth = 1;
-    for (let i = 1; i <= 3; i++) {
-        const t = i / 4;
-        const wx = sx0 + (hiltX - sx0) * t;
-        const wy = sy0 + (hiltY - sy0) * t;
-        ctx.beginPath();
-        ctx.moveTo(wx + perpX * 2.5 * SCALE, wy + perpY * 2.5 * SCALE);
-        ctx.lineTo(wx - perpX * 2.5 * SCALE, wy - perpY * 2.5 * SCALE);
-        ctx.stroke();
-    }
-    // Pommel (end cap)
-    ctx.fillStyle = "#8a7040";
-    ctx.beginPath();
-    ctx.arc(hiltX, hiltY, 2.5 * SCALE, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#BF9050";
-    ctx.beginPath();
-    ctx.arc(hiltX - SCALE, hiltY - SCALE, 1 * SCALE, 0, Math.PI * 2);
-    ctx.fill();
 
-    // === CROSSGUARD ===
-    const cgLen = 5;
-    ctx.strokeStyle = "#8a7040";
-    ctx.lineWidth = 3 * SCALE;
-    ctx.lineCap = "round";
+    // Arm outline
+    ctx.strokeStyle = "#C4A882";
+    ctx.lineWidth = 6 * SCALE;
+    ctx.globalAlpha = 0.3;
     ctx.beginPath();
-    ctx.moveTo(sx0 + perpX * cgLen * SCALE, sy0 + perpY * cgLen * SCALE);
-    ctx.lineTo(sx0 - perpX * cgLen * SCALE, sy0 - perpY * cgLen * SCALE);
-    ctx.stroke();
-    // Crossguard highlight
-    ctx.strokeStyle = "#BF9050";
-    ctx.lineWidth = 1 * SCALE;
-    ctx.beginPath();
-    ctx.moveTo(sx0 + perpX * (cgLen - 0.5) * SCALE, sy0 + perpY * (cgLen - 0.5) * SCALE);
-    ctx.lineTo(sx0 - perpX * (cgLen - 0.5) * SCALE, sy0 - perpY * (cgLen - 0.5) * SCALE);
-    ctx.stroke();
-    // Crossguard end caps
-    ctx.fillStyle = "#8a7040";
-    ctx.beginPath();
-    ctx.arc(sx0 + perpX * cgLen * SCALE, sy0 + perpY * cgLen * SCALE, 1.5 * SCALE, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(sx0 - perpX * cgLen * SCALE, sy0 - perpY * cgLen * SCALE, 1.5 * SCALE, 0, Math.PI * 2);
-    ctx.fill();
-
-    // === BLADE ===
-    // Main blade body (tapered shape)
-    const bladeW = 2.5; // half-width at base
-    const tipW = 0.5;   // half-width at tip
-    ctx.fillStyle = "#E8D878";
-    ctx.beginPath();
-    ctx.moveTo(sx0 + perpX * bladeW * SCALE, sy0 + perpY * bladeW * SCALE);
-    ctx.lineTo(sx0 - perpX * bladeW * SCALE, sy0 - perpY * bladeW * SCALE);
-    ctx.lineTo(tipX - perpX * tipW * SCALE, tipY - perpY * tipW * SCALE);
-    ctx.lineTo(tipX + perpX * tipW * SCALE, tipY + perpY * tipW * SCALE);
-    ctx.closePath();
-    ctx.fill();
-    // Blade edge highlight (bright line along one side)
-    ctx.strokeStyle = "#FFF8B0";
-    ctx.lineWidth = 1 * SCALE;
-    ctx.beginPath();
-    ctx.moveTo(sx0 + perpX * bladeW * SCALE, sy0 + perpY * bladeW * SCALE);
-    ctx.lineTo(tipX + perpX * tipW * SCALE, tipY + perpY * tipW * SCALE);
-    ctx.stroke();
-    // Center fuller (groove down the middle)
-    ctx.strokeStyle = "#C4A848";
-    ctx.lineWidth = 1 * SCALE;
-    ctx.globalAlpha = 0.6;
-    ctx.beginPath();
-    ctx.moveTo(sx0 + cosA * 2 * SCALE, sy0 + sinA * 2 * SCALE);
-    ctx.lineTo(sx0 + cosA * (bladeLen - 3) * SCALE, sy0 + sinA * (bladeLen - 3) * SCALE);
+    ctx.moveTo(shoulderX, shoulderY);
+    ctx.lineTo(fistX, fistY);
     ctx.stroke();
     ctx.globalAlpha = 1.0;
-    // Blade tip point
-    ctx.fillStyle = "#FFF8B0";
-    ctx.beginPath();
-    ctx.arc(tipX, tipY, 1.5 * SCALE, 0, Math.PI * 2);
-    ctx.fill();
 
-    // === SPARKLE on hit ===
-    if (swing > 0.5 && p.swordHit) {
-        if (Math.random() > 0.3) {
-            ctx.fillStyle = "#fff";
-            ctx.globalAlpha = swing;
-            // Cross sparkle
-            ctx.fillRect(tipX - 4 * SCALE, tipY - 0.5 * SCALE, 8 * SCALE, 1 * SCALE);
-            ctx.fillRect(tipX - 0.5 * SCALE, tipY - 4 * SCALE, 1 * SCALE, 8 * SCALE);
-            // Diagonal sparkle
-            ctx.globalAlpha = swing * 0.5;
-            ctx.save();
-            ctx.translate(tipX, tipY);
-            ctx.rotate(Math.PI / 4);
-            ctx.fillRect(-3 * SCALE, -0.5 * SCALE, 6 * SCALE, 1 * SCALE);
-            ctx.fillRect(-0.5 * SCALE, -3 * SCALE, 1 * SCALE, 6 * SCALE);
-            ctx.restore();
-            ctx.globalAlpha = 1.0;
+    // === FIST ===
+    const fistSize = 4.5;
+    // Fist shadow
+    ctx.fillStyle = "#C49870";
+    ctx.beginPath();
+    ctx.arc(fistX + SCALE, fistY + SCALE, fistSize * SCALE, 0, Math.PI * 2);
+    ctx.fill();
+    // Main fist
+    ctx.fillStyle = "#E8CBA8";
+    ctx.beginPath();
+    ctx.arc(fistX, fistY, fistSize * SCALE, 0, Math.PI * 2);
+    ctx.fill();
+    // Knuckle highlights
+    ctx.fillStyle = "#F0D8B8";
+    const knucklePerp = dx === 0 ? 1 : 0; // perpendicular axis
+    for (let i = -1; i <= 1; i++) {
+        const kx = fistX + (knucklePerp === 1 ? i * 2.2 * SCALE : dx * 3 * SCALE);
+        const ky = fistY + (knucklePerp === 0 ? i * 2.2 * SCALE : dy * 3 * SCALE);
+        ctx.beginPath();
+        ctx.arc(kx, ky, 1.2 * SCALE, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // === IMPACT EFFECT on hit ===
+    if (thrust > 0.5 && p.swordHit) {
+        // Impact burst lines
+        const burstCount = 6;
+        for (let i = 0; i < burstCount; i++) {
+            const angle = (i / burstCount) * Math.PI * 2 + progress * 2;
+            const innerR = 5 * SCALE;
+            const outerR = (8 + thrust * 4) * SCALE;
+            ctx.strokeStyle = "#FFF8B0";
+            ctx.lineWidth = 2 * SCALE;
+            ctx.globalAlpha = thrust * 0.8;
+            ctx.beginPath();
+            ctx.moveTo(fistX + Math.cos(angle) * innerR, fistY + Math.sin(angle) * innerR);
+            ctx.lineTo(fistX + Math.cos(angle) * outerR, fistY + Math.sin(angle) * outerR);
+            ctx.stroke();
         }
+        // Impact flash
+        ctx.fillStyle = "#FFF";
+        ctx.globalAlpha = thrust * 0.4;
+        ctx.beginPath();
+        ctx.arc(fistX, fistY, 7 * SCALE, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+    }
+
+    // === MOTION LINES (whoosh trail) ===
+    if (thrust > 0.3) {
+        ctx.strokeStyle = "#E8CBA8";
+        ctx.lineWidth = 1 * SCALE;
+        ctx.globalAlpha = thrust * 0.4;
+        for (let i = 1; i <= 3; i++) {
+            const trailLen = i * 3;
+            const offset = i * 2.5;
+            const tx = fistX - dx * trailLen * SCALE;
+            const ty = fistY - dy * trailLen * SCALE;
+            const perpX = dy !== 0 ? offset : 0;
+            const perpY = dx !== 0 ? offset : 0;
+            ctx.beginPath();
+            ctx.moveTo(tx + perpX * SCALE, ty + perpY * SCALE);
+            ctx.lineTo(tx + perpX * SCALE - dx * 4 * SCALE, ty + perpY * SCALE - dy * 4 * SCALE);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(tx - perpX * SCALE, ty - perpY * SCALE);
+            ctx.lineTo(tx - perpX * SCALE - dx * 4 * SCALE, ty - perpY * SCALE - dy * 4 * SCALE);
+            ctx.stroke();
+        }
+        ctx.globalAlpha = 1.0;
     }
 
     ctx.restore();
@@ -5089,6 +5076,9 @@ function renderTutorialScreen() {
 }
 
 function renderSabotageAnim() {
+    // Keep the drum sequencer playing during the scramble
+    tickSequencer();
+
     sabotageAnimTimer++;
     const t = sabotageAnimTimer;
 
