@@ -2870,46 +2870,109 @@ function render() {
     }
 }
 
+// Draw at screen-pixel resolution (1:1) — for high-detail 48x48 sprites
+function drawPx(x, y, w, h, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, w, h);
+}
+
 function drawPlayer() {
     const p = player;
-    const px = p.x;
-    const py = p.y;
-    const bob = p.frame % 2 === 1 ? 1 : 0;
+    // Screen-pixel base position
+    const sx = p.x * SCALE;
+    const sy = p.y * SCALE;
+    const bob = (p.frame % 2 === 1 ? 1 : 0) * SCALE;
 
-    // Body (teal shirt — Studioland style)
-    drawRect(px + 3, py + 2 - bob, 10, 10, "#2a6a6a");
-    // Darker sides
-    drawRect(px + 3, py + 2 - bob, 2, 10, "#1a4a4a");
-    drawRect(px + 11, py + 2 - bob, 2, 10, "#1a4a4a");
-    // Bald head (skin tone, round)
-    drawRect(px + 2, py - 5 - bob, 12, 7, "#E8CBA8");
-    // Skin highlight on dome (subtle bald shine)
-    drawRect(px + 5, py - 5 - bob, 6, 1, "#F2DCC0");
-    // Beard (dark, covers lower face)
-    drawRect(px + 3, py - 1 - bob, 10, 4, "#1a1a2e");
-    // Beard rounded bottom
-    drawRect(px + 4, py + 3 - bob, 8, 1, "#1a1a2e");
-    // Eyes (blink every 180 frames — closed for 6 frames)
+    // Helper: draw relative to player position with bob
+    function px(x, y, w, h, color) {
+        drawPx(sx + x, sy + y - bob, w, h, color);
+    }
+
+    // === BODY (teal shirt — Studioland style) ===
+    px(9, 6, 30, 30, "#2a6a6a");       // Main torso
+    px(9, 6, 6, 30, "#1e5454");         // Left dark side
+    px(33, 6, 6, 30, "#1e5454");        // Right dark side
+    px(15, 9, 18, 3, "#347a7a");        // Shirt chest highlight
+    px(12, 30, 24, 3, "#1e5454");       // Shirt bottom hem
+    // Collar detail
+    px(15, 6, 18, 3, "#235e5e");
+    px(18, 3, 12, 3, "#235e5e");
+
+    // === HEAD (bald, round) ===
+    px(6, -15, 36, 21, "#E8CBA8");      // Main head block
+    px(9, -18, 30, 3, "#E8CBA8");       // Rounded top
+    px(12, -21, 24, 3, "#E8CBA8");      // More rounding
+    px(15, -24, 18, 3, "#E8CBA8");      // Top of dome
+    // Bald shine highlight
+    px(15, -24, 18, 3, "#F5E2CC");
+    px(12, -21, 24, 3, "#F2DCC0");
+    px(15, -18, 18, 3, "#F0D8BA");
+    // Ears
+    px(3, -9, 6, 9, "#DFC09E");
+    px(39, -9, 6, 9, "#DFC09E");
+    // Inner ear detail
+    px(3, -6, 3, 3, "#D4B08A");
+    px(42, -6, 3, 3, "#D4B08A");
+
+    // === BEARD (dark, full) ===
+    px(9, -3, 30, 12, "#1a1a2e");       // Main beard
+    px(6, -3, 6, 9, "#1a1a2e");         // Beard left side
+    px(36, -3, 6, 9, "#1a1a2e");        // Beard right side
+    px(12, 9, 24, 6, "#1a1a2e");        // Beard bottom
+    px(15, 15, 18, 3, "#222238");        // Beard rounded bottom
+    // Beard texture highlights
+    px(12, 0, 3, 3, "#252540");
+    px(21, 3, 3, 3, "#252540");
+    px(30, 0, 3, 3, "#252540");
+    // Mustache area (slightly lighter)
+    px(12, -6, 24, 3, "#222238");
+    // Mouth gap hint
+    px(18, -3, 12, 2, "#14141e");
+
+    // === EYES ===
     const isBlinking = p.blinkTimer >= 180;
+    // Direction offsets in screen pixels
     const eyeDir = [
-        [0, 1],  // down
-        [0, -2], // up
-        [-1, 0], // left
-        [1, 0],  // right
+        [0, 3],   // down
+        [0, -6],  // up
+        [-3, 0],  // left
+        [3, 0],   // right
     ][p.dir];
+
     if (p.dir !== 1) { // don't draw eyes facing up
         if (isBlinking) {
-            drawRect(px + 4 + eyeDir[0], py - 2 - bob + eyeDir[1], 3, 1, "#1a1a2e");
-            drawRect(px + 9 + eyeDir[0], py - 2 - bob + eyeDir[1], 3, 1, "#1a1a2e");
+            // Closed eyes — thin horizontal lines
+            px(12 + eyeDir[0], -7 + eyeDir[1], 8, 2, "#1a1a2e");
+            px(28 + eyeDir[0], -7 + eyeDir[1], 8, 2, "#1a1a2e");
         } else {
-            drawRect(px + 5 + eyeDir[0], py - 3 - bob + eyeDir[1], 2, 2, "#1a1a2e");
-            drawRect(px + 9 + eyeDir[0], py - 3 - bob + eyeDir[1], 2, 2, "#1a1a2e");
+            // Eye whites
+            px(11 + eyeDir[0], -12 + eyeDir[1], 10, 8, "#F0F0E8");
+            px(27 + eyeDir[0], -12 + eyeDir[1], 10, 8, "#F0F0E8");
+            // Pupils
+            px(14 + eyeDir[0], -10 + eyeDir[1], 5, 5, "#1a1a2e");
+            px(30 + eyeDir[0], -10 + eyeDir[1], 5, 5, "#1a1a2e");
+            // Pupil highlights
+            px(15 + eyeDir[0], -10 + eyeDir[1], 2, 2, "#F0F0E8");
+            px(31 + eyeDir[0], -10 + eyeDir[1], 2, 2, "#F0F0E8");
+            // Eyebrow ridges (skin-colored shadow above eyes)
+            px(10 + eyeDir[0], -14 + eyeDir[1], 12, 2, "#D4B08A");
+            px(26 + eyeDir[0], -14 + eyeDir[1], 12, 2, "#D4B08A");
         }
+    } else {
+        // Facing up — show back of bald head, no eyes
+        px(12, -18, 24, 6, "#DFC09E");  // Subtle neck/back-of-head shading
     }
-    // Feet (light tan shoes)
-    const walkOffset = p.frame === 1 ? 2 : p.frame === 3 ? -2 : 0;
-    drawRect(px + 4 + walkOffset, py + 12, 3, 2, "#C4A882");
-    drawRect(px + 9 - walkOffset, py + 12, 3, 2, "#C4A882");
+
+    // === FEET / SHOES (tan) ===
+    const walkPx = (p.frame === 1 ? 2 : p.frame === 3 ? -2 : 0) * SCALE;
+    px(12 + walkPx, 36, 9, 6, "#C4A882");   // Left shoe
+    px(27 - walkPx, 36, 9, 6, "#C4A882");   // Right shoe
+    // Shoe soles (darker)
+    px(12 + walkPx, 40, 9, 2, "#A08868");
+    px(27 - walkPx, 40, 9, 2, "#A08868");
+    // Pants cuff above shoes
+    px(12 + walkPx, 34, 9, 3, "#1e5454");
+    px(27 - walkPx, 34, 9, 3, "#1e5454");
 }
 
 function drawSword() {
