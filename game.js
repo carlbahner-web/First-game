@@ -15,8 +15,15 @@ const GRID_ROWS = 6;       // max drum channels (O, H, S, K, B, T)
 const GRID_X = 3;          // grid start tile-x
 const GRID_Y = 4;          // grid start tile-y
 const GAP_AFTER_ROW = 3;   // 1-tile visual gap after row 3 (Kick)
-let bpm = 120;
-let stepMs = (60 / bpm / 4) * 1000; // 16th-note interval
+// Tempo is set per level using frames-per-16th-note at 60fps
+// Levels 1-2: 10 frames (90 BPM), 3-4: 9 (100), 5-6: 8 (112.5),
+// 7-8: 7 (128.6), 9-10: 6 (150), 11-12: 5 (180)
+let stepMs = 10 * (1000 / 60); // default: 10 frames per 16th at 60fps
+
+function setLevelTempo(levelIndex) {
+    const framesPerSixteenth = [10, 10, 9, 9, 8, 8, 7, 7, 6, 6, 5, 5][levelIndex] || 10;
+    stepMs = framesPerSixteenth * (1000 / 60);
+}
 
 // ---- Level Definitions ----
 const LEVELS = [
@@ -1785,6 +1792,9 @@ function resetGame() {
     currentLevel = 0;
     levelComplete = false;
     levelCelebrateTimer = 0;
+
+    // Set tempo for level 0
+    setLevelTempo(0);
 }
 
 // ---- Level Progression ----
@@ -1895,6 +1905,9 @@ function advanceLevel() {
     // Reset sequencer timing to prevent catch-up
     currentStep = 0;
     lastStepTime = performance.now();
+
+    // Set tempo for new level
+    setLevelTempo(currentLevel);
 
     // Check if we need to introduce a new instrument
     if (currentLevel === 4 && !newInstrumentShown.cowbell) {
