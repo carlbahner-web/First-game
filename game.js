@@ -3269,69 +3269,110 @@ function drawCatapultGoblin() {
     }
 }
 
+// Reusable 48x48 dancer sprite
+// gx, gy: position (game coords), pal: color palette
+// options: { bob (px), armBlend (0-1), footOffset (px) }
+function drawDancerSprite(gx, gy, pal, options) {
+    const opts = options || {};
+    const bob = (opts.bob || 0) * SCALE;
+    const armBlend = opts.armBlend || 0;
+    const footOfs = (opts.footOffset || 0) * SCALE;
+
+    const sx = gx * SCALE;
+    const sy = gy * SCALE;
+
+    function px(x, y, w, h, color) {
+        drawPx(sx + x, sy + y - bob, w, h, color);
+    }
+
+    // === BODY (outfit) ===
+    px(9, 12, 18, 21, pal.body);        // Main torso
+    px(9, 12, 3, 21, pal.dark);         // Left dark side
+    px(24, 12, 3, 21, pal.dark);        // Right dark side
+    px(12, 15, 12, 3, pal.body);        // Chest highlight
+    px(9, 30, 18, 3, pal.dark);         // Hem
+
+    // === HEAD (round, friendly) ===
+    px(6, -6, 24, 18, pal.head);        // Main head
+    px(9, -9, 18, 3, pal.head);         // Rounded top
+    px(12, -12, 12, 3, pal.head);       // More rounding
+
+    // === HAIR ===
+    px(3, -6, 30, 6, pal.hair);         // Main hair
+    px(6, -9, 24, 3, pal.hair);         // Hair top
+    px(9, -12, 18, 3, pal.hair);        // Hair crown
+    px(12, -15, 12, 3, pal.hair);       // Hair peak
+    // Side hair tufts
+    px(3, 0, 3, 6, pal.hair);
+    px(30, 0, 3, 6, pal.hair);
+
+    // === FACE ===
+    // Eyes (friendly, round)
+    px(10, 0, 6, 5, "#F0F0E8");         // Left eye white
+    px(20, 0, 6, 5, "#F0F0E8");         // Right eye white
+    px(12, 1, 3, 3, "#1f3a3f");         // Left pupil
+    px(22, 1, 3, 3, "#1f3a3f");         // Right pupil
+    px(12, 1, 1, 1, "#F0F0E8");         // Left highlight
+    px(22, 1, 1, 1, "#F0F0E8");         // Right highlight
+    // Friendly smile
+    px(12, 7, 12, 2, "#D4856A");        // Mouth
+    px(14, 9, 8, 1, "#D4856A");         // Lower lip
+
+    // Rosy cheeks
+    px(6, 4, 3, 3, "#E8A090");
+    px(27, 4, 3, 3, "#E8A090");
+
+    // === ARMS (position based on armBlend) ===
+    const armDownY = 15;
+    const armUpY = 6;
+    const armY = armDownY + (armUpY - armDownY) * armBlend;
+    const armH = 12 + (9 - 12) * armBlend;
+    px(3, armY, 6, armH, pal.body);      // Left arm
+    px(27, armY, 6, armH, pal.body);     // Right arm
+    // Hands
+    px(3, armY, 4, 3, pal.head);         // Left hand (skin)
+    px(29, armY, 4, 3, pal.head);        // Right hand (skin)
+
+    // === FEET (smooth offset) ===
+    px(9 - footOfs, 33, 8, 6, pal.dark);    // Left shoe
+    px(19 + footOfs, 33, 8, 6, pal.dark);   // Right shoe
+    px(9 - footOfs, 37, 8, 2, pal.body);    // Left shoe accent
+    px(19 + footOfs, 37, 8, 2, pal.body);   // Right shoe accent
+}
+
 function drawDancer(d) {
     const pal = d.palette;
     const step = (currentStep + d.phase) % 16;
 
-    // Smooth interpolation: how far through the current step (0.0 - 1.0)
+    // Smooth interpolation
     const now = performance.now();
     const stepProgress = lastStepTime ? Math.min((now - lastStepTime) / stepMs, 1.0) : 0;
-    // Fractional step position (e.g., step 4.6 means 60% through step 4)
     const smoothStep = step + stepProgress;
 
-    // --- Smooth bob ---
-    // Target bob heights: 3px on quarter beats, 1px on 8th beats, 0px otherwise
+    // Smooth bob
     const onBeat = (step % 4 === 0);
     const onEighth = (step % 2 === 0);
     const targetBob = onBeat ? 3 : onEighth ? 1 : 0;
-    // Next step's target
     const nextStep = (step + 1) % 16;
     const nextOnBeat = (nextStep % 4 === 0);
     const nextOnEighth = (nextStep % 2 === 0);
     const nextBob = nextOnBeat ? 3 : nextOnEighth ? 1 : 0;
-    // Ease out from current bob, ease in toward next
-    // Use a sine curve for natural bounce
-    const easedProgress = Math.sin(stepProgress * Math.PI / 2); // ease-out
+    const easedProgress = Math.sin(stepProgress * Math.PI / 2);
     const bob = targetBob + (nextBob - targetBob) * easedProgress;
 
-    // --- Smooth arms ---
-    // Arms up on quarter beats, smoothly transition
+    // Smooth arms
     const armTarget = onBeat ? 1.0 : 0.0;
     const nextArmTarget = nextOnBeat ? 1.0 : 0.0;
     const armBlend = armTarget + (nextArmTarget - armTarget) * easedProgress;
-    // Arm Y offset: 0 = down position (dy+5), 1 = up position (dy+2)
-    const armDownY = 5;
-    const armUpY = 2;
-    const armY = armDownY + (armUpY - armDownY) * armBlend;
-    const armH = 4 + (3 - 4) * armBlend; // height transitions from 4 (down) to 3 (up)
 
-    // --- Smooth feet ---
-    const footWave = Math.sin(smoothStep * Math.PI); // continuous sine wave
-    const footOffset = footWave * 1.5;
-
-    const dx = d.x;
-    const dy = d.y;
+    // Smooth feet
+    const footOffset = Math.sin(smoothStep * Math.PI) * 1.5;
 
     // Shadow (squishes when dancer is higher)
     const shadowW = 8 + bob * 0.5;
-    drawRect(dx + 2 - bob * 0.25, dy + 13, shadowW, 2, PAL.shadow);
-    // Body
-    drawRect(dx + 3, dy + 4 - bob, 6, 7, pal.body);
-    drawRect(dx + 3, dy + 4 - bob, 1, 7, pal.dark);
-    drawRect(dx + 8, dy + 4 - bob, 1, 7, pal.dark);
-    // Head
-    drawRect(dx + 3, dy - bob, 6, 5, pal.head);
-    // Hair
-    drawRect(dx + 2, dy - 1 - bob, 8, 2, pal.hair);
-    // Eyes
-    drawRect(dx + 4, dy + 2 - bob, 1, 1, "#1f3a3f");
-    drawRect(dx + 7, dy + 2 - bob, 1, 1, "#1f3a3f");
-    // Arms (smoothly interpolated position)
-    drawRect(dx + 1, dy + armY - bob, 2, armH, pal.body);
-    drawRect(dx + 9, dy + armY - bob, 2, armH, pal.body);
-    // Feet (smooth sine wave)
-    drawRect(dx + 3 + footOffset, dy + 11, 2, 2, pal.dark);
-    drawRect(dx + 7 - footOffset, dy + 11, 2, 2, pal.dark);
+    drawRect(d.x + 2 - bob * 0.25, d.y + 13, shadowW, 2, PAL.shadow);
+
+    drawDancerSprite(d.x, d.y, pal, { bob, armBlend, footOffset });
 }
 
 // ---- Game Loop (60 fps) ----
@@ -3808,29 +3849,15 @@ function renderStoryScreen() {
 
     // Dancers (slots 4 and 5)
     const dancerPals = [
-        { body: "#E86A6A", dark: "#C05050", head: "#F09090" },
-        { body: "#6AB8E8", dark: "#4A98C8", head: "#F0D0B0" },
+        { body: "#E86A6A", dark: "#C05050", head: "#F09090", hair: "#8B4513" },
+        { body: "#6AB8E8", dark: "#4A98C8", head: "#F0D0B0", hair: "#2a2a2a" },
     ];
     for (let d = 0; d < 2; d++) {
-        const dp = dancerPals[d];
         const dx = charMargin + slotW * (3 + d) - 6;
         const dBob = Math.floor((storyBlink + d * 5) / 8) % 2 === 0 ? 0 : 2;
         const armUp = Math.floor((storyBlink + d * 5) / 8) % 2 === 0;
-        drawRect(dx + 3, charY + 4 - dBob, 6, 7, dp.body);
-        drawRect(dx + 3, charY + 4 - dBob, 2, 7, dp.dark);
-        drawRect(dx + 2, charY - dBob, 8, 5, dp.head);
-        drawRect(dx + 4, charY + 2 - dBob, 1, 1, "#1a1a2e");
-        drawRect(dx + 7, charY + 2 - dBob, 1, 1, "#1a1a2e");
-        if (armUp) {
-            drawRect(dx + 1, charY + 2 - dBob, 2, 2, dp.body);
-            drawRect(dx + 9, charY + 2 - dBob, 2, 2, dp.body);
-        } else {
-            drawRect(dx + 1, charY + 6 - dBob, 2, 2, dp.body);
-            drawRect(dx + 9, charY + 6 - dBob, 2, 2, dp.body);
-        }
         const dfo = (Math.floor((storyBlink + d * 5) / 8) % 2 === 0) ? 1 : -1;
-        drawRect(dx + 3 + dfo, charY + 11, 2, 2, dp.dark);
-        drawRect(dx + 7 - dfo, charY + 11, 2, 2, dp.dark);
+        drawDancerSprite(dx, charY, dancerPals[d], { bob: dBob, armBlend: armUp ? 1 : 0, footOffset: dfo });
     }
 
     // Blinking "PRESS ENTER TO BEGIN"
@@ -4694,31 +4721,11 @@ function renderTutorialScreen() {
             // Draw 3 mini dancers bobbing
             for (let i = 0; i < 3; i++) {
                 const dx = W / 2 - 2 * TILE + i * (TILE + 8);
-                const pal = DANCER_PALS[i];
-                const bob = Math.sin(t * 0.06 + i * 2) * 2;
+                const dBob = Math.sin(t * 0.06 + i * 2) * 2;
                 const armsUp = Math.sin(t * 0.06 + i * 2) > 0.3;
-                const armY = armsUp ? 2 : 5;
-                const armH = armsUp ? 3 : 4;
-                // Shadow
-                drawRect(dx + 2, dcY + 13, 8, 2, PAL.shadow);
-                // Body
-                drawRect(dx + 3, dcY + 4 - bob, 6, 7, pal.body);
-                drawRect(dx + 3, dcY + 4 - bob, 1, 7, pal.dark);
-                drawRect(dx + 8, dcY + 4 - bob, 1, 7, pal.dark);
-                // Head
-                drawRect(dx + 3, dcY - bob, 6, 5, pal.head);
-                // Hair
-                drawRect(dx + 2, dcY - 1 - bob, 8, 2, pal.hair);
-                // Eyes
-                drawRect(dx + 4, dcY + 2 - bob, 1, 1, "#1f3a3f");
-                drawRect(dx + 7, dcY + 2 - bob, 1, 1, "#1f3a3f");
-                // Arms
-                drawRect(dx + 1, dcY + armY - bob, 2, armH, pal.body);
-                drawRect(dx + 9, dcY + armY - bob, 2, armH, pal.body);
-                // Feet
                 const footOff = Math.sin(t * 0.08 + i) * 1.5;
-                drawRect(dx + 3 - footOff, dcY + 11, 3, 2, pal.dark);
-                drawRect(dx + 6 + footOff, dcY + 11, 3, 2, pal.dark);
+                drawRect(dx + 2, dcY + 13, 8, 2, PAL.shadow);
+                drawDancerSprite(dx, dcY, DANCER_PALS[i], { bob: dBob, armBlend: armsUp ? 1 : 0, footOffset: footOff });
             }
 
             // Animated tomato throw from middle dancer at a goblin
