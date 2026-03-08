@@ -747,12 +747,12 @@ window.addEventListener("keydown", (e) => {
         } else if (e.code === "ArrowDown" || e.code === "KeyS") {
             const c = initialsEntry[initialsPos].charCodeAt(0);
             initialsEntry[initialsPos] = String.fromCharCode(c <= 65 ? 90 : c - 1); // Z-A wrap
-        } else if (e.code === "ArrowLeft" || e.code === "KeyA") {
-            initialsPos = Math.max(0, initialsPos - 1);
-        } else if (e.code === "ArrowRight" || e.code === "KeyD") {
-            initialsPos = Math.min(2, initialsPos + 1);
         } else if (e.code === "Enter") {
-            confirmHighScore();
+            if (initialsPos < 2) {
+                initialsPos++; // lock in letter, move to next
+            } else {
+                confirmHighScore(); // all 3 locked, submit
+            }
         }
         return;
     }
