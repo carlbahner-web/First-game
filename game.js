@@ -47,7 +47,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // B
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
         ],
-        goblinSpeed: 0.5,
+        goblinSpeed: 0.4,
         timerSeconds: 99,
     },
     {
@@ -61,7 +61,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // B
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
         ],
-        goblinSpeed: 0.55,
+        goblinSpeed: 0.42,
         timerSeconds: 99,
     },
     {
@@ -75,7 +75,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // B
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
         ],
-        goblinSpeed: 0.6,
+        goblinSpeed: 0.45,
         timerSeconds: 99,
     },
     {
@@ -89,7 +89,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // B
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
         ],
-        goblinSpeed: 0.65,
+        goblinSpeed: 0.48,
         timerSeconds: 99,
     },
     // ---- INTERMEDIATE: Funk/Soul grooves (Levels 5-8) — 5 rows: +Cowbell ----
@@ -104,7 +104,7 @@ const LEVELS = [
             [true, false,false,false, true, false,false,false, true, false,false,false, true, false,false,false], // B — quarter-note cowbell
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
         ],
-        goblinSpeed: 0.7,
+        goblinSpeed: 0.5,
         timerSeconds: 99,
     },
     {
@@ -118,7 +118,7 @@ const LEVELS = [
             [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // B — 8th-note cowbell
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
         ],
-        goblinSpeed: 0.75,
+        goblinSpeed: 0.53,
         timerSeconds: 99,
     },
     {
@@ -132,7 +132,7 @@ const LEVELS = [
             [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // B
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
         ],
-        goblinSpeed: 0.8,
+        goblinSpeed: 0.55,
         timerSeconds: 99,
     },
     {
@@ -146,7 +146,7 @@ const LEVELS = [
             [true, false,true, true,  true, false,true, true,  true, false,true, true,  true, false,true, false], // B — syncopated cowbell
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
         ],
-        goblinSpeed: 0.85,
+        goblinSpeed: 0.58,
         timerSeconds: 90,
     },
     // ---- ADVANCED: Breakbeats (Levels 9-12) — 6 rows: +Tom ----
@@ -161,7 +161,7 @@ const LEVELS = [
             [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // B
             [false,false,false,false, false,false,false,true,  false,false,false,false, false,false,false,true ], // T — tom fills
         ],
-        goblinSpeed: 0.9,
+        goblinSpeed: 0.6,
         timerSeconds: 90,
     },
     {
@@ -175,7 +175,7 @@ const LEVELS = [
             [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // B
             [false,false,false,true,  false,false,false,true,  false,false,false,true,  false,false,false,true ], // T — offbeat toms
         ],
-        goblinSpeed: 0.95,
+        goblinSpeed: 0.63,
         timerSeconds: 85,
     },
     {
@@ -189,7 +189,7 @@ const LEVELS = [
             [true, true, true, false, true, true, true, false, true, true, true, false, true, true, true, false], // B — driving cowbell
             [false,false,true, true,  false,false,true, true,  false,false,true, true,  false,false,true, true ], // T — tom rolls
         ],
-        goblinSpeed: 1.0,
+        goblinSpeed: 0.67,
         timerSeconds: 80,
     },
     {
@@ -203,7 +203,7 @@ const LEVELS = [
             [true, true, true, true,  true, true, true, true,  true, true, true, true,  true, true, true, true ], // B — wall of cowbell
             [true, false,true, true,  true, false,true, true,  true, false,true, true,  true, false,true, true ], // T — intense toms
         ],
-        goblinSpeed: 1.1,
+        goblinSpeed: 0.75,
         timerSeconds: 75,
     },
 ];
@@ -641,6 +641,7 @@ let enemyWarningIntroTimer = 0; // transition timer before warning popup
 let currentLevel = 0;
 let levelTimer = LEVELS[0].timerSeconds * 90; // countdown in frames (seconds * 90)
 let levelComplete = false;
+let patternMatched = false; // pattern correct but goblins may still be alive
 let levelCelebrateTimer = 0;
 let titleBlink = 0; // blink timer for "PRESS ENTER"
 let tutorialTimer = 0; // animation frame counter for tutorial screen
@@ -900,9 +901,7 @@ function tileYToRow(tileY) {
 
 // ---- Helper: check if a tile is blocked by solid objects ----
 function isTileBlockedByObjects(tileX, tileY) {
-    // Level + Kill counter + Timer area (4 tiles below step numbers)
-    const counterTileY = gridBottomTileY() + 5;
-    if (tileX >= GRID_X && tileX <= GRID_X + 8 && tileY === counterTileY) return true;
+    // HUD is pinned to the bottom wall row — nothing can reach it
     return false;
 }
 
@@ -1008,9 +1007,7 @@ function update(dt) {
                 osc.start(now); osc.stop(now + 0.06);
             }
             // Check if level pattern is now complete
-            if (!levelComplete && checkLevelComplete()) {
-                triggerLevelComplete();
-            }
+            tryCompleteLevelOrWait();
         }
 
 
@@ -1024,7 +1021,8 @@ function update(dt) {
             if (goblin.hp > 0) {
                 // Non-lethal hit on elite goblin — hurt feedback
                 goblin.hurtTimer = 12; // flash white for 12 frames
-                goblin.speed = goblin.hp === 2 ? 0.9 : 1.1; // get faster each hit
+                const baseSpd = currentLevel < LEVELS.length ? LEVELS[currentLevel].goblinSpeed : 0.5;
+                goblin.speed = baseSpd * (goblin.hp === 2 ? 1.3 : 1.4); // get faster each hit, scaled to level
 
                 // Small hit freeze + shake
                 hitFreeze = 2;
@@ -1167,6 +1165,11 @@ function update(dt) {
             // Kill counter & dancer spawn
             killCount++;
             catapultSpawnedThisCycle = false; // allow catapult to spawn on next qualifying kill
+
+            // If pattern was already matched, check if all goblins are now dead
+            if (patternMatched && !areGoblinsAlive()) {
+                triggerLevelComplete();
+            }
             if (killCount % 3 === 0) {
                 // Spawn 3 dancers from different edges, no overlapping destinations
                 const edges = [0, 1, 2]; // left, right, bottom
@@ -1377,6 +1380,10 @@ function update(dt) {
 
     // Update goblin
     if (goblin.dead) {
+        // Don't respawn if pattern is already matched (player just needs to clear remaining goblins)
+        if (patternMatched) {
+            goblin.respawnTimer = 300;
+        }
         goblin.respawnTimer--;
         if (goblin.respawnTimer <= 0) {
             // Check if we need to show a warning before spawning a new enemy type
@@ -1414,7 +1421,7 @@ function update(dt) {
             goblin.elite = (killCount % 3 === 2 && killCount % 6 !== 5);
             goblin.hp = goblin.elite ? 3 : 1;
             const baseSpeed = currentLevel < LEVELS.length ? LEVELS[currentLevel].goblinSpeed : 0.5;
-            goblin.speed = goblin.elite ? baseSpeed * 1.5 : baseSpeed;
+            goblin.speed = goblin.elite ? baseSpeed * 1.25 : baseSpeed;
             // Pick a random cave to spawn from
             goblin.spawnCave = Math.floor(Math.random() * CAVES.length);
             const cave = CAVES[goblin.spawnCave];
@@ -1492,10 +1499,12 @@ function update(dt) {
                     cellFlash[gr][gc] = 30; // trigger red flash
                     if (audioCtx) playSabotageSound(audioCtx.currentTime);
                     goblin.targetRow = -1;
-                    // Check if goblin accidentally completed the pattern
-                    if (!levelComplete && checkLevelComplete()) {
-                        triggerLevelComplete();
+                    // Sabotage may break a completed pattern
+                    if (patternMatched && !checkLevelComplete()) {
+                        patternMatched = false;
                     }
+                    // Check if goblin accidentally completed the pattern
+                    tryCompleteLevelOrWait();
                 }
             }
 
@@ -1791,6 +1800,7 @@ function resetGame() {
     // Reset level progression
     currentLevel = 0;
     levelComplete = false;
+    patternMatched = false;
     levelCelebrateTimer = 0;
 
     // Set tempo for level 0
@@ -1806,6 +1816,25 @@ function checkLevelComplete() {
         for (let c = 0; c < GRID_COLS; c++)
             if (grid[r][c] !== target[r][c]) return false;
     return true;
+}
+
+function areGoblinsAlive() {
+    if (!goblin.dead) return true;
+    if (catapultGoblin) return true;
+    return false;
+}
+
+// Called when pattern matches — checks if we can end level or must wait for goblins
+function tryCompleteLevelOrWait() {
+    if (levelComplete) return;
+    if (!checkLevelComplete()) {
+        patternMatched = false;
+        return;
+    }
+    patternMatched = true;
+    if (!areGoblinsAlive()) {
+        triggerLevelComplete();
+    }
 }
 
 function playLevelFanfare() {
@@ -1897,6 +1926,7 @@ function advanceLevel() {
     screenShake = 0;
     hitFreeze = 0;
     levelComplete = false;
+    patternMatched = false;
     levelCelebrateTimer = 0;
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
@@ -1909,24 +1939,28 @@ function advanceLevel() {
     // Set tempo for new level
     setLevelTempo(currentLevel);
 
-    // Check if we need to introduce a new instrument
-    if (currentLevel === 4 && !newInstrumentShown.cowbell) {
-        newInstrumentType = "cowbell";
-        newInstrumentShown.cowbell = true;
-        newInstrumentIntroTimer = 0;
-        newInstrumentTimer = 0;
-        gameState = "newinstrument-intro";
-        if (audioCtx) playWarningDonk(audioCtx.currentTime);
-        return;
-    }
-    if (currentLevel === 8 && !newInstrumentShown.tom) {
-        newInstrumentType = "tom";
-        newInstrumentShown.tom = true;
-        newInstrumentIntroTimer = 0;
-        newInstrumentTimer = 0;
-        gameState = "newinstrument-intro";
-        if (audioCtx) playWarningDonk(audioCtx.currentTime);
-        return;
+    // Check if we need to introduce a new instrument (detect when activeRows increases)
+    const prevRows = currentLevel > 0 ? LEVELS[currentLevel - 1].activeRows : LEVELS[0].activeRows;
+    const newRows = LEVELS[currentLevel].activeRows;
+    if (newRows > prevRows) {
+        if (newRows === 5 && !newInstrumentShown.cowbell) {
+            newInstrumentType = "cowbell";
+            newInstrumentShown.cowbell = true;
+            newInstrumentIntroTimer = 0;
+            newInstrumentTimer = 0;
+            gameState = "newinstrument-intro";
+            if (audioCtx) playWarningDonk(audioCtx.currentTime);
+            return;
+        }
+        if (newRows === 6 && !newInstrumentShown.tom) {
+            newInstrumentType = "tom";
+            newInstrumentShown.tom = true;
+            newInstrumentIntroTimer = 0;
+            newInstrumentTimer = 0;
+            gameState = "newinstrument-intro";
+            if (audioCtx) playWarningDonk(audioCtx.currentTime);
+            return;
+        }
     }
 
     gameState = "playing";
@@ -2058,10 +2092,11 @@ function updateCatapultGoblin() {
                     }
                 }
             }
-            // Check if boulder accidentally completed the pattern
-            if (!levelComplete && checkLevelComplete()) {
-                triggerLevelComplete();
+            // Boulder may break or complete the pattern
+            if (patternMatched && !checkLevelComplete()) {
+                patternMatched = false;
             }
+            tryCompleteLevelOrWait();
             // Impact effects
             ensureAudio();
             if (audioCtx) playCatapultImpact(audioCtx.currentTime);
@@ -2108,6 +2143,11 @@ function updateCatapultGoblin() {
         if (dist < cg.speed) {
             // Reached cave — disappear
             catapultGoblin = null;
+            // Check if pattern was waiting on this goblin
+            if (patternMatched && !areGoblinsAlive()) {
+                triggerLevelComplete();
+                return;
+            }
             // Chain next catapult if sequence not complete (3 total)
             if (catapultSequenceCount < 3) {
                 spawnCatapultGoblin();
@@ -2334,7 +2374,7 @@ function render() {
 
     // Level counter (left) and Kill counter (right)
     {
-        const kcY = gridBottomTileY() * TILE + 16 + 4 * TILE;
+        const kcY = (ROWS - 1) * TILE - 14;
         const baseX = GRID_X * TILE;
         const pxSz = 3;
         const digitW = (3 * pxSz + pxSz); // per digit width
@@ -2504,6 +2544,14 @@ function render() {
 
     // Sword (in front for down/left/right)
     if (player.attacking && player.dir !== 1) drawSword();
+
+    // "SLAY THE GOBLIN!" indicator when pattern is done but goblins remain
+    if (patternMatched && !levelComplete && areGoblinsAlive()) {
+        const blink = Math.floor(performance.now() / 400) % 2 === 0;
+        if (blink) {
+            drawCenteredText("SLAY THE GOBLIN!", 14, "#E86A6A", 6);
+        }
+    }
 
     // Pause overlay
     if (gamePaused) {
