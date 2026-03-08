@@ -632,6 +632,10 @@ let catapultSequenceCount = 0; // how many catapults have fired in current seque
 //   phase, phaseTimer, caveIndex, targetRow, targetCol,
 //   boulder: null | { startX, startY, targetX, targetY, progress } }
 
+// Tomato projectiles (dancers throw at goblins — purely cosmetic)
+let tomatoes = []; // { x, y, targetX, targetY, speed, life }
+let tomatoSplats = []; // { x, y, timer }
+
 let gamePaused = false;
 let gameState = "title"; // "title", "story", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument-intro", "newinstrument"
 let enemyWarningType = null;   // "elite" or "catapult"
@@ -1677,6 +1681,54 @@ function update(dt) {
         }
     }
 
+    // Dancers throw tomatoes at nearby goblins (cosmetic only)
+    if (!goblin.dead) {
+        for (const d of dancers) {
+            if (d.walkingIn) continue; // don't throw while moving
+            const ddx = Math.abs(d.x - goblin.x);
+            const ddy = Math.abs(d.y - goblin.y);
+            if (ddx <= 3 * TILE && ddy <= 3 * TILE) {
+                // Random chance each frame (~1 throw per 2 seconds on average)
+                if (!d.throwCooldown) d.throwCooldown = 0;
+                if (d.throwCooldown > 0) { d.throwCooldown--; continue; }
+                if (Math.random() < 0.015) {
+                    d.throwCooldown = 90 + Math.floor(Math.random() * 60); // 1.5-2.5s cooldown
+                    tomatoes.push({
+                        x: d.x + 8, y: d.y + 4,
+                        targetX: goblin.x + 8, targetY: goblin.y + 4,
+                        speed: 2.5,
+                    });
+                }
+            }
+        }
+    }
+
+    // Update tomato projectiles
+    tomatoes = tomatoes.filter(t => {
+        const dx = t.targetX - t.x;
+        const dy = t.targetY - t.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < t.speed) {
+            // Splat!
+            tomatoSplats.push({ x: t.x, y: t.y, timer: 20 });
+            return false;
+        }
+        t.x += (dx / dist) * t.speed;
+        t.y += (dy / dist) * t.speed;
+        // Update target to track goblin's current position
+        if (!goblin.dead) {
+            t.targetX = goblin.x + 8;
+            t.targetY = goblin.y + 4;
+        }
+        return true;
+    });
+
+    // Update splats
+    tomatoSplats = tomatoSplats.filter(s => {
+        s.timer--;
+        return s.timer > 0;
+    });
+
     // Sequencer step
     if (playing) {
         if (!lastStepTime) lastStepTime = performance.now();
@@ -1833,6 +1885,8 @@ function resetGame() {
     // Clear dancers and effects
     dancers.length = 0;
     deathParticles = [];
+    tomatoes = [];
+    tomatoSplats = [];
     deathText = null;
     screenFlash = 0;
     screenShake = 0;
@@ -1971,6 +2025,8 @@ function advanceLevel() {
 
     // Reset effects
     deathParticles = [];
+    tomatoes = [];
+    tomatoSplats = [];
     deathText = null;
     screenFlash = 0;
     screenShake = 0;
@@ -2532,6 +2588,31 @@ function render() {
         ctx.fillStyle = p.color;
         ctx.globalAlpha = p.life / 60;
         ctx.fillRect(p.x * SCALE, p.y * SCALE, p.size * SCALE, p.size * SCALE);
+    }
+    ctx.globalAlpha = 1.0;
+
+    // Tomato projectiles
+    for (const t of tomatoes) {
+        // Tomato body (red circle-ish)
+        drawRect(t.x - 2, t.y - 2, 4, 3, "#cc2222");
+        drawRect(t.x - 1, t.y - 3, 2, 1, "#cc2222");
+        // Green stem
+        drawRect(t.x - 1, t.y - 4, 2, 1, "#44aa22");
+        drawRect(t.x, t.y - 5, 1, 1, "#44aa22");
+        // Highlight
+        drawRect(t.x - 2, t.y - 2, 1, 1, "#ff4444");
+    }
+
+    // Tomato splats
+    for (const s of tomatoSplats) {
+        const a = s.timer / 20;
+        ctx.globalAlpha = a;
+        // Splat — irregular red blobs
+        drawRect(s.x - 3, s.y - 1, 6, 3, "#cc2222");
+        drawRect(s.x - 1, s.y - 3, 3, 6, "#aa1111");
+        drawRect(s.x - 5, s.y, 2, 2, "#cc2222");
+        drawRect(s.x + 4, s.y - 2, 2, 2, "#aa1111");
+        drawRect(s.x - 2, s.y + 3, 2, 1, "#cc2222");
     }
     ctx.globalAlpha = 1.0;
 
