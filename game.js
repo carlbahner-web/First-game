@@ -924,6 +924,47 @@ function aabb(a, b) {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
+// ---- Helper: spawn dancer fans from the edges ----
+function spawnDancers(count) {
+    const edges = [0, 1, 2]; // left, right, bottom
+    for (let i = edges.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [edges[i], edges[j]] = [edges[j], edges[i]];
+    }
+    const occupied = new Set();
+    for (const dd of dancers) {
+        const tx = Math.round((dd.targetX ?? dd.x) / TILE);
+        const ty = Math.round((dd.targetY ?? dd.y) / TILE);
+        occupied.add(tx + "," + ty);
+    }
+    for (let di = 0; di < count; di++) {
+        const palette = DANCER_PALETTES[dancers.length % DANCER_PALETTES.length];
+        let targetTX, targetTY, attempts = 0;
+        do {
+            targetTX = 2 + Math.floor(Math.random() * (COLS - 5));
+            targetTY = 14 + Math.floor(Math.random() * 3);
+            attempts++;
+        } while ((occupied.has(targetTX + "," + targetTY) ||
+            CAVES.some(c => Math.abs(c.tileX - targetTX) <= 1 && Math.abs(c.tileY - targetTY) <= 1)) &&
+            attempts < 50);
+        occupied.add(targetTX + "," + targetTY);
+        const targetX = targetTX * TILE;
+        const targetY = targetTY * TILE;
+        const edge = edges[di % edges.length];
+        let startX, startY;
+        if (edge === 0) { startX = -TILE; startY = targetY; }
+        else if (edge === 1) { startX = COLS * TILE; startY = targetY; }
+        else { startX = targetX; startY = ROWS * TILE; }
+        dancers.push({
+            x: startX, y: startY,
+            targetX: targetX, targetY: targetY,
+            walkingIn: true,
+            palette: palette,
+            phase: Math.floor(Math.random() * 16),
+        });
+    }
+}
+
 // ---- Helper: get block rect for grid cell ----
 function getBlockRect(row, col) {
     return {
@@ -1175,49 +1216,7 @@ function update(dt) {
                 triggerLevelComplete();
             }
             if (killCount % 3 === 0) {
-                // Spawn 3 dancers from different edges, no overlapping destinations
-                const edges = [0, 1, 2]; // left, right, bottom
-                // Shuffle edges so each dancer gets a unique one
-                for (let i = edges.length - 1; i > 0; i--) {
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [edges[i], edges[j]] = [edges[j], edges[i]];
-                }
-                // Collect occupied target tiles (existing dancers)
-                const occupied = new Set();
-                for (const dd of dancers) {
-                    const tx = Math.round((dd.targetX ?? dd.x) / TILE);
-                    const ty = Math.round((dd.targetY ?? dd.y) / TILE);
-                    occupied.add(tx + "," + ty);
-                }
-                for (let di = 0; di < 3; di++) {
-                    const palette = DANCER_PALETTES[dancers.length % DANCER_PALETTES.length];
-                    // Find a target tile not already taken and not blocking a cave
-                    let targetTX, targetTY, attempts = 0;
-                    do {
-                        targetTX = 2 + Math.floor(Math.random() * (COLS - 5));
-                        targetTY = 14 + Math.floor(Math.random() * 3);
-                        attempts++;
-                    } while ((occupied.has(targetTX + "," + targetTY) ||
-                        CAVES.some(c => Math.abs(c.tileX - targetTX) <= 1 && Math.abs(c.tileY - targetTY) <= 1)) &&
-                        attempts < 50);
-                    occupied.add(targetTX + "," + targetTY);
-                    const targetX = targetTX * TILE;
-                    const targetY = targetTY * TILE;
-                    const edge = edges[di];
-                    let startX, startY;
-                    if (edge === 0) { startX = -TILE; startY = targetY; }
-                    else if (edge === 1) { startX = COLS * TILE; startY = targetY; }
-                    else { startX = targetX; startY = ROWS * TILE; }
-                    dancers.push({
-                        x: startX,
-                        y: startY,
-                        targetX: targetX,
-                        targetY: targetY,
-                        walkingIn: true,
-                        palette: palette,
-                        phase: Math.floor(Math.random() * 16),
-                    });
-                }
+                spawnDancers(3);
             }
             } // end else (lethal hit)
         }
@@ -2272,6 +2271,9 @@ function updateCatapultGoblin() {
             // Chain next catapult if sequence not complete (3 total)
             if (catapultSequenceCount < 3) {
                 spawnCatapultGoblin();
+            } else {
+                // Survived the full catapult barrage — earn some fans!
+                spawnDancers(2);
             }
             return;
         }
