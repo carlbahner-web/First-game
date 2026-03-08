@@ -1212,7 +1212,34 @@ function tileYToRow(tileY) {
 
 // ---- Helper: check if a tile is blocked by solid objects ----
 function isTileBlockedByObjects(tileX, tileY) {
-    // HUD is pinned to the bottom wall row — nothing can reach it
+    // HUD collision — panels sit just above bottom wall, flush with left border
+    const pxSz = 3;
+    const digitW = 3 * pxSz + pxSz;
+    const panelH = 5 * pxSz + 6;
+    const panelGap = 4;
+    const hudBaseX = 1 * TILE; // flush with inside of left border
+
+    const hudY = (ROWS - 1) * TILE - panelH - 6;
+
+    // Compute total HUD width from all three panels
+    const lvlPanelW = 14 + String(currentLevel + 1).length * digitW + 10;
+    const killPanelW = 14 + String(killCount).length * digitW + 10;
+    const timerSec = Math.max(0, Math.ceil(levelTimer / 90));
+    const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
+    const timerPanelW = 14 + timerStr.length * digitW + 10;
+
+    const hudLeft = hudBaseX - 2;
+    const hudRight = hudBaseX + lvlPanelW + panelGap + killPanelW + panelGap + timerPanelW + 2;
+    const hudTop = hudY - 2;
+    const hudBottom = hudY + panelH + 2;
+
+    // Check if the tile overlaps the HUD bounding box
+    const tilePxX = tileX * TILE;
+    const tilePxY = tileY * TILE;
+    if (tilePxX + TILE > hudLeft && tilePxX < hudRight &&
+        tilePxY + TILE > hudTop && tilePxY < hudBottom) {
+        return true;
+    }
     return false;
 }
 
@@ -1252,7 +1279,8 @@ function spawnDancers(count) {
             targetTY = 14 + Math.floor(Math.random() * 3);
             attempts++;
         } while ((occupied.has(targetTX + "," + targetTY) ||
-            CAVES.some(c => Math.abs(c.tileX - targetTX) <= 1 && Math.abs(c.tileY - targetTY) <= 1)) &&
+            CAVES.some(c => Math.abs(c.tileX - targetTX) <= 1 && Math.abs(c.tileY - targetTY) <= 1) ||
+            isTileBlockedByObjects(targetTX, targetTY)) &&
             attempts < 50);
         occupied.add(targetTX + "," + targetTY);
         const targetX = targetTX * TILE;
@@ -1621,9 +1649,15 @@ function update(dt) {
                 const knockDy = dTileY - Math.round(p.y / TILE);
                 const newX = d.x + Math.sign(knockDx) * TILE;
                 const newY = d.y + Math.sign(knockDy) * TILE;
-                d.targetX = Math.max(TILE, Math.min((COLS - 2) * TILE, newX));
-                d.targetY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, newY));
-                d.walkingIn = true; // reuse walk-in movement to slide to new position
+                const clampedX = Math.max(TILE, Math.min((COLS - 2) * TILE, newX));
+                const clampedY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, newY));
+                const kbTileX = Math.round(clampedX / TILE);
+                const kbTileY = Math.round(clampedY / TILE);
+                if (!isTileBlockedByObjects(kbTileX, kbTileY)) {
+                    d.targetX = clampedX;
+                    d.targetY = clampedY;
+                    d.walkingIn = true;
+                }
                 break;
             }
         }
@@ -2956,9 +2990,9 @@ function render() {
         const panelH = 5 * pxSz + 6;
         const panelGap = 4; // gap between panels
 
-        // Position: just above bottom wall, left-aligned with grid
+        // Position: just above bottom wall, flush with inside of left border
         const kcY = (ROWS - 1) * TILE - panelH - 6;
-        const baseX = GRID_X * TILE;
+        const baseX = 1 * TILE;
 
         // --- Level counter ---
         const lvlStr = String(currentLevel + 1);
