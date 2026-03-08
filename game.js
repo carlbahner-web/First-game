@@ -3435,11 +3435,11 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         pxLean(30, 0, 3, 3, "#D08040");
         pxLean(12, -6, 24, 3, "#A86430");
         const mouthOfs = dir === 2 ? -3 : dir === 3 ? 3 : 0;
-        pxLean(16 + mouthOfs, -4, 16, 5, "#5A2010");      // mouth opening (dark)
-        pxLean(17 + mouthOfs, -3, 14, 3, "#3A0A00");      // inner mouth (darker)
-        pxLean(19 + mouthOfs, -2, 10, 1, "#C44040");      // tongue hint (red)
-        pxLean(16 + mouthOfs, -5, 16, 1, "#A86430");      // upper lip
-        pxLean(16 + mouthOfs, 1, 16, 1, "#A86430");       // lower lip
+        pxLean(16 + mouthOfs, 1, 16, 5, "#C44040");        // mouth outline (red)
+        pxLean(17 + mouthOfs, 2, 14, 3, "#3A0A00");       // inner mouth (dark)
+        pxLean(18 + mouthOfs, 2, 12, 1, "#F0F0E8");       // teeth (white)
+        pxLean(16 + mouthOfs, 0, 16, 1, "#A86430");       // upper lip
+        pxLean(16 + mouthOfs, 6, 16, 1, "#A86430");       // lower lip
 
         if (isBlinking) {
             pxLean(12 + eyeDir[0], -7 + eyeDir[1], 8, 2, "#1a1a2e");
