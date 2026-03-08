@@ -3638,16 +3638,12 @@ function renderStoryScreen() {
 
     // Story text
     const storyLines = [
-        { text: "ONCE UPON A TIME,", color: "#F6CC60", scale: 7, gap: 16 },
-        { text: "SICK BEATS ECHOED", color: "#BFCDC0", scale: 7, gap: 14 },
-        { text: "THROUGH STUDIOLAND.", color: "#F6CC60", scale: 7, gap: 20 },
-        { text: "UNTIL THE GOBLINS", color: "#66cc66", scale: 7, gap: 14 },
-        { text: "BECAME JEALOUS", color: "#66cc66", scale: 7, gap: 14 },
-        { text: "AND STARTED TO", color: "#ff6666", scale: 7, gap: 14 },
-        { text: "SABOTAGE THE MUSIC.", color: "#E86A6A", scale: 7, gap: 22 },
-        { text: "YOU ARE THE DJ,", color: "#BFCDC0", scale: 7, gap: 14 },
-        { text: "AND YOU HAVE A SWORD.", color: "#F6CC60", scale: 7, gap: 22 },
-        { text: "IT'S TIME TO GET STABBIN'!", color: "#E86A6A", scale: 8, gap: 0 },
+        { text: "ONCE UPON A TIME,", color: "#F6CC60", scale: 7, gap: 18 },
+        { text: "SICK BEATS ECHOED THROUGH STUDIOLAND.", color: "#BFCDC0", scale: 5, gap: 22 },
+        { text: "UNTIL THE GOBLINS BECAME JEALOUS", color: "#66cc66", scale: 5, gap: 16 },
+        { text: "AND STARTED TO SABOTAGE THE MUSIC.", color: "#E86A6A", scale: 5, gap: 24 },
+        { text: "YOU ARE THE DJ, AND YOU HAVE A SWORD.", color: "#F6CC60", scale: 5, gap: 24 },
+        { text: "IT'S TIME TO GET STABBIN'!", color: "#E86A6A", scale: 7, gap: 0 },
     ];
 
     // Calculate total height to vertically center story block
@@ -4023,8 +4019,8 @@ function renderTutorialScreen() {
 
     // Page indicator dots
     const dotY = H - 22;
-    for (let i = 0; i < 4; i++) {
-        const dx = W / 2 - 14 + i * 8;
+    for (let i = 0; i < 6; i++) {
+        const dx = W / 2 - 22 + i * 8;
         const active = i === tutorialPage;
         drawRect(dx, dotY, 3, 3, active ? "#F6CC60" : "#555555");
     }
@@ -4034,8 +4030,7 @@ function renderTutorialScreen() {
         // Title
         const titleAlpha = Math.min(1, t / 30);
         ctx.globalAlpha = titleAlpha;
-        drawCenteredText("SWING YOUR SWORD", 18, "#F6CC60", 8);
-        drawCenteredText("TO TOGGLE BEATS", 32, "#F6CC60", 8);
+        drawCenteredText("SWING YOUR SWORD TO TOGGLE BEATS", 25, "#F6CC60", 7);
         ctx.globalAlpha = 1;
 
         // Animated demo grid — player walks to blocks and hits them
@@ -4296,8 +4291,7 @@ function renderTutorialScreen() {
         // Add explanation text
         if (t > 30) {
             ctx.globalAlpha = Math.min(1, (t - 30) / 25);
-            drawCenteredText("PULSING OUTLINES SHOW", gy + TILE + 12, "#BFCDC0", 5);
-            drawCenteredText("WHERE BEATS NEED TO GO", gy + TILE + 26, "#BFCDC0", 5);
+            drawCenteredText("PULSING OUTLINES SHOW WHERE BEATS NEED TO GO", gy + TILE + 18, "#BFCDC0", 4);
             ctx.globalAlpha = 1;
         }
 
@@ -4361,8 +4355,7 @@ function renderTutorialScreen() {
         // X explanation text
         if (t > 50) {
             ctx.globalAlpha = Math.min(1, (t - 50) / 25);
-            drawCenteredText("X MARKS SHOW BEATS", xgy + TILE + 12, "#BFCDC0", 5);
-            drawCenteredText("THAT NEED TO BE REMOVED", xgy + TILE + 26, "#BFCDC0", 5);
+            drawCenteredText("X MARKS SHOW BEATS THAT NEED TO BE REMOVED", xgy + TILE + 18, "#BFCDC0", 4);
             ctx.globalAlpha = 1;
         }
     }
@@ -4531,14 +4524,12 @@ function renderTutorialScreen() {
         // Explanation text
         if (t > 30) {
             ctx.globalAlpha = Math.min(1, (t - 30) / 25);
-            drawCenteredText("COMPLETE THE PATTERN", timerY + 60, "#BFCDC0", 5);
-            drawCenteredText("BEFORE TIME RUNS OUT!", timerY + 74, "#BFCDC0", 5);
+            drawCenteredText("COMPLETE THE PATTERN BEFORE TIME RUNS OUT!", timerY + 66, "#BFCDC0", 4);
             ctx.globalAlpha = 1;
         }
         if (t > 50) {
             ctx.globalAlpha = Math.min(1, (t - 50) / 25);
-            drawCenteredText("IF THE TIMER HITS ZERO,", timerY + 94, "#FF4466", 5);
-            drawCenteredText("IT'S GAME OVER!", timerY + 108, "#FF4466", 5);
+            drawCenteredText("IF THE TIMER HITS ZERO, IT'S GAME OVER!", timerY + 92, "#FF4466", 4);
             ctx.globalAlpha = 1;
         }
     }
@@ -4640,14 +4631,12 @@ function renderTutorialScreen() {
         // Explanation text
         if (t > 40) {
             ctx.globalAlpha = Math.min(1, (t - 40) / 25);
-            drawCenteredText("FINISHING THE PATTERN", gy + TILE + 40, "#BFCDC0", 5);
-            drawCenteredText("ISN'T ENOUGH!", gy + TILE + 54, "#BFCDC0", 5);
+            drawCenteredText("FINISHING THE PATTERN ISN'T ENOUGH!", gy + TILE + 46, "#BFCDC0", 4);
             ctx.globalAlpha = 1;
         }
         if (t > 55) {
             ctx.globalAlpha = Math.min(1, (t - 55) / 25);
-            drawCenteredText("CLEAR ALL GOBLINS", gy + TILE + 74, "#F6CC60", 5);
-            drawCenteredText("TO FINISH THE LEVEL!", gy + TILE + 88, "#F6CC60", 5);
+            drawCenteredText("CLEAR ALL GOBLINS TO FINISH THE LEVEL!", gy + TILE + 72, "#F6CC60", 4);
             ctx.globalAlpha = 1;
         }
     }
@@ -4752,14 +4741,12 @@ function renderTutorialScreen() {
         // Explanation text
         if (t > 35) {
             ctx.globalAlpha = Math.min(1, (t - 35) / 25);
-            drawCenteredText("SLAY GOBLINS TO", dcY + TILE + 28, "#BFCDC0", 5);
-            drawCenteredText("ATTRACT FANS!", dcY + TILE + 42, "#BFCDC0", 5);
+            drawCenteredText("SLAY GOBLINS TO ATTRACT FANS!", dcY + TILE + 34, "#BFCDC0", 5);
             ctx.globalAlpha = 1;
         }
         if (t > 50) {
             ctx.globalAlpha = Math.min(1, (t - 50) / 25);
-            drawCenteredText("THEY'LL THROW TOMATOES", dcY + TILE + 62, "#F6CC60", 5);
-            drawCenteredText("AT NEARBY GOBLINS!", dcY + TILE + 76, "#F6CC60", 5);
+            drawCenteredText("THEY'LL THROW TOMATOES AT NEARBY GOBLINS!", dcY + TILE + 60, "#F6CC60", 4);
             ctx.globalAlpha = 1;
         }
     }
@@ -4897,8 +4884,7 @@ function renderEnemyWarning() {
         }
         if (t > 70) {
             ctx.globalAlpha = Math.min(1, (t - 70) / 25);
-            drawCenteredText("IT ALSO MOVES FASTER", 149, "#BFCDC0", 5);
-            drawCenteredText("THAN NORMAL GOBLINS.", 163, "#BFCDC0", 5);
+            drawCenteredText("IT ALSO MOVES FASTER THAN NORMAL GOBLINS.", 155, "#BFCDC0", 4);
             ctx.globalAlpha = 1;
         }
 
@@ -4931,14 +4917,12 @@ function renderEnemyWarning() {
         }
         if (t > 55) {
             ctx.globalAlpha = Math.min(1, (t - 55) / 25);
-            drawCenteredText("IT HURLS ROCKS AT YOUR", 132, "#BFCDC0", 5);
-            drawCenteredText("BEAT GRID FROM A DISTANCE.", 146, "#BFCDC0", 5);
+            drawCenteredText("IT HURLS ROCKS AT YOUR BEAT GRID FROM A DISTANCE.", 138, "#BFCDC0", 4);
             ctx.globalAlpha = 1;
         }
         if (t > 70) {
             ctx.globalAlpha = Math.min(1, (t - 70) / 25);
-            drawCenteredText("IT CAN'T BE KILLED,", 166, "#FF4466", 5);
-            drawCenteredText("BUT IT CAN KILL YOU!", 180, "#FF4466", 5);
+            drawCenteredText("IT CAN'T BE KILLED, BUT IT CAN KILL YOU!", 172, "#FF4466", 4);
             ctx.globalAlpha = 1;
         }
     }
@@ -5086,15 +5070,12 @@ function renderNewInstrument() {
         // Description text
         if (t > 45) {
             ctx.globalAlpha = Math.min(1, (t - 45) / 25);
-            drawCenteredText("A NEW ROW APPEARS", 125, "#BFCDC0", 5);
-            drawCenteredText("BELOW THE KICK!", 139, "#BFCDC0", 5);
+            drawCenteredText("A NEW ROW APPEARS BELOW THE KICK!", 132, "#BFCDC0", 4);
             ctx.globalAlpha = 1;
         }
         if (t > 60) {
             ctx.globalAlpha = Math.min(1, (t - 60) / 25);
-            drawCenteredText("FILL IN THE COWBELL", 159, "#E86A6A", 5);
-            drawCenteredText("BEATS TO COMPLETE", 173, "#E86A6A", 5);
-            drawCenteredText("THE PATTERN!", 187, "#E86A6A", 5);
+            drawCenteredText("FILL IN THE COWBELL BEATS TO COMPLETE THE PATTERN!", 170, "#E86A6A", 4);
             ctx.globalAlpha = 1;
         }
 
@@ -5146,14 +5127,12 @@ function renderNewInstrument() {
         // Description text
         if (t > 45) {
             ctx.globalAlpha = Math.min(1, (t - 45) / 25);
-            drawCenteredText("THE TOM DRUM JOINS", 125, "#BFCDC0", 5);
-            drawCenteredText("THE MIX!", 139, "#BFCDC0", 5);
+            drawCenteredText("THE TOM DRUM JOINS THE MIX!", 132, "#BFCDC0", 5);
             ctx.globalAlpha = 1;
         }
         if (t > 60) {
             ctx.globalAlpha = Math.min(1, (t - 60) / 25);
-            drawCenteredText("EVEN MORE BEATS", 159, "#6AB8E8", 5);
-            drawCenteredText("TO MASTER!", 173, "#6AB8E8", 5);
+            drawCenteredText("EVEN MORE BEATS TO MASTER!", 166, "#6AB8E8", 5);
             ctx.globalAlpha = 1;
         }
     }
