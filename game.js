@@ -2979,87 +2979,149 @@ function drawSword() {
     const px = p.x;
     const py = p.y;
     const cx = px + p.w / 2; // player center x
-    const cy = py + p.h / 2; // player center y
     const progress = 1 - (p.attackTimer / p.attackDuration);
 
-    // Overhead arc: sword rotates from behind player to in front
-    // progress 0→1 maps to angle arc depending on facing direction
-    const bladeLen = 13;
-    const hiltLen = 3;
+    const bladeLen = 15;
+    const hiltLen = 4;
 
     ctx.save();
     const sbox = getSwordBox();
 
-    // Sword glow
-    ctx.fillStyle = PAL.swordGlow;
+    // Sword glow aura
     const swing = Math.sin(progress * Math.PI);
-    ctx.globalAlpha = 0.4 * swing;
+    ctx.fillStyle = PAL.swordGlow;
+    ctx.globalAlpha = 0.35 * swing;
     ctx.fillRect((sbox.x - 2) * SCALE, (sbox.y - 2) * SCALE, (sbox.w + 4) * SCALE, (sbox.h + 4) * SCALE);
     ctx.globalAlpha = 1.0;
 
     // Calculate swing angle based on direction
-    // Sword arcs overhead in the direction the player faces
     let angle;
-    const shoulderX = cx, shoulderY = py + 2; // pivot near shoulders
+    const shoulderX = cx, shoulderY = py + 2;
     switch (p.dir) {
-        case 0: // down — arc from upper-left to lower-right
-            angle = -Math.PI * 0.8 + progress * Math.PI * 1.2;
-            break;
-        case 1: // up — arc from lower-right to upper-left
-            angle = Math.PI * 0.8 - progress * Math.PI * 1.2;
-            break;
-        case 2: // left — arc from upper-right down to left
-            angle = -Math.PI * 0.3 - progress * Math.PI * 0.9;
-            break;
-        case 3: // right — arc from upper-left down to right
-            angle = -Math.PI * 0.7 + progress * Math.PI * 0.9;
-            break;
+        case 0: angle = -Math.PI * 0.8 + progress * Math.PI * 1.2; break;
+        case 1: angle = Math.PI * 0.8 - progress * Math.PI * 1.2; break;
+        case 2: angle = -Math.PI * 0.3 - progress * Math.PI * 0.9; break;
+        case 3: angle = -Math.PI * 0.7 + progress * Math.PI * 0.9; break;
     }
 
     const cosA = Math.cos(angle);
     const sinA = Math.sin(angle);
+    const perpX = -sinA;
+    const perpY = cosA;
 
-    // Hilt (short stub behind pivot)
-    const hx = shoulderX - cosA * hiltLen;
-    const hy = shoulderY - sinA * hiltLen;
+    // Key points along the sword
+    const sx0 = shoulderX * SCALE;
+    const sy0 = shoulderY * SCALE;
+    const tipX = (shoulderX + cosA * bladeLen) * SCALE;
+    const tipY = (shoulderY + sinA * bladeLen) * SCALE;
+    const hiltX = (shoulderX - cosA * hiltLen) * SCALE;
+    const hiltY = (shoulderY - sinA * hiltLen) * SCALE;
 
-    // Tip (end of blade)
-    const tx = shoulderX + cosA * bladeLen;
-    const ty = shoulderY + sinA * bladeLen;
+    // === HILT GRIP (wrapped leather) ===
+    ctx.strokeStyle = "#5C3A1E";
+    ctx.lineWidth = 4 * SCALE;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(sx0, sy0);
+    ctx.lineTo(hiltX, hiltY);
+    ctx.stroke();
+    // Wrap lines on grip
+    ctx.strokeStyle = "#7B5A3A";
+    ctx.lineWidth = 1;
+    for (let i = 1; i <= 3; i++) {
+        const t = i / 4;
+        const wx = sx0 + (hiltX - sx0) * t;
+        const wy = sy0 + (hiltY - sy0) * t;
+        ctx.beginPath();
+        ctx.moveTo(wx + perpX * 2.5 * SCALE, wy + perpY * 2.5 * SCALE);
+        ctx.lineTo(wx - perpX * 2.5 * SCALE, wy - perpY * 2.5 * SCALE);
+        ctx.stroke();
+    }
+    // Pommel (end cap)
+    ctx.fillStyle = "#8a7040";
+    ctx.beginPath();
+    ctx.arc(hiltX, hiltY, 2.5 * SCALE, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#BF9050";
+    ctx.beginPath();
+    ctx.arc(hiltX - SCALE, hiltY - SCALE, 1 * SCALE, 0, Math.PI * 2);
+    ctx.fill();
 
-    // Draw blade as a thick line (3px wide)
-    ctx.strokeStyle = PAL.sword;
+    // === CROSSGUARD ===
+    const cgLen = 5;
+    ctx.strokeStyle = "#8a7040";
     ctx.lineWidth = 3 * SCALE;
     ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.moveTo(shoulderX * SCALE, shoulderY * SCALE);
-    ctx.lineTo(tx * SCALE, ty * SCALE);
+    ctx.moveTo(sx0 + perpX * cgLen * SCALE, sy0 + perpY * cgLen * SCALE);
+    ctx.lineTo(sx0 - perpX * cgLen * SCALE, sy0 - perpY * cgLen * SCALE);
     ctx.stroke();
-
-    // Draw hilt as crossguard
-    ctx.strokeStyle = "#8a7040";
-    ctx.lineWidth = 2 * SCALE;
+    // Crossguard highlight
+    ctx.strokeStyle = "#BF9050";
+    ctx.lineWidth = 1 * SCALE;
     ctx.beginPath();
-    ctx.moveTo(shoulderX * SCALE, shoulderY * SCALE);
-    ctx.lineTo(hx * SCALE, hy * SCALE);
+    ctx.moveTo(sx0 + perpX * (cgLen - 0.5) * SCALE, sy0 + perpY * (cgLen - 0.5) * SCALE);
+    ctx.lineTo(sx0 - perpX * (cgLen - 0.5) * SCALE, sy0 - perpY * (cgLen - 0.5) * SCALE);
     ctx.stroke();
-
-    // Crossguard perpendicular to blade
-    const perpX = -sinA * 3;
-    const perpY = cosA * 3;
-    ctx.lineWidth = 2 * SCALE;
+    // Crossguard end caps
+    ctx.fillStyle = "#8a7040";
     ctx.beginPath();
-    ctx.moveTo((shoulderX + perpX) * SCALE, (shoulderY + perpY) * SCALE);
-    ctx.lineTo((shoulderX - perpX) * SCALE, (shoulderY - perpY) * SCALE);
-    ctx.stroke();
+    ctx.arc(sx0 + perpX * cgLen * SCALE, sy0 + perpY * cgLen * SCALE, 1.5 * SCALE, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(sx0 - perpX * cgLen * SCALE, sy0 - perpY * cgLen * SCALE, 1.5 * SCALE, 0, Math.PI * 2);
+    ctx.fill();
 
-    // Sparkle at tip
+    // === BLADE ===
+    // Main blade body (tapered shape)
+    const bladeW = 2.5; // half-width at base
+    const tipW = 0.5;   // half-width at tip
+    ctx.fillStyle = "#E8D878";
+    ctx.beginPath();
+    ctx.moveTo(sx0 + perpX * bladeW * SCALE, sy0 + perpY * bladeW * SCALE);
+    ctx.lineTo(sx0 - perpX * bladeW * SCALE, sy0 - perpY * bladeW * SCALE);
+    ctx.lineTo(tipX - perpX * tipW * SCALE, tipY - perpY * tipW * SCALE);
+    ctx.lineTo(tipX + perpX * tipW * SCALE, tipY + perpY * tipW * SCALE);
+    ctx.closePath();
+    ctx.fill();
+    // Blade edge highlight (bright line along one side)
+    ctx.strokeStyle = "#FFF8B0";
+    ctx.lineWidth = 1 * SCALE;
+    ctx.beginPath();
+    ctx.moveTo(sx0 + perpX * bladeW * SCALE, sy0 + perpY * bladeW * SCALE);
+    ctx.lineTo(tipX + perpX * tipW * SCALE, tipY + perpY * tipW * SCALE);
+    ctx.stroke();
+    // Center fuller (groove down the middle)
+    ctx.strokeStyle = "#C4A848";
+    ctx.lineWidth = 1 * SCALE;
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(sx0 + cosA * 2 * SCALE, sy0 + sinA * 2 * SCALE);
+    ctx.lineTo(sx0 + cosA * (bladeLen - 3) * SCALE, sy0 + sinA * (bladeLen - 3) * SCALE);
+    ctx.stroke();
+    ctx.globalAlpha = 1.0;
+    // Blade tip point
+    ctx.fillStyle = "#FFF8B0";
+    ctx.beginPath();
+    ctx.arc(tipX, tipY, 1.5 * SCALE, 0, Math.PI * 2);
+    ctx.fill();
+
+    // === SPARKLE on hit ===
     if (swing > 0.5 && p.swordHit) {
         if (Math.random() > 0.3) {
             ctx.fillStyle = "#fff";
             ctx.globalAlpha = swing;
-            ctx.fillRect((tx - 1) * SCALE, ty * SCALE, 3 * SCALE, 1 * SCALE);
-            ctx.fillRect(tx * SCALE, (ty - 1) * SCALE, 1 * SCALE, 3 * SCALE);
+            // Cross sparkle
+            ctx.fillRect(tipX - 4 * SCALE, tipY - 0.5 * SCALE, 8 * SCALE, 1 * SCALE);
+            ctx.fillRect(tipX - 0.5 * SCALE, tipY - 4 * SCALE, 1 * SCALE, 8 * SCALE);
+            // Diagonal sparkle
+            ctx.globalAlpha = swing * 0.5;
+            ctx.save();
+            ctx.translate(tipX, tipY);
+            ctx.rotate(Math.PI / 4);
+            ctx.fillRect(-3 * SCALE, -0.5 * SCALE, 6 * SCALE, 1 * SCALE);
+            ctx.fillRect(-0.5 * SCALE, -3 * SCALE, 1 * SCALE, 6 * SCALE);
+            ctx.restore();
             ctx.globalAlpha = 1.0;
         }
     }
