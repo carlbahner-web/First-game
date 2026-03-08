@@ -4201,7 +4201,7 @@ function renderTutorialScreen() {
                 const ppx = gx + 4 * TILE + (1 - pProg) * 2 * TILE;
                 const pBob = Math.floor(t / 6) % 2;
                 const pAttacking = sceneT > 150 && sceneT < 165;
-                drawRect(ppx + 3, gy - bob + 2, 10, 10, "#3a6a8a");
+                drawRect(ppx + 3, gy - pBob + 2, 10, 10, "#3a6a8a");
                 drawRect(ppx + 2, gy - 4 - pBob, 12, 7, "#F0D0B0");
                 drawRect(ppx + 5 - 1, gy - 2 - pBob, 2, 2, "#1a1a2e");
                 drawRect(ppx + 9 - 1, gy - 2 - pBob, 2, 2, "#1a1a2e");
