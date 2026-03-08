@@ -620,6 +620,7 @@ const cellFlash = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).f
 // ---- Catapult Goblin State ----
 let catapultGoblin = null; // null when inactive
 let catapultSpawnedThisCycle = false; // prevents re-spawning catapult after it finishes
+let catapultSequenceCount = 0; // how many catapults have fired in current sequence (max 3)
 // When active: { x, y, destX, destY, dir, frame, frameTimer, speed,
 //   phase, phaseTimer, caveIndex, targetRow, targetCol,
 //   boulder: null | { startX, startY, targetX, targetY, progress } }
@@ -1393,6 +1394,7 @@ function update(dt) {
             }
             // Every 6th goblin is a catapult goblin instead of normal/elite
             else if (killCount % 6 === 5 && !catapultGoblin && !catapultSpawnedThisCycle) {
+                catapultSequenceCount = 0;
                 spawnCatapultGoblin();
                 catapultSpawnedThisCycle = true;
                 goblin.respawnTimer = 300; // wait until catapult goblin finishes
@@ -1757,6 +1759,7 @@ function resetGame() {
     goblin.respawnTimer = 300;
     catapultGoblin = null;
     catapultSpawnedThisCycle = false;
+    catapultSequenceCount = 0;
     enemyWarningShown = { elite: false, catapult: false };
     newInstrumentShown = { cowbell: false, tom: false };
     levelTimer = LEVELS[0].timerSeconds * 90;
@@ -1873,6 +1876,7 @@ function advanceLevel() {
     goblin.respawnTimer = 300;
     catapultGoblin = null;
     catapultSpawnedThisCycle = false;
+    catapultSequenceCount = 0;
 
     // DON'T reset: dancers, killCount (persist across levels)
 
@@ -1917,6 +1921,7 @@ function advanceLevel() {
 
 // ---- Catapult Goblin Logic ----
 function spawnCatapultGoblin() {
+    catapultSequenceCount++;
     const caveIdx = Math.floor(Math.random() * CAVES.length);
     const cave = CAVES[caveIdx];
     const spawnX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
@@ -2090,6 +2095,10 @@ function updateCatapultGoblin() {
         if (dist < cg.speed) {
             // Reached cave — disappear
             catapultGoblin = null;
+            // Chain next catapult if sequence not complete (3 total)
+            if (catapultSequenceCount < 3) {
+                spawnCatapultGoblin();
+            }
             return;
         }
         if (Math.abs(dx) > Math.abs(dy)) {
