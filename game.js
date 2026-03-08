@@ -3320,35 +3320,56 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
     const bob = (frame % 2 === 1 ? 1 : 0) * SCALE;
     const ghost = opts.ghostMode || false;
 
+    // Punch lean: upper body shifts toward punch direction
+    const punch = opts.punchThrust || 0; // 0-1, peaks at mid-punch
+    let leanX = 0, leanY = 0;
+    if (punch > 0) {
+        switch (dir) {
+            case 0: leanY = punch * 4; break;  // lean down
+            case 1: leanY = -punch * 4; break; // lean up
+            case 2: leanX = -punch * 5; break; // lean left
+            case 3: leanX = punch * 5; break;  // lean right
+        }
+    }
+
     function px(x, y, w, h, color) {
         drawPx(sx + x, sy + y - bob, w, h, ghost ? ghostTint(color) : color);
     }
+    // Shifted version for upper body during punch
+    function pxLean(x, y, w, h, color) {
+        drawPx(sx + x + leanX * SCALE, sy + y + leanY * SCALE - bob, w, h, ghost ? ghostTint(color) : color);
+    }
 
     // === BODY (teal shirt — Studioland style) ===
-    px(9, 6, 30, 30, "#2a6a6a");       // Main torso
-    px(9, 6, 6, 30, "#1e5454");         // Left dark side
-    px(33, 6, 6, 30, "#1e5454");        // Right dark side
-    px(15, 9, 18, 3, "#347a7a");        // Shirt chest highlight
+    // Lower body stays planted
+    px(9, 21, 30, 15, "#2a6a6a");       // Lower torso (stays put)
+    px(9, 21, 6, 15, "#1e5454");         // Lower left dark side
+    px(33, 21, 6, 15, "#1e5454");        // Lower right dark side
     px(12, 30, 24, 3, "#1e5454");       // Shirt bottom hem
+    // Upper body leans into punch
+    pxLean(9, 6, 30, 18, "#2a6a6a");    // Upper torso
+    pxLean(9, 6, 6, 18, "#1e5454");     // Upper left dark side
+    pxLean(33, 6, 6, 18, "#1e5454");    // Upper right dark side
+    pxLean(15, 9, 18, 3, "#347a7a");    // Shirt chest highlight
     // Collar detail
-    px(15, 6, 18, 3, "#235e5e");
-    px(18, 3, 12, 3, "#235e5e");
+    pxLean(15, 6, 18, 3, "#235e5e");
+    pxLean(18, 3, 12, 3, "#235e5e");
 
-    // === HEAD (bald, round) ===
-    px(6, -15, 36, 21, "#E8CBA8");      // Main head block
-    px(9, -18, 30, 3, "#E8CBA8");       // Rounded top
-    px(12, -21, 24, 3, "#E8CBA8");      // More rounding
-    px(15, -24, 18, 3, "#E8CBA8");      // Top of dome
+    // === HEAD (bald, round) — leans with upper body ===
+    pxLean(6, -15, 36, 21, "#E8CBA8");      // Main head block
+    pxLean(9, -18, 30, 3, "#E8CBA8");       // Rounded top
+    pxLean(12, -21, 24, 3, "#E8CBA8");      // More rounding
+    pxLean(15, -24, 18, 3, "#E8CBA8");      // Top of dome
     // Bald shine highlight
-    px(15, -24, 18, 3, "#F5E2CC");
-    px(12, -21, 24, 3, "#F2DCC0");
-    px(15, -18, 18, 3, "#F0D8BA");
+    pxLean(15, -24, 18, 3, "#F5E2CC");
+    pxLean(12, -21, 24, 3, "#F2DCC0");
+    pxLean(15, -18, 18, 3, "#F0D8BA");
     // Ears
-    px(3, -9, 6, 9, "#DFC09E");
-    px(39, -9, 6, 9, "#DFC09E");
+    pxLean(3, -9, 6, 9, "#DFC09E");
+    pxLean(39, -9, 6, 9, "#DFC09E");
     // Inner ear detail
-    px(3, -6, 3, 3, "#D4B08A");
-    px(42, -6, 3, 3, "#D4B08A");
+    pxLean(3, -6, 3, 3, "#D4B08A");
+    pxLean(42, -6, 3, 3, "#D4B08A");
 
     // === EYES & BEARD (direction-aware — beard only on front of face) ===
     const isBlinking = opts.isBlinking || false;
@@ -3361,42 +3382,42 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
 
     if (dir === 1) {
         // Facing UP — show back of bald head, no eyes, no beard
-        px(12, -18, 24, 6, "#DFC09E");
-        px(15, -3, 18, 6, "#E8CBA8");
+        pxLean(12, -18, 24, 6, "#DFC09E");
+        pxLean(15, -3, 18, 6, "#E8CBA8");
     } else {
         // Facing DOWN, LEFT, or RIGHT — show beard and eyes
-        px(9, -3, 30, 12, "#BF7538");
-        px(6, -3, 6, 9, "#BF7538");
-        px(36, -3, 6, 9, "#BF7538");
-        px(12, 9, 24, 6, "#BF7538");
-        px(15, 15, 18, 3, "#A86430");
-        px(12, 0, 3, 3, "#D08040");
-        px(21, 3, 3, 3, "#D08040");
-        px(30, 0, 3, 3, "#D08040");
-        px(12, -6, 24, 3, "#A86430");
+        pxLean(9, -3, 30, 12, "#BF7538");
+        pxLean(6, -3, 6, 9, "#BF7538");
+        pxLean(36, -3, 6, 9, "#BF7538");
+        pxLean(12, 9, 24, 6, "#BF7538");
+        pxLean(15, 15, 18, 3, "#A86430");
+        pxLean(12, 0, 3, 3, "#D08040");
+        pxLean(21, 3, 3, 3, "#D08040");
+        pxLean(30, 0, 3, 3, "#D08040");
+        pxLean(12, -6, 24, 3, "#A86430");
         const mouthOfs = dir === 2 ? -3 : dir === 3 ? 3 : 0;
-        px(16 + mouthOfs, -4, 16, 5, "#5A2010");      // mouth opening (dark)
-        px(17 + mouthOfs, -3, 14, 3, "#3A0A00");      // inner mouth (darker)
-        px(19 + mouthOfs, -2, 10, 1, "#C44040");      // tongue hint (red)
-        px(16 + mouthOfs, -5, 16, 1, "#A86430");      // upper lip
-        px(16 + mouthOfs, 1, 16, 1, "#A86430");       // lower lip
+        pxLean(16 + mouthOfs, -4, 16, 5, "#5A2010");      // mouth opening (dark)
+        pxLean(17 + mouthOfs, -3, 14, 3, "#3A0A00");      // inner mouth (darker)
+        pxLean(19 + mouthOfs, -2, 10, 1, "#C44040");      // tongue hint (red)
+        pxLean(16 + mouthOfs, -5, 16, 1, "#A86430");      // upper lip
+        pxLean(16 + mouthOfs, 1, 16, 1, "#A86430");       // lower lip
 
         if (isBlinking) {
-            px(12 + eyeDir[0], -7 + eyeDir[1], 8, 2, "#1a1a2e");
-            px(28 + eyeDir[0], -7 + eyeDir[1], 8, 2, "#1a1a2e");
+            pxLean(12 + eyeDir[0], -7 + eyeDir[1], 8, 2, "#1a1a2e");
+            pxLean(28 + eyeDir[0], -7 + eyeDir[1], 8, 2, "#1a1a2e");
         } else {
-            px(11 + eyeDir[0], -12 + eyeDir[1], 10, 8, "#F0F0E8");
-            px(27 + eyeDir[0], -12 + eyeDir[1], 10, 8, "#F0F0E8");
-            px(14 + eyeDir[0], -10 + eyeDir[1], 5, 5, "#1a1a2e");
-            px(30 + eyeDir[0], -10 + eyeDir[1], 5, 5, "#1a1a2e");
-            px(15 + eyeDir[0], -10 + eyeDir[1], 2, 2, "#F0F0E8");
-            px(31 + eyeDir[0], -10 + eyeDir[1], 2, 2, "#F0F0E8");
-            px(10 + eyeDir[0], -14 + eyeDir[1], 12, 2, "#D4B08A");
-            px(26 + eyeDir[0], -14 + eyeDir[1], 12, 2, "#D4B08A");
+            pxLean(11 + eyeDir[0], -12 + eyeDir[1], 10, 8, "#F0F0E8");
+            pxLean(27 + eyeDir[0], -12 + eyeDir[1], 10, 8, "#F0F0E8");
+            pxLean(14 + eyeDir[0], -10 + eyeDir[1], 5, 5, "#1a1a2e");
+            pxLean(30 + eyeDir[0], -10 + eyeDir[1], 5, 5, "#1a1a2e");
+            pxLean(15 + eyeDir[0], -10 + eyeDir[1], 2, 2, "#F0F0E8");
+            pxLean(31 + eyeDir[0], -10 + eyeDir[1], 2, 2, "#F0F0E8");
+            pxLean(10 + eyeDir[0], -14 + eyeDir[1], 12, 2, "#D4B08A");
+            pxLean(26 + eyeDir[0], -14 + eyeDir[1], 12, 2, "#D4B08A");
         }
     }
 
-    // === FEET / SHOES (tan) ===
+    // === FEET / SHOES (tan) — stay planted ===
     const walkPx = (frame === 1 ? 2 : frame === 3 ? -2 : 0) * SCALE;
     px(12 + walkPx, 36, 9, 6, "#C4A882");
     px(27 - walkPx, 36, 9, 6, "#C4A882");
@@ -3408,7 +3429,12 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
 
 function drawPlayer() {
     const p = player;
-    drawPlayerSprite(p.x, p.y, p.frame, p.dir, { isBlinking: p.blinkTimer >= 180 });
+    let punchThrust = 0;
+    if (p.attacking) {
+        const progress = 1 - (p.attackTimer / p.attackDuration);
+        punchThrust = Math.sin(progress * Math.PI);
+    }
+    drawPlayerSprite(p.x, p.y, p.frame, p.dir, { isBlinking: p.blinkTimer >= 180, punchThrust: punchThrust });
 }
 
 function drawSword() {
@@ -3424,7 +3450,6 @@ function drawSword() {
 
     // Punch thrust: arm extends outward, peaks at progress=0.5
     const thrust = Math.sin(progress * Math.PI); // 0→1→0
-    const armLen = 5 + thrust * 8; // arm extends from 5 to 13 pixels (shorter reach)
 
     // Direction vectors
     let dx = 0, dy = 0;
@@ -3435,14 +3460,18 @@ function drawSword() {
         case 3: dx = 1; break;  // right
     }
 
-    // Offset arm to shoulder (side of body) instead of center
-    // For vertical punches, offset to the right side; for horizontal, offset vertically
-    const shoulderOffX = (dy !== 0) ? 5 : 0;
-    const shoulderOffY = (dx !== 0) ? -2 : 0;
-    const shoulderX = (cx + shoulderOffX) * SCALE;
-    const shoulderY = (cy + shoulderOffY) * SCALE;
-    const fistX = (cx + shoulderOffX + dx * armLen) * SCALE;
-    const fistY = (cy + shoulderOffY + dy * armLen) * SCALE;
+    // Body lean (must match drawPlayerSprite lean values)
+    const leanX = dx !== 0 ? dx * thrust * 5 : 0;
+    const leanY = dy !== 0 ? dy * thrust * 4 : 0;
+
+    // Arm starts from edge of leaned body, extends a short distance to fist
+    const shoulderOffX = (dy !== 0) ? 5 : dx * 8;
+    const shoulderOffY = (dx !== 0) ? -2 : dy * 8;
+    const armLen = 3 + thrust * 6; // short arm from body edge to fist
+    const shoulderX = (cx + leanX + shoulderOffX) * SCALE;
+    const shoulderY = (cy + leanY + shoulderOffY) * SCALE;
+    const fistX = (cx + leanX + shoulderOffX + dx * armLen) * SCALE;
+    const fistY = (cy + leanY + shoulderOffY + dy * armLen) * SCALE;
 
     // === ARM ===
     ctx.strokeStyle = "#E8CBA8"; // skin color
