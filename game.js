@@ -2567,6 +2567,9 @@ function advanceLevel() {
 
     // All feature screens (instruments, enemy warnings) now shown before advanceLevel is called
 
+    // Stop marching drums before sabotage begins
+    stopStoryDrums();
+
     // Start sabotage animation (goblin zigzags across grid scrambling cells)
     sabotageAnimTimer = 0;
     sabotageFlipIndex = 0;
@@ -4587,6 +4590,11 @@ function renderLevelComplete() {
         drawRect(p.x, p.y, sz, sz, p.color);
     }
     ctx.globalAlpha = 1.0;
+
+    // Start marching snare after fanfare finishes (~2s = 180 frames at 90fps)
+    if (levelCelebrateTimer === 180) {
+        startStoryDrums();
+    }
 
     // "PRESS ENTER" to continue
     if (levelCelebrateTimer > 120) {
