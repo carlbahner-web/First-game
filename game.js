@@ -667,6 +667,12 @@ let newInstrumentTimer = 0;     // animation timer for new instrument popup
 let newInstrumentIntroTimer = 0; // transition timer before instrument popup
 let newInstrumentShown = { cowbell: false, tom: false }; // track which popups have been shown
 
+// Scene fade-in/out
+const SCENE_FADE_IN_FRAMES = 12;
+const SCENE_FADE_OUT_FRAMES = 10;
+let sceneFadeOut = 0;           // counts up during fade-out; 0 = not fading out
+let sceneFadeOutCallback = null; // function to call when fade-out completes
+
 // Sabotage animation state (goblin zigzags across grid scrambling cells)
 let sabotageAnimTimer = 0;
 let sabotageNextState = "playing";
@@ -784,15 +790,20 @@ window.addEventListener("keydown", (e) => {
 
     if (e.code === "Enter") {
         e.preventDefault();
+        if (sceneFadeOut > 0) return; // ignore input during fade-out
         if (gameState === "sabotage-anim") return; // ignore input during sabotage animation
         if (gameState === "enemywarning") {
-            gameState = "playing";
-            lastStepTime = performance.now(); // reset sequencer timing
+            startSceneFadeOut(() => {
+                gameState = "playing";
+                lastStepTime = performance.now();
+            });
             return;
         }
         if (gameState === "newinstrument") {
-            gameState = "playing";
-            lastStepTime = performance.now();
+            startSceneFadeOut(() => {
+                gameState = "playing";
+                lastStepTime = performance.now();
+            });
             return;
         }
         if (gameState === "title") {
@@ -804,20 +815,24 @@ window.addEventListener("keydown", (e) => {
             return;
         }
         if (gameState === "story") {
-            gameState = "tutorial";
-            tutorialTimer = 0;
-            tutorialPage = 0;
+            startSceneFadeOut(() => {
+                gameState = "tutorial";
+                tutorialTimer = 0;
+                tutorialPage = 0;
+            });
             return;
         }
         if (gameState === "tutorial") {
-            tutorialPage++;
-            tutorialTimer = 0;
-            if (tutorialPage > 5) {
-                stopStoryDrums();
-                gameState = "playing";
-                currentStep = 0;
-                lastStepTime = performance.now();
-            }
+            startSceneFadeOut(() => {
+                tutorialPage++;
+                tutorialTimer = 0;
+                if (tutorialPage > 5) {
+                    stopStoryDrums();
+                    gameState = "playing";
+                    currentStep = 0;
+                    lastStepTime = performance.now();
+                }
+            });
             return;
         }
         if (gameState === "levelcomplete" && levelCelebrateTimer > 120) {
@@ -3628,6 +3643,36 @@ function stopStoryDrums() {
         storyDrumGain = null;
     }
 }
+// Scene fade helpers — call at end of render to overlay fade-in/out
+function applySceneFade(sceneTimer) {
+    const fadeInAlpha = Math.min(1, sceneTimer / SCENE_FADE_IN_FRAMES);
+    const fadeOutAlpha = sceneFadeOut > 0 ? Math.max(0, 1 - sceneFadeOut / SCENE_FADE_OUT_FRAMES) : 1;
+    const alpha = fadeInAlpha * fadeOutAlpha;
+    if (alpha < 1) {
+        ctx.fillStyle = "#000";
+        ctx.globalAlpha = 1 - alpha;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1;
+    }
+}
+
+function updateSceneFadeOut() {
+    if (sceneFadeOut > 0) {
+        sceneFadeOut++;
+        if (sceneFadeOut > SCENE_FADE_OUT_FRAMES && sceneFadeOutCallback) {
+            const cb = sceneFadeOutCallback;
+            sceneFadeOut = 0;
+            sceneFadeOutCallback = null;
+            cb();
+        }
+    }
+}
+
+function startSceneFadeOut(callback) {
+    sceneFadeOut = 1;
+    sceneFadeOutCallback = callback;
+}
+
 function renderStoryScreen() {
     const W = COLS * TILE;
     const H = ROWS * TILE;
@@ -3676,11 +3721,7 @@ function renderStoryScreen() {
 
     for (let i = 0; i < storyLines.length; i++) {
         const line = storyLines[i];
-        const fadeStart = i * 20;
-        const alpha = Math.min(1, Math.max(0, (storyBlink - fadeStart) / 25));
-        ctx.globalAlpha = alpha;
         drawCenteredText(line.text, textY, line.color, line.scale);
-        ctx.globalAlpha = 1;
         textY += line.scale + line.gap;
     }
 
@@ -3749,6 +3790,9 @@ function renderStoryScreen() {
     if (storyBlink % 60 < 40) {
         drawCenteredText("PRESS ENTER TO BEGIN", H - 10, "#EBEBE3", 5);
     }
+
+    updateSceneFadeOut();
+    applySceneFade(storyBlink);
 }
 
 function renderHighScoreEntry() {
@@ -4047,10 +4091,7 @@ function renderTutorialScreen() {
     // ======== PAGE 0: SWING YOUR SWORD ========
     if (tutorialPage === 0) {
         // Title
-        const titleAlpha = Math.min(1, t / 30);
-        ctx.globalAlpha = titleAlpha;
         drawCenteredText("SWING YOUR SWORD TO TOGGLE BEATS", 25, "#F6CC60", 7);
-        ctx.globalAlpha = 1;
 
         // Animated demo grid — player walks to blocks and hits them
         const gridStartX = W / 2 - 4 * TILE / 2;
@@ -4077,10 +4118,9 @@ function renderTutorialScreen() {
             if (demoSteps[i].attack) hitFrames.push({ toggleIdx: demoSteps[i].toggleIdx, frame: stepStart[i] + HIT_OFFSET });
         }
 
-        if (t > 20) {
-            const demoAlpha = Math.min(1, (t - 20) / 20);
-            ctx.globalAlpha = demoAlpha;
-            const demoT = Math.max(0, t - 30);
+        {
+            const demoAlpha = 1;
+            const demoT = t;
             const cycleT = demoT % CYCLE;
             const blockOn = [false, false, false, false];
             for (const hf of hitFrames) {
@@ -4124,9 +4164,8 @@ function renderTutorialScreen() {
             }
 
             // Animated player
-            if (t > 30) {
-                const playerAlpha = Math.min(1, (t - 30) / 20);
-                ctx.globalAlpha = demoAlpha * playerAlpha;
+            {
+                const playerAlpha = 1;
                 let stepIdx = demoSteps.length - 1;
                 for (let i = 0; i < demoSteps.length; i++) {
                     if (cycleT < stepStart[i] + demoSteps[i].dur) { stepIdx = i; break; }
@@ -4194,9 +4233,7 @@ function renderTutorialScreen() {
         }
 
         // Control instructions
-        if (t > 40) {
-            ctx.globalAlpha = Math.min(1, (t - 40) / 25);
-
+        {
             const ky = gridStartY + miniRows * TILE + 18;
             const ks = 9; // key size
             const kg = 2; // key gap
@@ -4246,17 +4283,12 @@ function renderTutorialScreen() {
             ctx.fillText("MOVE", arrowCenterX * SCALE, (ky + 2 * ks + 2 * kg + 8) * SCALE);
             ctx.fillText("ATTACK", (spX + spW / 2) * SCALE, (ky + 2 * ks + 2 * kg + 8) * SCALE);
             ctx.textAlign = "start";
-
-            ctx.globalAlpha = 1;
         }
     }
 
     // ======== PAGE 1: MATCH THE PATTERN ========
     else if (tutorialPage === 1) {
-        const titleAlpha = Math.min(1, t / 30);
-        ctx.globalAlpha = titleAlpha;
         drawCenteredText("MATCH THE PATTERN", 18, "#F6CC60", 8);
-        ctx.globalAlpha = 1;
 
         // --- TOP SECTION: Pulsing outlines (beats to ADD) ---
         const gx = W / 2 - 2 * TILE;
@@ -4270,9 +4302,7 @@ function renderTutorialScreen() {
         const addT = Math.max(0, t - 40) % ADD_CYCLE;
         const addFilled = Math.min(addFillOrder.length, Math.floor(addT / ADD_INTERVAL));
 
-        if (t > 20) {
-            const dA = Math.min(1, (t - 20) / 20);
-            ctx.globalAlpha = dA;
+        {
             for (let c = 0; c < patCols; c++) {
                 const bx = gx + c * TILE, by = gy;
                 let isOn = false;
@@ -4289,7 +4319,7 @@ function renderTutorialScreen() {
                     drawRect(bx + 1, by + 1, 1, TILE - 2, addColor);
                     drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, addColor);
                     drawRect(bx + 6, by + 6, 4, 4, addColor);
-                    ctx.globalAlpha = dA;
+                    ctx.globalAlpha = 1;
                 }
                 // Flash when just filled
                 if (isOn) {
@@ -4299,20 +4329,15 @@ function renderTutorialScreen() {
                         if (flashAge >= 0 && flashAge < 12) {
                             ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
                             drawRect(bx, by, TILE, TILE, "#ffffff");
-                            ctx.globalAlpha = dA;
+                            ctx.globalAlpha = 1;
                         }
                     }
                 }
             }
-            ctx.globalAlpha = 1;
         }
 
         // Add explanation text
-        if (t > 30) {
-            ctx.globalAlpha = Math.min(1, (t - 30) / 25);
-            drawCenteredText("PULSING OUTLINES SHOW WHERE BEATS NEED TO GO", gy + TILE + 18, "#BFCDC0", 4);
-            ctx.globalAlpha = 1;
-        }
+        drawCenteredText("PULSING OUTLINES SHOW WHERE BEATS NEED TO GO", gy + TILE + 18, "#BFCDC0", 4);
 
         // --- BOTTOM SECTION: X marks (beats to REMOVE) ---
         const xgy = gy + TILE + 52;
@@ -4327,9 +4352,7 @@ function renderTutorialScreen() {
         const xT = Math.max(0, t - 60) % X_CYCLE;
         const xRemoved = Math.min(xRemoveOrder.length, Math.floor(xT / X_INTERVAL));
 
-        if (t > 40) {
-            const dA = Math.min(1, (t - 40) / 20);
-            ctx.globalAlpha = dA;
+        {
             for (let c = 0; c < patCols; c++) {
                 const bx = gx + c * TILE, by = xgy;
                 let isOn = xStartOn[c];
@@ -4352,7 +4375,7 @@ function renderTutorialScreen() {
                     drawRect(bx + 7, by + 5, 2, 2, xIndicatorColor);
                     drawRect(bx + 5, by + 7, 2, 2, xIndicatorColor);
                     drawRect(bx + 3, by + 9, 2, 2, xIndicatorColor);
-                    ctx.globalAlpha = dA;
+                    ctx.globalAlpha = 1;
                 }
 
                 // Flash when just removed
@@ -4363,28 +4386,20 @@ function renderTutorialScreen() {
                         if (flashAge >= 0 && flashAge < 12) {
                             ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
                             drawRect(bx, by, TILE, TILE, "#ffffff");
-                            ctx.globalAlpha = dA;
+                            ctx.globalAlpha = 1;
                         }
                     }
                 }
             }
-            ctx.globalAlpha = 1;
         }
 
         // X explanation text
-        if (t > 50) {
-            ctx.globalAlpha = Math.min(1, (t - 50) / 25);
-            drawCenteredText("X MARKS SHOW BEATS THAT NEED TO BE REMOVED", xgy + TILE + 18, "#BFCDC0", 4);
-            ctx.globalAlpha = 1;
-        }
+        drawCenteredText("X MARKS SHOW BEATS THAT NEED TO BE REMOVED", xgy + TILE + 18, "#BFCDC0", 4);
     }
 
     // ======== PAGE 2: BEWARE THE GOBLINS ========
     else if (tutorialPage === 2) {
-        const titleAlpha = Math.min(1, t / 30);
-        ctx.globalAlpha = titleAlpha;
         drawCenteredText("BEWARE THE GOBLINS!", 18, "#E86A6A", 8);
-        ctx.globalAlpha = 1;
 
         // Animated goblin walking to a grid cell, sabotaging it, then player killing it
         const gx = W / 2 - 2 * TILE;
@@ -4393,9 +4408,8 @@ function renderTutorialScreen() {
         const sceneT = Math.max(0, t - 30) % SCENE_CYCLE;
         const gobFrame = Math.floor(t / 10) % 4;
 
-        if (t > 20) {
-            const dA = Math.min(1, (t - 20) / 20);
-            ctx.globalAlpha = dA;
+        {
+            const dA = 1;
 
             // Draw a small 1x4 grid
             for (let c = 0; c < 4; c++) {
@@ -4474,20 +4488,13 @@ function renderTutorialScreen() {
         }
 
         // Explanation text
-        if (t > 30) {
-            ctx.globalAlpha = Math.min(1, (t - 30) / 25);
-            drawCenteredText("THEY SABOTAGE YOUR BEATS!", gy + TILE + 22, "#BFCDC0", 5);
-            drawCenteredText("SLAY THEM WITH YOUR SWORD!", gy + TILE + 38, "#F6CC60", 5);
-            ctx.globalAlpha = 1;
-        }
+        drawCenteredText("THEY SABOTAGE YOUR BEATS!", gy + TILE + 22, "#BFCDC0", 5);
+        drawCenteredText("SLAY THEM WITH YOUR SWORD!", gy + TILE + 38, "#F6CC60", 5);
     }
 
     // ======== PAGE 3: BEAT THE CLOCK ========
     else if (tutorialPage === 3) {
-        const titleAlpha = Math.min(1, t / 30);
-        ctx.globalAlpha = titleAlpha;
         drawCenteredText("BEAT THE CLOCK!", 18, "#FF8844", 8);
-        ctx.globalAlpha = 1;
 
         // Animated countdown timer — matches actual in-game HUD style
         const timerY = 60;
@@ -4502,9 +4509,8 @@ function renderTutorialScreen() {
         const hlCol = isUrgent ? "#6a2a3a" : "#3a6a70";
         const blinkOn = !isUrgent || Math.floor(cT / (isLow ? 8 : 15)) % 2 === 0;
 
-        if (t > 20) {
-            const dA = Math.min(1, (t - 20) / 20);
-            ctx.globalAlpha = dA;
+        {
+            const dA = 1;
 
             // Draw large version of the actual HUD timer panel, centered
             const pxSz = 5; // bigger than in-game for visibility
@@ -4541,24 +4547,13 @@ function renderTutorialScreen() {
         }
 
         // Explanation text
-        if (t > 30) {
-            ctx.globalAlpha = Math.min(1, (t - 30) / 25);
-            drawCenteredText("COMPLETE THE PATTERN BEFORE TIME RUNS OUT!", timerY + 66, "#BFCDC0", 4);
-            ctx.globalAlpha = 1;
-        }
-        if (t > 50) {
-            ctx.globalAlpha = Math.min(1, (t - 50) / 25);
-            drawCenteredText("IF THE TIMER HITS ZERO, IT'S GAME OVER!", timerY + 92, "#FF4466", 4);
-            ctx.globalAlpha = 1;
-        }
+        drawCenteredText("COMPLETE THE PATTERN BEFORE TIME RUNS OUT!", timerY + 66, "#BFCDC0", 4);
+        drawCenteredText("IF THE TIMER HITS ZERO, IT'S GAME OVER!", timerY + 92, "#FF4466", 4);
     }
 
     // ======== PAGE 4: CLEAR ALL GOBLINS ========
     else if (tutorialPage === 4) {
-        const titleAlpha = Math.min(1, t / 30);
-        ctx.globalAlpha = titleAlpha;
         drawCenteredText("CLEAR THE STAGE!", 18, "#E86A6A", 8);
-        ctx.globalAlpha = 1;
 
         // Animated demo: pattern completes, "SLAY THE GOBLIN!" blinks, player kills goblin, level ends
         const gx = W / 2 - 2 * TILE;
@@ -4566,9 +4561,8 @@ function renderTutorialScreen() {
         const SCENE_CYCLE = 260;
         const sceneT = Math.max(0, t - 30) % SCENE_CYCLE;
 
-        if (t > 20) {
-            const dA = Math.min(1, (t - 20) / 20);
-            ctx.globalAlpha = dA;
+        {
+            const dA = 1;
 
             // Mini 1x4 grid — all cells match by default (all gold)
             for (let c = 0; c < 4; c++) {
@@ -4648,24 +4642,13 @@ function renderTutorialScreen() {
         }
 
         // Explanation text
-        if (t > 40) {
-            ctx.globalAlpha = Math.min(1, (t - 40) / 25);
-            drawCenteredText("FINISHING THE PATTERN ISN'T ENOUGH!", gy + TILE + 46, "#BFCDC0", 4);
-            ctx.globalAlpha = 1;
-        }
-        if (t > 55) {
-            ctx.globalAlpha = Math.min(1, (t - 55) / 25);
-            drawCenteredText("CLEAR ALL GOBLINS TO FINISH THE LEVEL!", gy + TILE + 72, "#F6CC60", 4);
-            ctx.globalAlpha = 1;
-        }
+        drawCenteredText("FINISHING THE PATTERN ISN'T ENOUGH!", gy + TILE + 46, "#BFCDC0", 4);
+        drawCenteredText("CLEAR ALL GOBLINS TO FINISH THE LEVEL!", gy + TILE + 72, "#F6CC60", 4);
     }
 
     // ======== PAGE 5: FANS / DANCERS ========
     else if (tutorialPage === 5) {
-        const titleAlpha = Math.min(1, t / 30);
-        ctx.globalAlpha = titleAlpha;
         drawCenteredText("YOUR FANS!", 18, "#9B59B6", 8);
-        ctx.globalAlpha = 1;
 
         // Show mini dancers bobbing, with a tomato throw
         const dcY = 55;
@@ -4675,9 +4658,8 @@ function renderTutorialScreen() {
             { body: "#9B59B6", dark: "#7B3996", head: "#F09090", hair: "#F6CC60" },
         ];
 
-        if (t > 20) {
-            const dA = Math.min(1, (t - 20) / 20);
-            ctx.globalAlpha = dA;
+        {
+            const dA = 1;
 
             // Draw 3 mini dancers bobbing
             for (let i = 0; i < 3; i++) {
@@ -4758,16 +4740,8 @@ function renderTutorialScreen() {
         }
 
         // Explanation text
-        if (t > 35) {
-            ctx.globalAlpha = Math.min(1, (t - 35) / 25);
-            drawCenteredText("SLAY GOBLINS TO ATTRACT FANS!", dcY + TILE + 34, "#BFCDC0", 5);
-            ctx.globalAlpha = 1;
-        }
-        if (t > 50) {
-            ctx.globalAlpha = Math.min(1, (t - 50) / 25);
-            drawCenteredText("THEY'LL THROW TOMATOES AT NEARBY GOBLINS!", dcY + TILE + 60, "#F6CC60", 4);
-            ctx.globalAlpha = 1;
-        }
+        drawCenteredText("SLAY GOBLINS TO ATTRACT FANS!", dcY + TILE + 34, "#BFCDC0", 5);
+        drawCenteredText("THEY'LL THROW TOMATOES AT NEARBY GOBLINS!", dcY + TILE + 60, "#F6CC60", 4);
     }
 
     // Blinking prompt
@@ -4775,6 +4749,9 @@ function renderTutorialScreen() {
     if (t > 40 && t % 60 < 40) {
         drawCenteredText(promptText, H - 10, "#EBEBE3", 5);
     }
+
+    updateSceneFadeOut();
+    applySceneFade(t);
 }
 
 function renderSabotageAnim() {
@@ -4913,86 +4890,29 @@ function renderEnemyWarning() {
     const gobBob = gobFrame % 2 === 1 ? 1 : 0;
 
     if (enemyWarningType === "elite") {
-        // "WARNING!" title — fades in
-        const titleAlpha = Math.min(1, t / 20);
-        ctx.globalAlpha = titleAlpha;
         drawCenteredText("WARNING!", 30, "#FF4466", 8);
-        ctx.globalAlpha = 1;
-
-        // Enemy name — fades in
-        if (t > 15) {
-            ctx.globalAlpha = Math.min(1, (t - 15) / 20);
-            drawCenteredText("ELITE GOBLIN", 55, "#FF88CC", 6);
-            ctx.globalAlpha = 1;
-        }
-
-        // Large animated elite goblin sprite (centered)
-        if (t > 25) {
-            ctx.globalAlpha = Math.min(1, (t - 25) / 20);
-            drawGoblinSprite("elite", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
-            ctx.globalAlpha = 1;
-        }
-
-        // Description text — staggered fade-ins
-        if (t > 40) {
-            ctx.globalAlpha = Math.min(1, (t - 40) / 25);
-            drawCenteredText("THIS GOBLIN IS EXTRA STRONG!", 115, "#BFCDC0", 5);
-            ctx.globalAlpha = 1;
-        }
-        if (t > 55) {
-            ctx.globalAlpha = Math.min(1, (t - 55) / 25);
-            drawCenteredText("IT TAKES 3 HITS TO DEFEAT!", 132, "#FF88CC", 5);
-            ctx.globalAlpha = 1;
-        }
-        if (t > 70) {
-            ctx.globalAlpha = Math.min(1, (t - 70) / 25);
-            drawCenteredText("IT ALSO MOVES FASTER THAN NORMAL GOBLINS.", 155, "#BFCDC0", 4);
-            ctx.globalAlpha = 1;
-        }
+        drawCenteredText("ELITE GOBLIN", 55, "#FF88CC", 6);
+        drawGoblinSprite("elite", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
+        drawCenteredText("THIS GOBLIN IS EXTRA STRONG!", 115, "#BFCDC0", 5);
+        drawCenteredText("IT TAKES 3 HITS TO DEFEAT!", 132, "#FF88CC", 5);
+        drawCenteredText("IT ALSO MOVES FASTER THAN NORMAL GOBLINS.", 155, "#BFCDC0", 4);
 
     } else if (enemyWarningType === "catapult") {
-        // "WARNING!" title — fades in
-        const titleAlpha = Math.min(1, t / 20);
-        ctx.globalAlpha = titleAlpha;
         drawCenteredText("WARNING!", 30, "#FF4466", 8);
-        ctx.globalAlpha = 1;
-
-        // Enemy name
-        if (t > 15) {
-            ctx.globalAlpha = Math.min(1, (t - 15) / 20);
-            drawCenteredText("CATAPULT GOBLIN", 55, "#88AAFF", 6);
-            ctx.globalAlpha = 1;
-        }
-
-        // Large animated catapult goblin sprite (centered)
-        if (t > 25) {
-            ctx.globalAlpha = Math.min(1, (t - 25) / 20);
-            drawGoblinSprite("catapult", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
-            ctx.globalAlpha = 1;
-        }
-
-        // Description text — staggered fade-ins
-        if (t > 40) {
-            ctx.globalAlpha = Math.min(1, (t - 40) / 25);
-            drawCenteredText("THIS GOBLIN THROWS BOULDERS!", 115, "#BFCDC0", 5);
-            ctx.globalAlpha = 1;
-        }
-        if (t > 55) {
-            ctx.globalAlpha = Math.min(1, (t - 55) / 25);
-            drawCenteredText("IT HURLS ROCKS AT YOUR BEAT GRID FROM A DISTANCE.", 138, "#BFCDC0", 4);
-            ctx.globalAlpha = 1;
-        }
-        if (t > 70) {
-            ctx.globalAlpha = Math.min(1, (t - 70) / 25);
-            drawCenteredText("IT CAN'T BE KILLED, BUT IT CAN KILL YOU!", 172, "#FF4466", 4);
-            ctx.globalAlpha = 1;
-        }
+        drawCenteredText("CATAPULT GOBLIN", 55, "#88AAFF", 6);
+        drawGoblinSprite("catapult", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
+        drawCenteredText("THIS GOBLIN THROWS BOULDERS!", 115, "#BFCDC0", 5);
+        drawCenteredText("IT HURLS ROCKS AT YOUR BEAT GRID FROM A DISTANCE.", 138, "#BFCDC0", 4);
+        drawCenteredText("IT CAN'T BE KILLED, BUT IT CAN KILL YOU!", 172, "#FF4466", 4);
     }
 
     // Blinking "PRESS ENTER TO CONTINUE"
     if (t > 60 && t % 60 < 40) {
         drawCenteredText("PRESS ENTER TO CONTINUE", H - 10, "#EBEBE3", 5);
     }
+
+    updateSceneFadeOut();
+    applySceneFade(t);
 }
 
 // ---- New Instrument Popup ----
@@ -5083,21 +5003,13 @@ function renderNewInstrument() {
 
     if (newInstrumentType === "cowbell") {
         // Title
-        const titleAlpha = Math.min(1, t / 20);
-        ctx.globalAlpha = titleAlpha;
         drawCenteredText("NEW INSTRUMENT!", 30, "#F6CC60", 8);
-        ctx.globalAlpha = 1;
 
         // Instrument name
-        if (t > 15) {
-            ctx.globalAlpha = Math.min(1, (t - 15) / 20);
-            drawCenteredText("COWBELL", 55, "#E86A6A", 6);
-            ctx.globalAlpha = 1;
-        }
+        drawCenteredText("COWBELL", 55, "#E86A6A", 6);
 
         // Animated cowbell icon — a simple bell shape
-        if (t > 25) {
-            ctx.globalAlpha = Math.min(1, (t - 25) / 20);
+        {
             const cx = (W * SCALE) / 2;
             const cy = 90 * SCALE;
             const bob = Math.sin(t * 0.1) * 3 * SCALE;
@@ -5126,38 +5038,21 @@ function renderNewInstrument() {
             ctx.arc(0, 8 * SCALE, 2 * SCALE, 0, Math.PI * 2);
             ctx.fill();
             ctx.restore();
-            ctx.globalAlpha = 1;
         }
 
         // Description text
-        if (t > 45) {
-            ctx.globalAlpha = Math.min(1, (t - 45) / 25);
-            drawCenteredText("A NEW ROW APPEARS BELOW THE KICK!", 132, "#BFCDC0", 4);
-            ctx.globalAlpha = 1;
-        }
-        if (t > 60) {
-            ctx.globalAlpha = Math.min(1, (t - 60) / 25);
-            drawCenteredText("FILL IN THE COWBELL BEATS TO COMPLETE THE PATTERN!", 170, "#E86A6A", 4);
-            ctx.globalAlpha = 1;
-        }
+        drawCenteredText("A NEW ROW APPEARS BELOW THE KICK!", 132, "#BFCDC0", 4);
+        drawCenteredText("FILL IN THE COWBELL BEATS TO COMPLETE THE PATTERN!", 170, "#E86A6A", 4);
 
     } else if (newInstrumentType === "tom") {
         // Title
-        const titleAlpha = Math.min(1, t / 20);
-        ctx.globalAlpha = titleAlpha;
         drawCenteredText("NEW INSTRUMENT!", 30, "#F6CC60", 8);
-        ctx.globalAlpha = 1;
 
         // Instrument name
-        if (t > 15) {
-            ctx.globalAlpha = Math.min(1, (t - 15) / 20);
-            drawCenteredText("TOM DRUM", 55, "#6AB8E8", 6);
-            ctx.globalAlpha = 1;
-        }
+        drawCenteredText("TOM DRUM", 55, "#6AB8E8", 6);
 
         // Animated tom drum icon — a cylindrical drum
-        if (t > 25) {
-            ctx.globalAlpha = Math.min(1, (t - 25) / 20);
+        {
             const cx = (W * SCALE) / 2;
             const cy = 90 * SCALE;
             const bob = Math.sin(t * 0.1) * 3 * SCALE;
@@ -5183,26 +5078,20 @@ function renderNewInstrument() {
             ctx.fillRect(-10 * SCALE, -4 * SCALE, 2 * SCALE, 12 * SCALE);
             ctx.fillRect(8 * SCALE, -4 * SCALE, 2 * SCALE, 12 * SCALE);
             ctx.restore();
-            ctx.globalAlpha = 1;
         }
 
         // Description text
-        if (t > 45) {
-            ctx.globalAlpha = Math.min(1, (t - 45) / 25);
-            drawCenteredText("THE TOM DRUM JOINS THE MIX!", 132, "#BFCDC0", 5);
-            ctx.globalAlpha = 1;
-        }
-        if (t > 60) {
-            ctx.globalAlpha = Math.min(1, (t - 60) / 25);
-            drawCenteredText("EVEN MORE BEATS TO MASTER!", 166, "#6AB8E8", 5);
-            ctx.globalAlpha = 1;
-        }
+        drawCenteredText("THE TOM DRUM JOINS THE MIX!", 132, "#BFCDC0", 5);
+        drawCenteredText("EVEN MORE BEATS TO MASTER!", 166, "#6AB8E8", 5);
     }
 
     // Blinking "PRESS ENTER TO CONTINUE"
     if (t > 60 && t % 60 < 40) {
         drawCenteredText("PRESS ENTER TO CONTINUE", H - 10, "#EBEBE3", 5);
     }
+
+    updateSceneFadeOut();
+    applySceneFade(t);
 }
 
 function gameLoop(timestamp) {
