@@ -3093,9 +3093,10 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
     // Screen-pixel base position
     const sx = gx * SCALE;
     const sy = gy * SCALE;
+    let bodyOffX = 0, bodyOffY = 0;
 
     function px(x, y, w, h, color) {
-        drawPx(sx + x, sy + y - bob, w, h, color);
+        drawPx(sx + bodyOffX + x, sy + bodyOffY + y - bob, w, h, color);
     }
 
     // Shadow
@@ -3104,28 +3105,40 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
     }
 
     // Catapult frame (behind goblin) — 48x48 detail
+    // Frame draws at base position; goblin body offsets behind it
     if (type === "catapult") {
+        // Draw frame at base position (no body offset)
+        function cpx(x, y, w, h, color) {
+            drawPx(sx + x, sy + y - bob, w, h, color);
+        }
         // Base platform
-        px(-12, 18, 72, 9, "#5C3A1E");
-        px(-9, 15, 66, 3, "#4A2A0E");
+        cpx(-12, 18, 72, 9, "#5C3A1E");
+        cpx(-9, 15, 66, 3, "#4A2A0E");
         // Left upright post
-        px(-6, 3, 9, 18, "#5C3A1E");
-        px(-3, 3, 3, 18, "#7B5A3A");     // Wood grain highlight
+        cpx(-6, 3, 9, 18, "#5C3A1E");
+        cpx(-3, 3, 3, 18, "#7B5A3A");     // Wood grain highlight
         // Right upright post
-        px(45, 3, 9, 18, "#5C3A1E");
-        px(48, 3, 3, 18, "#7B5A3A");     // Wood grain highlight
+        cpx(45, 3, 9, 18, "#5C3A1E");
+        cpx(48, 3, 3, 18, "#7B5A3A");     // Wood grain highlight
         // Throwing arm (horizontal beam)
-        px(-3, -3, 54, 6, "#7B5A3A");
-        px(0, -6, 48, 3, "#6B4A2A");     // Arm top edge
+        cpx(-3, -3, 54, 6, "#7B5A3A");
+        cpx(0, -6, 48, 3, "#6B4A2A");     // Arm top edge
         // Bowl/cup at launch end
-        px(-12, -12, 18, 9, "#4A2A0E");
-        px(-9, -15, 12, 3, "#4A2A0E");   // Bowl lip
-        px(-9, -9, 12, 3, "#5C3A1E");    // Bowl inner
+        cpx(-12, -12, 18, 9, "#4A2A0E");
+        cpx(-9, -15, 12, 3, "#4A2A0E");   // Bowl lip
+        cpx(-9, -9, 12, 3, "#5C3A1E");    // Bowl inner
         // Rope/binding details
-        px(-3, 0, 6, 3, "#3A2A0E");
-        px(45, 0, 6, 3, "#3A2A0E");
+        cpx(-3, 0, 6, 3, "#3A2A0E");
+        cpx(45, 0, 6, 3, "#3A2A0E");
         // Cross brace
-        px(12, 9, 24, 3, "#4A2A0E");
+        cpx(12, 9, 24, 3, "#4A2A0E");
+
+        // Offset goblin body behind the catapult based on facing direction
+        const d = opts.dir || 0;
+        if (d === 0) bodyOffY = -15;       // moving down → goblin shifts up (behind)
+        else if (d === 1) bodyOffY = 15;   // moving up → goblin shifts down (behind)
+        else if (d === 2) bodyOffX = 15;   // moving left → goblin shifts right (behind)
+        else if (d === 3) bodyOffX = -15;  // moving right → goblin shifts left (behind)
     }
 
     // === BODY (squat, stocky — Studioland style) ===
