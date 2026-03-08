@@ -2941,8 +2941,10 @@ function drawPlayer() {
         px(30, 0, 3, 3, "#D08040");
         // Mustache area (slightly darker)
         px(12, -6, 24, 3, "#A86430");
-        // Mouth gap hint
-        px(18, -3, 12, 2, "#8A5228");
+        // Mouth (shifts with direction)
+        const mouthOfs = p.dir === 2 ? -3 : p.dir === 3 ? 3 : 0;
+        px(18 + mouthOfs, -3, 12, 2, "#8A5228");  // Mouth gap
+        px(20 + mouthOfs, -4, 8, 1, "#6A3A18");   // Upper lip shadow
 
         // Eyes
         if (isBlinking) {
