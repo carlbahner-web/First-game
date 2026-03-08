@@ -1041,6 +1041,62 @@ function drawPixelDigits(num, cx, cy, color, pixelSize) {
 }
 
 // ---- Input ----
+// Check for pending feature screens (instruments, enemy warnings) at level transitions.
+// Returns true if a screen was shown (caller should return), false if nothing pending.
+function checkPendingFeatureScreens() {
+    const nextLevel = currentLevel + 1;
+    if (nextLevel >= LEVELS.length) return false;
+    const prevRows = LEVELS[currentLevel].activeRows;
+    const newRows = LEVELS[nextLevel].activeRows;
+
+    // New instrument screens
+    if (newRows > prevRows && newRows === 5 && !newInstrumentShown.cowbell) {
+        newInstrumentType = "cowbell";
+        newInstrumentShown.cowbell = true;
+        newInstrumentTimer = 0;
+        gameState = "newinstrument";
+        return true;
+    }
+    if (newRows > prevRows && newRows === 6 && !newInstrumentShown.tom) {
+        newInstrumentType = "tom";
+        newInstrumentShown.tom = true;
+        newInstrumentTimer = 0;
+        gameState = "newinstrument";
+        return true;
+    }
+
+    // Enemy warning screens
+    if (nextLevel === 2 && !enemyWarningShown.normal) {
+        enemyWarningType = "normal";
+        enemyWarningShown.normal = true;
+        enemyWarningBlink = 0;
+        enemyWarningIntroTimer = 0;
+        gameState = "enemywarning-intro";
+        if (audioCtx) playWarningDonk(audioCtx.currentTime);
+        return true;
+    }
+    if (nextLevel === 6 && !enemyWarningShown.elite) {
+        enemyWarningType = "elite";
+        enemyWarningShown.elite = true;
+        enemyWarningBlink = 0;
+        enemyWarningIntroTimer = 0;
+        gameState = "enemywarning-intro";
+        if (audioCtx) playWarningDonk(audioCtx.currentTime);
+        return true;
+    }
+    if (nextLevel === 14 && !enemyWarningShown.catapult) {
+        enemyWarningType = "catapult";
+        enemyWarningShown.catapult = true;
+        enemyWarningBlink = 0;
+        enemyWarningIntroTimer = 0;
+        gameState = "enemywarning-intro";
+        if (audioCtx) playWarningDonk(audioCtx.currentTime);
+        return true;
+    }
+
+    return false;
+}
+
 const keys = {};
 let spaceJustPressed = false;
 window.addEventListener("keydown", (e) => {
@@ -1076,11 +1132,14 @@ window.addEventListener("keydown", (e) => {
         e.preventDefault();
         if (gameState === "sabotage-anim") return; // ignore input during sabotage animation
         if (gameState === "enemywarning") {
-            gameState = "playing";
-            lastStepTime = performance.now();
+            // Check if there's another warning or instrument screen queued
+            if (checkPendingFeatureScreens()) return;
+            advanceLevel();
             return;
         }
         if (gameState === "newinstrument") {
+            // Check if there's an enemy warning queued for the next level
+            if (checkPendingFeatureScreens()) return;
             advanceLevel();
             return;
         }
@@ -1110,26 +1169,8 @@ window.addEventListener("keydown", (e) => {
             return;
         }
         if (gameState === "levelcomplete" && levelCelebrateTimer > 120) {
-            // Check if next level introduces a new instrument
-            const nextLevel = currentLevel + 1;
-            if (nextLevel < LEVELS.length) {
-                const prevRows = LEVELS[currentLevel].activeRows;
-                const newRows = LEVELS[nextLevel].activeRows;
-                if (newRows > prevRows && newRows === 5 && !newInstrumentShown.cowbell) {
-                    newInstrumentType = "cowbell";
-                    newInstrumentShown.cowbell = true;
-                    newInstrumentTimer = 0;
-                    gameState = "newinstrument";
-                    return;
-                }
-                if (newRows > prevRows && newRows === 6 && !newInstrumentShown.tom) {
-                    newInstrumentType = "tom";
-                    newInstrumentShown.tom = true;
-                    newInstrumentTimer = 0;
-                    gameState = "newinstrument";
-                    return;
-                }
-            }
+            // Show all feature screens (instruments + enemy warnings) before advancing
+            if (checkPendingFeatureScreens()) return;
             advanceLevel();
             return;
         }
@@ -1776,29 +1817,9 @@ function update(dt) {
         }
         goblin.respawnTimer--;
         if (goblin.respawnTimer <= 0) {
-            // Check if we need to show a warning before spawning a new enemy type
-            // Gate enemy types by level: elite from L7 (index 6), catapult from L15 (index 14)
-            const wouldBeElite = (killCount % 3 === 2 && killCount % 6 !== 5) && currentLevel >= 6;
-            const wouldBeCatapult = (killCount % 6 === 5 && !catapultGoblin && !catapultSpawnedThisCycle) && currentLevel >= 14;
-            if (wouldBeCatapult && !enemyWarningShown.catapult) {
-                enemyWarningType = "catapult";
-                enemyWarningShown.catapult = true;
-                enemyWarningBlink = 0;
-                enemyWarningIntroTimer = 0;
-                gameState = "enemywarning-intro";
-                if (audioCtx) playWarningDonk(audioCtx.currentTime);
-                goblin.respawnTimer = 60; // will respawn shortly after warning dismissed
-            } else if (wouldBeElite && !enemyWarningShown.elite) {
-                enemyWarningType = "elite";
-                enemyWarningShown.elite = true;
-                enemyWarningBlink = 0;
-                enemyWarningIntroTimer = 0;
-                gameState = "enemywarning-intro";
-                if (audioCtx) playWarningDonk(audioCtx.currentTime);
-                goblin.respawnTimer = 60;
-            }
+            // Enemy warnings now shown at level transitions (see checkPendingFeatureScreens)
             // Every 6th goblin is a catapult goblin instead of normal/elite (from L15+)
-            else if (killCount % 6 === 5 && !catapultGoblin && !catapultSpawnedThisCycle && currentLevel >= 14) {
+            if (killCount % 6 === 5 && !catapultGoblin && !catapultSpawnedThisCycle && currentLevel >= 14) {
                 catapultSequenceCount = 0;
                 spawnCatapultGoblin();
                 catapultSpawnedThisCycle = true;
@@ -2544,16 +2565,7 @@ function advanceLevel() {
     const newRows = LEVELS[currentLevel].activeRows;
     sabotageNextState = "playing";
 
-    // Green goblin warning before level 3 (index 2)
-    if (currentLevel === 2 && !enemyWarningShown.normal) {
-        enemyWarningType = "normal";
-        enemyWarningShown.normal = true;
-        enemyWarningBlink = 0;
-        enemyWarningIntroTimer = 0;
-        sabotageNextState = "enemywarning-intro";
-        if (audioCtx) playWarningDonk(audioCtx.currentTime);
-    }
-    // New instrument screens now shown before advanceLevel is called
+    // All feature screens (instruments, enemy warnings) now shown before advanceLevel is called
 
     // Start sabotage animation (goblin zigzags across grid scrambling cells)
     sabotageAnimTimer = 0;
