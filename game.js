@@ -1535,7 +1535,7 @@ function update(dt) {
             nx = Math.max(TILE, Math.min((COLS - 2) * TILE, nx));
             ny = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, ny));
 
-            // Don't walk into player, dancers, or solid objects
+            // Don't walk into player or solid objects; push dancers aside
             const cgBlockX = catapultGoblin ? Math.round(catapultGoblin.x / TILE) * TILE : -999;
             const cgBlockY = catapultGoblin ? Math.round(catapultGoblin.y / TILE) * TILE : -999;
             function isGobTileBlocked(tx, ty) {
@@ -1543,10 +1543,54 @@ function update(dt) {
                 const tty = Math.round(ty / TILE);
                 return (tx === p.x && ty === p.y)
                     || isTileBlockedByObjects(ttx, tty)
-                    || isTileOccupiedByDancer(ttx, tty)
                     || (catapultGoblin && tx === cgBlockX && ty === cgBlockY);
             }
+            // Push any dancer at the target tile perpendicular to goblin's movement
+            function pushDancerAt(tx, ty, moveDirX, moveDirY) {
+                const ttx = Math.round(tx / TILE);
+                const tty = Math.round(ty / TILE);
+                for (const d of dancers) {
+                    const dtx = Math.round(d.x / TILE);
+                    const dty = Math.round(d.y / TILE);
+                    if (dtx === ttx && dty === tty) {
+                        // Push perpendicular to goblin movement direction
+                        let pushX = 0, pushY = 0;
+                        if (moveDirX !== 0) {
+                            // Goblin moving horizontally → push dancer vertically
+                            pushY = (d.y >= goblin.y) ? 1 : -1;
+                        } else {
+                            // Goblin moving vertically → push dancer horizontally
+                            pushX = (d.x >= goblin.x) ? 1 : -1;
+                        }
+                        // Try the preferred perpendicular direction, then the opposite
+                        for (const sign of [1, -1]) {
+                            const px = pushX * sign, py = pushY * sign;
+                            let newX = d.x + px * TILE;
+                            let newY = d.y + py * TILE;
+                            newX = Math.max(TILE, Math.min((COLS - 2) * TILE, newX));
+                            newY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, newY));
+                            const ntx = Math.round(newX / TILE);
+                            const nty = Math.round(newY / TILE);
+                            if (!isTileBlockedByObjects(ntx, nty)
+                                && !isTileOccupiedByDancer(ntx, nty)
+                                && !(ntx === Math.round(p.x / TILE) && nty === Math.round(p.y / TILE))) {
+                                d.targetX = newX;
+                                d.targetY = newY;
+                                d.walkingIn = true;
+                                return true;
+                            }
+                        }
+                        return false; // couldn't push, dancer is stuck
+                    }
+                }
+                return true; // no dancer there
+            }
             if (!isGobTileBlocked(nx, ny)) {
+                const moveDirX = nx - goblin.x;
+                const moveDirY = ny - goblin.y;
+                if (isTileOccupiedByDancer(Math.round(nx / TILE), Math.round(ny / TILE))) {
+                    pushDancerAt(nx, ny, moveDirX, moveDirY);
+                }
                 goblin.destX = nx;
                 goblin.destY = ny;
             } else {
@@ -1568,6 +1612,11 @@ function update(dt) {
                 ax = Math.max(TILE, Math.min((COLS - 2) * TILE, ax));
                 ay = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, ay));
                 if ((ax !== goblin.x || ay !== goblin.y) && !isGobTileBlocked(ax, ay)) {
+                    const aDirX = ax - goblin.x;
+                    const aDirY = ay - goblin.y;
+                    if (isTileOccupiedByDancer(Math.round(ax / TILE), Math.round(ay / TILE))) {
+                        pushDancerAt(ax, ay, aDirX, aDirY);
+                    }
                     goblin.destX = ax;
                     goblin.destY = ay;
                 }
