@@ -16,19 +16,31 @@ const GRID_X = 3;          // grid start tile-x
 const GRID_Y = 4;          // grid start tile-y
 const GAP_AFTER_ROW = 3;   // 1-tile visual gap after row 3 (Kick)
 // Tempo is set per level using frames-per-16th-note at 60fps
-// Levels 1-2: 10 frames (90 BPM), 3-4: 9 (100), 5-6: 8 (112.5),
-// 7-8: 7 (128.6), 9-10: 6 (150), 11-12: 5 (180)
+// Gradual curve across 30 levels:
+// L1-5: 10 frames (90 BPM), L6-14: 9 (100), L15-18: 8 (112.5),
+// L19-26: 7 (128.6), L27-28: 6 (150), L29-30: 5 (180)
 let stepMs = 10 * (1000 / 60); // default: 10 frames per 16th at 60fps
 
 function setLevelTempo(levelIndex) {
-    const framesPerSixteenth = [10, 10, 9, 9, 8, 8, 7, 7, 6, 6, 5, 5][levelIndex] || 10;
+    const framesPerSixteenth = [
+        10,10,10,10,10,  // L1-5:   90 BPM — learnable
+         9, 9, 9, 9, 9,  // L6-10:  100 BPM — slight bump
+         9, 9, 9, 9,     // L11-14: 100 BPM — plateau for cowbell
+         8, 8, 8, 8,     // L15-18: 112.5 BPM — moderate
+         7, 7, 7, 7,     // L19-22: 128.6 BPM — getting faster
+         7, 7, 7, 7,     // L23-26: 128.6 BPM — plateau for tom
+         6, 6,           // L27-28: 150 BPM — fast
+         5, 5,           // L29-30: 180 BPM — maximum
+    ][levelIndex] || 7;
     stepMs = framesPerSixteenth * (1000 / 60);
 }
 
-// ---- Level Definitions ----
+// ---- Level Definitions (30 levels) ----
 const LEVELS = [
-    // ---- BEGINNER: Rock/Pop (Levels 1-4) — 4 rows: O,H,S,K ----
-    // L1: Basic rock — 8th-note hats, backbeat snare, simple kick (13 hits)
+    // ---- ROCK FUNDAMENTALS (Levels 1-10) — 4 rows: O,H,S,K ----
+    // Levels 1-2 are practice (no goblins)
+
+    // L1: Basic rock — 8th-note hats, backbeat snare, simple kick
     {
         name: "Level 1",
         activeRows: 4,
@@ -41,17 +53,17 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
         ],
         pattern: [
-            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // O — no open hat yet
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // O
             [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // H — steady 8ths
             [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // S — backbeat 2&4
             [true, false,false,false, false,false,false,false, true, false,false,false, false,false,false,false], // K — beats 1&3
-            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // B
-            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
-        goblinSpeed: 0.4,
+        goblinSpeed: 0,
         timerSeconds: 99,
     },
-    // L2: Pop variation — kick gets syncopated, open hat accent (12 hits)
+    // L2: Pop variation — add open hat accent, kick gets syncopated
     {
         name: "Level 2",
         activeRows: 4,
@@ -59,14 +71,14 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,true, false, false,false,false,false], // O — open hat on beat 3-and
             [true, false,true, false, true, false,true, false, true, false,false,false, true, false,true, false], // H — gap where O plays
             [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // S — backbeat
-            [true, false,false,false, false,false,true, false, false,false,false,false, false,false,false,false], // K — kick anticipation into 2
-            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // B
-            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
+            [true, false,false,false, false,false,true, false, false,false,false,false, false,false,false,false], // K — kick anticipation
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
-        goblinSpeed: 0.42,
+        goblinSpeed: 0,
         timerSeconds: 99,
     },
-    // L3: Driving rock — busier kick, snare stays simple (14 hits)
+    // L3: Driving rock — busier kick pattern (goblins start here!)
     {
         name: "Level 3",
         activeRows: 4,
@@ -74,93 +86,277 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,true, false, false,false,false,false], // O
             [true, false,true, false, true, false,true, false, true, false,false,false, true, false,true, false], // H
             [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // S
-            [true, false,false,false, false,false,true, false, true, false,false,false, false,false,true, false], // K — driving 4-kick pattern
-            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // B
-            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
+            [true, false,false,false, false,false,true, false, true, false,false,false, false,false,false,false], // K — added 3rd kick
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
-        goblinSpeed: 0.45,
+        goblinSpeed: 0.35,
         timerSeconds: 99,
     },
-    // L4: Shuffle feel — hats thin out, kick and snare syncopate (12 hits)
+    // L4: Add a 4th kick, driving feel
     {
         name: "Level 4",
         activeRows: 4,
         pattern: [
-            [false,false,false,false, false,false,true, false, false,false,false,false, false,false,true, false], // O — offbeat open hats
-            [true, false,true, false, true, false,false,false, true, false,true, false, true, false,false,false], // H — gaps for open hats
-            [false,false,false,false, true, false,false,false, false,false,false,true,  true, false,false,false], // S — ghost note before 4
-            [true, false,false,false, false,false,false,false, true, false,false,false, false,false,false,true ], // K — anticipation into 1
-            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // B
-            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
+            [false,false,false,false, false,false,false,false, false,false,true, false, false,false,false,false], // O
+            [true, false,true, false, true, false,true, false, true, false,false,false, true, false,true, false], // H
+            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // S
+            [true, false,false,false, false,false,true, false, true, false,false,false, false,false,true, false], // K — 4 kicks
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
-        goblinSpeed: 0.48,
+        goblinSpeed: 0.36,
         timerSeconds: 99,
     },
-    // ---- INTERMEDIATE: Funk/Soul (Levels 5-8) — 5 rows: +Cowbell ----
-    // L5: Funk intro — stripped-back groove with cowbell on quarters (13 hits)
+    // L5: Offbeat open hats — hats thin out for open hat accents
     {
         name: "Level 5",
-        activeRows: 5,
+        activeRows: 4,
         pattern: [
-            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // O — clean, no open hat
-            [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // H — steady 8ths
-            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // S — simple backbeat
-            [true, false,false,false, false,false,false,true,  false,false,true, false, false,false,false,false], // K — funky syncopation
-            [true, false,false,false, true, false,false,false, true, false,false,false, true, false,false,false], // B — quarter-note cowbell
-            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
+            [false,false,false,false, false,false,true, false, false,false,false,false, false,false,true, false], // O — offbeat open hats
+            [true, false,true, false, true, false,false,false, true, false,true, false, true, false,false,false], // H — gaps for O
+            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // S
+            [true, false,false,false, false,false,true, false, true, false,false,false, false,false,true, false], // K
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
-        goblinSpeed: 0.5,
+        goblinSpeed: 0.38,
         timerSeconds: 99,
     },
-    // L6: Soul groove — offbeat cowbell, snare ghost notes (15 hits)
+    // L6: Snare ghost note — add ghost before beat 4
     {
         name: "Level 6",
+        activeRows: 4,
+        pattern: [
+            [false,false,false,false, false,false,true, false, false,false,false,false, false,false,true, false], // O
+            [true, false,true, false, true, false,false,false, true, false,true, false, true, false,false,false], // H
+            [false,false,false,false, true, false,false,false, false,false,false,true,  true, false,false,false], // S — ghost before 4
+            [true, false,false,false, false,false,true, false, true, false,false,false, false,false,true, false], // K
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+        ],
+        goblinSpeed: 0.39,
+        timerSeconds: 99,
+    },
+    // L7: Syncopated kick — displaced kicks (pink goblins start here!)
+    {
+        name: "Level 7",
+        activeRows: 4,
+        pattern: [
+            [false,false,false,false, false,false,true, false, false,false,false,false, false,false,true, false], // O
+            [true, false,true, false, true, false,false,false, true, false,true, false, true, false,false,false], // H
+            [false,false,false,false, true, false,false,false, false,false,false,true,  true, false,false,false], // S
+            [true, false,false,false, false,false,false,false, true, false,false,false, false,false,false,true ], // K — anticipation into 1
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+        ],
+        goblinSpeed: 0.40,
+        timerSeconds: 99,
+    },
+    // L8: More open hat variety
+    {
+        name: "Level 8",
+        activeRows: 4,
+        pattern: [
+            [false,false,false,false, false,false,true, false, false,false,false,false, false,false,true, false], // O
+            [true, false,true, false, true, false,false,false, true, false,true, false, true, false,false,false], // H
+            [false,false,false,true,  true, false,false,false, false,false,false,true,  true, false,false,false], // S — ghost before 2 AND 4
+            [true, false,false,false, false,false,false,false, true, false,false,false, false,false,false,true ], // K
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+        ],
+        goblinSpeed: 0.42,
+        timerSeconds: 99,
+    },
+    // L9: Complex kick+hat interplay
+    {
+        name: "Level 9",
+        activeRows: 4,
+        pattern: [
+            [false,false,false,false, false,false,true, false, false,false,true, false, false,false,false,false], // O — two open hats
+            [true, false,true, false, true, false,false,false, true, false,false,false, true, false,true, false], // H — gaps for O
+            [false,false,false,true,  true, false,false,false, false,false,false,true,  true, false,false,false], // S
+            [true, false,false,false, false,false,false,true,  false,false,false,false, false,false,false,true ], // K — syncopated
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+        ],
+        goblinSpeed: 0.44,
+        timerSeconds: 99,
+    },
+    // L10: Rock mastery — full complexity with 4 rows
+    {
+        name: "Level 10",
+        activeRows: 4,
+        pattern: [
+            [false,false,false,false, false,false,true, false, false,false,true, false, false,false,true, false], // O — three open hats
+            [true, false,true, false, true, false,false,false, true, false,false,false, true, false,false,false], // H — gaps for O
+            [false,false,false,true,  true, false,false,false, false,false,false,true,  true, false,false,false], // S
+            [true, false,false,false, false,false,false,true,  true, false,false,false, false,true, false,false], // K — busy syncopation
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+        ],
+        goblinSpeed: 0.45,
+        timerSeconds: 99,
+    },
+
+    // ---- FUNK & SOUL (Levels 11-20) — 5 rows: +Cowbell ----
+
+    // L11: Funk intro — stripped back + quarter-note cowbell (cowbell introduced!)
+    {
+        name: "Level 11",
+        activeRows: 5,
+        pattern: [
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // O — clean
+            [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // H — steady 8ths
+            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // S — simple backbeat
+            [true, false,false,false, false,false,false,false, true, false,false,false, false,false,false,false], // K — simple
+            [true, false,false,false, true, false,false,false, true, false,false,false, true, false,false,false], // B — quarter-note cowbell
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+        ],
+        goblinSpeed: 0.46,
+        timerSeconds: 95,
+    },
+    // L12: Offbeat cowbell
+    {
+        name: "Level 12",
+        activeRows: 5,
+        pattern: [
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // O
+            [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // H
+            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // S
+            [true, false,false,false, false,false,true, false, true, false,false,false, false,false,false,false], // K — syncopated
+            [false,false,true, false, false,false,true, false, false,false,true, false, false,false,true, false], // B — offbeat cowbell
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+        ],
+        goblinSpeed: 0.48,
+        timerSeconds: 95,
+    },
+    // L13: Funky kick + cowbell
+    {
+        name: "Level 13",
+        activeRows: 5,
+        pattern: [
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // O
+            [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // H
+            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // S
+            [true, false,false,false, false,false,false,true,  false,false,true, false, false,false,false,false], // K — funky syncopation
+            [false,false,true, false, false,false,true, false, false,false,true, false, false,false,true, false], // B
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+        ],
+        goblinSpeed: 0.49,
+        timerSeconds: 95,
+    },
+    // L14: Ghost snare notes + funk kick
+    {
+        name: "Level 14",
+        activeRows: 5,
+        pattern: [
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // O
+            [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // H
+            [false,false,false,true,  true, false,false,false, false,false,false,true,  true, false,false,false], // S — ghost before backbeat
+            [true, false,false,false, false,false,false,true,  false,false,true, false, false,false,false,false], // K
+            [false,false,true, false, false,false,true, false, false,false,true, false, false,false,true, false], // B
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+        ],
+        goblinSpeed: 0.50,
+        timerSeconds: 95,
+    },
+    // L15: Tresillo cowbell (catapult goblins start here!)
+    {
+        name: "Level 15",
+        activeRows: 5,
+        pattern: [
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // O
+            [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // H
+            [false,false,false,true,  true, false,false,false, false,false,false,true,  true, false,false,false], // S
+            [true, false,false,false, false,false,false,true,  false,false,true, false, false,false,false,false], // K
+            [true, false,false,true,  false,false,true, false, true, false,false,true,  false,false,true, false], // B — tresillo
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+        ],
+        goblinSpeed: 0.52,
+        timerSeconds: 90,
+    },
+    // L16: Open hat accents return
+    {
+        name: "Level 16",
         activeRows: 5,
         pattern: [
             [false,false,false,false, false,false,true, false, false,false,false,false, false,false,true, false], // O — offbeat accents
             [true, false,true, false, true, false,false,false, true, false,true, false, true, false,false,false], // H — gaps for O
-            [false,false,false,true,  true, false,false,false, false,false,false,true,  true, false,false,false], // S — ghost before backbeat
-            [true, false,false,false, false,false,false,true,  false,false,true, false, false,false,false,false], // K — same funky kick
-            [false,false,true, false, false,false,true, false, false,false,true, false, false,false,true, false], // B — offbeat cowbell
-            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
+            [false,false,false,true,  true, false,false,false, false,false,false,true,  true, false,false,false], // S
+            [true, false,false,false, false,false,false,true,  false,false,true, false, false,false,false,false], // K
+            [true, false,false,true,  false,false,true, false, true, false,false,true,  false,false,true, false], // B
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.53,
-        timerSeconds: 99,
+        timerSeconds: 90,
     },
-    // L7: James Brown feel — sparse but syncopated, cowbell drives (14 hits)
+    // L17: Syncopated everything — James Brown feel
     {
-        name: "Level 7",
+        name: "Level 17",
         activeRows: 5,
         pattern: [
-            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // O — stripped back
-            [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // H — steady 8ths
-            [false,false,false,false, true, false,false,true,  false,false,false,false, true, false,false,false], // S — ghost note on and-of-2
-            [true, false,false,false, false,false,false,false, false,true, false,false, false,false,true, false], // K — displaced kick
-            [true, false,false,true,  false,false,true, false, true, false,false,true,  false,false,true, false], // B — tresillo cowbell
-            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
+            [false,false,false,false, false,false,true, false, false,false,false,false, false,false,true, false], // O
+            [true, false,true, false, true, false,false,false, true, false,true, false, true, false,false,false], // H
+            [false,false,false,false, true, false,false,true,  false,false,false,false, true, false,false,false], // S — ghost on and-of-2
+            [true, false,false,false, false,false,false,false, false,true, false,false, false,false,true, false], // K — displaced
+            [true, false,false,true,  false,false,true, false, true, false,false,true,  false,false,true, false], // B
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
-        goblinSpeed: 0.55,
-        timerSeconds: 99,
+        goblinSpeed: 0.54,
+        timerSeconds: 90,
     },
-    // L8: Funky climax — everything locks in, cowbell 8ths (16 hits)
+    // L18: Disco-style — 4-on-the-floor with busy hats
     {
-        name: "Level 8",
+        name: "Level 18",
         activeRows: 5,
         pattern: [
             [false,false,false,false, false,false,true, false, false,false,false,false, false,false,false,false], // O — single accent
-            [true, false,true, false, true, false,false,false, true, false,true, false, true, false,true, false], // H — gap for O
-            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,true ], // S — ghost note on and-of-4
-            [true, false,false,true,  false,false,false,false, true, false,false,false, false,true, false,false], // K — syncopated kick
+            [true, false,true, false, true, false,false,false, true, false,true, false, true, false,true, false], // H
+            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,true ], // S — ghost on and-of-4
+            [true, false,false,true,  false,false,false,false, true, false,false,false, false,true, false,false], // K — syncopated
             [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // B — 8th-note cowbell
-            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // T
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+        ],
+        goblinSpeed: 0.55,
+        timerSeconds: 90,
+    },
+    // L19: Latin-influenced — cowbell drives, kick sparse
+    {
+        name: "Level 19",
+        activeRows: 5,
+        pattern: [
+            [false,false,false,false, false,false,true, false, false,false,false,false, false,false,true, false], // O
+            [true, false,true, false, true, false,false,false, true, false,true, false, true, false,false,false], // H
+            [false,false,false,false, true, false,false,true,  false,false,false,false, true, false,false,true ], // S — ghost notes
+            [true, false,false,false, false,false,false,false, false,false,true, false, false,false,false,false], // K — sparse
+            [true, false,false,true,  false,true, false,false, true, false,false,true,  false,true, false,false], // B — Latin pattern
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+        ],
+        goblinSpeed: 0.57,
+        timerSeconds: 90,
+    },
+    // L20: Funk mastery — full complexity with 5 rows
+    {
+        name: "Level 20",
+        activeRows: 5,
+        pattern: [
+            [false,false,false,false, false,false,true, false, false,false,false,false, false,false,true, false], // O
+            [true, false,true, false, true, false,false,false, true, false,true, false, true, false,false,false], // H
+            [false,false,false,true,  true, false,false,false, false,false,false,true,  true, false,false,false], // S
+            [true, false,false,false, false,false,false,true,  false,false,true, false, false,false,false,true ], // K — displaced syncopation
+            [false,true, false,false, false,true, false,false, false,true, false,false, false,true, false,false], // B — offbeat pulse
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.58,
         timerSeconds: 90,
     },
-    // ---- ADVANCED: Breakbeats (Levels 9-12) — 6 rows: +Tom ----
-    // L9: Hip-hop boom bap — stripped WAY back, toms add flavor (13 hits)
+
+    // ---- BREAKBEATS & BEYOND (Levels 21-30) — 6 rows: +Tom ----
+
+    // L21: Hip-hop boom bap — stripped back, toms add flavor (tom introduced!)
     {
-        name: "Level 9",
+        name: "Level 21",
         activeRows: 6,
         pattern: [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // O — clean
@@ -168,44 +364,134 @@ const LEVELS = [
             [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // S — boom bap snare
             [true, false,false,false, false,false,false,false, false,false,true, false, false,false,false,false], // K — classic boom bap
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // B — no cowbell
-            [false,false,false,false, false,false,false,true,  false,false,false,false, false,false,false,true ], // T — tom fills on and-of-2 and and-of-4
+            [false,false,false,false, false,false,false,true,  false,false,false,false, false,false,false,true ], // T — tom fills
         ],
-        goblinSpeed: 0.6,
-        timerSeconds: 90,
+        goblinSpeed: 0.59,
+        timerSeconds: 85,
     },
-    // L10: Breakbeat — Amen-style, snare is busy, kick is sparse (16 hits)
+    // L22: Offbeat toms
     {
-        name: "Level 10",
+        name: "Level 22",
         activeRows: 6,
         pattern: [
-            [false,false,false,false, false,false,true, false, false,false,false,false, false,false,false,false], // O — accent
-            [true, false,true, false, true, false,false,false, true, false,false,false, true, false,true, false], // H — broken up
-            [false,false,false,false, true, false,false,false, false,true, false,false, true, false,false,false], // S — off-grid snare
-            [true, false,false,false, false,false,false,false, true, false,false,false, false,false,false,true ], // K — kick anticipation
-            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // B — stripped
-            [false,false,false,true,  false,false,false,false, false,false,false,true,  false,false,false,false], // T — offbeat tom accents
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // O
+            [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // H
+            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // S
+            [true, false,false,false, false,false,true, false, false,false,true, false, false,false,false,false], // K — syncopated
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // B
+            [false,false,false,true,  false,false,false,false, false,false,false,true,  false,false,false,false], // T — offbeat accents
+        ],
+        goblinSpeed: 0.61,
+        timerSeconds: 85,
+    },
+    // L23: Add cowbell back with toms
+    {
+        name: "Level 23",
+        activeRows: 6,
+        pattern: [
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false], // O
+            [true, false,true, false, true, false,true, false, true, false,true, false, true, false,true, false], // H
+            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // S
+            [true, false,false,false, false,false,true, false, false,false,true, false, false,false,false,false], // K
+            [true, false,false,false, true, false,false,false, true, false,false,false, true, false,false,false], // B — quarter-note cowbell
+            [false,false,false,true,  false,false,false,false, false,false,false,true,  false,false,false,false], // T
         ],
         goblinSpeed: 0.63,
         timerSeconds: 85,
     },
-    // L11: D&B half-time — fast hats, syncopated snare, rolling toms (17 hits)
+    // L24: Breakbeat snare — off-grid snare hits
     {
-        name: "Level 11",
+        name: "Level 24",
+        activeRows: 6,
+        pattern: [
+            [false,false,false,false, false,false,true, false, false,false,false,false, false,false,false,false], // O — accent
+            [true, false,true, false, true, false,false,false, true, false,true, false, true, false,true, false], // H
+            [false,false,false,false, true, false,false,false, false,true, false,false, true, false,false,false], // S — off-grid snare
+            [true, false,false,false, false,false,false,false, true, false,false,false, false,false,false,true ], // K — kick anticipation
+            [true, false,false,false, true, false,false,false, true, false,false,false, true, false,false,false], // B
+            [false,false,false,true,  false,false,false,false, false,false,false,true,  false,false,false,false], // T
+        ],
+        goblinSpeed: 0.65,
+        timerSeconds: 85,
+    },
+    // L25: Complex kick+tom interplay
+    {
+        name: "Level 25",
+        activeRows: 6,
+        pattern: [
+            [false,false,false,false, false,false,true, false, false,false,false,false, false,false,false,false], // O
+            [true, false,true, false, true, false,false,false, true, false,true, false, true, false,true, false], // H
+            [false,false,false,false, true, false,false,false, false,true, false,false, true, false,false,false], // S
+            [true, false,false,false, false,false,false,true,  false,false,false,false, false,false,false,true ], // K — syncopated
+            [false,false,true, false, false,false,true, false, false,false,true, false, false,false,true, false], // B — offbeat
+            [false,false,false,false, false,false,false,false, false,false,false,true,  false,false,false,false], // T — accent
+        ],
+        goblinSpeed: 0.67,
+        timerSeconds: 85,
+    },
+    // L26: D&B half-time — fast hats, syncopated snare, rolling toms
+    {
+        name: "Level 26",
         activeRows: 6,
         pattern: [
             [false,false,false,false, false,false,false,false, false,false,true, false, false,false,false,false], // O — single accent
             [true, false,true, false, true, false,true, false, true, false,false,false, true, false,true, false], // H — gap for O
-            [false,false,false,false, false,false,false,false, true, false,false,false, false,false,true, false], // S — half-time snare on 3, ghost on and-of-4
-            [true, false,false,false, false,true, false,false, false,false,false,false, false,false,false,false], // K — sparse kick with anticipation
-            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // B — sparse cowbell accents
+            [false,false,false,false, false,false,false,false, true, false,false,false, false,false,true, false], // S — half-time snare
+            [true, false,false,false, false,true, false,false, false,false,false,false, false,false,false,false], // K — sparse with anticipation
+            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // B — sparse cowbell
             [false,false,false,true,  false,false,false,true,  false,false,false,true,  false,false,false,false], // T — rolling offbeat toms
         ],
-        goblinSpeed: 0.67,
+        goblinSpeed: 0.69,
         timerSeconds: 80,
     },
-    // L12: Grand finale — everything together, syncopated chaos (19 hits)
+    // L27: Rolling toms — busier tom pattern
     {
-        name: "Level 12",
+        name: "Level 27",
+        activeRows: 6,
+        pattern: [
+            [false,false,false,false, false,false,false,false, false,false,true, false, false,false,false,false], // O
+            [true, false,true, false, true, false,true, false, true, false,false,false, true, false,true, false], // H
+            [false,false,false,false, false,false,false,false, true, false,false,false, false,false,true, false], // S
+            [true, false,false,false, false,true, false,false, false,false,false,false, false,false,false,false], // K
+            [false,false,false,false, true, false,false,false, false,false,false,false, true, false,false,false], // B
+            [false,false,false,true,  false,false,false,true,  false,false,false,true,  false,false,false,true ], // T — 4 rolling toms
+        ],
+        goblinSpeed: 0.70,
+        timerSeconds: 80,
+    },
+    // L28: Syncopated chaos — everything displaced
+    {
+        name: "Level 28",
+        activeRows: 6,
+        pattern: [
+            [false,false,false,false, false,false,true, false, false,false,false,false, false,false,true, false], // O — offbeat open hats
+            [true, false,true, false, true, false,false,false, true, false,true, false, true, false,false,false], // H — gaps for O
+            [false,false,false,true,  true, false,false,false, false,false,false,true,  true, false,false,false], // S — ghost + backbeat
+            [true, false,false,false, false,false,false,true,  false,false,true, false, false,false,false,false], // K — displaced
+            [true, false,false,true,  false,false,true, false, true, false,false,true,  false,false,true, false], // B — tresillo
+            [false,false,false,false, false,false,false,false, false,false,false,false, true, false,true, false], // T — tom break at end
+        ],
+        goblinSpeed: 0.72,
+        timerSeconds: 80,
+    },
+    // L29: Everything together — near-maximum complexity
+    {
+        name: "Level 29",
+        activeRows: 6,
+        pattern: [
+            [false,false,false,false, false,false,true, false, false,false,false,false, false,false,true, false], // O
+            [true, false,true, false, true, false,false,false, true, false,true, false, true, false,false,false], // H
+            [false,false,false,true,  true, false,false,false, false,false,false,true,  true, false,false,false], // S
+            [true, false,false,false, false,false,false,true,  false,false,true, false, false,false,false,true ], // K — busy syncopation
+            [false,true, false,false, false,true, false,false, false,true, false,false, false,true, false,false], // B — offbeat cowbell pulse
+            [false,false,false,true,  false,false,false,true,  false,false,false,true,  false,false,false,false], // T — rolling toms
+        ],
+        goblinSpeed: 0.73,
+        timerSeconds: 75,
+    },
+    // L30: Grand finale — syncopated chaos, everything locks in
+    {
+        name: "Level 30",
         activeRows: 6,
         pattern: [
             [false,false,false,false, false,false,true, false, false,false,false,false, false,false,true, false], // O — offbeat open hats
@@ -654,7 +940,7 @@ let tomatoSplats = []; // { x, y, timer }
 let gamePaused = false;
 let gameState = "title"; // "title", "story", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument-intro", "newinstrument", "sabotage-anim"
 let enemyWarningType = null;   // "elite" or "catapult"
-let enemyWarningShown = { elite: false, catapult: false }; // track which warnings have been shown
+let enemyWarningShown = { normal: false, elite: false, catapult: false }; // track which warnings have been shown
 let enemyWarningBlink = 0;     // blink timer for "PRESS ENTER"
 let enemyWarningIntroTimer = 0; // transition timer before warning popup
 let currentLevel = 0;
@@ -664,7 +950,7 @@ let patternMatched = false; // pattern correct but goblins may still be alive
 let levelCelebrateTimer = 0;
 let titleBlink = 0; // blink timer for "PRESS ENTER"
 let tutorialTimer = 0; // animation frame counter for tutorial screen
-let tutorialPage = 0;  // current tutorial page (0-2)
+let tutorialPage = 0;  // current tutorial page (0-1)
 let newInstrumentType = null;   // "cowbell" or "tom"
 let newInstrumentTimer = 0;     // animation timer for new instrument popup
 let newInstrumentIntroTimer = 0; // transition timer before instrument popup
@@ -816,7 +1102,7 @@ window.addEventListener("keydown", (e) => {
         if (gameState === "tutorial") {
             tutorialPage++;
             tutorialTimer = 0;
-            if (tutorialPage > 2) {
+            if (tutorialPage > 1) {
                 stopStoryDrums();
                 gameState = "playing";
                 currentStep = 0;
@@ -1392,15 +1678,20 @@ function update(dt) {
 
     // Update goblin
     if (goblin.dead) {
+        // No goblins on practice levels (1-2)
+        if (currentLevel < 2) {
+            goblin.respawnTimer = 300;
+        }
         // Don't respawn if pattern is already matched (player just needs to clear remaining goblins)
-        if (patternMatched) {
+        else if (patternMatched) {
             goblin.respawnTimer = 300;
         }
         goblin.respawnTimer--;
         if (goblin.respawnTimer <= 0) {
             // Check if we need to show a warning before spawning a new enemy type
-            const wouldBeElite = (killCount % 3 === 2 && killCount % 6 !== 5);
-            const wouldBeCatapult = (killCount % 6 === 5 && !catapultGoblin && !catapultSpawnedThisCycle);
+            // Gate enemy types by level: elite from L7 (index 6), catapult from L15 (index 14)
+            const wouldBeElite = (killCount % 3 === 2 && killCount % 6 !== 5) && currentLevel >= 6;
+            const wouldBeCatapult = (killCount % 6 === 5 && !catapultGoblin && !catapultSpawnedThisCycle) && currentLevel >= 14;
             if (wouldBeCatapult && !enemyWarningShown.catapult) {
                 enemyWarningType = "catapult";
                 enemyWarningShown.catapult = true;
@@ -1418,8 +1709,8 @@ function update(dt) {
                 if (audioCtx) playWarningDonk(audioCtx.currentTime);
                 goblin.respawnTimer = 60;
             }
-            // Every 6th goblin is a catapult goblin instead of normal/elite
-            else if (killCount % 6 === 5 && !catapultGoblin && !catapultSpawnedThisCycle) {
+            // Every 6th goblin is a catapult goblin instead of normal/elite (from L15+)
+            else if (killCount % 6 === 5 && !catapultGoblin && !catapultSpawnedThisCycle && currentLevel >= 14) {
                 catapultSequenceCount = 0;
                 spawnCatapultGoblin();
                 catapultSpawnedThisCycle = true;
@@ -1431,8 +1722,8 @@ function update(dt) {
             goblin.dead = false;
             goblin.deathAnimActive = false;
             goblin.deathAnimTimer = 0;
-            // Every 3rd goblin is elite (pink & fast), but not on catapult turns
-            goblin.elite = (killCount % 3 === 2 && killCount % 6 !== 5);
+            // Every 3rd goblin is elite (pink & fast), but not on catapult turns (from L7+)
+            goblin.elite = (killCount % 3 === 2 && killCount % 6 !== 5) && currentLevel >= 6;
             goblin.hp = goblin.elite ? 3 : 1;
             const baseSpeed = currentLevel < LEVELS.length ? LEVELS[currentLevel].goblinSpeed : 0.5;
             goblin.speed = goblin.elite ? baseSpeed * 1.25 : baseSpeed;
@@ -1998,7 +2289,7 @@ function resetGame() {
     catapultGoblin = null;
     catapultSpawnedThisCycle = false;
     catapultSequenceCount = 0;
-    enemyWarningShown = { elite: false, catapult: false };
+    enemyWarningShown = { normal: false, elite: false, catapult: false };
     newInstrumentShown = { cowbell: false, tom: false };
     levelTimer = LEVELS[0].timerSeconds * 90;
 
@@ -2180,11 +2471,22 @@ function advanceLevel() {
     // Set tempo for new level
     setLevelTempo(currentLevel);
 
-    // Determine post-sabotage destination (new instrument intro or straight to playing)
+    // Determine post-sabotage destination (new enemy/instrument intro or straight to playing)
     const prevRows = currentLevel > 0 ? LEVELS[currentLevel - 1].activeRows : LEVELS[0].activeRows;
     const newRows = LEVELS[currentLevel].activeRows;
     sabotageNextState = "playing";
-    if (newRows > prevRows) {
+
+    // Green goblin warning before level 3 (index 2)
+    if (currentLevel === 2 && !enemyWarningShown.normal) {
+        enemyWarningType = "normal";
+        enemyWarningShown.normal = true;
+        enemyWarningBlink = 0;
+        enemyWarningIntroTimer = 0;
+        sabotageNextState = "enemywarning-intro";
+        if (audioCtx) playWarningDonk(audioCtx.currentTime);
+    }
+    // New instrument popups when rows expand
+    else if (newRows > prevRows) {
         if (newRows === 5 && !newInstrumentShown.cowbell) {
             newInstrumentType = "cowbell";
             newInstrumentShown.cowbell = true;
@@ -4447,10 +4749,10 @@ function renderTutorialScreen() {
         ctx.textAlign = "start";
     }
 
-    // Page indicator dots (3 pages now)
+    // Page indicator dots (2 pages)
     const dotY = H - 22;
-    for (let i = 0; i < 3; i++) {
-        const dx = W / 2 - 10 + i * 8;
+    for (let i = 0; i < 2; i++) {
+        const dx = W / 2 - 6 + i * 8;
         const active = i === tutorialPage;
         drawRect(dx, dotY, 3, 3, active ? "#F6CC60" : "#555555");
     }
@@ -4778,110 +5080,8 @@ function renderTutorialScreen() {
         drawCenteredText("COMPLETE THE PATTERN BEFORE TIME RUNS OUT!", timerY + panelH + 12, "#BFCDC0", 4);
     }
 
-    // ======== PAGE 2: GOBLINS (MERGED: SABOTAGE + CLEAR STAGE) ========
-    else if (tutorialPage === 2) {
-        drawCenteredText("BEWARE THE GOBLINS!", 15, "#E86A6A", 7);
-
-        // --- TOP: Goblin sabotages a cell, player kills it ---
-        const gx = W / 2 - 2 * TILE;
-        const gy = 36;
-        const SCENE_CYCLE = 240;
-        const sceneT = Math.max(0, t - 20) % SCENE_CYCLE;
-        const gobFrame = Math.floor(t / 10) % 4;
-
-        // Draw a small 1x4 grid
-        for (let c = 0; c < 4; c++) {
-            const bx = gx + c * TILE;
-            const sabotaged = (c === 1 && sceneT > 80 && sceneT < 160);
-            drawRect(bx, gy, TILE, TILE, PAL.gridBorder);
-            drawRect(bx + 1, gy + 1, TILE - 2, TILE - 2, (c === 0 || c === 2) ? "#F6CC60" : PAL.gridOff);
-            if (c === 1 && sceneT > 80 && sceneT < 95) {
-                ctx.globalAlpha = (1 - (sceneT - 80) / 15) * 0.6;
-                drawRect(bx, gy, TILE, TILE, "#ff2222");
-                ctx.globalAlpha = 1;
-            }
-            if (sabotaged) {
-                drawRect(bx + 1, gy + 1, TILE - 2, TILE - 2, "#F6CC60");
-            }
-        }
-
-        // Goblin walks in, sabotages, gets killed
-        const gobStartX = gx - 3 * TILE;
-        const gobTargetX = gx + TILE;
-        let gobX, gobVisible = true;
-        if (sceneT < 60) {
-            gobX = gobStartX + (gobTargetX - gobStartX) * (sceneT / 60);
-        } else if (sceneT < 160) {
-            gobX = gobTargetX;
-        } else {
-            gobVisible = false;
-            if (sceneT < 180) {
-                const dp = (sceneT - 160) / 20;
-                ctx.globalAlpha = 1 - dp;
-                for (let i = 0; i < 6; i++) {
-                    const angle = (i / 6) * Math.PI * 2 + sceneT * 0.1;
-                    const dist = dp * 12;
-                    drawRect(gobTargetX + 4 + Math.cos(angle) * dist, gy - 4 + Math.sin(angle) * dist, 3, 3, "#66cc66");
-                }
-                ctx.globalAlpha = 1;
-            }
-        }
-        if (gobVisible) {
-            drawGoblinSprite("normal", gobX, gy - 2, gobFrame, { showShadow: false });
-        }
-
-        // Player walks in and slays
-        if (sceneT > 120 && sceneT < 200) {
-            const playerStopX = gobTargetX + TILE;
-            const playerStartX = playerStopX + 3 * TILE;
-            const pProg = Math.min(1, (sceneT - 120) / 30);
-            const ppx = playerStartX + (playerStopX - playerStartX) * pProg;
-            const pWalkFrame = pProg < 1 ? Math.floor(t / 6) % 4 : 0;
-            const pBob = pWalkFrame % 2 === 1 ? 1 : 0;
-            const pAttacking = sceneT > 150 && sceneT < 165;
-            drawPlayerSprite(ppx, gy, pWalkFrame, 2, {});
-            if (pAttacking) {
-                const sp = (sceneT - 150) / 15;
-                const ang = -Math.PI * 0.7 + sp * Math.PI * 0.9;
-                ctx.strokeStyle = "#F6CC60"; ctx.lineWidth = 3 * SCALE; ctx.lineCap = "round";
-                ctx.beginPath(); ctx.moveTo((ppx + 4) * SCALE, (gy + 2 - pBob) * SCALE);
-                ctx.lineTo((ppx + 4 + Math.cos(ang) * 13) * SCALE, (gy + 2 - pBob + Math.sin(ang) * 13) * SCALE); ctx.stroke();
-            } else {
-                drawRect(ppx - 2, gy - 8 - pBob, 2, 10, "#F6CC60");
-                drawRect(ppx - 4, gy - 2 - pBob, 6, 2, "#BF7538");
-            }
-        }
-        ctx.globalAlpha = 1;
-
-        drawCenteredText("THEY SABOTAGE YOUR BEATS! SLAY THEM!", gy + TILE + 14, "#BFCDC0", 4);
-
-        // --- BOTTOM: Must clear all goblins to finish level ---
-        const gy2 = gy + TILE + 36;
-        drawCenteredText("CLEAR ALL GOBLINS TO COMPLETE EACH LEVEL", gy2, "#F6CC60", 4);
-
-        // Mini 1x4 grid all gold + level complete flash
-        const gx2 = W / 2 - 2 * TILE;
-        const gy3 = gy2 + 14;
-        const SCENE2_CYCLE = 200;
-        const scene2T = Math.max(0, t - 20) % SCENE2_CYCLE;
-
-        for (let c = 0; c < 4; c++) {
-            const bx = gx2 + c * TILE;
-            drawRect(bx, gy3, TILE, TILE, PAL.gridBorder);
-            drawRect(bx + 1, gy3 + 1, TILE - 2, TILE - 2, "#F6CC60");
-        }
-
-        // "LEVEL COMPLETE!" flashes periodically
-        if (scene2T > 60 && scene2T < 160) {
-            const flashT = scene2T - 60;
-            ctx.globalAlpha = Math.min(1, flashT / 10) * (1 - Math.max(0, flashT - 70) / 30);
-            drawCenteredText("LEVEL COMPLETE!", gy3 + TILE + 10, "#66cc66", 5);
-            ctx.globalAlpha = 1;
-        }
-    }
-
     // Blinking prompt
-    const promptText = tutorialPage < 2 ? "PRESS ENTER" : "PRESS ENTER TO START";
+    const promptText = tutorialPage < 1 ? "PRESS ENTER" : "PRESS ENTER TO START";
     if (t > 20 && t % 60 < 40) {
         drawCenteredText(promptText, H - 10, "#EBEBE3", 5);
     }
@@ -5022,7 +5222,14 @@ function renderEnemyWarning() {
     const gobFrame = Math.floor(t / 10) % 4;
     const gobBob = gobFrame % 2 === 1 ? 1 : 0;
 
-    if (enemyWarningType === "elite") {
+    if (enemyWarningType === "normal") {
+        drawCenteredText("WATCH OUT!", 30, "#66cc66", 8);
+        drawCenteredText("GOBLINS!", 55, "#66cc66", 6);
+        drawGoblinSprite("normal", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
+        drawCenteredText("THEY SABOTAGE YOUR BEATS!", 115, "#BFCDC0", 5);
+        drawCenteredText("SLAY THEM WITH YOUR SWORD!", 132, "#F6CC60", 5);
+
+    } else if (enemyWarningType === "elite") {
         drawCenteredText("WARNING!", 30, "#FF4466", 8);
         drawCenteredText("ELITE GOBLIN", 55, "#FF88CC", 6);
         drawGoblinSprite("elite", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
