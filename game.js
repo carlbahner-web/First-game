@@ -14,7 +14,7 @@ const GRID_COLS = 16;      // sequencer steps
 const GRID_ROWS = 6;       // max drum channels (O, H, S, K, B, T)
 const GRID_X = 3;          // grid start tile-x
 const GRID_Y = 4;          // grid start tile-y
-const GAP_AFTER_ROW = 3;   // 1-tile visual gap after row 3 (Kick)
+// (gap row after kick removed)
 // Tempo is set per level using frames-per-16th-note at 60fps
 // Gradual curve across 30 levels:
 // L1-5: 10 frames (90 BPM), L6-14: 9 (100), L15-18: 8 (112.5),
@@ -1195,23 +1195,19 @@ function getActiveRows() {
     return currentLevel < LEVELS.length ? LEVELS[currentLevel].activeRows : 6;
 }
 
-// ---- Helper: pixel Y for a grid row (accounts for visual gap after Kick) ----
+// ---- Helper: pixel Y for a grid row ----
 function rowPixelY(r) {
-    return (GRID_Y + r + (r > GAP_AFTER_ROW ? 1 : 0)) * TILE;
+    return (GRID_Y + r) * TILE;
 }
 
 // ---- Helper: tile Y of the bottom of the active grid ----
 function gridBottomTileY() {
-    const ar = getActiveRows();
-    return GRID_Y + ar + (ar > GAP_AFTER_ROW + 1 ? 1 : 0);
+    return GRID_Y + getActiveRows();
 }
 
 // ---- Helper: convert tile Y back to grid row (inverse of rowPixelY) ----
 function tileYToRow(tileY) {
-    const offset = tileY - GRID_Y;
-    if (offset <= GAP_AFTER_ROW) return offset;       // rows 0-3
-    if (offset === GAP_AFTER_ROW + 1) return -1;      // gap tile (no row)
-    return offset - 1;                                  // rows 4-5
+    return tileY - GRID_Y;
 }
 
 // ---- Helper: check if a tile is blocked by solid objects ----
