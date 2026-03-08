@@ -670,11 +670,6 @@ let newInstrumentTimer = 0;     // animation timer for new instrument popup
 let newInstrumentIntroTimer = 0; // transition timer before instrument popup
 let newInstrumentShown = { cowbell: false, tom: false }; // track which popups have been shown
 
-// Scene fade-in/out
-const SCENE_FADE_IN_FRAMES = 12;
-const SCENE_FADE_OUT_FRAMES = 10;
-let sceneFadeOut = 0;           // counts up during fade-out; 0 = not fading out
-let sceneFadeOutCallback = null; // function to call when fade-out completes
 
 // Sabotage animation state (goblin zigzags across grid scrambling cells)
 let sabotageAnimTimer = 0;
@@ -3961,35 +3956,6 @@ function stopStoryDrums() {
         storyDrumGain.disconnect();
         storyDrumGain = null;
     }
-}
-// Scene fade helpers — call at end of render to overlay fade-in/out
-function applySceneFade(sceneTimer) {
-    const fadeInAlpha = Math.min(1, sceneTimer / SCENE_FADE_IN_FRAMES);
-    const fadeOutAlpha = sceneFadeOut > 0 ? Math.max(0, 1 - sceneFadeOut / SCENE_FADE_OUT_FRAMES) : 1;
-    const alpha = fadeInAlpha * fadeOutAlpha;
-    if (alpha < 1) {
-        ctx.fillStyle = "#000";
-        ctx.globalAlpha = 1 - alpha;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.globalAlpha = 1;
-    }
-}
-
-function updateSceneFadeOut() {
-    if (sceneFadeOut > 0) {
-        sceneFadeOut++;
-        if (sceneFadeOut > SCENE_FADE_OUT_FRAMES && sceneFadeOutCallback) {
-            const cb = sceneFadeOutCallback;
-            sceneFadeOut = 0;
-            sceneFadeOutCallback = null;
-            cb();
-        }
-    }
-}
-
-function startSceneFadeOut(callback) {
-    sceneFadeOut = 1;
-    sceneFadeOutCallback = callback;
 }
 
 function renderStoryScreen() {
