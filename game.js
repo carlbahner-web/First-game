@@ -2914,24 +2914,8 @@ function drawPlayer() {
     px(3, -6, 3, 3, "#D4B08A");
     px(42, -6, 3, 3, "#D4B08A");
 
-    // === BEARD (dark, full) ===
-    px(9, -3, 30, 12, "#1a1a2e");       // Main beard
-    px(6, -3, 6, 9, "#1a1a2e");         // Beard left side
-    px(36, -3, 6, 9, "#1a1a2e");        // Beard right side
-    px(12, 9, 24, 6, "#1a1a2e");        // Beard bottom
-    px(15, 15, 18, 3, "#222238");        // Beard rounded bottom
-    // Beard texture highlights
-    px(12, 0, 3, 3, "#252540");
-    px(21, 3, 3, 3, "#252540");
-    px(30, 0, 3, 3, "#252540");
-    // Mustache area (slightly lighter)
-    px(12, -6, 24, 3, "#222238");
-    // Mouth gap hint
-    px(18, -3, 12, 2, "#14141e");
-
-    // === EYES ===
+    // === EYES & BEARD (direction-aware — beard only on front of face) ===
     const isBlinking = p.blinkTimer >= 180;
-    // Direction offsets in screen pixels
     const eyeDir = [
         [0, 3],   // down
         [0, -6],  // up
@@ -2939,9 +2923,29 @@ function drawPlayer() {
         [3, 0],   // right
     ][p.dir];
 
-    if (p.dir !== 1) { // don't draw eyes facing up
+    if (p.dir === 1) {
+        // Facing UP — show back of bald head, no eyes, no beard
+        px(12, -18, 24, 6, "#DFC09E");  // Back-of-head shading
+        px(15, -3, 18, 6, "#E8CBA8");   // Back of neck/skin below head
+    } else {
+        // Facing DOWN, LEFT, or RIGHT — show beard and eyes
+        // Beard (#BF7538)
+        px(9, -3, 30, 12, "#BF7538");       // Main beard
+        px(6, -3, 6, 9, "#BF7538");         // Beard left side
+        px(36, -3, 6, 9, "#BF7538");        // Beard right side
+        px(12, 9, 24, 6, "#BF7538");        // Beard bottom
+        px(15, 15, 18, 3, "#A86430");        // Beard rounded bottom (darker)
+        // Beard texture highlights
+        px(12, 0, 3, 3, "#D08040");
+        px(21, 3, 3, 3, "#D08040");
+        px(30, 0, 3, 3, "#D08040");
+        // Mustache area (slightly darker)
+        px(12, -6, 24, 3, "#A86430");
+        // Mouth gap hint
+        px(18, -3, 12, 2, "#8A5228");
+
+        // Eyes
         if (isBlinking) {
-            // Closed eyes — thin horizontal lines
             px(12 + eyeDir[0], -7 + eyeDir[1], 8, 2, "#1a1a2e");
             px(28 + eyeDir[0], -7 + eyeDir[1], 8, 2, "#1a1a2e");
         } else {
@@ -2954,13 +2958,10 @@ function drawPlayer() {
             // Pupil highlights
             px(15 + eyeDir[0], -10 + eyeDir[1], 2, 2, "#F0F0E8");
             px(31 + eyeDir[0], -10 + eyeDir[1], 2, 2, "#F0F0E8");
-            // Eyebrow ridges (skin-colored shadow above eyes)
+            // Eyebrow ridges
             px(10 + eyeDir[0], -14 + eyeDir[1], 12, 2, "#D4B08A");
             px(26 + eyeDir[0], -14 + eyeDir[1], 12, 2, "#D4B08A");
         }
-    } else {
-        // Facing up — show back of bald head, no eyes
-        px(12, -18, 24, 6, "#DFC09E");  // Subtle neck/back-of-head shading
     }
 
     // === FEET / SHOES (tan) ===
