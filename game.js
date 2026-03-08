@@ -2876,37 +2876,40 @@ function drawPlayer() {
     const py = p.y;
     const bob = p.frame % 2 === 1 ? 1 : 0;
 
-    // Body (blue tunic)
-    drawRect(px + 3, py + 2 - bob, 10, 10, "#3a6a8a");
+    // Body (teal shirt — Studioland style)
+    drawRect(px + 3, py + 2 - bob, 10, 10, "#2a6a6a");
     // Darker sides
-    drawRect(px + 3, py + 2 - bob, 2, 10, "#2a4a6a");
-    drawRect(px + 11, py + 2 - bob, 2, 10, "#2a4a6a");
-    // Head (skin tone, wider to match story screen)
-    drawRect(px + 2, py - 4 - bob, 12, 7, "#F0D0B0");
+    drawRect(px + 3, py + 2 - bob, 2, 10, "#1a4a4a");
+    drawRect(px + 11, py + 2 - bob, 2, 10, "#1a4a4a");
+    // Bald head (skin tone, round)
+    drawRect(px + 2, py - 5 - bob, 12, 7, "#E8CBA8");
+    // Skin highlight on dome (subtle bald shine)
+    drawRect(px + 5, py - 5 - bob, 6, 1, "#F2DCC0");
+    // Beard (dark, covers lower face)
+    drawRect(px + 3, py - 1 - bob, 10, 4, "#1a1a2e");
+    // Beard rounded bottom
+    drawRect(px + 4, py + 3 - bob, 8, 1, "#1a1a2e");
     // Eyes (blink every 180 frames — closed for 6 frames)
     const isBlinking = p.blinkTimer >= 180;
     const eyeDir = [
-        [0, 2],  // down
+        [0, 1],  // down
         [0, -2], // up
         [-1, 0], // left
         [1, 0],  // right
     ][p.dir];
     if (p.dir !== 1) { // don't draw eyes facing up
         if (isBlinking) {
-            // Closed eyes — thin horizontal line
-            drawRect(px + 4 + eyeDir[0], py - 1 - bob + eyeDir[1], 3, 1, "#1a1a2e");
-            drawRect(px + 9 + eyeDir[0], py - 1 - bob + eyeDir[1], 3, 1, "#1a1a2e");
+            drawRect(px + 4 + eyeDir[0], py - 2 - bob + eyeDir[1], 3, 1, "#1a1a2e");
+            drawRect(px + 9 + eyeDir[0], py - 2 - bob + eyeDir[1], 3, 1, "#1a1a2e");
         } else {
-            drawRect(px + 5 + eyeDir[0], py - 2 - bob + eyeDir[1], 2, 2, "#1a1a2e");
-            drawRect(px + 9 + eyeDir[0], py - 2 - bob + eyeDir[1], 2, 2, "#1a1a2e");
+            drawRect(px + 5 + eyeDir[0], py - 3 - bob + eyeDir[1], 2, 2, "#1a1a2e");
+            drawRect(px + 9 + eyeDir[0], py - 3 - bob + eyeDir[1], 2, 2, "#1a1a2e");
         }
     }
-    // Hair/hat (brown)
-    drawRect(px + 2, py - 5 - bob, 12, 3, "#8a5a2a");
-    // Feet
+    // Feet (light tan shoes)
     const walkOffset = p.frame === 1 ? 2 : p.frame === 3 ? -2 : 0;
-    drawRect(px + 4 + walkOffset, py + 12, 3, 2, "#2a4a6a");
-    drawRect(px + 9 - walkOffset, py + 12, 3, 2, "#2a4a6a");
+    drawRect(px + 4 + walkOffset, py + 12, 3, 2, "#C4A882");
+    drawRect(px + 9 - walkOffset, py + 12, 3, 2, "#C4A882");
 }
 
 function drawSword() {
@@ -3765,16 +3768,18 @@ function renderStoryScreen() {
     // Player (center, slot 2)
     const playerX = charMargin + slotW * 2 - 8;
     const playerBob = Math.floor(storyBlink / 12) % 2 === 0 ? 0 : 1;
-    drawRect(playerX + 3, charY + 2 - playerBob, 10, 10, "#3a6a8a");
-    drawRect(playerX + 3, charY + 2 - playerBob, 2, 10, "#2a4a6a");
-    drawRect(playerX + 11, charY + 2 - playerBob, 2, 10, "#2a4a6a");
-    drawRect(playerX + 2, charY - 4 - playerBob, 12, 7, "#F0D0B0");
-    drawRect(playerX + 5, charY - 2 - playerBob, 2, 2, "#1a1a2e");
-    drawRect(playerX + 9, charY - 2 - playerBob, 2, 2, "#1a1a2e");
-    drawRect(playerX + 2, charY - 5 - playerBob, 12, 3, "#8a5a2a");
+    drawRect(playerX + 3, charY + 2 - playerBob, 10, 10, "#2a6a6a");
+    drawRect(playerX + 3, charY + 2 - playerBob, 2, 10, "#1a4a4a");
+    drawRect(playerX + 11, charY + 2 - playerBob, 2, 10, "#1a4a4a");
+    drawRect(playerX + 2, charY - 5 - playerBob, 12, 7, "#E8CBA8");
+    drawRect(playerX + 5, charY - 5 - playerBob, 6, 1, "#F2DCC0");
+    drawRect(playerX + 3, charY - 1 - playerBob, 10, 4, "#1a1a2e");
+    drawRect(playerX + 4, charY + 3 - playerBob, 8, 1, "#1a1a2e");
+    drawRect(playerX + 5, charY - 3 - playerBob, 2, 2, "#1a1a2e");
+    drawRect(playerX + 9, charY - 3 - playerBob, 2, 2, "#1a1a2e");
     const pwo = Math.floor(storyBlink / 12) % 2 === 0 ? 1 : -1;
-    drawRect(playerX + 4 + pwo, charY + 12, 3, 2, "#2a4a6a");
-    drawRect(playerX + 9 - pwo, charY + 12, 3, 2, "#2a4a6a");
+    drawRect(playerX + 4 + pwo, charY + 12, 3, 2, "#C4A882");
+    drawRect(playerX + 9 - pwo, charY + 12, 3, 2, "#C4A882");
     drawRect(playerX + 14, charY - 8 - playerBob, 2, 12, "#BFCDC0");
     drawRect(playerX + 12, charY - 2 - playerBob, 6, 2, "#BF7538");
 
@@ -4209,18 +4214,20 @@ function renderTutorialScreen() {
                 const bob = walkFrame % 2 === 1 ? 1 : 0;
                 const faceDir = isAttacking ? 3 : (isWalking ? walkDir : 3);
                 const eyeOfs = [[0, 2], [0, -2], [-1, 0], [1, 0]][faceDir];
-                drawRect(px + 3, py + 2 - bob, 10, 10, "#3a6a8a");
-                drawRect(px + 3, py + 2 - bob, 2, 10, "#2a4a6a");
-                drawRect(px + 11, py + 2 - bob, 2, 10, "#2a4a6a");
-                drawRect(px + 2, py - 4 - bob, 12, 7, "#F0D0B0");
+                drawRect(px + 3, py + 2 - bob, 10, 10, "#2a6a6a");
+                drawRect(px + 3, py + 2 - bob, 2, 10, "#1a4a4a");
+                drawRect(px + 11, py + 2 - bob, 2, 10, "#1a4a4a");
+                drawRect(px + 2, py - 5 - bob, 12, 7, "#E8CBA8");
+                drawRect(px + 5, py - 5 - bob, 6, 1, "#F2DCC0");
+                drawRect(px + 3, py - 1 - bob, 10, 4, "#1a1a2e");
+                drawRect(px + 4, py + 3 - bob, 8, 1, "#1a1a2e");
                 if (faceDir !== 1) {
-                    drawRect(px + 5 + eyeOfs[0], py - 2 - bob + eyeOfs[1], 2, 2, "#1a1a2e");
-                    drawRect(px + 9 + eyeOfs[0], py - 2 - bob + eyeOfs[1], 2, 2, "#1a1a2e");
+                    drawRect(px + 5 + eyeOfs[0], py - 3 - bob + eyeOfs[1], 2, 2, "#1a1a2e");
+                    drawRect(px + 9 + eyeOfs[0], py - 3 - bob + eyeOfs[1], 2, 2, "#1a1a2e");
                 }
-                drawRect(px + 2, py - 5 - bob, 12, 3, "#8a5a2a");
                 const footOff = isWalking ? (walkFrame === 1 ? 2 : walkFrame === 3 ? -2 : 0) : 0;
-                drawRect(px + 4 + footOff, py + 12, 3, 2, "#2a4a6a");
-                drawRect(px + 9 - footOff, py + 12, 3, 2, "#2a4a6a");
+                drawRect(px + 4 + footOff, py + 12, 3, 2, "#C4A882");
+                drawRect(px + 9 - footOff, py + 12, 3, 2, "#C4A882");
                 if (isAttacking) {
                     const swingProg = (stepT - ATTACK_AT) / ATTACK_DUR;
                     const angle = -Math.PI * 0.7 + swingProg * Math.PI * 0.9;
@@ -4488,11 +4495,13 @@ function renderTutorialScreen() {
                 const ppx = playerStartX + (playerStopX - playerStartX) * pProg;
                 const pBob = Math.floor(t / 6) % 2;
                 const pAttacking = sceneT > 150 && sceneT < 165;
-                drawRect(ppx + 3, gy - pBob + 2, 10, 10, "#3a6a8a");
-                drawRect(ppx + 2, gy - 4 - pBob, 12, 7, "#F0D0B0");
-                drawRect(ppx + 5 - 1, gy - 2 - pBob, 2, 2, "#1a1a2e");
-                drawRect(ppx + 9 - 1, gy - 2 - pBob, 2, 2, "#1a1a2e");
-                drawRect(ppx + 2, gy - 5 - pBob, 12, 3, "#8a5a2a");
+                drawRect(ppx + 3, gy - pBob + 2, 10, 10, "#2a6a6a");
+                drawRect(ppx + 2, gy - 5 - pBob, 12, 7, "#E8CBA8");
+                drawRect(ppx + 5, gy - 5 - pBob, 6, 1, "#F2DCC0");
+                drawRect(ppx + 3, gy - 1 - pBob, 10, 4, "#1a1a2e");
+                drawRect(ppx + 4, gy + 3 - pBob, 8, 1, "#1a1a2e");
+                drawRect(ppx + 4, gy - 3 - pBob, 2, 2, "#1a1a2e");
+                drawRect(ppx + 8, gy - 3 - pBob, 2, 2, "#1a1a2e");
                 if (pAttacking) {
                     const sp = (sceneT - 150) / 15;
                     const ang = -Math.PI * 0.7 + sp * Math.PI * 0.9;
@@ -4623,11 +4632,13 @@ function renderTutorialScreen() {
                 const pBob = Math.floor(t / 6) % 2;
                 const pAttacking = sceneT > 145 && sceneT < 165;
                 ctx.globalAlpha = dA;
-                drawRect(ppx + 3, gy - pBob + 2, 10, 10, "#3a6a8a");
-                drawRect(ppx + 2, gy - 4 - pBob, 12, 7, "#F0D0B0");
-                drawRect(ppx + 4, gy - 2 - pBob, 2, 2, "#1a1a2e");
-                drawRect(ppx + 8, gy - 2 - pBob, 2, 2, "#1a1a2e");
-                drawRect(ppx + 2, gy - 5 - pBob, 12, 3, "#8a5a2a");
+                drawRect(ppx + 3, gy - pBob + 2, 10, 10, "#2a6a6a");
+                drawRect(ppx + 2, gy - 5 - pBob, 12, 7, "#E8CBA8");
+                drawRect(ppx + 5, gy - 5 - pBob, 6, 1, "#F2DCC0");
+                drawRect(ppx + 3, gy - 1 - pBob, 10, 4, "#1a1a2e");
+                drawRect(ppx + 4, gy + 3 - pBob, 8, 1, "#1a1a2e");
+                drawRect(ppx + 4, gy - 3 - pBob, 2, 2, "#1a1a2e");
+                drawRect(ppx + 8, gy - 3 - pBob, 2, 2, "#1a1a2e");
                 if (pAttacking) {
                     const sp = (sceneT - 145) / 20;
                     const ang = -Math.PI * 0.7 + sp * Math.PI * 0.9;
