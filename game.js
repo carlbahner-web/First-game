@@ -4005,73 +4005,125 @@ function renderTutorialScreen() {
         drawCenteredText("MATCH THE PATTERN", 18, "#F6CC60", 8);
         ctx.globalAlpha = 1;
 
-        // Show a mini grid with pulsing outlines that get filled in
-        const gx = W / 2 - 3 * TILE;
-        const gy = 55;
-        const patRows = 2;
-        const patCols = 6;
-        const patColors = ["#F6CC60", "#BFCDC0"];
-        const patTarget = [[true, false, true, false, true, false], [false, true, false, true, false, true]];
-        // Fill in blocks over time
-        const fillOrder = [[0,0],[1,1],[0,2],[1,3],[0,4],[1,5]];
-        const FILL_INTERVAL = 50;
-        const FILL_CYCLE = fillOrder.length * FILL_INTERVAL + 90;
-        const cT = Math.max(0, t - 40) % FILL_CYCLE;
-        const filledCount = Math.min(fillOrder.length, Math.floor(cT / FILL_INTERVAL));
-        const allFilled = filledCount >= fillOrder.length;
+        // --- TOP SECTION: Pulsing outlines (beats to ADD) ---
+        const gx = W / 2 - 2 * TILE;
+        const gy = 42;
+        const patCols = 4;
+        const addColor = "#F6CC60";
+        const addTarget = [true, false, true, false];
+        const addFillOrder = [0, 2];
+        const ADD_INTERVAL = 60;
+        const ADD_CYCLE = addFillOrder.length * ADD_INTERVAL + 80;
+        const addT = Math.max(0, t - 40) % ADD_CYCLE;
+        const addFilled = Math.min(addFillOrder.length, Math.floor(addT / ADD_INTERVAL));
 
         if (t > 20) {
             const dA = Math.min(1, (t - 20) / 20);
             ctx.globalAlpha = dA;
-            for (let r = 0; r < patRows; r++) {
-                for (let c = 0; c < patCols; c++) {
-                    const bx = gx + c * TILE, by = gy + r * TILE;
-                    let isOn = false;
-                    for (let i = 0; i < filledCount; i++) {
-                        if (fillOrder[i][0] === r && fillOrder[i][1] === c) isOn = true;
-                    }
-                    drawRect(bx, by, TILE, TILE, PAL.gridBorder);
-                    drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? patColors[r] : PAL.gridOff);
-                    // Pulsing outline for unfilled targets
-                    if (patTarget[r][c] && !isOn) {
-                        ctx.globalAlpha = 0.3 + Math.sin(t * 0.06) * 0.15;
-                        drawRect(bx + 1, by + 1, TILE - 2, 1, patColors[r]);
-                        drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, patColors[r]);
-                        drawRect(bx + 1, by + 1, 1, TILE - 2, patColors[r]);
-                        drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, patColors[r]);
-                        drawRect(bx + 6, by + 6, 4, 4, patColors[r]);
-                        ctx.globalAlpha = dA;
-                    }
-                    // Flash when just filled
-                    if (isOn) {
-                        const fIdx = fillOrder.findIndex(f => f[0] === r && f[1] === c);
-                        if (fIdx >= 0) {
-                            const flashAge = cT - fIdx * FILL_INTERVAL;
-                            if (flashAge >= 0 && flashAge < 12) {
-                                ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
-                                drawRect(bx, by, TILE, TILE, "#ffffff");
-                                ctx.globalAlpha = dA;
-                            }
+            for (let c = 0; c < patCols; c++) {
+                const bx = gx + c * TILE, by = gy;
+                let isOn = false;
+                for (let i = 0; i < addFilled; i++) {
+                    if (addFillOrder[i] === c) isOn = true;
+                }
+                drawRect(bx, by, TILE, TILE, PAL.gridBorder);
+                drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? addColor : PAL.gridOff);
+                // Pulsing outline for unfilled targets
+                if (addTarget[c] && !isOn) {
+                    ctx.globalAlpha = 0.3 + Math.sin(t * 0.06) * 0.15;
+                    drawRect(bx + 1, by + 1, TILE - 2, 1, addColor);
+                    drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, addColor);
+                    drawRect(bx + 1, by + 1, 1, TILE - 2, addColor);
+                    drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, addColor);
+                    drawRect(bx + 6, by + 6, 4, 4, addColor);
+                    ctx.globalAlpha = dA;
+                }
+                // Flash when just filled
+                if (isOn) {
+                    const fIdx = addFillOrder.indexOf(c);
+                    if (fIdx >= 0) {
+                        const flashAge = addT - fIdx * ADD_INTERVAL;
+                        if (flashAge >= 0 && flashAge < 12) {
+                            ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
+                            drawRect(bx, by, TILE, TILE, "#ffffff");
+                            ctx.globalAlpha = dA;
                         }
                     }
-                }
-            }
-            // "COMPLETE!" flash when all filled
-            if (allFilled && cT < FILL_CYCLE - 30) {
-                const flashT = cT - fillOrder.length * FILL_INTERVAL;
-                if (flashT > 0 && flashT < 60) {
-                    ctx.globalAlpha = Math.min(1, flashT / 10) * (1 - Math.max(0, flashT - 40) / 20);
-                    drawCenteredText("COMPLETE!", gy + patRows * TILE + 16, "#66cc66", 7);
                 }
             }
             ctx.globalAlpha = 1;
         }
 
-        // Explanation text
+        // Add explanation text
         if (t > 30) {
             ctx.globalAlpha = Math.min(1, (t - 30) / 25);
-            drawCenteredText("PULSING OUTLINES SHOW", gy + patRows * TILE + 38, "#BFCDC0", 5);
-            drawCenteredText("WHERE BEATS NEED TO GO", gy + patRows * TILE + 52, "#BFCDC0", 5);
+            drawCenteredText("PULSING OUTLINES SHOW", gy + TILE + 12, "#BFCDC0", 5);
+            drawCenteredText("WHERE BEATS NEED TO GO", gy + TILE + 26, "#BFCDC0", 5);
+            ctx.globalAlpha = 1;
+        }
+
+        // --- BOTTOM SECTION: X marks (beats to REMOVE) ---
+        const xgy = gy + TILE + 52;
+        const xColor = "#BFCDC0";
+        const xIndicatorColor = "#0933A0";
+        // Cells start ON, X marks show which to remove, then they get removed
+        const xStartOn = [true, true, false, true];
+        const xTarget = [true, false, false, true];
+        const xRemoveOrder = [1]; // column 1 needs to be removed
+        const X_INTERVAL = 80;
+        const X_CYCLE = xRemoveOrder.length * X_INTERVAL + 100;
+        const xT = Math.max(0, t - 60) % X_CYCLE;
+        const xRemoved = Math.min(xRemoveOrder.length, Math.floor(xT / X_INTERVAL));
+
+        if (t > 40) {
+            const dA = Math.min(1, (t - 40) / 20);
+            ctx.globalAlpha = dA;
+            for (let c = 0; c < patCols; c++) {
+                const bx = gx + c * TILE, by = xgy;
+                let isOn = xStartOn[c];
+                // Remove cells that have been toggled off
+                for (let i = 0; i < xRemoved; i++) {
+                    if (xRemoveOrder[i] === c) isOn = false;
+                }
+                drawRect(bx, by, TILE, TILE, PAL.gridBorder);
+                drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? xColor : PAL.gridOff);
+
+                // Draw X indicator on cells that need to be removed
+                if (isOn && !xTarget[c]) {
+                    ctx.globalAlpha = 0.6 + Math.sin(t * 0.04) * 0.15;
+                    // Draw X shape (diagonal pixels)
+                    drawRect(bx + 3, by + 3, 2, 2, xIndicatorColor);
+                    drawRect(bx + 5, by + 5, 2, 2, xIndicatorColor);
+                    drawRect(bx + 7, by + 7, 2, 2, xIndicatorColor);
+                    drawRect(bx + 9, by + 9, 2, 2, xIndicatorColor);
+                    drawRect(bx + 9, by + 3, 2, 2, xIndicatorColor);
+                    drawRect(bx + 7, by + 5, 2, 2, xIndicatorColor);
+                    drawRect(bx + 5, by + 7, 2, 2, xIndicatorColor);
+                    drawRect(bx + 3, by + 9, 2, 2, xIndicatorColor);
+                    ctx.globalAlpha = dA;
+                }
+
+                // Flash when just removed
+                if (!isOn && xStartOn[c]) {
+                    const fIdx = xRemoveOrder.indexOf(c);
+                    if (fIdx >= 0) {
+                        const flashAge = xT - fIdx * X_INTERVAL;
+                        if (flashAge >= 0 && flashAge < 12) {
+                            ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
+                            drawRect(bx, by, TILE, TILE, "#ffffff");
+                            ctx.globalAlpha = dA;
+                        }
+                    }
+                }
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        // X explanation text
+        if (t > 50) {
+            ctx.globalAlpha = Math.min(1, (t - 50) / 25);
+            drawCenteredText("X MARKS SHOW BEATS", xgy + TILE + 12, "#BFCDC0", 5);
+            drawCenteredText("THAT NEED TO BE REMOVED", xgy + TILE + 26, "#BFCDC0", 5);
             ctx.globalAlpha = 1;
         }
     }
