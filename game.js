@@ -1222,11 +1222,13 @@ function isTileBlockedByObjects(tileX, tileY) {
     const hudY = (ROWS - 1) * TILE - panelH - 6;
 
     // Compute total HUD width from all three panels
-    const lvlPanelW = 14 + String(currentLevel + 1).length * digitW + 10;
-    const killPanelW = 14 + String(killCount).length * digitW + 10;
+    const iconW = 3 * pxSz + 2;
+    const skullW = 5 * pxSz + 2;
+    const lvlPanelW = iconW + String(currentLevel + 1).length * digitW + 6;
+    const killPanelW = skullW + String(killCount).length * digitW + 6;
     const timerSec = Math.max(0, Math.ceil(levelTimer / 90));
     const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
-    const timerPanelW = 14 + timerStr.length * digitW + 10;
+    const timerPanelW = iconW + timerStr.length * digitW + 6;
 
     const hudLeft = hudBaseX - 2;
     const hudRight = hudBaseX + lvlPanelW + panelGap + killPanelW + panelGap + timerPanelW + 2;
@@ -2995,47 +2997,51 @@ function render() {
         const baseX = 1 * TILE;
 
         // --- Level counter ---
+        const iconW = 3 * pxSz + 2; // icon width + padding before digits
         const lvlStr = String(currentLevel + 1);
-        const lvlPanelW = 14 + lvlStr.length * digitW + 10;
+        const lvlPanelW = iconW + lvlStr.length * digitW + 6;
         drawRect(baseX - 2, kcY - 2, lvlPanelW + 4, panelH + 4, "#1a3438");
         drawRect(baseX, kcY, lvlPanelW, panelH, "#243e42");
         drawRect(baseX, kcY, lvlPanelW, 1, "#3a6a70");
-        // "L" icon
+        // "L" icon (3x5 bitmap at pxSz scale)
         const fx = baseX + 2, fy = kcY + 3;
-        drawRect(fx, fy, 2, 10, "#EBEBE3");
-        drawRect(fx + 2, fy + 8, 6, 2, "#EBEBE3");
+        drawRect(fx, fy, pxSz, 5 * pxSz, "#EBEBE3");                     // vertical bar
+        drawRect(fx + pxSz, fy + 4 * pxSz, 2 * pxSz, pxSz, "#EBEBE3");  // horizontal foot
         // Level digits
-        const lvlNumX = baseX + 14;
+        const lvlNumX = baseX + iconW;
         const numY = kcY + 3;
         drawPixelDigits(lvlStr, lvlNumX + (lvlStr.length * digitW) / 2, numY, "#EBEBE3", pxSz);
 
         // --- Kill counter ---
         const kcX = baseX + lvlPanelW + panelGap;
         const killStr = String(killCount);
-        const killPanelW = 14 + killStr.length * digitW + 10;
+        const skullW = 5 * pxSz + 2; // skull icon width + padding
+        const killPanelW = skullW + killStr.length * digitW + 6;
         drawRect(kcX - 2, kcY - 2, killPanelW + 4, panelH + 4, "#1a3438");
         drawRect(kcX, kcY, killPanelW, panelH, "#243e42");
         drawRect(kcX, kcY, killPanelW, 1, "#3a6a70");
-        // Skull icon (10x10 pixel art)
+        // Skull icon (5x5 bitmap at pxSz scale)
         const sx = kcX + 2, sy = kcY + 3;
-        drawRect(sx + 1, sy, 8, 2, "#EBEBE3");     // top cranium
-        drawRect(sx, sy + 2, 10, 4, "#EBEBE3");     // mid cranium
-        drawRect(sx + 1, sy + 6, 8, 2, "#EBEBE3");  // lower face
-        drawRect(sx + 2, sy + 8, 2, 2, "#EBEBE3");  // left tooth
-        drawRect(sx + 6, sy + 8, 2, 2, "#EBEBE3");  // right tooth
-        drawRect(sx + 2, sy + 3, 2, 2, "#2c4a4f");  // left eye
-        drawRect(sx + 6, sy + 3, 2, 2, "#2c4a4f");  // right eye
-        drawRect(sx + 4, sy + 5, 2, 2, "#2c4a4f");  // nose
-        drawRect(sx + 4, sy + 8, 2, 2, "#2c4a4f");  // tooth gap
+        const p = pxSz;
+        const skullBg = "#243e42";
+        drawRect(sx + p, sy, 3 * p, p, "#EBEBE3");             // top cranium
+        drawRect(sx, sy + p, 5 * p, 2 * p, "#EBEBE3");         // mid cranium
+        drawRect(sx + p, sy + 3 * p, 3 * p, p, "#EBEBE3");     // jaw
+        drawRect(sx + p, sy + 4 * p, p, p, "#EBEBE3");          // left tooth
+        drawRect(sx + 3 * p, sy + 4 * p, p, p, "#EBEBE3");      // right tooth
+        drawRect(sx + p, sy + p, p, p, skullBg);                // left eye
+        drawRect(sx + 3 * p, sy + p, p, p, skullBg);            // right eye
+        drawRect(sx + 2 * p, sy + 2 * p, p, p, skullBg);        // nose
+        drawRect(sx + 2 * p, sy + 4 * p, p, p, skullBg);        // tooth gap
         // Kill digits
-        const killNumX = kcX + 14;
+        const killNumX = kcX + skullW;
         drawPixelDigits(killStr, killNumX + (killStr.length * digitW) / 2, numY, "#EBEBE3", pxSz);
 
         // --- Timer counter ---
         const timerSec = Math.max(0, Math.ceil(levelTimer / 90));
         const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
         const timerX = kcX + killPanelW + panelGap;
-        const timerPanelW = 14 + timerStr.length * digitW + 10;
+        const timerPanelW = iconW + timerStr.length * digitW + 6;
         // Urgency colors
         const isUrgent = timerSec <= 30;
         const isCritical = timerSec <= 10;
@@ -3049,13 +3055,13 @@ function render() {
         drawRect(timerX - 2, kcY - 2, timerPanelW + 4, panelH + 4, timerBorderColor);
         drawRect(timerX, kcY, timerPanelW, panelH, timerBgColor);
         drawRect(timerX, kcY, timerPanelW, 1, timerHighlight);
-        // "T" icon
+        // "T" icon (3x5 bitmap at pxSz scale)
         const tx2 = timerX + 2, ty2 = kcY + 3;
-        drawRect(tx2, ty2, 8, 2, blinkOn ? timerColor : timerBgColor);
-        drawRect(tx2 + 3, ty2 + 2, 2, 8, blinkOn ? timerColor : timerBgColor);
+        drawRect(tx2, ty2, 3 * pxSz, pxSz, blinkOn ? timerColor : timerBgColor);              // horizontal bar
+        drawRect(tx2 + pxSz, ty2 + pxSz, pxSz, 4 * pxSz, blinkOn ? timerColor : timerBgColor); // vertical bar
         // Timer digits
         if (blinkOn) {
-            const tNumX = timerX + 14;
+            const tNumX = timerX + iconW;
             drawPixelDigits(timerStr, tNumX + (timerStr.length * digitW) / 2, numY, timerColor, pxSz);
         }
 
