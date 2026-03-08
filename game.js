@@ -5229,62 +5229,26 @@ function renderSabotageAnim() {
 }
 
 function renderEnemyWarningIntro() {
-    const INTRO_FRAMES = 70; // ~0.78s at 90fps, matches "dun dun dunnnnn" timing
+    const INTRO_FRAMES = 50; // brief dramatic pause before warning screen
     enemyWarningIntroTimer++;
     const t = enemyWarningIntroTimer;
     const progress = Math.min(1, t / INTRO_FRAMES); // 0 to 1
 
-    // Render the game underneath
-    render();
+    const W = COLS * TILE;
+    const H = ROWS * TILE;
 
-    const W = canvas.width;
-    const H = canvas.height;
+    // Dark background
+    drawRect(0, 0, W, H, "#0a0a12");
 
-    // Grab the rendered frame for distortion
-    const imageData = ctx.getImageData(0, 0, W, H);
-    const copy = ctx.createImageData(W, H);
-    const src = imageData.data;
-    const dst = copy.data;
-
-    // Horizontal wave distortion — gets stronger over time
-    const waveAmp = progress * 6 * SCALE;
-    const waveFreq = 0.03 + progress * 0.02;
-    for (let y = 0; y < H; y++) {
-        const offset = Math.round(Math.sin(y * waveFreq + t * 0.15) * waveAmp);
-        for (let x = 0; x < W; x++) {
-            let sx = x - offset;
-            if (sx < 0) sx = 0;
-            if (sx >= W) sx = W - 1;
-            const di = (y * W + x) * 4;
-            const si = (y * W + sx) * 4;
-            // Wash out toward white as transition progresses
-            const r = src[si], g = src[si + 1], b = src[si + 2];
-            const wash = progress * 0.7;
-            dst[di]     = Math.round(r + (255 - r) * wash);
-            dst[di + 1] = Math.round(g + (255 - g) * wash);
-            dst[di + 2] = Math.round(b + (255 - b) * wash);
-            dst[di + 3] = 255;
-        }
-    }
-    ctx.putImageData(copy, 0, 0);
-
-    // Screen shake — starts mild, grows
-    const shakeAmt = progress * 4 * SCALE;
-    if (shakeAmt > 0.5) {
-        const sx = (Math.random() - 0.5) * 2 * shakeAmt;
-        const sy = (Math.random() - 0.5) * 2 * shakeAmt;
-        const shifted = ctx.getImageData(0, 0, W, H);
-        ctx.clearRect(0, 0, W, H);
-        ctx.putImageData(shifted, Math.round(sx), Math.round(sy));
+    // Dramatic flash effect — bright flash that fades
+    if (progress < 0.4) {
+        ctx.fillStyle = "#FF4466";
+        ctx.globalAlpha = (1 - progress / 0.4) * 0.6;
+        ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+        ctx.globalAlpha = 1;
     }
 
-    // White-out overlay that increases over time
-    ctx.fillStyle = "#FFF";
-    ctx.globalAlpha = progress * 0.5;
-    ctx.fillRect(0, 0, W, H);
-    ctx.globalAlpha = 1;
-
-    // Auto-transition to the actual warning popup
+    // Auto-transition to the actual warning screen
     if (t >= INTRO_FRAMES) {
         gameState = "enemywarning";
         enemyWarningBlink = 0;
@@ -5292,19 +5256,24 @@ function renderEnemyWarningIntro() {
 }
 
 function renderEnemyWarning() {
-    // Render the game underneath (frozen)
-    render();
-
     enemyWarningBlink++;
     const t = enemyWarningBlink;
     const W = COLS * TILE;
     const H = ROWS * TILE;
 
-    // Heavy dim overlay
-    ctx.fillStyle = "#000";
-    ctx.globalAlpha = 0.75;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.globalAlpha = 1.0;
+    // Dark background (same as tutorial/instrument screens)
+    drawRect(0, 0, W, H, "#0a0a12");
+
+    // Starfield
+    for (let i = 0; i < 60; i++) {
+        const sx = ((i * 137 + 50) % W);
+        const sy = ((i * 97 + 30) % H);
+        const twinkle = Math.sin(t * 0.05 + i) * 0.5 + 0.5;
+        ctx.globalAlpha = 0.3 + twinkle * 0.7;
+        const starSize = (i % 3 === 0) ? 2 : 1;
+        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#F6CC60" : "#EBEBE3");
+    }
+    ctx.globalAlpha = 1;
 
     // Centered text helper (same as story/tutorial screens)
     function drawCenteredText(text, y, color, scale) {
