@@ -1693,10 +1693,16 @@ function update(dt) {
                 if (d.throwCooldown > 0) { d.throwCooldown--; continue; }
                 if (Math.random() < 0.015) {
                     d.throwCooldown = 90 + Math.floor(Math.random() * 60); // 1.5-2.5s cooldown
+                    const tdx = goblin.x + 8 - (d.x + 8);
+                    const tdy = goblin.y + 4 - (d.y + 4);
+                    const tDist = Math.sqrt(tdx * tdx + tdy * tdy);
                     tomatoes.push({
                         x: d.x + 8, y: d.y + 4,
                         targetX: goblin.x + 8, targetY: goblin.y + 4,
-                        speed: 2.5,
+                        speed: 1.0,
+                        progress: 0,       // 0 to 1 over flight
+                        totalDist: tDist,
+                        spin: 0,           // rotation frame for tumble
                     });
                 }
             }
@@ -1708,17 +1714,20 @@ function update(dt) {
         const dx = t.targetX - t.x;
         const dy = t.targetY - t.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < t.speed) {
+        if (dist < t.speed + 1) {
             // Splat!
-            tomatoSplats.push({ x: t.x, y: t.y, timer: 20 });
+            tomatoSplats.push({ x: t.targetX, y: t.targetY, timer: 25 });
             return false;
         }
         t.x += (dx / dist) * t.speed;
         t.y += (dy / dist) * t.speed;
+        t.progress = Math.min(1, t.progress + t.speed / t.totalDist);
+        t.spin++;
         // Update target to track goblin's current position
         if (!goblin.dead) {
             t.targetX = goblin.x + 8;
             t.targetY = goblin.y + 4;
+            t.totalDist = Math.max(t.totalDist, dist); // prevent arc from shrinking
         }
         return true;
     });
@@ -2591,21 +2600,49 @@ function render() {
     }
     ctx.globalAlpha = 1.0;
 
-    // Tomato projectiles
+    // Tomato projectiles (with parabolic arc and tumble)
     for (const t of tomatoes) {
-        // Tomato body (red circle-ish)
-        drawRect(t.x - 2, t.y - 2, 4, 3, "#cc2222");
-        drawRect(t.x - 1, t.y - 3, 2, 1, "#cc2222");
-        // Green stem
-        drawRect(t.x - 1, t.y - 4, 2, 1, "#44aa22");
-        drawRect(t.x, t.y - 5, 1, 1, "#44aa22");
-        // Highlight
-        drawRect(t.x - 2, t.y - 2, 1, 1, "#ff4444");
+        // Parabolic arc: peak at midpoint, height scales with distance
+        const arcHeight = Math.min(30, t.totalDist * 0.4);
+        const arcY = -4 * arcHeight * t.progress * (1 - t.progress);
+        const drawX = t.x;
+        const drawY = t.y + arcY;
+        // Shadow on ground
+        ctx.globalAlpha = 0.25;
+        drawRect(t.x - 1, t.y + 1, 3, 1, "#000");
+        ctx.globalAlpha = 1;
+        // Tumble: cycle through 4 rotation frames
+        const rot = Math.floor(t.spin / 4) % 4;
+        if (rot === 0) {
+            // Upright
+            drawRect(drawX - 2, drawY - 1, 4, 3, "#cc2222");
+            drawRect(drawX - 1, drawY - 2, 2, 1, "#cc2222");
+            drawRect(drawX, drawY - 3, 1, 1, "#44aa22");
+            drawRect(drawX - 2, drawY - 1, 1, 1, "#ff4444");
+        } else if (rot === 1) {
+            // Tilted right
+            drawRect(drawX - 1, drawY - 2, 3, 4, "#cc2222");
+            drawRect(drawX + 2, drawY - 1, 1, 2, "#cc2222");
+            drawRect(drawX + 3, drawY, 1, 1, "#44aa22");
+            drawRect(drawX - 1, drawY - 2, 1, 1, "#ff4444");
+        } else if (rot === 2) {
+            // Upside down
+            drawRect(drawX - 2, drawY - 1, 4, 3, "#cc2222");
+            drawRect(drawX - 1, drawY + 2, 2, 1, "#cc2222");
+            drawRect(drawX, drawY + 3, 1, 1, "#44aa22");
+            drawRect(drawX + 1, drawY + 1, 1, 1, "#ff4444");
+        } else {
+            // Tilted left
+            drawRect(drawX - 1, drawY - 2, 3, 4, "#cc2222");
+            drawRect(drawX - 2, drawY - 1, 1, 2, "#cc2222");
+            drawRect(drawX - 3, drawY, 1, 1, "#44aa22");
+            drawRect(drawX + 1, drawY - 2, 1, 1, "#ff4444");
+        }
     }
 
     // Tomato splats
     for (const s of tomatoSplats) {
-        const a = s.timer / 20;
+        const a = s.timer / 25;
         ctx.globalAlpha = a;
         // Splat — irregular red blobs
         drawRect(s.x - 3, s.y - 1, 6, 3, "#cc2222");
@@ -2613,6 +2650,9 @@ function render() {
         drawRect(s.x - 5, s.y, 2, 2, "#cc2222");
         drawRect(s.x + 4, s.y - 2, 2, 2, "#aa1111");
         drawRect(s.x - 2, s.y + 3, 2, 1, "#cc2222");
+        // Seeds
+        drawRect(s.x + 1, s.y - 1, 1, 1, "#F6CC60");
+        drawRect(s.x - 2, s.y + 1, 1, 1, "#F6CC60");
     }
     ctx.globalAlpha = 1.0;
 
