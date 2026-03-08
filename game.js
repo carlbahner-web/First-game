@@ -3423,9 +3423,9 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
     pxLean(15, -24, 18, 3, "#F5E2CC");
     pxLean(12, -21, 24, 3, "#F2DCC0");
     pxLean(15, -18, 18, 3, "#F0D8BA");
-    // Ears (subtle, flush with head edge)
-    pxLean(3, -6, 3, 6, "#DFC09E");
-    pxLean(42, -6, 3, 6, "#DFC09E");
+    // Ears (flush with head edge — no protrusion)
+    pxLean(6, -6, 3, 6, "#DFC09E");
+    pxLean(39, -6, 3, 6, "#DFC09E");
 
     // === EYES & BEARD (direction-aware — beard only on front of face) ===
     const isBlinking = opts.isBlinking || false;
@@ -4415,10 +4415,10 @@ function renderStoryScreen() {
     const playerX = charMargin + slotW * 2 - 8;
     const playerFrame = Math.floor(storyBlink / 12) % 4;
     drawPlayerSprite(playerX, charY, playerFrame, 0, {});
-    // Raised fist
+    // Raised fist — clearly above the head
     const playerBob = playerFrame % 2 === 1 ? 1 : 0;
-    drawRect(playerX + 13, charY - 6 - playerBob, 4, 4, "#E8CBA8");   // fist
-    drawRect(playerX + 13, charY - 2 - playerBob, 2, 4, "#E8CBA8");   // arm
+    drawRect(playerX + 11, charY - 14 - playerBob, 4, 4, "#E8CBA8");  // fist
+    drawRect(playerX + 12, charY - 10 - playerBob, 2, 5, "#E8CBA8");  // arm
 
     // Dancers (slots 4 and 5)
     const dancerPals = [
