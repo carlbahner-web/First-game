@@ -2459,7 +2459,7 @@ function advanceLevel() {
     goblin.dead = true;
     goblin.deathAnimActive = false;
     goblin.deathAnimTimer = 0;
-    goblin.respawnTimer = 300;
+    goblin.respawnTimer = 120;
     catapultGoblin = null;
     catapultSpawnedThisCycle = false;
     catapultSequenceCount = 0;
