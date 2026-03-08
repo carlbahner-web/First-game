@@ -2541,36 +2541,39 @@ function render() {
         drawText(num, tx, gridBottomTileY() * TILE + 8, c === currentStep && playing ? PAL.playhead : "#5a8a8f", 3);
     }
 
-    // Level counter (left) and Kill counter (right)
+    // Level counter, Kill counter, Timer — panels above bottom wall
     {
-        const kcY = gridBottomTileY() * TILE + 20;
-        const baseX = GRID_X * TILE;
         const pxSz = 3;
-        const digitW = (3 * pxSz + pxSz); // per digit width
+        const digitW = 3 * pxSz + pxSz; // per digit width
         const panelH = 5 * pxSz + 6;
+        const panelGap = 4; // gap between panels
 
-        // Level counter — left side
-        const lvlDigits = String(currentLevel + 1).length;
-        const lvlPanelW = 14 + lvlDigits * digitW + 10;
+        // Position: just above bottom wall, left-aligned with grid
+        const kcY = (ROWS - 1) * TILE - panelH - 6;
+        const baseX = GRID_X * TILE;
+
+        // --- Level counter ---
+        const lvlStr = String(currentLevel + 1);
+        const lvlPanelW = 14 + lvlStr.length * digitW + 10;
         drawRect(baseX - 2, kcY - 2, lvlPanelW + 4, panelH + 4, "#1a3438");
         drawRect(baseX, kcY, lvlPanelW, panelH, "#243e42");
         drawRect(baseX, kcY, lvlPanelW, 1, "#3a6a70");
-        // "L" letter icon (pixel art)
+        // "L" icon
         const fx = baseX + 2, fy = kcY + 3;
-        drawRect(fx, fy, 2, 10, "#EBEBE3");           // vertical stroke
-        drawRect(fx + 2, fy + 8, 6, 2, "#EBEBE3");    // horizontal stroke
-        // Level number
+        drawRect(fx, fy, 2, 10, "#EBEBE3");
+        drawRect(fx + 2, fy + 8, 6, 2, "#EBEBE3");
+        // Level digits
         const lvlNumX = baseX + 14;
         const numY = kcY + 3;
-        drawPixelDigits(currentLevel + 1, lvlNumX + (lvlDigits * digitW) / 2, numY, "#EBEBE3", pxSz);
+        drawPixelDigits(lvlStr, lvlNumX + (lvlStr.length * digitW) / 2, numY, "#EBEBE3", pxSz);
 
-        // Kill counter — right side
-        const kcX = baseX + lvlPanelW + 8;
-        const numDigits = String(killCount).length;
-        const panelW = 14 + numDigits * digitW + 10;
-        drawRect(kcX - 2, kcY - 2, panelW + 4, panelH + 4, "#1a3438");
-        drawRect(kcX, kcY, panelW, panelH, "#243e42");
-        drawRect(kcX, kcY, panelW, 1, "#3a6a70");
+        // --- Kill counter ---
+        const kcX = baseX + lvlPanelW + panelGap;
+        const killStr = String(killCount);
+        const killPanelW = 14 + killStr.length * digitW + 10;
+        drawRect(kcX - 2, kcY - 2, killPanelW + 4, panelH + 4, "#1a3438");
+        drawRect(kcX, kcY, killPanelW, panelH, "#243e42");
+        drawRect(kcX, kcY, killPanelW, 1, "#3a6a70");
         // Skull icon (10x10 pixel art)
         const sx = kcX + 2, sy = kcY + 3;
         drawRect(sx + 1, sy, 8, 2, "#EBEBE3");     // top cranium
@@ -2582,16 +2585,15 @@ function render() {
         drawRect(sx + 6, sy + 3, 2, 2, "#2c4a4f");  // right eye
         drawRect(sx + 4, sy + 5, 2, 2, "#2c4a4f");  // nose
         drawRect(sx + 4, sy + 8, 2, 2, "#2c4a4f");  // tooth gap
-        // Large pixel-art kill number
-        const numX = kcX + 14;
-        drawPixelDigits(killCount, numX + (numDigits * digitW) / 2, numY, "#EBEBE3", pxSz);
+        // Kill digits
+        const killNumX = kcX + 14;
+        drawPixelDigits(killStr, killNumX + (killStr.length * digitW) / 2, numY, "#EBEBE3", pxSz);
 
-        // Timer counter — right of kill counter
+        // --- Timer counter ---
         const timerSec = Math.max(0, Math.ceil(levelTimer / 90));
         const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
-        const timerDigits = timerStr.length;
-        const timerX = kcX + panelW + 8;
-        const timerPanelW = 14 + timerDigits * digitW + 10;
+        const timerX = kcX + killPanelW + panelGap;
+        const timerPanelW = 14 + timerStr.length * digitW + 10;
         // Urgency colors
         const isUrgent = timerSec <= 30;
         const isCritical = timerSec <= 10;
@@ -2605,14 +2607,14 @@ function render() {
         drawRect(timerX - 2, kcY - 2, timerPanelW + 4, panelH + 4, timerBorderColor);
         drawRect(timerX, kcY, timerPanelW, panelH, timerBgColor);
         drawRect(timerX, kcY, timerPanelW, 1, timerHighlight);
-        // "T" letter icon (pixel art, same style as "L")
+        // "T" icon
         const tx2 = timerX + 2, ty2 = kcY + 3;
-        drawRect(tx2, ty2, 8, 2, blinkOn ? timerColor : timerBgColor);           // horizontal top bar
-        drawRect(tx2 + 3, ty2 + 2, 2, 8, blinkOn ? timerColor : timerBgColor);   // vertical stroke
+        drawRect(tx2, ty2, 8, 2, blinkOn ? timerColor : timerBgColor);
+        drawRect(tx2 + 3, ty2 + 2, 2, 8, blinkOn ? timerColor : timerBgColor);
         // Timer digits
         if (blinkOn) {
             const tNumX = timerX + 14;
-            drawPixelDigits(timerStr, tNumX + (timerDigits * digitW) / 2, numY, timerColor, pxSz);
+            drawPixelDigits(timerStr, tNumX + (timerStr.length * digitW) / 2, numY, timerColor, pxSz);
         }
 
         // Tick sound during last 10 seconds (once per second)
