@@ -1546,7 +1546,8 @@ function update(dt) {
                     || (catapultGoblin && tx === cgBlockX && ty === cgBlockY);
             }
             // Push any dancer at the target tile perpendicular to goblin's movement
-            function pushDancerAt(tx, ty, moveDirX, moveDirY) {
+            function pushDancerAt(tx, ty, moveDirX, moveDirY, depth) {
+                if (depth > 5) return false; // prevent infinite chain
                 const ttx = Math.round(tx / TILE);
                 const tty = Math.round(ty / TILE);
                 for (const d of dancers) {
@@ -1556,10 +1557,8 @@ function update(dt) {
                         // Push perpendicular to goblin movement direction
                         let pushX = 0, pushY = 0;
                         if (moveDirX !== 0) {
-                            // Goblin moving horizontally → push dancer vertically
                             pushY = (d.y >= goblin.y) ? 1 : -1;
                         } else {
-                            // Goblin moving vertically → push dancer horizontally
                             pushX = (d.x >= goblin.x) ? 1 : -1;
                         }
                         // Try the preferred perpendicular direction, then the opposite
@@ -1571,14 +1570,16 @@ function update(dt) {
                             newY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, newY));
                             const ntx = Math.round(newX / TILE);
                             const nty = Math.round(newY / TILE);
-                            if (!isTileBlockedByObjects(ntx, nty)
-                                && !isTileOccupiedByDancer(ntx, nty)
-                                && !(ntx === Math.round(p.x / TILE) && nty === Math.round(p.y / TILE))) {
-                                d.targetX = newX;
-                                d.targetY = newY;
-                                d.walkingIn = true;
-                                return true;
+                            if (isTileBlockedByObjects(ntx, nty)
+                                || (ntx === Math.round(p.x / TILE) && nty === Math.round(p.y / TILE))) continue;
+                            // If another dancer is in the way, chain-push it in the same direction
+                            if (isTileOccupiedByDancer(ntx, nty)) {
+                                if (!pushDancerAt(newX, newY, px * TILE, py * TILE, depth + 1)) continue;
                             }
+                            d.targetX = newX;
+                            d.targetY = newY;
+                            d.walkingIn = true;
+                            return true;
                         }
                         return false; // couldn't push, dancer is stuck
                     }
@@ -1589,7 +1590,7 @@ function update(dt) {
                 const moveDirX = nx - goblin.x;
                 const moveDirY = ny - goblin.y;
                 if (isTileOccupiedByDancer(Math.round(nx / TILE), Math.round(ny / TILE))) {
-                    pushDancerAt(nx, ny, moveDirX, moveDirY);
+                    pushDancerAt(nx, ny, moveDirX, moveDirY, 0);
                 }
                 goblin.destX = nx;
                 goblin.destY = ny;
@@ -1615,7 +1616,7 @@ function update(dt) {
                     const aDirX = ax - goblin.x;
                     const aDirY = ay - goblin.y;
                     if (isTileOccupiedByDancer(Math.round(ax / TILE), Math.round(ay / TILE))) {
-                        pushDancerAt(ax, ay, aDirX, aDirY);
+                        pushDancerAt(ax, ay, aDirX, aDirY, 0);
                     }
                     goblin.destX = ax;
                     goblin.destY = ay;
