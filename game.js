@@ -1055,6 +1055,7 @@ function checkPendingFeatureScreens() {
         newInstrumentShown.cowbell = true;
         newInstrumentTimer = 0;
         gameState = "newinstrument";
+        startStoryDrums();
         return true;
     }
     if (newRows > prevRows && newRows === 6 && !newInstrumentShown.tom) {
@@ -1062,6 +1063,7 @@ function checkPendingFeatureScreens() {
         newInstrumentShown.tom = true;
         newInstrumentTimer = 0;
         gameState = "newinstrument";
+        startStoryDrums();
         return true;
     }
 
@@ -1072,6 +1074,7 @@ function checkPendingFeatureScreens() {
         enemyWarningBlink = 0;
         enemyWarningIntroTimer = 0;
         gameState = "enemywarning-intro";
+        startStoryDrums();
         if (audioCtx) playWarningDonk(audioCtx.currentTime);
         return true;
     }
@@ -1081,6 +1084,7 @@ function checkPendingFeatureScreens() {
         enemyWarningBlink = 0;
         enemyWarningIntroTimer = 0;
         gameState = "enemywarning-intro";
+        startStoryDrums();
         if (audioCtx) playWarningDonk(audioCtx.currentTime);
         return true;
     }
@@ -1090,6 +1094,7 @@ function checkPendingFeatureScreens() {
         enemyWarningBlink = 0;
         enemyWarningIntroTimer = 0;
         gameState = "enemywarning-intro";
+        startStoryDrums();
         if (audioCtx) playWarningDonk(audioCtx.currentTime);
         return true;
     }
