@@ -2543,7 +2543,7 @@ function render() {
 
     // Level counter (left) and Kill counter (right)
     {
-        const kcY = (ROWS - 1) * TILE - 14;
+        const kcY = gridBottomTileY() * TILE + 20;
         const baseX = GRID_X * TILE;
         const pxSz = 3;
         const digitW = (3 * pxSz + pxSz); // per digit width
