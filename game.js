@@ -4415,8 +4415,8 @@ function renderStoryScreen() {
     drawPlayerSprite(playerX, charY, playerFrame, 0, {});
     // Raised fist
     const playerBob = playerFrame % 2 === 1 ? 1 : 0;
-    drawRect(playerX + 13, charY - 6 - playerBob, 4, 4, PAL.skin);   // fist
-    drawRect(playerX + 13, charY - 2 - playerBob, 2, 4, PAL.skin);   // arm
+    drawRect(playerX + 13, charY - 6 - playerBob, 4, 4, "#E8CBA8");   // fist
+    drawRect(playerX + 13, charY - 2 - playerBob, 2, 4, "#E8CBA8");   // arm
 
     // Dancers (slots 4 and 5)
     const dancerPals = [
