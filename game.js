@@ -3341,10 +3341,10 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
     }
 
     // === BODY (teal shirt — Studioland style) ===
-    // Lower body stays planted
-    px(9, 21, 30, 15, "#2a6a6a");       // Lower torso (stays put)
-    px(9, 21, 6, 15, "#1e5454");         // Lower left dark side
-    px(33, 21, 6, 15, "#1e5454");        // Lower right dark side
+    // Lower body stays planted (extended upward to fill gap when upper body leans)
+    px(9, 9, 30, 27, "#2a6a6a");        // Lower torso (stays put)
+    px(9, 9, 6, 27, "#1e5454");          // Lower left dark side
+    px(33, 9, 6, 27, "#1e5454");         // Lower right dark side
     px(12, 30, 24, 3, "#1e5454");       // Shirt bottom hem
     // Upper body leans into punch
     pxLean(9, 6, 30, 18, "#2a6a6a");    // Upper torso
@@ -3465,8 +3465,13 @@ function drawSword() {
     const leanY = dy !== 0 ? dy * thrust * 4 : 0;
 
     // Arm starts from edge of leaned body, extends a short distance to fist
-    const shoulderOffX = (dy !== 0) ? 5 : dx * 8;
-    const shoulderOffY = (dx !== 0) ? -2 : dy * 8;
+    let shoulderOffX, shoulderOffY;
+    switch (p.dir) {
+        case 0: shoulderOffX = -5; shoulderOffY = 2; break;  // down — character's right arm, at shoulder height
+        case 1: shoulderOffX = 5; shoulderOffY = -8; break;   // up
+        case 2: shoulderOffX = -8; shoulderOffY = -2; break;  // left
+        case 3: shoulderOffX = 8; shoulderOffY = -2; break;   // right
+    }
     const armLen = 3 + thrust * 6; // short arm from body edge to fist
     const shoulderX = (cx + leanX + shoulderOffX) * SCALE;
     const shoulderY = (cy + leanY + shoulderOffY) * SCALE;
