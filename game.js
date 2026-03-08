@@ -2341,6 +2341,12 @@ function drawRect(x, y, w, h, color) {
     ctx.fillRect(x * SCALE, y * SCALE, w * SCALE, h * SCALE);
 }
 
+// Simple seeded random for deterministic floor grain (no flicker)
+function seededRandom(seed) {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+}
+
 function drawText(text, x, y, color, size) {
     ctx.fillStyle = color;
     ctx.font = `${size * SCALE}px monospace`;
@@ -2367,6 +2373,18 @@ function render() {
             drawRect(c * TILE, r * TILE, TILE, TILE, col);
             // Plank line
             drawRect(c * TILE, r * TILE + TILE - 1, TILE, 1, "rgba(0,0,0,0.15)");
+            // Subtle noise/grain texture
+            let seed = r * 1000 + c * 37;
+            for (let i = 0; i < 10; i++) {
+                seed = (seed * 9301 + 49297) % 233280;
+                const gx = (seed % TILE);
+                seed = (seed * 9301 + 49297) % 233280;
+                const gy = (seed % (TILE - 1));
+                seed = (seed * 9301 + 49297) % 233280;
+                const bright = seed / 233280 > 0.5;
+                const grainCol = bright ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.08)";
+                drawRect(c * TILE + gx, r * TILE + gy, 1, 1, grainCol);
+            }
         }
     }
 
