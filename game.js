@@ -3073,22 +3073,33 @@ function drawSword() {
 
 // Reusable goblin sprite for all screens (story, warnings, gameplay)
 // type: "normal", "elite", "catapult"
-// gx, gy: top-left position
+// gx, gy: top-left position (game coords)
 // frame: animation frame (0-3)
-// options: { dir, showShadow, shimmer }
+// options: { dir, showShadow, bodyCol, darkCol, headCol, eyeCol }
 function drawGoblinSprite(type, gx, gy, frame, options) {
     const opts = options || {};
-    const dir = opts.dir !== undefined ? opts.dir : 0; // default facing down
-    const showShadow = opts.showShadow !== false; // default true
-    const bob = frame % 2 === 1 ? 1 : 0;
+    const dir = opts.dir !== undefined ? opts.dir : 0;
+    const showShadow = opts.showShadow !== false;
+    const bob = (frame % 2 === 1 ? 1 : 0) * SCALE;
 
+    // Colors — allow overrides (for hurt flash, HP changes)
     let bodyCol, darkCol, headCol, eyeCol;
-    if (type === "elite") {
+    if (opts.bodyCol) {
+        bodyCol = opts.bodyCol; darkCol = opts.darkCol; headCol = opts.headCol; eyeCol = opts.eyeCol;
+    } else if (type === "elite") {
         bodyCol = "#c45a8a"; darkCol = "#a43a6a"; headCol = "#d46a9a"; eyeCol = "#ffee44";
     } else if (type === "catapult") {
         bodyCol = "#8B5E3C"; darkCol = "#6B3E1C"; headCol = "#9B6E4C"; eyeCol = "#ffee44";
     } else {
         bodyCol = "#4a8a3a"; darkCol = "#3a6a2a"; headCol = "#5a9a4a"; eyeCol = "#cc2222";
+    }
+
+    // Screen-pixel base position
+    const sx = gx * SCALE;
+    const sy = gy * SCALE;
+
+    function px(x, y, w, h, color) {
+        drawPx(sx + x, sy + y - bob, w, h, color);
     }
 
     // Shadow
@@ -3107,30 +3118,72 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
         drawRect(catX + 2, catY - 2, 5, 3, "#4A2A0E");
     }
 
-    // Body
-    drawRect(gx + 4, gy + 3 - bob, 8, 9, bodyCol);
-    drawRect(gx + 4, gy + 3 - bob, 2, 9, darkCol);
-    drawRect(gx + 10, gy + 3 - bob, 2, 9, darkCol);
-    // Head
-    drawRect(gx + 3, gy - 1 - bob, 10, 6, headCol);
-    // Pointy ears
-    drawRect(gx + 1, gy - bob, 3, 3, headCol);
-    drawRect(gx + 12, gy - bob, 3, 3, headCol);
-    // Eyes (direction-aware)
+    // === BODY (squat, stocky — Studioland style) ===
+    px(12, 9, 24, 27, bodyCol);        // Main torso
+    px(12, 9, 6, 27, darkCol);         // Left dark side
+    px(30, 9, 6, 27, darkCol);         // Right dark side
+    px(18, 12, 12, 3, bodyCol);        // Chest area (lighter)
+    // Tattered vest/tunic edge
+    px(12, 33, 24, 3, darkCol);
+
+    // === HEAD (round, expressive) ===
+    px(6, -12, 36, 21, headCol);       // Main head
+    px(9, -15, 30, 3, headCol);        // Rounded top
+    px(12, -18, 24, 3, headCol);       // More rounding
+    // Head shading
+    px(9, -15, 6, 3, darkCol);         // Left shadow
+    px(33, -15, 6, 3, darkCol);        // Right shadow
+
+    // === POINTY EARS (iconic goblin feature) ===
+    px(0, -6, 9, 9, headCol);          // Left ear base
+    px(-3, -9, 6, 6, headCol);         // Left ear point
+    px(-6, -12, 3, 3, headCol);        // Left ear tip
+    px(39, -6, 9, 9, headCol);         // Right ear base
+    px(45, -9, 6, 6, headCol);         // Right ear point
+    px(51, -12, 3, 3, headCol);        // Right ear tip
+    // Inner ear
+    px(0, -3, 6, 3, darkCol);
+    px(42, -3, 6, 3, darkCol);
+
+    // === EYES (direction-aware) ===
+    const eyeOfs = [[0, 3], [0, -6], [-3, 0], [3, 0]][dir];
+
     if (dir !== 1) {
-        const ed = [[0, 2], [0, -2], [-1, 0], [1, 0]][dir];
-        drawRect(gx + 5 + ed[0], gy + 1 - bob + ed[1], 2, 2, eyeCol);
-        drawRect(gx + 9 + ed[0], gy + 1 - bob + ed[1], 2, 2, eyeCol);
+        // Eye sockets (dark recesses)
+        px(10 + eyeOfs[0], -9 + eyeOfs[1], 10, 8, "#1a2a1a");
+        px(28 + eyeOfs[0], -9 + eyeOfs[1], 10, 8, "#1a2a1a");
+        // Glowing eye color
+        px(12 + eyeOfs[0], -7 + eyeOfs[1], 6, 5, eyeCol);
+        px(30 + eyeOfs[0], -7 + eyeOfs[1], 6, 5, eyeCol);
+        // Bright pupil centers
+        px(13 + eyeOfs[0], -6 + eyeOfs[1], 3, 3, "#ffffff");
+        px(31 + eyeOfs[0], -6 + eyeOfs[1], 3, 3, "#ffffff");
+        // Angry brow ridge
+        px(9 + eyeOfs[0], -12 + eyeOfs[1], 12, 3, darkCol);
+        px(27 + eyeOfs[0], -12 + eyeOfs[1], 12, 3, darkCol);
     }
-    // Mouth (fangs, when facing down)
-    if (dir === 0) {
-        drawRect(gx + 6, gy + 4 - bob, 1, 2, "#EBEBE3");
-        drawRect(gx + 9, gy + 4 - bob, 1, 2, "#EBEBE3");
+
+    // === MOUTH / FANGS (direction-aware) ===
+    if (dir !== 1) {
+        const mOfs = dir === 2 ? -3 : dir === 3 ? 3 : 0;
+        // Wide grin
+        px(12 + mOfs, 0, 24, 6, "#2a1a1a");
+        px(15 + mOfs, 6, 18, 3, "#2a1a1a");
+        // Fangs (white, pointy)
+        px(14 + mOfs, 0, 3, 6, "#EBEBE3");
+        px(21 + mOfs, 0, 3, 6, "#EBEBE3");
+        px(28 + mOfs, 0, 3, 6, "#EBEBE3");
+        // Fang tips extend below
+        px(15 + mOfs, 6, 2, 3, "#EBEBE3");
+        px(29 + mOfs, 6, 2, 3, "#EBEBE3");
     }
-    // Feet
-    const wo = frame === 1 ? 2 : frame === 3 ? -2 : 0;
-    drawRect(gx + 5 + wo, gy + 12, 3, 2, darkCol);
-    drawRect(gx + 8 - wo, gy + 12, 3, 2, darkCol);
+
+    // === FEET (clawed) ===
+    const walkPx = (frame === 1 ? 2 : frame === 3 ? -2 : 0) * SCALE;
+    px(12 + walkPx, 36, 9, 6, darkCol);     // Left foot
+    px(27 - walkPx, 36, 9, 6, darkCol);     // Right foot
+    px(10 + walkPx, 40, 4, 3, darkCol);     // Left claws
+    px(33 - walkPx, 40, 4, 3, darkCol);     // Right claws
 
     // Catapult invincibility shimmer
     if (type === "catapult") {
@@ -3138,121 +3191,38 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
         const shimmerAlpha = 0.15 + Math.sin(shimmerPhase) * 0.1;
         ctx.fillStyle = "#ffee44";
         ctx.globalAlpha = shimmerAlpha;
-        ctx.fillRect((gx + 2) * SCALE, (gy - 2 - bob) * SCALE, 12 * SCALE, 16 * SCALE);
+        ctx.fillRect(sx, (sy - 18 * 1) - bob, 48, 60);
         ctx.globalAlpha = 1.0;
     }
 }
 
 function drawGoblin() {
     const g = goblin;
-    const gx = g.x;
-    const gy = g.y;
-    const bob = g.frame % 2 === 1 ? 1 : 0;
 
-    // Color palette: elite changes color based on HP (3=pink, 2=dark magenta, 1=bright red)
+    // Color palette: elite changes color based on HP
     let bodyCol, darkCol, headCol, eyeCol;
     if (g.hurtTimer > 0 && g.hurtTimer % 4 < 2) {
-        // White flash when hurt
         bodyCol = "#ffffff"; darkCol = "#dddddd"; headCol = "#ffffff"; eyeCol = "#ffee44";
     } else if (!g.elite) {
         bodyCol = "#4a8a3a"; darkCol = "#3a6a2a"; headCol = "#5a9a4a"; eyeCol = "#cc2222";
     } else if (g.hp === 3) {
-        // Full HP elite: pink
         bodyCol = "#c45a8a"; darkCol = "#a43a6a"; headCol = "#d46a9a"; eyeCol = "#ffee44";
     } else if (g.hp === 2) {
-        // Hurt elite: darker magenta, angrier
         bodyCol = "#8a2a5a"; darkCol = "#6a1a3a"; headCol = "#aa3a6a"; eyeCol = "#ff4444";
     } else {
-        // Near death elite: bright red, furious
         bodyCol = "#cc2222"; darkCol = "#991111"; headCol = "#ee3333"; eyeCol = "#ffee44";
     }
 
-    // Shadow
-    drawRect(gx + 3, gy + g.h - 2, g.w - 6, 3, PAL.shadow);
-    // Body
-    drawRect(gx + 4, gy + 3 - bob, 8, 9, bodyCol);
-    // Darker sides
-    drawRect(gx + 4, gy + 3 - bob, 2, 9, darkCol);
-    drawRect(gx + 10, gy + 3 - bob, 2, 9, darkCol);
-    // Head
-    drawRect(gx + 3, gy - 1 - bob, 10, 6, headCol);
-    // Pointy ears
-    drawRect(gx + 1, gy - bob, 3, 3, headCol);
-    drawRect(gx + 12, gy - bob, 3, 3, headCol);
-    // Eyes
-    if (g.dir !== 1) {
-        const ed = [[0, 2], [0, -2], [-1, 0], [1, 0]][g.dir];
-        drawRect(gx + 5 + ed[0], gy + 1 - bob + ed[1], 2, 2, eyeCol);
-        drawRect(gx + 9 + ed[0], gy + 1 - bob + ed[1], 2, 2, eyeCol);
-    }
-    // Mouth (little fangs)
-    if (g.dir === 0) {
-        drawRect(gx + 6, gy + 4 - bob, 1, 2, "#EBEBE3");
-        drawRect(gx + 9, gy + 4 - bob, 1, 2, "#EBEBE3");
-    }
-    // Feet
-    const wo = g.frame === 1 ? 2 : g.frame === 3 ? -2 : 0;
-    drawRect(gx + 5 + wo, gy + 12, 3, 2, darkCol);
-    drawRect(gx + 8 - wo, gy + 12, 3, 2, darkCol);
+    drawGoblinSprite(g.elite ? "elite" : "normal", g.x, g.y, g.frame, {
+        dir: g.dir, bodyCol, darkCol, headCol, eyeCol
+    });
 }
 
 function drawCatapultGoblin() {
     const cg = catapultGoblin;
     if (!cg) return;
 
-    const gx = cg.x;
-    const gy = cg.y;
-    const bob = cg.frame % 2 === 1 ? 1 : 0;
-
-    // Colors: bronze/brown with golden shimmer
-    const bodyCol = "#8B5E3C";
-    const darkCol = "#6B3E1C";
-    const headCol = "#9B6E4C";
-    const eyeCol = "#ffee44";
-
-    // Invincibility shimmer — oscillating brightness
-    const shimmerPhase = (performance.now() / 100) % (Math.PI * 2);
-    const shimmerAlpha = 0.15 + Math.sin(shimmerPhase) * 0.1;
-
-    // Shadow
-    drawRect(gx + 3, gy + cg.h - 2, cg.w - 6, 3, PAL.shadow);
-
-    // Catapult behind goblin (wooden frame)
-    const catX = gx - 4;
-    const catY = gy + 2;
-    drawRect(catX, catY + 6, 24, 3, "#5C3A1E"); // base beam
-    drawRect(catX + 2, catY + 2, 3, 6, "#5C3A1E"); // left upright
-    drawRect(catX + 19, catY + 2, 3, 6, "#5C3A1E"); // right upright
-    drawRect(catX + 4, catY, 16, 2, "#7B5A3A"); // arm
-    // Bowl/cup at end of arm
-    drawRect(catX + 2, catY - 2, 5, 3, "#4A2A0E");
-
-    // Body
-    drawRect(gx + 4, gy + 3 - bob, 8, 9, bodyCol);
-    drawRect(gx + 4, gy + 3 - bob, 2, 9, darkCol);
-    drawRect(gx + 10, gy + 3 - bob, 2, 9, darkCol);
-    // Head
-    drawRect(gx + 3, gy - 1 - bob, 10, 6, headCol);
-    // Pointy ears
-    drawRect(gx + 1, gy - bob, 3, 3, headCol);
-    drawRect(gx + 12, gy - bob, 3, 3, headCol);
-    // Eyes
-    const ed = [[0, 2], [0, -2], [-1, 0], [1, 0]][cg.dir] || [0, 2];
-    drawRect(gx + 5 + ed[0], gy + 1 - bob + ed[1], 2, 2, eyeCol);
-    drawRect(gx + 9 + ed[0], gy + 1 - bob + ed[1], 2, 2, eyeCol);
-    // Fangs
-    drawRect(gx + 6, gy + 4 - bob, 1, 2, "#EBEBE3");
-    drawRect(gx + 9, gy + 4 - bob, 1, 2, "#EBEBE3");
-    // Feet
-    const cwo = cg.frame === 1 ? 2 : cg.frame === 3 ? -2 : 0;
-    drawRect(gx + 5 + cwo, gy + 12, 3, 2, darkCol);
-    drawRect(gx + 8 - cwo, gy + 12, 3, 2, darkCol);
-
-    // Invincibility shimmer overlay
-    ctx.fillStyle = "#ffee44";
-    ctx.globalAlpha = shimmerAlpha;
-    ctx.fillRect((gx + 2) * SCALE, (gy - 2 - bob) * SCALE, 12 * SCALE, 16 * SCALE);
-    ctx.globalAlpha = 1.0;
+    drawGoblinSprite("catapult", cg.x, cg.y, cg.frame, { dir: cg.dir });
 
     // Boulder in flight
     if (cg.boulder) {
