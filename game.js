@@ -3103,15 +3103,29 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
         drawRect(gx + 3, gy + TILE - 2, TILE - 6, 3, PAL.shadow);
     }
 
-    // Catapult frame (behind goblin)
+    // Catapult frame (behind goblin) — 48x48 detail
     if (type === "catapult") {
-        const catX = gx - 4;
-        const catY = gy + 2;
-        drawRect(catX, catY + 6, 24, 3, "#5C3A1E");
-        drawRect(catX + 2, catY + 2, 3, 6, "#5C3A1E");
-        drawRect(catX + 19, catY + 2, 3, 6, "#5C3A1E");
-        drawRect(catX + 4, catY, 16, 2, "#7B5A3A");
-        drawRect(catX + 2, catY - 2, 5, 3, "#4A2A0E");
+        // Base platform
+        px(-12, 18, 72, 9, "#5C3A1E");
+        px(-9, 15, 66, 3, "#4A2A0E");
+        // Left upright post
+        px(-6, 3, 9, 18, "#5C3A1E");
+        px(-3, 3, 3, 18, "#7B5A3A");     // Wood grain highlight
+        // Right upright post
+        px(45, 3, 9, 18, "#5C3A1E");
+        px(48, 3, 3, 18, "#7B5A3A");     // Wood grain highlight
+        // Throwing arm (horizontal beam)
+        px(-3, -3, 54, 6, "#7B5A3A");
+        px(0, -6, 48, 3, "#6B4A2A");     // Arm top edge
+        // Bowl/cup at launch end
+        px(-12, -12, 18, 9, "#4A2A0E");
+        px(-9, -15, 12, 3, "#4A2A0E");   // Bowl lip
+        px(-9, -9, 12, 3, "#5C3A1E");    // Bowl inner
+        // Rope/binding details
+        px(-3, 0, 6, 3, "#3A2A0E");
+        px(45, 0, 6, 3, "#3A2A0E");
+        // Cross brace
+        px(12, 9, 24, 3, "#4A2A0E");
     }
 
     // === BODY (squat, stocky — Studioland style) ===
@@ -3232,15 +3246,29 @@ function drawCatapultGoblin() {
         const arcY = -4 * arcHeight * t * (1 - t);
         const by = baseY + arcY;
 
-        // Shadow on ground (grows as boulder descends)
-        const shadowSize = 3 + (1 - Math.abs(arcY) / arcHeight) * 4;
-        drawRect(bx - shadowSize / 2, b.targetY + 2, shadowSize, 2, PAL.shadow);
+        // Shadow on ground (grows as boulder descends) — 48×48 detail
+        const shadowPx = (3 + (1 - Math.abs(arcY) / arcHeight) * 4) * SCALE;
+        const sx = bx * SCALE - shadowPx / 2;
+        const sy = b.targetY * SCALE + 6;
+        drawPx(sx, sy, shadowPx, 6, PAL.shadow);
 
-        // Boulder (dark gray rock)
-        drawRect(bx - 4, by - 4, 8, 8, "#6a6a6a");
-        drawRect(bx - 3, by - 3, 6, 6, "#888888");
-        // Highlight
-        drawRect(bx - 2, by - 3, 2, 2, "#aaaaaa");
+        // Boulder (detailed rock) — 48×48 detail
+        const rx = bx * SCALE - 12;
+        const ry = by * SCALE - 12;
+        // Base rock shape
+        drawPx(rx + 3, ry, 18, 24, "#6a6a6a");
+        drawPx(rx, ry + 3, 24, 18, "#6a6a6a");
+        // Inner lighter stone
+        drawPx(rx + 3, ry + 3, 18, 18, "#888888");
+        // Highlight (top-left)
+        drawPx(rx + 3, ry + 3, 9, 6, "#aaaaaa");
+        drawPx(rx + 3, ry + 3, 6, 9, "#aaaaaa");
+        // Shadow edge (bottom-right)
+        drawPx(rx + 15, ry + 15, 6, 6, "#555555");
+        drawPx(rx + 18, ry + 9, 3, 9, "#555555");
+        // Crack detail
+        drawPx(rx + 9, ry + 9, 3, 9, "#5a5a5a");
+        drawPx(rx + 12, ry + 12, 6, 3, "#5a5a5a");
     }
 
     // Target warning during aiming phase
