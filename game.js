@@ -3418,12 +3418,9 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
     pxLean(15, -24, 18, 3, "#F5E2CC");
     pxLean(12, -21, 24, 3, "#F2DCC0");
     pxLean(15, -18, 18, 3, "#F0D8BA");
-    // Ears
-    pxLean(3, -9, 6, 9, "#DFC09E");
-    pxLean(39, -9, 6, 9, "#DFC09E");
-    // Inner ear detail
-    pxLean(3, -6, 3, 3, "#D4B08A");
-    pxLean(42, -6, 3, 3, "#D4B08A");
+    // Ears (subtle, flush with head edge)
+    pxLean(3, -6, 3, 6, "#DFC09E");
+    pxLean(42, -6, 3, 6, "#DFC09E");
 
     // === EYES & BEARD (direction-aware — beard only on front of face) ===
     const isBlinking = opts.isBlinking || false;
