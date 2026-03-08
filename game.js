@@ -938,7 +938,7 @@ let tomatoes = []; // { x, y, targetX, targetY, speed, life }
 let tomatoSplats = []; // { x, y, timer }
 
 let gamePaused = false;
-let gameState = "title"; // "title", "story", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument-intro", "newinstrument", "sabotage-anim"
+let gameState = "title"; // "title", "story", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim"
 let enemyWarningType = null;   // "elite" or "catapult"
 let enemyWarningShown = { normal: false, elite: false, catapult: false }; // track which warnings have been shown
 let enemyWarningBlink = 0;     // blink timer for "PRESS ENTER"
@@ -1047,7 +1047,7 @@ window.addEventListener("keydown", (e) => {
     if (e.code === "Space") {
         e.preventDefault();
         if (gameState === "enemywarning" || gameState === "enemywarning-intro") return; // ignore Space on warning screen
-        if (gameState === "newinstrument" || gameState === "newinstrument-intro") return; // ignore Space on instrument popup
+        if (gameState === "newinstrument") return; // ignore Space on instrument screen
         if (gameState === "sabotage-anim") return; // ignore input during sabotage animation
         if (!keys[e.code]) spaceJustPressed = true; // only on initial press
     }
@@ -1081,8 +1081,7 @@ window.addEventListener("keydown", (e) => {
             return;
         }
         if (gameState === "newinstrument") {
-            gameState = "playing";
-            lastStepTime = performance.now();
+            advanceLevel();
             return;
         }
         if (gameState === "title") {
@@ -1111,6 +1110,26 @@ window.addEventListener("keydown", (e) => {
             return;
         }
         if (gameState === "levelcomplete" && levelCelebrateTimer > 120) {
+            // Check if next level introduces a new instrument
+            const nextLevel = currentLevel + 1;
+            if (nextLevel < LEVELS.length) {
+                const prevRows = LEVELS[currentLevel].activeRows;
+                const newRows = LEVELS[nextLevel].activeRows;
+                if (newRows > prevRows && newRows === 5 && !newInstrumentShown.cowbell) {
+                    newInstrumentType = "cowbell";
+                    newInstrumentShown.cowbell = true;
+                    newInstrumentTimer = 0;
+                    gameState = "newinstrument";
+                    return;
+                }
+                if (newRows > prevRows && newRows === 6 && !newInstrumentShown.tom) {
+                    newInstrumentType = "tom";
+                    newInstrumentShown.tom = true;
+                    newInstrumentTimer = 0;
+                    gameState = "newinstrument";
+                    return;
+                }
+            }
             advanceLevel();
             return;
         }
@@ -2534,23 +2553,7 @@ function advanceLevel() {
         sabotageNextState = "enemywarning-intro";
         if (audioCtx) playWarningDonk(audioCtx.currentTime);
     }
-    // New instrument popups when rows expand
-    else if (newRows > prevRows) {
-        if (newRows === 5 && !newInstrumentShown.cowbell) {
-            newInstrumentType = "cowbell";
-            newInstrumentShown.cowbell = true;
-            newInstrumentIntroTimer = 0;
-            newInstrumentTimer = 0;
-            sabotageNextState = "newinstrument-intro";
-        }
-        if (newRows === 6 && !newInstrumentShown.tom) {
-            newInstrumentType = "tom";
-            newInstrumentShown.tom = true;
-            newInstrumentIntroTimer = 0;
-            newInstrumentTimer = 0;
-            sabotageNextState = "newinstrument-intro";
-        }
-    }
+    // New instrument screens now shown before advanceLevel is called
 
     // Start sabotage animation (goblin zigzags across grid scrambling cells)
     sabotageAnimTimer = 0;
@@ -4355,8 +4358,8 @@ function renderStoryScreen() {
         { text: "SICK BEATS ECHOED THROUGH STUDIOLAND.", color: "#BFCDC0", scale: 5, gap: 22 },
         { text: "UNTIL THE GOBLINS BECAME JEALOUS", color: "#66cc66", scale: 5, gap: 16 },
         { text: "AND STARTED TO SABOTAGE THE MUSIC.", color: "#E86A6A", scale: 5, gap: 24 },
-        { text: "YOU ARE THE DJ, AND YOU HAVE A SWORD.", color: "#F6CC60", scale: 5, gap: 24 },
-        { text: "IT'S TIME TO GET STABBIN'!", color: "#E86A6A", scale: 7, gap: 0 },
+        { text: "YOU ARE THE DJ, AND YOU HAVE FISTS OF FURY.", color: "#F6CC60", scale: 5, gap: 24 },
+        { text: "IT'S TIME TO GET PUNCHIN'!", color: "#E86A6A", scale: 7, gap: 0 },
     ];
 
     // Calculate total height to vertically center story block
@@ -4819,10 +4822,10 @@ function renderTutorialScreen() {
         drawRect(dx, dotY, 3, 3, active ? "#F6CC60" : "#555555");
     }
 
-    // ======== PAGE 0: SWING YOUR SWORD ========
+    // ======== PAGE 0: PUNCH BLOCKS ========
     if (tutorialPage === 0) {
         // Title
-        drawCenteredText("SWING YOUR SWORD TO TOGGLE BEATS", 25, "#F6CC60", 7);
+        drawCenteredText("PUNCH BLOCKS TO TOGGLE BEATS", 25, "#F6CC60", 7);
 
         // Animated demo grid — player walks to blocks and hits them
         const gridStartX = W / 2 - 4 * TILE / 2;
@@ -4919,21 +4922,39 @@ function renderTutorialScreen() {
                 const walkFrame = isWalking ? Math.floor(t / 6) % 4 : 0;
                 const bob = walkFrame % 2 === 1 ? 1 : 0;
                 const faceDir = isAttacking ? 3 : (isWalking ? walkDir : 3);
-                drawPlayerSprite(px, py, walkFrame, faceDir, {});
+                const punchProg = isAttacking ? Math.sin(((stepT - ATTACK_AT) / ATTACK_DUR) * Math.PI) : 0;
+                drawPlayerSprite(px, py, walkFrame, faceDir, { punchThrust: punchProg });
                 if (isAttacking) {
-                    const swingProg = (stepT - ATTACK_AT) / ATTACK_DUR;
-                    const angle = -Math.PI * 0.7 + swingProg * Math.PI * 0.9;
-                    const sx = px + 8, sy = py + 2 - bob, bl = 13;
-                    const cosA = Math.cos(angle), sinA = Math.sin(angle);
-                    ctx.strokeStyle = "#F6CC60"; ctx.lineWidth = 3 * SCALE; ctx.lineCap = "round";
-                    ctx.beginPath(); ctx.moveTo(sx * SCALE, sy * SCALE); ctx.lineTo((sx + cosA * bl) * SCALE, (sy + sinA * bl) * SCALE); ctx.stroke();
-                    ctx.strokeStyle = "#8a7040"; ctx.lineWidth = 2 * SCALE;
-                    ctx.beginPath(); ctx.moveTo((sx - sinA * 3) * SCALE, (sy + cosA * 3) * SCALE); ctx.lineTo((sx + sinA * 3) * SCALE, (sy - cosA * 3) * SCALE); ctx.stroke();
-                    const swing = Math.sin(swingProg * Math.PI);
-                    if (swing > 0.3) { ctx.globalAlpha = 0.3 * swing * demoAlpha * playerAlpha; drawRect(px - 2, py - 8, 20, 22, "#F6CC60"); ctx.globalAlpha = demoAlpha * playerAlpha; }
-                } else {
-                    drawRect(px + 14, py - 8 - bob, 2, 10, "#F6CC60");
-                    drawRect(px + 12, py - 2 - bob, 6, 2, "#BF7538");
+                    // Draw punch arm + fist (matching drawSword style)
+                    const thrust = punchProg;
+                    const pDir = faceDir;
+                    let ddx2 = 0, ddy2 = 0;
+                    switch (pDir) { case 0: ddy2 = 1; break; case 1: ddy2 = -1; break; case 2: ddx2 = -1; break; case 3: ddx2 = 1; break; }
+                    const pLeanX = ddx2 !== 0 ? ddx2 * thrust * 5 : 0;
+                    const pLeanY = ddy2 !== 0 ? ddy2 * thrust * 4 : 0;
+                    const pcx = px + 8, pcy = py + 6;
+                    let shOX, shOY;
+                    switch (pDir) { case 0: shOX = -5; shOY = 2; break; case 1: shOX = 5; shOY = -8; break; case 2: shOX = -8; shOY = -2; break; case 3: shOX = 8; shOY = -2; break; }
+                    const armLen = 3 + thrust * 6;
+                    const shX = (pcx + pLeanX + shOX) * SCALE, shY = (pcy + pLeanY + shOY) * SCALE;
+                    const fiX = (pcx + pLeanX + shOX + ddx2 * armLen) * SCALE, fiY = (pcy + pLeanY + shOY + ddy2 * armLen) * SCALE;
+                    ctx.strokeStyle = "#E8CBA8"; ctx.lineWidth = 4 * SCALE; ctx.lineCap = "round";
+                    ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(fiX, fiY); ctx.stroke();
+                    // Fist
+                    ctx.fillStyle = "#E8CBA8"; ctx.beginPath(); ctx.arc(fiX, fiY, 3.5 * SCALE, 0, Math.PI * 2); ctx.fill();
+                    // Impact flash
+                    if (thrust > 0.5) {
+                        const burstCount = 6;
+                        for (let bi = 0; bi < burstCount; bi++) {
+                            const angle = (bi / burstCount) * Math.PI * 2 + (stepT - ATTACK_AT) * 0.3;
+                            ctx.strokeStyle = "#FFF8B0"; ctx.lineWidth = 2 * SCALE; ctx.globalAlpha = thrust * 0.8;
+                            ctx.beginPath();
+                            ctx.moveTo(fiX + Math.cos(angle) * 5 * SCALE, fiY + Math.sin(angle) * 5 * SCALE);
+                            ctx.lineTo(fiX + Math.cos(angle) * (8 + thrust * 4) * SCALE, fiY + Math.sin(angle) * (8 + thrust * 4) * SCALE);
+                            ctx.stroke();
+                        }
+                        ctx.globalAlpha = demoAlpha * playerAlpha;
+                    }
                 }
                 // Gold bracket indicator
                 if (!isAttacking && step.attack && step.toggleIdx >= 0 && cycleT < STEPS_TOTAL && !blockOn[step.toggleIdx]) {
@@ -5187,8 +5208,8 @@ function renderSabotageAnim() {
     if (sabotageFlipIndex >= sabotageCells.length) {
         const endFrame = sabotageCells.length * SABOTAGE_FRAMES_PER_CELL;
         if (t > endFrame + 20) {
-            if (sabotageNextState === "newinstrument-intro") {
-                if (audioCtx) playWarningDonk(audioCtx.currentTime);
+            if (sabotageNextState === "enemywarning-intro") {
+                // Sound already played when setting up the warning
             }
             gameState = sabotageNextState;
         }
@@ -5292,7 +5313,7 @@ function renderEnemyWarning() {
         drawCenteredText("GOBLINS!", 55, "#66cc66", 6);
         drawGoblinSprite("normal", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
         drawCenteredText("THEY SABOTAGE YOUR BEATS!", 115, "#BFCDC0", 5);
-        drawCenteredText("SLAY THEM WITH YOUR SWORD!", 132, "#F6CC60", 5);
+        drawCenteredText("PUNCH THEM TO DEFEAT THEM!", 132, "#F6CC60", 5);
 
     } else if (enemyWarningType === "elite") {
         drawCenteredText("WARNING!", 30, "#FF4466", 8);
@@ -5318,83 +5339,26 @@ function renderEnemyWarning() {
 
 }
 
-// ---- New Instrument Popup ----
-function renderNewInstrumentIntro() {
-    const INTRO_FRAMES = 70;
-    newInstrumentIntroTimer++;
-    const t = newInstrumentIntroTimer;
-    const progress = Math.min(1, t / INTRO_FRAMES);
-
-    // Render the game underneath
-    render();
-
-    const W = canvas.width;
-    const H = canvas.height;
-
-    // Grab the rendered frame for distortion
-    const imageData = ctx.getImageData(0, 0, W, H);
-    const copy = ctx.createImageData(W, H);
-    const src = imageData.data;
-    const dst = copy.data;
-
-    // Horizontal wave distortion — gets stronger over time
-    const waveAmp = progress * 6 * SCALE;
-    const waveFreq = 0.03 + progress * 0.02;
-    for (let y = 0; y < H; y++) {
-        const offset = Math.round(Math.sin(y * waveFreq + t * 0.15) * waveAmp);
-        for (let x = 0; x < W; x++) {
-            let sx = x - offset;
-            if (sx < 0) sx = 0;
-            if (sx >= W) sx = W - 1;
-            const di = (y * W + x) * 4;
-            const si = (y * W + sx) * 4;
-            const r = src[si], g = src[si + 1], b = src[si + 2];
-            const wash = progress * 0.7;
-            dst[di]     = Math.round(r + (255 - r) * wash);
-            dst[di + 1] = Math.round(g + (255 - g) * wash);
-            dst[di + 2] = Math.round(b + (255 - b) * wash);
-            dst[di + 3] = 255;
-        }
-    }
-    ctx.putImageData(copy, 0, 0);
-
-    // Screen shake
-    const shakeAmt = progress * 4 * SCALE;
-    if (shakeAmt > 0.5) {
-        const sx = (Math.random() - 0.5) * 2 * shakeAmt;
-        const sy = (Math.random() - 0.5) * 2 * shakeAmt;
-        const shifted = ctx.getImageData(0, 0, W, H);
-        ctx.clearRect(0, 0, W, H);
-        ctx.putImageData(shifted, Math.round(sx), Math.round(sy));
-    }
-
-    // White-out overlay
-    ctx.fillStyle = "#FFF";
-    ctx.globalAlpha = progress * 0.5;
-    ctx.fillRect(0, 0, W, H);
-    ctx.globalAlpha = 1;
-
-    // Auto-transition
-    if (t >= INTRO_FRAMES) {
-        gameState = "newinstrument";
-        newInstrumentTimer = 0;
-    }
-}
-
+// ---- New Instrument Screen (full instruction style) ----
 function renderNewInstrument() {
-    // Render the game underneath (frozen)
-    render();
-
     newInstrumentTimer++;
     const t = newInstrumentTimer;
     const W = COLS * TILE;
     const H = ROWS * TILE;
 
-    // Heavy dim overlay
-    ctx.fillStyle = "#000";
-    ctx.globalAlpha = 0.75;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.globalAlpha = 1.0;
+    // Dark background (same as tutorial)
+    drawRect(0, 0, W, H, "#0a0a12");
+
+    // Starfield
+    for (let i = 0; i < 60; i++) {
+        const sx = ((i * 137 + 50) % W);
+        const sy = ((i * 97 + 30) % H);
+        const twinkle = Math.sin(t * 0.05 + i) * 0.5 + 0.5;
+        ctx.globalAlpha = 0.3 + twinkle * 0.7;
+        const starSize = (i % 3 === 0) ? 2 : 1;
+        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#F6CC60" : "#EBEBE3");
+    }
+    ctx.globalAlpha = 1;
 
     function drawCenteredText(text, y, color, scale) {
         ctx.font = `${scale * SCALE}px monospace`;
@@ -5405,94 +5369,131 @@ function renderNewInstrument() {
     }
 
     if (newInstrumentType === "cowbell") {
-        // Title
-        drawCenteredText("NEW INSTRUMENT!", 30, "#F6CC60", 8);
+        // Title with entrance animation
+        const titleAlpha = Math.min(1, t / 30);
+        ctx.globalAlpha = titleAlpha;
+        drawCenteredText("NEW INSTRUMENT!", 28, "#F6CC60", 8);
+        ctx.globalAlpha = 1;
 
         // Instrument name
-        drawCenteredText("COWBELL", 55, "#E86A6A", 6);
+        const nameAlpha = Math.min(1, Math.max(0, (t - 15) / 30));
+        ctx.globalAlpha = nameAlpha;
+        drawCenteredText("COWBELL", 52, "#E86A6A", 7);
+        ctx.globalAlpha = 1;
 
-        // Animated cowbell icon — a simple bell shape
-        {
+        // Animated cowbell icon — larger, centered
+        if (t > 20) {
+            const iconAlpha = Math.min(1, (t - 20) / 20);
+            ctx.globalAlpha = iconAlpha;
             const cx = (W * SCALE) / 2;
-            const cy = 90 * SCALE;
+            const cy = 88 * SCALE;
             const bob = Math.sin(t * 0.1) * 3 * SCALE;
-            const swing = Math.sin(t * 0.12) * 0.15; // subtle rotation
+            const swing = Math.sin(t * 0.12) * 0.15;
             ctx.save();
             ctx.translate(cx, cy + bob);
             ctx.rotate(swing);
-            // Bell body (trapezoid)
+            // Bell body (trapezoid) — bigger
             ctx.fillStyle = "#E86A6A";
             ctx.beginPath();
-            ctx.moveTo(-8 * SCALE, -6 * SCALE);
-            ctx.lineTo(8 * SCALE, -6 * SCALE);
-            ctx.lineTo(10 * SCALE, 6 * SCALE);
-            ctx.lineTo(-10 * SCALE, 6 * SCALE);
+            ctx.moveTo(-12 * SCALE, -9 * SCALE);
+            ctx.lineTo(12 * SCALE, -9 * SCALE);
+            ctx.lineTo(15 * SCALE, 9 * SCALE);
+            ctx.lineTo(-15 * SCALE, 9 * SCALE);
             ctx.closePath();
             ctx.fill();
             // Highlight stripe
             ctx.fillStyle = "#F09090";
-            ctx.fillRect(-6 * SCALE, -4 * SCALE, 12 * SCALE, 2 * SCALE);
+            ctx.fillRect(-9 * SCALE, -6 * SCALE, 18 * SCALE, 3 * SCALE);
             // Handle on top
             ctx.fillStyle = "#EBEBE3";
-            ctx.fillRect(-3 * SCALE, -10 * SCALE, 6 * SCALE, 4 * SCALE);
+            ctx.fillRect(-4 * SCALE, -15 * SCALE, 8 * SCALE, 6 * SCALE);
             // Clapper at bottom
             ctx.fillStyle = "#EBEBE3";
             ctx.beginPath();
-            ctx.arc(0, 8 * SCALE, 2 * SCALE, 0, Math.PI * 2);
+            ctx.arc(0, 12 * SCALE, 3 * SCALE, 0, Math.PI * 2);
             ctx.fill();
             ctx.restore();
+            ctx.globalAlpha = 1;
         }
 
-        // Description text
-        drawCenteredText("A NEW ROW APPEARS BELOW THE KICK!", 132, "#BFCDC0", 4);
-        drawCenteredText("FILL IN THE COWBELL BEATS TO COMPLETE THE PATTERN!", 170, "#E86A6A", 4);
+        // Description text with staggered reveal
+        if (t > 40) {
+            const descAlpha = Math.min(1, (t - 40) / 30);
+            ctx.globalAlpha = descAlpha;
+            drawCenteredText("A NEW ROW APPEARS BELOW THE KICK!", 135, "#BFCDC0", 5);
+            ctx.globalAlpha = 1;
+        }
+        if (t > 55) {
+            const desc2Alpha = Math.min(1, (t - 55) / 30);
+            ctx.globalAlpha = desc2Alpha;
+            drawCenteredText("FILL IN THE COWBELL BEATS", 160, "#E86A6A", 5);
+            drawCenteredText("TO COMPLETE THE PATTERN!", 178, "#E86A6A", 5);
+            ctx.globalAlpha = 1;
+        }
 
     } else if (newInstrumentType === "tom") {
-        // Title
-        drawCenteredText("NEW INSTRUMENT!", 30, "#F6CC60", 8);
+        // Title with entrance animation
+        const titleAlpha = Math.min(1, t / 30);
+        ctx.globalAlpha = titleAlpha;
+        drawCenteredText("NEW INSTRUMENT!", 28, "#F6CC60", 8);
+        ctx.globalAlpha = 1;
 
         // Instrument name
-        drawCenteredText("TOM DRUM", 55, "#6AB8E8", 6);
+        const nameAlpha = Math.min(1, Math.max(0, (t - 15) / 30));
+        ctx.globalAlpha = nameAlpha;
+        drawCenteredText("TOM DRUM", 52, "#6AB8E8", 7);
+        ctx.globalAlpha = 1;
 
-        // Animated tom drum icon — a cylindrical drum
-        {
+        // Animated tom drum icon — larger, centered
+        if (t > 20) {
+            const iconAlpha = Math.min(1, (t - 20) / 20);
+            ctx.globalAlpha = iconAlpha;
             const cx = (W * SCALE) / 2;
-            const cy = 90 * SCALE;
+            const cy = 88 * SCALE;
             const bob = Math.sin(t * 0.1) * 3 * SCALE;
-            // Drum hit flash
-            const hitFlash = (t % 30 < 5 && t > 40) ? 1 : 0;
+            const hitFlash = (t % 30 < 5 && t > 50) ? 1 : 0;
             ctx.save();
             ctx.translate(cx, cy + bob);
-            // Drum body
+            // Drum body — bigger
             ctx.fillStyle = hitFlash ? "#8AD0FF" : "#6AB8E8";
-            ctx.fillRect(-10 * SCALE, -4 * SCALE, 20 * SCALE, 12 * SCALE);
+            ctx.fillRect(-15 * SCALE, -6 * SCALE, 30 * SCALE, 18 * SCALE);
             // Drum head (top ellipse)
             ctx.fillStyle = hitFlash ? "#FFFFFF" : "#EBEBE3";
             ctx.beginPath();
-            ctx.ellipse(0, -4 * SCALE, 10 * SCALE, 4 * SCALE, 0, 0, Math.PI * 2);
+            ctx.ellipse(0, -6 * SCALE, 15 * SCALE, 6 * SCALE, 0, 0, Math.PI * 2);
             ctx.fill();
             // Drum bottom rim
             ctx.fillStyle = "#4A8AB0";
             ctx.beginPath();
-            ctx.ellipse(0, 8 * SCALE, 10 * SCALE, 4 * SCALE, 0, 0, Math.PI);
+            ctx.ellipse(0, 12 * SCALE, 15 * SCALE, 6 * SCALE, 0, 0, Math.PI);
             ctx.fill();
             // Side stripes
             ctx.fillStyle = "#4A8AB0";
-            ctx.fillRect(-10 * SCALE, -4 * SCALE, 2 * SCALE, 12 * SCALE);
-            ctx.fillRect(8 * SCALE, -4 * SCALE, 2 * SCALE, 12 * SCALE);
+            ctx.fillRect(-15 * SCALE, -6 * SCALE, 3 * SCALE, 18 * SCALE);
+            ctx.fillRect(12 * SCALE, -6 * SCALE, 3 * SCALE, 18 * SCALE);
             ctx.restore();
+            ctx.globalAlpha = 1;
         }
 
-        // Description text
-        drawCenteredText("THE TOM DRUM JOINS THE MIX!", 132, "#BFCDC0", 5);
-        drawCenteredText("EVEN MORE BEATS TO MASTER!", 166, "#6AB8E8", 5);
+        // Description text with staggered reveal
+        if (t > 40) {
+            const descAlpha = Math.min(1, (t - 40) / 30);
+            ctx.globalAlpha = descAlpha;
+            drawCenteredText("THE TOM DRUM JOINS THE MIX!", 135, "#BFCDC0", 5);
+            ctx.globalAlpha = 1;
+        }
+        if (t > 55) {
+            const desc2Alpha = Math.min(1, (t - 55) / 30);
+            ctx.globalAlpha = desc2Alpha;
+            drawCenteredText("EVEN MORE BEATS TO MASTER!", 160, "#6AB8E8", 5);
+            ctx.globalAlpha = 1;
+        }
     }
 
     // Blinking "PRESS ENTER TO CONTINUE"
-    if (t > 60 && t % 60 < 40) {
-        drawCenteredText("PRESS ENTER TO CONTINUE", H - 10, "#EBEBE3", 5);
+    if (t > 80 && t % 60 < 40) {
+        drawCenteredText("PRESS ENTER TO CONTINUE", H - 12, "#EBEBE3", 5);
     }
-
 }
 
 function gameLoop(timestamp) {
@@ -5513,8 +5514,6 @@ function gameLoop(timestamp) {
                 renderEnemyWarningIntro();
             } else if (gameState === "enemywarning") {
                 renderEnemyWarning();
-            } else if (gameState === "newinstrument-intro") {
-                renderNewInstrumentIntro();
             } else if (gameState === "newinstrument") {
                 renderNewInstrument();
             } else if (gameState === "sabotage-anim") {
