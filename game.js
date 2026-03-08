@@ -4398,10 +4398,10 @@ function renderStoryScreen() {
     const playerX = charMargin + slotW * 2 - 8;
     const playerFrame = Math.floor(storyBlink / 12) % 4;
     drawPlayerSprite(playerX, charY, playerFrame, 0, {});
-    // Sword (held upright)
+    // Raised fist
     const playerBob = playerFrame % 2 === 1 ? 1 : 0;
-    drawRect(playerX + 14, charY - 8 - playerBob, 2, 12, "#BFCDC0");
-    drawRect(playerX + 12, charY - 2 - playerBob, 6, 2, "#BF7538");
+    drawRect(playerX + 13, charY - 6 - playerBob, 4, 4, PAL.skin);   // fist
+    drawRect(playerX + 13, charY - 2 - playerBob, 2, 4, PAL.skin);   // arm
 
     // Dancers (slots 4 and 5)
     const dancerPals = [
