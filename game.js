@@ -3226,28 +3226,28 @@ function render() {
         const rot = Math.floor(t.progress * 4) % 4;
         if (rot === 0) {
             // Upright
-            drawRect(drawX - 2, drawY - 1, 4, 3, "#FF00FF");
-            drawRect(drawX - 1, drawY - 2, 2, 1, "#FF00FF");
-            drawRect(drawX, drawY - 3, 1, 1, "#39FF14");
-            drawRect(drawX - 2, drawY - 1, 1, 1, "#FF44FF");
+            drawRect(drawX - 2, drawY - 1, 4, 3, "#ef3a0c");
+            drawRect(drawX - 1, drawY - 2, 2, 1, "#ef3a0c");
+            drawRect(drawX, drawY - 3, 1, 1, "#39571c");
+            drawRect(drawX - 2, drawY - 1, 1, 1, "#ef692f");
         } else if (rot === 1) {
             // Tilted right
-            drawRect(drawX - 1, drawY - 2, 3, 4, "#FF00FF");
-            drawRect(drawX + 2, drawY - 1, 1, 2, "#FF00FF");
-            drawRect(drawX + 3, drawY, 1, 1, "#39FF14");
-            drawRect(drawX - 1, drawY - 2, 1, 1, "#FF44FF");
+            drawRect(drawX - 1, drawY - 2, 3, 4, "#ef3a0c");
+            drawRect(drawX + 2, drawY - 1, 1, 2, "#ef3a0c");
+            drawRect(drawX + 3, drawY, 1, 1, "#39571c");
+            drawRect(drawX - 1, drawY - 2, 1, 1, "#ef692f");
         } else if (rot === 2) {
             // Upside down
-            drawRect(drawX - 2, drawY - 1, 4, 3, "#FF00FF");
-            drawRect(drawX - 1, drawY + 2, 2, 1, "#FF00FF");
-            drawRect(drawX, drawY + 3, 1, 1, "#39FF14");
-            drawRect(drawX + 1, drawY + 1, 1, 1, "#FF44FF");
+            drawRect(drawX - 2, drawY - 1, 4, 3, "#ef3a0c");
+            drawRect(drawX - 1, drawY + 2, 2, 1, "#ef3a0c");
+            drawRect(drawX, drawY + 3, 1, 1, "#39571c");
+            drawRect(drawX + 1, drawY + 1, 1, 1, "#ef692f");
         } else {
             // Tilted left
-            drawRect(drawX - 1, drawY - 2, 3, 4, "#FF00FF");
-            drawRect(drawX - 2, drawY - 1, 1, 2, "#FF00FF");
-            drawRect(drawX - 3, drawY, 1, 1, "#39FF14");
-            drawRect(drawX + 1, drawY - 2, 1, 1, "#FF44FF");
+            drawRect(drawX - 1, drawY - 2, 3, 4, "#ef3a0c");
+            drawRect(drawX - 2, drawY - 1, 1, 2, "#ef3a0c");
+            drawRect(drawX - 3, drawY, 1, 1, "#39571c");
+            drawRect(drawX + 1, drawY - 2, 1, 1, "#ef692f");
         }
     }
 
@@ -3256,14 +3256,14 @@ function render() {
         const a = s.timer / 25;
         ctx.globalAlpha = a;
         // Splat — irregular red blobs
-        drawRect(s.x - 3, s.y - 1, 6, 3, "#FF00FF");
-        drawRect(s.x - 1, s.y - 3, 3, 6, "#CC00CC");
-        drawRect(s.x - 5, s.y, 2, 2, "#FF00FF");
-        drawRect(s.x + 4, s.y - 2, 2, 2, "#CC00CC");
-        drawRect(s.x - 2, s.y + 3, 2, 1, "#FF00FF");
+        drawRect(s.x - 3, s.y - 1, 6, 3, "#ef3a0c");
+        drawRect(s.x - 1, s.y - 3, 3, 6, "#9b1a0a");
+        drawRect(s.x - 5, s.y, 2, 2, "#ef3a0c");
+        drawRect(s.x + 4, s.y - 2, 2, 2, "#9b1a0a");
+        drawRect(s.x - 2, s.y + 3, 2, 1, "#ef3a0c");
         // Seeds
-        drawRect(s.x + 1, s.y - 1, 1, 1, "#00FFFF");
-        drawRect(s.x - 2, s.y + 1, 1, 1, "#00FFFF");
+        drawRect(s.x + 1, s.y - 1, 1, 1, "#efac28");
+        drawRect(s.x - 2, s.y + 1, 1, 1, "#efac28");
     }
     ctx.globalAlpha = 1.0;
 
