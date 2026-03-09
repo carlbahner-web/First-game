@@ -2597,7 +2597,8 @@ function advanceLevel() {
         g.dead = true;
         g.deathAnimActive = false;
         g.deathAnimTimer = 0;
-        g.respawnTimer = 180 + i * 240; // stagger spawns: 3s, 7s, 11s, 15s, 19s
+        const staggerGap = Math.round(600 - (currentLevel / 29) * 360); // 10s apart early → 4s apart late
+        g.respawnTimer = 180 + i * staggerGap;
     }
     catapultGoblin = null;
     catapultSpawnedThisCycle = false;
