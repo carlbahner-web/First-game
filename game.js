@@ -898,9 +898,11 @@ function getSabotageFlipChance() {
     return 0.12 + (currentLevel / LEVELS.length) * 0.18;
 }
 
-// Elite weighting: random chance that increases with level
+// Elite weighting: random chance that increases with level (max 1 elite alive at a time)
 function shouldBeElite() {
     if (currentLevel < 6) return false;
+    // Only allow one elite goblin at a time
+    if (goblins.some(g => !g.dead && g.elite)) return false;
     // Base 25% chance, increases to ~50% by late levels
     const weight = 0.25 + (currentLevel / LEVELS.length) * 0.25;
     return Math.random() < weight;
