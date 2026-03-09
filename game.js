@@ -886,9 +886,10 @@ const CAVES = [
 // ---- Multiple Goblin System ----
 // Max concurrent goblins scales with level: 1 for L3-9, 2 for L10-19, 3 for L20+
 function getMaxGoblins() {
-    if (currentLevel < 10) return 1;
-    if (currentLevel < 20) return 2;
-    return 3;
+    if (currentLevel < 6) return 2;   // L3-6
+    if (currentLevel < 13) return 3;  // L7-13
+    if (currentLevel < 19) return 4;  // L14-19
+    return 5;                         // L20-30
 }
 
 // Sabotage flip chance scales with level (used during level-start scramble)
@@ -931,8 +932,8 @@ function createGoblin(caveIndex) {
     };
 }
 
-// Goblins array — up to 3 concurrent goblins
-let goblins = [createGoblin(0), createGoblin(2), createGoblin(1)];
+// Goblins array — up to 5 concurrent goblins
+let goblins = [createGoblin(0), createGoblin(2), createGoblin(1), createGoblin(0), createGoblin(2)];
 // Backward compat: `goblin` is an alias for goblins[0] (used by legacy rendering code)
 let goblin = goblins[0];
 
@@ -2596,7 +2597,7 @@ function advanceLevel() {
         g.dead = true;
         g.deathAnimActive = false;
         g.deathAnimTimer = 0;
-        g.respawnTimer = 120 + i * 180; // stagger spawns: 2s, 5s, 8s
+        g.respawnTimer = 120 + i * 150; // stagger spawns: 2s, 4.5s, 7s, 9.5s, 12s
     }
     catapultGoblin = null;
     catapultSpawnedThisCycle = false;
