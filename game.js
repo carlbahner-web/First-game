@@ -1247,13 +1247,8 @@ window.addEventListener("keydown", (e) => {
             return;
         }
         if (gameState === "intro") {
-            // Skip intro — go straight to tutorial
-            stopIntroDrums();
-            startStoryDrums();
-            gameState = "tutorial";
-            tutorialTimer = 0;
-            tutorialPage = 0;
-            sceneTransition = { active: true, from: "intro", to: "tutorial", progress: 0, duration: 20 };
+            // Advance to next scene (or finish intro if on last scene)
+            advanceIntroScene();
             return;
         }
         if (gameState === "tutorial") {
@@ -5000,6 +4995,31 @@ function playGoblinCackle() {
     });
 }
 
+// Advance intro to the next scene, or finish intro if on the last scene
+function advanceIntroScene() {
+    introScene++;
+    introTimer = 0;
+    if (introScene >= INTRO_SCENE_DURATIONS.length) {
+        // Intro complete — go to tutorial
+        stopIntroDrums();
+        startStoryDrums();
+        gameState = "tutorial";
+        tutorialTimer = 0;
+        tutorialPage = 0;
+        sceneTransition = { active: true, from: "intro", to: "tutorial", progress: 0, duration: 20 };
+        return;
+    }
+    // Scene-specific triggers
+    if (introScene === 3) playEarthquakeRumble();
+    if (introScene === 4) playEarthquakeRumble();
+    if (introScene === 5) {
+        playGoblinCackle();
+        // Corrupt the drum pattern
+        if (introDrumGain) introDrumGain.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + 1);
+    }
+    if (introScene === 6) stopIntroDrums();
+}
+
 function renderIntro() {
     const W = COLS * TILE;
     const H = ROWS * TILE;
@@ -5012,31 +5032,6 @@ function renderIntro() {
     if (introBeatTimer >= INTRO_BEAT_FRAMES) {
         introBeatTimer -= INTRO_BEAT_FRAMES;
         introBeatStep = (introBeatStep + 1) % 16;
-    }
-
-    // Check scene advance
-    if (introTimer >= INTRO_SCENE_DURATIONS[introScene]) {
-        introScene++;
-        introTimer = 0;
-        if (introScene >= INTRO_SCENE_DURATIONS.length) {
-            // Intro complete — go to tutorial
-            stopIntroDrums();
-            startStoryDrums();
-            gameState = "tutorial";
-            tutorialTimer = 0;
-            tutorialPage = 0;
-            sceneTransition = { active: true, from: "intro", to: "tutorial", progress: 0, duration: 20 };
-            return;
-        }
-        // Scene-specific triggers
-        if (introScene === 3) playEarthquakeRumble();
-        if (introScene === 4) playEarthquakeRumble();
-        if (introScene === 5) {
-            playGoblinCackle();
-            // Corrupt the drum pattern
-            if (introDrumGain) introDrumGain.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + 1);
-        }
-        if (introScene === 6) stopIntroDrums();
     }
 
     // Helper
@@ -5747,7 +5742,7 @@ function renderIntro() {
     // Skip prompt (bottom right, subtle)
     if (introGlobalTimer > 60) {
         ctx.globalAlpha = 0.4;
-        drawText("PRESS ENTER TO SKIP", W - 95, H - 6, "#efd8a1", 3);
+        drawText("ENTER: NEXT", W - 55, H - 6, "#efd8a1", 3);
         ctx.globalAlpha = 1;
     }
 }
