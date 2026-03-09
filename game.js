@@ -1549,7 +1549,11 @@ function update(dt) {
         for (const hitGob of goblins) {
             const gobTileX = Math.round(hitGob.x / TILE);
             const gobTileY = Math.round(hitGob.y / TILE);
-            if (!hitGob.dead && targetTileX === gobTileX && targetTileY === gobTileY) {
+            const gobDestTileX = Math.round(hitGob.destX / TILE);
+            const gobDestTileY = Math.round(hitGob.destY / TILE);
+            const onCurrentTile = targetTileX === gobTileX && targetTileY === gobTileY;
+            const onDestTile = targetTileX === gobDestTileX && targetTileY === gobDestTileY;
+            if (!hitGob.dead && (onCurrentTile || onDestTile)) {
                 p.swordHit = true;
                 hitGob.hp--;
 
