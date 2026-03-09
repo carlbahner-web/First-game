@@ -518,29 +518,29 @@ hudCanvas.width = COLS * TILE * SCALE;
 hudCanvas.height = HUD_H * SCALE;
 hudCtx.imageSmoothingEnabled = false;
 
-// ---- Colors (carnival palette) ----
-// #EBEBE3 Ticket Paper, #F6CC60 Midway Mustard, #BFCDC0 Foggy Mint
-// #3A6168 Harbor Teal, #BF7538 Rusty Turnstile
+// ---- Colors (earthy dungeon palette) ----
+// #efd8a1 Pale Cream, #efac28 Amber Gold, #efb775 Peach Buff
+// #276468 Dark Teal, #ab5c1c Burnt Sienna, #927e6a Warm Khaki
 const PAL = {
-    bg:        "#243a3e",
-    wall:      "#2e4a4e",
-    wallTop:   "#384f54",
-    floor:     "#2a4245",
-    floorAlt:  "#263e42",
-    gridOff:   "#2a4a50",
-    gridOn:    ["#EBEBE3", "#F6CC60", "#BF7538", "#3A6168", "#E86A6A", "#6AB8E8"], // per-row colors (O,H,S,K,B,T)
-    gridX:     ["#FF6688", "#FF6688", "#FFEE88", "#FFAA66", "#FFEE88", "#FF6688"], // bright X indicators visible on colored blocks
-    gridBorder:"#3a5a60",
-    playhead:  "#F6CC60",
-    player:    "#EBEBE3",
-    playerDark:"#BFCDC0",
-    punch:     "#F6CC60",
-    punchGlow: "#BF7538",
+    bg:        "#2a1d0d",
+    wall:      "#392a1c",
+    wallTop:   "#45230d",
+    floor:     "#300f0a",
+    floorAlt:  "#36170c",
+    gridOff:   "#45230d",
+    gridOn:    ["#efd8a1", "#efac28", "#ef692f", "#276468", "#ef3a0c", "#3c9f9c"], // per-row colors (O,H,S,K,B,T)
+    gridX:     ["#ef3a0c", "#550f0a", "#efd8a1", "#efac28", "#efd8a1", "#ef3a0c"], // bright X indicators visible on colored blocks
+    gridBorder:"#684c3c",
+    playhead:  "#efac28",
+    player:    "#efd8a1",
+    playerDark:"#927e6a",
+    punch:     "#efac28",
+    punchGlow: "#ab5c1c",
     shadow:    "rgba(0,0,0,0.3)",
-    startBtn:  "#BFCDC0",
-    stopBtn:   "#BF7538",
-    labelText: "#EBEBE3",
-    titleText: "#EBEBE3",
+    startBtn:  "#efb775",
+    stopBtn:   "#9b1a0a",
+    labelText: "#efd8a1",
+    titleText: "#efd8a1",
 };
 
 const DRUM_LABELS = ["OPEN-HH", "HI-HAT", "SNARE", "KICK"];
@@ -858,12 +858,12 @@ let score = 0;
 let lastTimeBonus = 0;
 const dancers = [];
 const DANCER_PALETTES = [
-    { body: "#E86A6A", dark: "#C05050", head: "#F09090", hair: "#8B4513" },
-    { body: "#6AB8E8", dark: "#4A98C8", head: "#F0D0B0", hair: "#2a2a2a" },
-    { body: "#F6CC60", dark: "#D6AC40", head: "#F0D0B0", hair: "#BF7538" },
-    { body: "#9B59B6", dark: "#7B3996", head: "#F09090", hair: "#F6CC60" },
-    { body: "#2ECC71", dark: "#1EAC51", head: "#F0D0B0", hair: "#881111" },
-    { body: "#E67E22", dark: "#C65E02", head: "#F0D0B0", hair: "#2a2a2a" },
+    { body: "#ef3a0c", dark: "#9b1a0a", head: "#efb775", hair: "#724113" },
+    { body: "#3c9f9c", dark: "#276468", head: "#efb775", hair: "#2a1d0d" },
+    { body: "#efac28", dark: "#a58c27", head: "#efb775", hair: "#ab5c1c" },
+    { body: "#39571c", dark: "#1f240a", head: "#efb775", hair: "#efac28" },
+    { body: "#ab5c1c", dark: "#773421", head: "#efb775", hair: "#2a1d0d" },
+    { body: "#ef692f", dark: "#a56243", head: "#efb775", hair: "#392a1c" },
 ];
 
 // ---- Player State ----
@@ -1549,7 +1549,7 @@ function update(dt) {
                             vx: (Math.random() - 0.5) * 2,
                             vy: (Math.random() - 0.5) * 2 - 0.5,
                             life: 15 + Math.random() * 15,
-                            color: hitGob.hp === 2 ? "#d46a9a" : "#ff4444",
+                            color: hitGob.hp === 2 ? "#FF00FF" : "#39FF14",
                             size: 2 + Math.random() * 2,
                             sparkle: false,
                         });
@@ -1557,7 +1557,7 @@ function update(dt) {
 
                     const owTexts = ["OW MY SPLEEN!", "OW MY WEENIS!", "OW MY SKULL!", "OW MY FACE!", "OW MY EVERYTHING!"];
                     const ht = owTexts[Math.floor(Math.random() * owTexts.length)];
-                    const htCol = hitGob.hp === 2 ? "#ffaacc" : "#ff6666";
+                    const htCol = hitGob.hp === 2 ? "#FF88FF" : "#88FF88";
                     deathText = { x: hitGob.x - 20, y: hitGob.y - 8, timer: 40, text: ht, color: htCol, scale: 4 };
 
                     if (audioCtx) {
@@ -1585,8 +1585,8 @@ function update(dt) {
                     const deathOwTexts = ["OW MY SPLEEN!", "OW MY WEENIS!", "OW MY SKULL!", "OW MY FACE!", "OW MY EVERYTHING!"];
                     const deathOw = deathOwTexts[Math.floor(Math.random() * deathOwTexts.length)];
                     deathText = wasElite
-                        ? { x: hitGob.x - 40, y: hitGob.y - 12, timer: 120, text: "bro why you gotta stab me?", color: "#ffee44", scale: 4 }
-                        : { x: hitGob.x - 20, y: hitGob.y - 8, timer: 60, text: deathOw, color: "#cc2222", scale: 5 };
+                        ? { x: hitGob.x - 40, y: hitGob.y - 12, timer: 120, text: "bro why you gotta stab me?", color: "#00FFFF", scale: 4 }
+                        : { x: hitGob.x - 20, y: hitGob.y - 8, timer: 60, text: deathOw, color: "#FF0044", scale: 5 };
 
                     if (wasElite) screenFlash = 15;
 
@@ -1670,7 +1670,7 @@ function update(dt) {
                         vx: (Math.random() - 0.5) * 4,
                         vy: (Math.random() - 0.5) * 4 - 1,
                         life: 10 + Math.random() * 10,
-                        color: Math.random() > 0.5 ? "#ffee44" : "#ffffff",
+                        color: Math.random() > 0.5 ? "#00FFFF" : "#ffffff",
                         size: 1 + Math.random() * 2,
                         sparkle: true,
                     });
@@ -2092,8 +2092,8 @@ function update(dt) {
                     vy: Math.sin(angle) * speed - 0.5,
                     life: wasElite ? 40 + Math.random() * 30 : 20 + Math.random() * 20,
                     color: wasElite
-                        ? (isSparkle ? "#ffee44" : Math.random() > 0.3 ? "#d46a9a" : "#ff88bb")
-                        : (Math.random() > 0.3 ? "#cc2222" : "#881111"),
+                        ? (isSparkle ? "#00FFFF" : Math.random() > 0.3 ? "#FF00FF" : "#FF44FF")
+                        : (Math.random() > 0.3 ? "#39FF14" : "#00CC00"),
                     size: 1 + Math.random() * 2,
                     sparkle: isSparkle,
                 });
@@ -2112,8 +2112,8 @@ function update(dt) {
                     vy: (Math.random() - 0.5) * spreadMul - 1,
                     life: wasElite ? 50 + Math.random() * 50 : 30 + Math.random() * 30,
                     color: wasElite
-                        ? (isSparkle ? "#ffee44" : Math.random() > 0.3 ? "#d46a9a" : "#ff88bb")
-                        : (Math.random() > 0.3 ? "#cc2222" : "#881111"),
+                        ? (isSparkle ? "#00FFFF" : Math.random() > 0.3 ? "#FF00FF" : "#FF44FF")
+                        : (Math.random() > 0.3 ? "#39FF14" : "#00CC00"),
                     size: wasElite ? 2 + Math.random() * 4 : 2 + Math.random() * 3,
                     sparkle: isSparkle,
                 });
@@ -2865,7 +2865,7 @@ function drawText(text, x, y, color, size) {
 function renderHUD() {
     hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
     // Background fill
-    drawHudRect(0, 0, COLS * TILE, HUD_H, "#1a3438");
+    drawHudRect(0, 0, COLS * TILE, HUD_H, "#2a1d0d");
 
     const pxSz = 3;
     const digitW = 3 * pxSz + pxSz;
@@ -2879,42 +2879,42 @@ function renderHUD() {
     const iconW = 3 * pxSz + 2;
     const lvlStr = String(currentLevel + 1);
     const lvlPanelW = iconW + lvlStr.length * digitW + 6;
-    drawHudRect(baseX - 2, kcY - 2, lvlPanelW + 4, panelH + 4, "#1a3438");
-    drawHudRect(baseX, kcY, lvlPanelW, panelH, "#243e42");
-    drawHudRect(baseX, kcY, lvlPanelW, 1, "#3a6a70");
+    drawHudRect(baseX - 2, kcY - 2, lvlPanelW + 4, panelH + 4, "#2a1d0d");
+    drawHudRect(baseX, kcY, lvlPanelW, panelH, "#392a1c");
+    drawHudRect(baseX, kcY, lvlPanelW, 1, "#684c3c");
     // "L" icon
     const fx = baseX + 2, fy = kcY + 3;
-    drawHudRect(fx, fy, pxSz, 5 * pxSz, "#EBEBE3");
-    drawHudRect(fx + pxSz, fy + 4 * pxSz, 2 * pxSz, pxSz, "#EBEBE3");
+    drawHudRect(fx, fy, pxSz, 5 * pxSz, "#efd8a1");
+    drawHudRect(fx + pxSz, fy + 4 * pxSz, 2 * pxSz, pxSz, "#efd8a1");
     // Level digits
     const lvlNumX = baseX + iconW;
     const numY = kcY + 3;
-    drawHudPixelDigits(lvlStr, lvlNumX + (lvlStr.length * digitW) / 2, numY, "#EBEBE3", pxSz);
+    drawHudPixelDigits(lvlStr, lvlNumX + (lvlStr.length * digitW) / 2, numY, "#efd8a1", pxSz);
 
     // --- Score counter ---
     const kcX = baseX + lvlPanelW + panelGap;
     const scoreStr = String(score).padStart(7, "0");
     const skullW = 5 * pxSz + 2;
     const killPanelW = skullW + 7 * digitW + 6;
-    drawHudRect(kcX - 2, kcY - 2, killPanelW + 4, panelH + 4, "#1a3438");
-    drawHudRect(kcX, kcY, killPanelW, panelH, "#243e42");
-    drawHudRect(kcX, kcY, killPanelW, 1, "#3a6a70");
+    drawHudRect(kcX - 2, kcY - 2, killPanelW + 4, panelH + 4, "#2a1d0d");
+    drawHudRect(kcX, kcY, killPanelW, panelH, "#392a1c");
+    drawHudRect(kcX, kcY, killPanelW, 1, "#684c3c");
     // Skull icon
     const sx = kcX + 2, sy = kcY + 3;
     const p = pxSz;
-    const skullBg = "#243e42";
-    drawHudRect(sx + p, sy, 3 * p, p, "#EBEBE3");
-    drawHudRect(sx, sy + p, 5 * p, 2 * p, "#EBEBE3");
-    drawHudRect(sx + p, sy + 3 * p, 3 * p, p, "#EBEBE3");
-    drawHudRect(sx + p, sy + 4 * p, p, p, "#EBEBE3");
-    drawHudRect(sx + 3 * p, sy + 4 * p, p, p, "#EBEBE3");
+    const skullBg = "#392a1c";
+    drawHudRect(sx + p, sy, 3 * p, p, "#efd8a1");
+    drawHudRect(sx, sy + p, 5 * p, 2 * p, "#efd8a1");
+    drawHudRect(sx + p, sy + 3 * p, 3 * p, p, "#efd8a1");
+    drawHudRect(sx + p, sy + 4 * p, p, p, "#efd8a1");
+    drawHudRect(sx + 3 * p, sy + 4 * p, p, p, "#efd8a1");
     drawHudRect(sx + p, sy + p, p, p, skullBg);
     drawHudRect(sx + 3 * p, sy + p, p, p, skullBg);
     drawHudRect(sx + 2 * p, sy + 2 * p, p, p, skullBg);
     drawHudRect(sx + 2 * p, sy + 4 * p, p, p, skullBg);
     // Score digits
     const killNumX = kcX + skullW;
-    drawHudPixelDigits(scoreStr, killNumX + (scoreStr.length * digitW) / 2, numY, "#EBEBE3", pxSz);
+    drawHudPixelDigits(scoreStr, killNumX + (scoreStr.length * digitW) / 2, numY, "#efd8a1", pxSz);
 
     // --- Timer counter ---
     const timerSec = Math.max(0, Math.ceil(levelTimer / 90));
@@ -2925,10 +2925,10 @@ function renderHUD() {
     const isCritical = timerSec <= 10;
     const blinkRate = isCritical ? 15 : 30;
     const blinkOn = !isUrgent || Math.floor(levelTimer / blinkRate) % 2 === 0;
-    const timerColor = isUrgent ? "#FF4466" : "#EBEBE3";
-    const timerBorderColor = isUrgent ? "#4a1a1a" : "#1a3438";
-    const timerBgColor = isUrgent ? "#3a1a22" : "#243e42";
-    const timerHighlight = isUrgent ? "#6a2a3a" : "#3a6a70";
+    const timerColor = isUrgent ? "#ef3a0c" : "#efd8a1";
+    const timerBorderColor = isUrgent ? "#550f0a" : "#2a1d0d";
+    const timerBgColor = isUrgent ? "#45230d" : "#392a1c";
+    const timerHighlight = isUrgent ? "#9b1a0a" : "#684c3c";
     drawHudRect(timerX - 2, kcY - 2, timerPanelW + 4, panelH + 4, timerBorderColor);
     drawHudRect(timerX, kcY, timerPanelW, panelH, timerBgColor);
     drawHudRect(timerX, kcY, timerPanelW, 1, timerHighlight);
@@ -2991,7 +2991,7 @@ function render() {
 
     // Tent-style walls — striped top border (red/cream carnival stripes)
     for (let c = 0; c < COLS; c++) {
-        const stripe = c % 2 === 0 ? "#7a5430" : "#9a998a";
+        const stripe = c % 2 === 0 ? "#724113" : "#927e6a";
         drawRect(c * TILE, 0, TILE, TILE, stripe);
 
         // Bottom wall — ticket booth style
@@ -3012,22 +3012,22 @@ function render() {
         const cx = cave.tileX * TILE;
         const cy = cave.tileY * TILE;
         // Dark cave hole
-        drawRect(cx, cy - 2, TILE, TILE + 4, "#1a1a1a");
+        drawRect(cx, cy - 2, TILE, TILE + 4, "#2a1d0d");
         // Rocky arch around cave
-        drawRect(cx - 2, cy - 4, TILE + 4, 3, "#5a5a4a");  // top rocks
-        drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#5a5a4a");  // bottom rocks
-        if (cave.tileX > 0) drawRect(cx - 3, cy - 2, 3, TILE + 4, "#4a4a3a"); // left edge
-        if (cave.tileX < COLS - 1) drawRect(cx + TILE, cy - 2, 3, TILE + 4, "#4a4a3a"); // right edge
+        drawRect(cx - 2, cy - 4, TILE + 4, 3, "#684c3c");  // top rocks
+        drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");  // bottom rocks
+        if (cave.tileX > 0) drawRect(cx - 3, cy - 2, 3, TILE + 4, "#45230d"); // left edge
+        if (cave.tileX < COLS - 1) drawRect(cx + TILE, cy - 2, 3, TILE + 4, "#45230d"); // right edge
         // Stalactites
-        drawRect(cx + 3, cy - 2, 2, 4, "#6a6a5a");
-        drawRect(cx + 9, cy - 2, 2, 3, "#6a6a5a");
+        drawRect(cx + 3, cy - 2, 2, 4, "#724113");
+        drawRect(cx + 9, cy - 2, 2, 3, "#724113");
         // Stalagmites
-        drawRect(cx + 5, cy + TILE - 2, 2, 4, "#6a6a5a");
-        drawRect(cx + 11, cy + TILE - 1, 2, 3, "#6a6a5a");
+        drawRect(cx + 5, cy + TILE - 2, 2, 4, "#724113");
+        drawRect(cx + 11, cy + TILE - 1, 2, 3, "#724113");
         // Eye gleam inside cave (if any goblin is about to respawn from this cave)
         for (const g of goblins) {
             if (g.dead && g.respawnTimer < 90 && g.respawnTimer < 60 && ci === g.spawnCave) {
-                const caveEyeCol = g.elite ? "#ffee44" : "#cc2222";
+                const caveEyeCol = g.elite ? "#00FFFF" : "#FF00FF";
                 drawRect(cx + 5, cy + 5, 2, 2, caveEyeCol);
                 drawRect(cx + 9, cy + 5, 2, 2, caveEyeCol);
                 break; // only show one pair of eyes per cave
@@ -3042,7 +3042,7 @@ function render() {
         const bulbY = TILE + 6;
         const bulbX = c * TILE + TILE / 2;
         // Bulb
-        const bulbColors = ["#E8D44D", "#E8734D", "#4DE8A0", "#4DA0E8"];
+        const bulbColors = ["#efac28", "#ef692f", "#3c9f9c", "#ef3a0c"];
         const bulbCol = bulbColors[c % bulbColors.length];
         drawRect(bulbX - 2, bulbY, 4, 4, bulbCol);
         // Glow
@@ -3056,7 +3056,7 @@ function render() {
     for (let c = 1; c < COLS - 1; c++) {
         const lx = c * TILE + TILE / 2;
         const ly = (ROWS - 1) * TILE + 2;
-        const bulbColors2 = ["#E8D44D", "#E8734D", "#4DE8A0", "#4DA0E8"];
+        const bulbColors2 = ["#efac28", "#ef692f", "#3c9f9c", "#ef3a0c"];
         drawRect(lx - 1, ly, 3, 3, bulbColors2[(c + 2) % bulbColors2.length]);
     }
 
@@ -3095,13 +3095,13 @@ function render() {
 
             // Sabotage flash overlay
             if (cellFlash[r][c] > 0) {
-                ctx.fillStyle = "#ff2222";
+                ctx.fillStyle = "#FF00FF";
                 ctx.globalAlpha = cellFlash[r][c] / 30 * 0.6;
                 ctx.fillRect((bx + 1) * SCALE, (by + 1) * SCALE, (TILE - 2) * SCALE, (TILE - 2) * SCALE);
                 ctx.globalAlpha = 1.0;
                 // "!" indicator for first half of flash
                 if (cellFlash[r][c] > 15) {
-                    drawText("!", bx + 5, by - 4, "#ff4444", 4);
+                    drawText("!", bx + 5, by - 4, "#39FF14", 4);
                 }
                 cellFlash[r][c]--;
             }
@@ -3187,7 +3187,7 @@ function render() {
             // Flash between normal colors and white as it dissolves
             if (progress > 0.5 && Math.floor(g.deathAnimTimer) % 3 === 0) {
                 drawGoblinSprite(g.deathAnimElite ? "elite" : "normal", g.x, g.y, 0, {
-                    dir: g.dir, bodyCol: "#ffffff", darkCol: "#dddddd", headCol: "#ffffff", eyeCol: "#ffee44"
+                    dir: g.dir, bodyCol: "#ffffff", darkCol: "#dddddd", headCol: "#ffffff", eyeCol: "#00FFFF"
                 });
             } else {
                 drawGoblinFor(g);
@@ -3226,28 +3226,28 @@ function render() {
         const rot = Math.floor(t.progress * 4) % 4;
         if (rot === 0) {
             // Upright
-            drawRect(drawX - 2, drawY - 1, 4, 3, "#cc2222");
-            drawRect(drawX - 1, drawY - 2, 2, 1, "#cc2222");
-            drawRect(drawX, drawY - 3, 1, 1, "#44aa22");
-            drawRect(drawX - 2, drawY - 1, 1, 1, "#ff4444");
+            drawRect(drawX - 2, drawY - 1, 4, 3, "#FF00FF");
+            drawRect(drawX - 1, drawY - 2, 2, 1, "#FF00FF");
+            drawRect(drawX, drawY - 3, 1, 1, "#39FF14");
+            drawRect(drawX - 2, drawY - 1, 1, 1, "#FF44FF");
         } else if (rot === 1) {
             // Tilted right
-            drawRect(drawX - 1, drawY - 2, 3, 4, "#cc2222");
-            drawRect(drawX + 2, drawY - 1, 1, 2, "#cc2222");
-            drawRect(drawX + 3, drawY, 1, 1, "#44aa22");
-            drawRect(drawX - 1, drawY - 2, 1, 1, "#ff4444");
+            drawRect(drawX - 1, drawY - 2, 3, 4, "#FF00FF");
+            drawRect(drawX + 2, drawY - 1, 1, 2, "#FF00FF");
+            drawRect(drawX + 3, drawY, 1, 1, "#39FF14");
+            drawRect(drawX - 1, drawY - 2, 1, 1, "#FF44FF");
         } else if (rot === 2) {
             // Upside down
-            drawRect(drawX - 2, drawY - 1, 4, 3, "#cc2222");
-            drawRect(drawX - 1, drawY + 2, 2, 1, "#cc2222");
-            drawRect(drawX, drawY + 3, 1, 1, "#44aa22");
-            drawRect(drawX + 1, drawY + 1, 1, 1, "#ff4444");
+            drawRect(drawX - 2, drawY - 1, 4, 3, "#FF00FF");
+            drawRect(drawX - 1, drawY + 2, 2, 1, "#FF00FF");
+            drawRect(drawX, drawY + 3, 1, 1, "#39FF14");
+            drawRect(drawX + 1, drawY + 1, 1, 1, "#FF44FF");
         } else {
             // Tilted left
-            drawRect(drawX - 1, drawY - 2, 3, 4, "#cc2222");
-            drawRect(drawX - 2, drawY - 1, 1, 2, "#cc2222");
-            drawRect(drawX - 3, drawY, 1, 1, "#44aa22");
-            drawRect(drawX + 1, drawY - 2, 1, 1, "#ff4444");
+            drawRect(drawX - 1, drawY - 2, 3, 4, "#FF00FF");
+            drawRect(drawX - 2, drawY - 1, 1, 2, "#FF00FF");
+            drawRect(drawX - 3, drawY, 1, 1, "#39FF14");
+            drawRect(drawX + 1, drawY - 2, 1, 1, "#FF44FF");
         }
     }
 
@@ -3256,21 +3256,21 @@ function render() {
         const a = s.timer / 25;
         ctx.globalAlpha = a;
         // Splat — irregular red blobs
-        drawRect(s.x - 3, s.y - 1, 6, 3, "#cc2222");
-        drawRect(s.x - 1, s.y - 3, 3, 6, "#aa1111");
-        drawRect(s.x - 5, s.y, 2, 2, "#cc2222");
-        drawRect(s.x + 4, s.y - 2, 2, 2, "#aa1111");
-        drawRect(s.x - 2, s.y + 3, 2, 1, "#cc2222");
+        drawRect(s.x - 3, s.y - 1, 6, 3, "#FF00FF");
+        drawRect(s.x - 1, s.y - 3, 3, 6, "#CC00CC");
+        drawRect(s.x - 5, s.y, 2, 2, "#FF00FF");
+        drawRect(s.x + 4, s.y - 2, 2, 2, "#CC00CC");
+        drawRect(s.x - 2, s.y + 3, 2, 1, "#FF00FF");
         // Seeds
-        drawRect(s.x + 1, s.y - 1, 1, 1, "#F6CC60");
-        drawRect(s.x - 2, s.y + 1, 1, 1, "#F6CC60");
+        drawRect(s.x + 1, s.y - 1, 1, 1, "#00FFFF");
+        drawRect(s.x - 2, s.y + 1, 1, 1, "#00FFFF");
     }
     ctx.globalAlpha = 1.0;
 
     // Death text
     if (deathText) {
         ctx.globalAlpha = Math.min(1, deathText.timer / 20);
-        drawText(deathText.text, deathText.x, deathText.y, deathText.color || "#cc2222", deathText.scale || 5);
+        drawText(deathText.text, deathText.x, deathText.y, deathText.color || "#FF0044", deathText.scale || 5);
         ctx.globalAlpha = 1.0;
     }
 
@@ -3297,7 +3297,7 @@ function render() {
         const ty = tty * TILE;
         const pulse = 0.25 + Math.sin(performance.now() * 0.004) * 0.15;
         ctx.globalAlpha = pulse;
-        const c = PAL.punch; // "#F6CC60"
+        const c = PAL.punch; // "#efac28"
         const s = 1; // bracket stroke width
         const L = 4; // bracket arm length
         // Top-left corner
@@ -3331,7 +3331,7 @@ function render() {
     if (patternMatched && !levelComplete && areGoblinsAlive()) {
         const blink = Math.floor(performance.now() / 400) % 2 === 0;
         if (blink) {
-            drawCenteredText("SLAY THE GOBLIN!", 14, "#E86A6A", 6);
+            drawCenteredText("SLAY THE GOBLIN!", 14, "#ef3a0c", 6);
         }
     }
 
@@ -3349,17 +3349,17 @@ function render() {
         const bannerW = (COLS - 6) * TILE;
         const bannerH = 8 * TILE;
         // Outer border (dark)
-        drawRect(bannerX - 2, bannerY - 2, bannerW + 4, bannerH + 4, "#1a3438");
+        drawRect(bannerX - 2, bannerY - 2, bannerW + 4, bannerH + 4, "#2a1d0d");
         // Inner fill (matches carnival tent style)
-        drawRect(bannerX, bannerY, bannerW, bannerH, "#2a4a50");
+        drawRect(bannerX, bannerY, bannerW, bannerH, "#392a1c");
         // Highlight edge top
-        drawRect(bannerX, bannerY, bannerW, 2, "#3a6a70");
+        drawRect(bannerX, bannerY, bannerW, 2, "#684c3c");
         // Highlight edge bottom
-        drawRect(bannerX, bannerY + bannerH - 2, bannerW, 2, "#1a2a2e");
+        drawRect(bannerX, bannerY + bannerH - 2, bannerW, 2, "#1f240a");
         // Striped accents (carnival style)
         for (let i = 0; i < bannerW; i += 8) {
             if (Math.floor(i / 8) % 2 === 0) {
-                drawRect(bannerX + i, bannerY, Math.min(8, bannerW - i), 2, "#BF3B53");
+                drawRect(bannerX + i, bannerY, Math.min(8, bannerW - i), 2, "#9b1a0a");
             }
         }
 
@@ -3370,15 +3370,15 @@ function render() {
         const textX = bannerX + bannerW / 2 - textW / 2;
         const textY = bannerY + 12;
         // Shadow
-        drawText(pauseText, textX + 1, textY + 1, "#0a1a1e", textScale);
+        drawText(pauseText, textX + 1, textY + 1, "#1f240a", textScale);
         // Main text
-        drawText(pauseText, textX, textY, "#F6CC60", textScale);
+        drawText(pauseText, textX, textY, "#efac28", textScale);
 
         // Controls section
         const ctrlX = bannerX + 16;
         const ctrlY = textY + 22;
-        const ctrlCol = "#BFCDC0";
-        const labelCol = "#F6CC60";
+        const ctrlCol = "#efb775";
+        const labelCol = "#efac28";
         drawText("CONTROLS:", ctrlX, ctrlY, labelCol, 4);
         drawText("ARROWS", ctrlX, ctrlY + 12, labelCol, 4);
         drawText("Move around", ctrlX + 32, ctrlY + 12, ctrlCol, 4);
@@ -3460,31 +3460,31 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
 
     // === BODY (teal shirt — Studioland style) ===
     // Lower body stays planted (extended upward to fill gap when upper body leans)
-    px(9, 9, 30, 27, "#2a6a6a");        // Lower torso (stays put)
-    px(9, 9, 6, 27, "#1e5454");          // Lower left dark side
-    px(33, 9, 6, 27, "#1e5454");         // Lower right dark side
-    px(12, 30, 24, 3, "#1e5454");       // Shirt bottom hem
+    px(9, 9, 30, 27, "#724113");        // Lower torso (stays put)
+    px(9, 9, 6, 27, "#45230d");          // Lower left dark side
+    px(33, 9, 6, 27, "#45230d");         // Lower right dark side
+    px(12, 30, 24, 3, "#45230d");       // Shirt bottom hem
     // Upper body leans into punch
-    pxLean(9, 6, 30, 18, "#2a6a6a");    // Upper torso
-    pxLean(9, 6, 6, 18, "#1e5454");     // Upper left dark side
-    pxLean(33, 6, 6, 18, "#1e5454");    // Upper right dark side
-    pxLean(15, 9, 18, 3, "#347a7a");    // Shirt chest highlight
+    pxLean(9, 6, 30, 18, "#724113");    // Upper torso
+    pxLean(9, 6, 6, 18, "#45230d");     // Upper left dark side
+    pxLean(33, 6, 6, 18, "#45230d");    // Upper right dark side
+    pxLean(15, 9, 18, 3, "#a56243");    // Shirt chest highlight
     // Collar detail
-    pxLean(15, 6, 18, 3, "#235e5e");
-    pxLean(18, 3, 12, 3, "#235e5e");
+    pxLean(15, 6, 18, 3, "#392a1c");
+    pxLean(18, 3, 12, 3, "#392a1c");
 
     // === HEAD (bald, round) — leans with upper body ===
-    pxLean(6, -15, 36, 21, "#E8CBA8");      // Main head block
-    pxLean(9, -18, 30, 3, "#E8CBA8");       // Rounded top
-    pxLean(12, -21, 24, 3, "#E8CBA8");      // More rounding
-    pxLean(15, -24, 18, 3, "#E8CBA8");      // Top of dome
+    pxLean(6, -15, 36, 21, "#efb775");      // Main head block
+    pxLean(9, -18, 30, 3, "#efb775");       // Rounded top
+    pxLean(12, -21, 24, 3, "#efb775");      // More rounding
+    pxLean(15, -24, 18, 3, "#efb775");      // Top of dome
     // Bald shine highlight
-    pxLean(15, -24, 18, 3, "#F5E2CC");
-    pxLean(12, -21, 24, 3, "#F2DCC0");
+    pxLean(15, -24, 18, 3, "#efd8a1");
+    pxLean(12, -21, 24, 3, "#efd8a1");
     pxLean(15, -18, 18, 3, "#F0D8BA");
     // Ears (flush with head edge — no protrusion)
-    pxLean(6, -6, 3, 6, "#DFC09E");
-    pxLean(39, -6, 3, 6, "#DFC09E");
+    pxLean(6, -6, 3, 6, "#a58c27");
+    pxLean(39, -6, 3, 6, "#a58c27");
 
     // === EYES & BEARD (direction-aware — beard only on front of face) ===
     const isBlinking = opts.isBlinking || false;
@@ -3497,49 +3497,49 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
 
     if (dir === 1) {
         // Facing UP — show back of bald head, no eyes, no beard
-        pxLean(12, -18, 24, 6, "#DFC09E");
-        pxLean(15, -3, 18, 6, "#E8CBA8");
+        pxLean(12, -18, 24, 6, "#a58c27");
+        pxLean(15, -3, 18, 6, "#efb775");
     } else {
         // Facing DOWN, LEFT, or RIGHT — show beard and eyes
-        pxLean(9, -3, 30, 12, "#BF7538");
-        pxLean(6, -3, 6, 9, "#BF7538");
-        pxLean(36, -3, 6, 9, "#BF7538");
-        pxLean(12, 9, 24, 6, "#BF7538");
-        pxLean(15, 15, 18, 3, "#A86430");
-        pxLean(12, 0, 3, 3, "#D08040");
-        pxLean(21, 3, 3, 3, "#D08040");
-        pxLean(30, 0, 3, 3, "#D08040");
-        pxLean(12, -6, 24, 3, "#A86430");
+        pxLean(9, -3, 30, 12, "#ab5c1c");
+        pxLean(6, -3, 6, 9, "#ab5c1c");
+        pxLean(36, -3, 6, 9, "#ab5c1c");
+        pxLean(12, 9, 24, 6, "#ab5c1c");
+        pxLean(15, 15, 18, 3, "#773421");
+        pxLean(12, 0, 3, 3, "#a56243");
+        pxLean(21, 3, 3, 3, "#a56243");
+        pxLean(30, 0, 3, 3, "#a56243");
+        pxLean(12, -6, 24, 3, "#773421");
         const mouthOfs = dir === 2 ? -3 : dir === 3 ? 3 : 0;
-        pxLean(16 + mouthOfs, 1, 16, 5, "#C44040");        // mouth outline (red)
-        pxLean(17 + mouthOfs, 2, 14, 3, "#3A0A00");       // inner mouth (dark)
-        pxLean(18 + mouthOfs, 2, 12, 1, "#F0F0E8");       // teeth (white)
-        pxLean(16 + mouthOfs, 0, 16, 1, "#A86430");       // upper lip
-        pxLean(16 + mouthOfs, 6, 16, 1, "#A86430");       // lower lip
+        pxLean(16 + mouthOfs, 1, 16, 5, "#9b1a0a");        // mouth outline (red)
+        pxLean(17 + mouthOfs, 2, 14, 3, "#300f0a");       // inner mouth (dark)
+        pxLean(18 + mouthOfs, 2, 12, 1, "#efd8a1");       // teeth (white)
+        pxLean(16 + mouthOfs, 0, 16, 1, "#773421");       // upper lip
+        pxLean(16 + mouthOfs, 6, 16, 1, "#773421");       // lower lip
 
         if (isBlinking) {
-            pxLean(12 + eyeDir[0], -7 + eyeDir[1], 8, 2, "#1a1a2e");
-            pxLean(28 + eyeDir[0], -7 + eyeDir[1], 8, 2, "#1a1a2e");
+            pxLean(12 + eyeDir[0], -7 + eyeDir[1], 8, 2, "#2a1d0d");
+            pxLean(28 + eyeDir[0], -7 + eyeDir[1], 8, 2, "#2a1d0d");
         } else {
-            pxLean(11 + eyeDir[0], -12 + eyeDir[1], 10, 8, "#F0F0E8");
-            pxLean(27 + eyeDir[0], -12 + eyeDir[1], 10, 8, "#F0F0E8");
-            pxLean(14 + eyeDir[0], -10 + eyeDir[1], 5, 5, "#1a1a2e");
-            pxLean(30 + eyeDir[0], -10 + eyeDir[1], 5, 5, "#1a1a2e");
-            pxLean(15 + eyeDir[0], -10 + eyeDir[1], 2, 2, "#F0F0E8");
-            pxLean(31 + eyeDir[0], -10 + eyeDir[1], 2, 2, "#F0F0E8");
-            pxLean(10 + eyeDir[0], -14 + eyeDir[1], 12, 2, "#D4B08A");
-            pxLean(26 + eyeDir[0], -14 + eyeDir[1], 12, 2, "#D4B08A");
+            pxLean(11 + eyeDir[0], -12 + eyeDir[1], 10, 8, "#efd8a1");
+            pxLean(27 + eyeDir[0], -12 + eyeDir[1], 10, 8, "#efd8a1");
+            pxLean(14 + eyeDir[0], -10 + eyeDir[1], 5, 5, "#2a1d0d");
+            pxLean(30 + eyeDir[0], -10 + eyeDir[1], 5, 5, "#2a1d0d");
+            pxLean(15 + eyeDir[0], -10 + eyeDir[1], 2, 2, "#efd8a1");
+            pxLean(31 + eyeDir[0], -10 + eyeDir[1], 2, 2, "#efd8a1");
+            pxLean(10 + eyeDir[0], -14 + eyeDir[1], 12, 2, "#927e6a");
+            pxLean(26 + eyeDir[0], -14 + eyeDir[1], 12, 2, "#927e6a");
         }
     }
 
     // === FEET / SHOES (tan) — stay planted ===
     const walkPx = (frame === 1 ? 2 : frame === 3 ? -2 : 0) * SCALE;
-    px(12 + walkPx, 36, 9, 6, "#C4A882");
-    px(27 - walkPx, 36, 9, 6, "#C4A882");
-    px(12 + walkPx, 40, 9, 2, "#A08868");
-    px(27 - walkPx, 40, 9, 2, "#A08868");
-    px(12 + walkPx, 34, 9, 3, "#1e5454");
-    px(27 - walkPx, 34, 9, 3, "#1e5454");
+    px(12 + walkPx, 36, 9, 6, "#927e6a");
+    px(27 - walkPx, 36, 9, 6, "#927e6a");
+    px(12 + walkPx, 40, 9, 2, "#684c3c");
+    px(27 - walkPx, 40, 9, 2, "#684c3c");
+    px(12 + walkPx, 34, 9, 3, "#45230d");
+    px(27 - walkPx, 34, 9, 3, "#45230d");
 }
 
 function drawPlayer() {
@@ -3594,7 +3594,7 @@ function drawPunch() {
     const fistY = (cy + leanY + shoulderOffY + dy * armLen) * SCALE;
 
     // === ARM ===
-    ctx.strokeStyle = "#E8CBA8"; // skin color
+    ctx.strokeStyle = "#efb775"; // skin color
     ctx.lineWidth = 4 * SCALE;
     ctx.lineCap = "round";
     ctx.beginPath();
@@ -3603,7 +3603,7 @@ function drawPunch() {
     ctx.stroke();
 
     // Arm outline
-    ctx.strokeStyle = "#C4A882";
+    ctx.strokeStyle = "#927e6a";
     ctx.lineWidth = 5 * SCALE;
     ctx.globalAlpha = 0.3;
     ctx.beginPath();
@@ -3615,12 +3615,12 @@ function drawPunch() {
     // === FIST ===
     const fistSize = 3.5;
     // Fist shadow
-    ctx.fillStyle = "#C49870";
+    ctx.fillStyle = "#a58c27";
     ctx.beginPath();
     ctx.arc(fistX + SCALE, fistY + SCALE, fistSize * SCALE, 0, Math.PI * 2);
     ctx.fill();
     // Main fist
-    ctx.fillStyle = "#E8CBA8";
+    ctx.fillStyle = "#efb775";
     ctx.beginPath();
     ctx.arc(fistX, fistY, fistSize * SCALE, 0, Math.PI * 2);
     ctx.fill();
@@ -3643,7 +3643,7 @@ function drawPunch() {
             const angle = (i / burstCount) * Math.PI * 2 + progress * 2;
             const innerR = 5 * SCALE;
             const outerR = (8 + thrust * 4) * SCALE;
-            ctx.strokeStyle = "#FFF8B0";
+            ctx.strokeStyle = "#efd8a1";
             ctx.lineWidth = 2 * SCALE;
             ctx.globalAlpha = thrust * 0.8;
             ctx.beginPath();
@@ -3662,7 +3662,7 @@ function drawPunch() {
 
     // === MOTION LINES (whoosh trail) ===
     if (thrust > 0.3) {
-        ctx.strokeStyle = "#E8CBA8";
+        ctx.strokeStyle = "#efb775";
         ctx.lineWidth = 1 * SCALE;
         ctx.globalAlpha = thrust * 0.4;
         for (let i = 1; i <= 3; i++) {
@@ -3703,11 +3703,11 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
     if (opts.bodyCol) {
         bodyCol = opts.bodyCol; darkCol = opts.darkCol; headCol = opts.headCol; eyeCol = opts.eyeCol;
     } else if (type === "elite") {
-        bodyCol = "#c45a8a"; darkCol = "#a43a6a"; headCol = "#d46a9a"; eyeCol = "#ffee44";
+        bodyCol = "#FF00FF"; darkCol = "#CC00CC"; headCol = "#FF44FF"; eyeCol = "#00FFFF";
     } else if (type === "catapult") {
-        bodyCol = "#8B5E3C"; darkCol = "#6B3E1C"; headCol = "#9B6E4C"; eyeCol = "#ffee44";
+        bodyCol = "#FF6600"; darkCol = "#CC4400"; headCol = "#FF8833"; eyeCol = "#00FFFF";
     } else {
-        bodyCol = "#4a8a3a"; darkCol = "#3a6a2a"; headCol = "#5a9a4a"; eyeCol = "#cc2222";
+        bodyCol = "#39FF14"; darkCol = "#00CC00"; headCol = "#66FF44"; eyeCol = "#FF00FF";
     }
 
     // Screen-pixel base position
@@ -3813,12 +3813,12 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
         px(12 + mOfs, 0, 24, 6, "#2a1a1a");
         px(15 + mOfs, 6, 18, 3, "#2a1a1a");
         // Fangs (white, pointy)
-        px(14 + mOfs, 0, 3, 6, "#EBEBE3");
-        px(21 + mOfs, 0, 3, 6, "#EBEBE3");
-        px(28 + mOfs, 0, 3, 6, "#EBEBE3");
+        px(14 + mOfs, 0, 3, 6, "#efd8a1");
+        px(21 + mOfs, 0, 3, 6, "#efd8a1");
+        px(28 + mOfs, 0, 3, 6, "#efd8a1");
         // Fang tips extend below
-        px(15 + mOfs, 6, 2, 3, "#EBEBE3");
-        px(29 + mOfs, 6, 2, 3, "#EBEBE3");
+        px(15 + mOfs, 6, 2, 3, "#efd8a1");
+        px(29 + mOfs, 6, 2, 3, "#efd8a1");
     }
 
     // === FEET (clawed) ===
@@ -3832,7 +3832,7 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
     if (type === "catapult") {
         const shimmerPhase = (performance.now() / 100) % (Math.PI * 2);
         const shimmerAlpha = 0.15 + Math.sin(shimmerPhase) * 0.1;
-        ctx.fillStyle = "#ffee44";
+        ctx.fillStyle = "#00FFFF";
         ctx.globalAlpha = shimmerAlpha;
         ctx.fillRect(sx, (sy - 18 * 1) - bob, 48, 60);
         ctx.globalAlpha = 1.0;
@@ -3843,15 +3843,15 @@ function drawGoblinFor(g) {
     // Color palette: elite changes color based on HP
     let bodyCol, darkCol, headCol, eyeCol;
     if (g.hurtTimer > 0 && g.hurtTimer % 4 < 2) {
-        bodyCol = "#ffffff"; darkCol = "#dddddd"; headCol = "#ffffff"; eyeCol = "#ffee44";
+        bodyCol = "#ffffff"; darkCol = "#dddddd"; headCol = "#ffffff"; eyeCol = "#00FFFF";
     } else if (!g.elite) {
-        bodyCol = "#4a8a3a"; darkCol = "#3a6a2a"; headCol = "#5a9a4a"; eyeCol = "#cc2222";
+        bodyCol = "#39FF14"; darkCol = "#00CC00"; headCol = "#66FF44"; eyeCol = "#FF00FF";
     } else if (g.hp === 3) {
-        bodyCol = "#c45a8a"; darkCol = "#a43a6a"; headCol = "#d46a9a"; eyeCol = "#ffee44";
+        bodyCol = "#FF00FF"; darkCol = "#CC00CC"; headCol = "#FF44FF"; eyeCol = "#00FFFF";
     } else if (g.hp === 2) {
-        bodyCol = "#8a2a5a"; darkCol = "#6a1a3a"; headCol = "#aa3a6a"; eyeCol = "#ff4444";
+        bodyCol = "#CC00CC"; darkCol = "#990099"; headCol = "#DD33DD"; eyeCol = "#FF3333";
     } else {
-        bodyCol = "#cc2222"; darkCol = "#991111"; headCol = "#ee3333"; eyeCol = "#ffee44";
+        bodyCol = "#FF0044"; darkCol = "#CC0033"; headCol = "#FF3366"; eyeCol = "#00FFFF";
     }
 
     drawGoblinSprite(g.elite ? "elite" : "normal", g.x, g.y, g.frame, {
@@ -3898,8 +3898,8 @@ function drawCatapultGoblin() {
         drawPx(rx + 3, ry + 3, 9, 6, "#aaaaaa");
         drawPx(rx + 3, ry + 3, 6, 9, "#aaaaaa");
         // Shadow edge (bottom-right)
-        drawPx(rx + 15, ry + 15, 6, 6, "#555555");
-        drawPx(rx + 18, ry + 9, 3, 9, "#555555");
+        drawPx(rx + 15, ry + 15, 6, 6, "#392a1c");
+        drawPx(rx + 18, ry + 9, 3, 9, "#392a1c");
         // Crack detail
         drawPx(rx + 9, ry + 9, 3, 9, "#5a5a5a");
         drawPx(rx + 12, ry + 12, 6, 3, "#5a5a5a");
@@ -3970,19 +3970,19 @@ function drawDancerSprite(gx, gy, pal, options) {
 
     // === FACE ===
     // Eyes (friendly, round)
-    px(10, 0, 6, 5, "#F0F0E8");         // Left eye white
-    px(20, 0, 6, 5, "#F0F0E8");         // Right eye white
-    px(12, 1, 3, 3, "#1f3a3f");         // Left pupil
-    px(22, 1, 3, 3, "#1f3a3f");         // Right pupil
-    px(12, 1, 1, 1, "#F0F0E8");         // Left highlight
-    px(22, 1, 1, 1, "#F0F0E8");         // Right highlight
+    px(10, 0, 6, 5, "#efd8a1");         // Left eye white
+    px(20, 0, 6, 5, "#efd8a1");         // Right eye white
+    px(12, 1, 3, 3, "#2a1d0d");         // Left pupil
+    px(22, 1, 3, 3, "#2a1d0d");         // Right pupil
+    px(12, 1, 1, 1, "#efd8a1");         // Left highlight
+    px(22, 1, 1, 1, "#efd8a1");         // Right highlight
     // Friendly smile
-    px(12, 7, 12, 2, "#D4856A");        // Mouth
-    px(14, 9, 8, 1, "#D4856A");         // Lower lip
+    px(12, 7, 12, 2, "#a56243");        // Mouth
+    px(14, 9, 8, 1, "#a56243");         // Lower lip
 
     // Rosy cheeks
-    px(6, 4, 3, 3, "#E8A090");
-    px(27, 4, 3, 3, "#E8A090");
+    px(6, 4, 3, 3, "#a56243");
+    px(27, 4, 3, 3, "#a56243");
 
     // === ARMS (position based on armBlend) ===
     const armDownY = 15;
@@ -4171,7 +4171,7 @@ function renderTitleScreen() {
     const H = ROWS * TILE;
 
     // Dark background
-    drawRect(0, 0, W, H, "#0a0a12");
+    drawRect(0, 0, W, H, "#1f240a");
 
     // Starfield
     for (let i = 0; i < 60; i++) {
@@ -4180,13 +4180,13 @@ function renderTitleScreen() {
         const twinkle = Math.sin(titleBlink * 0.05 + i) * 0.5 + 0.5;
         ctx.globalAlpha = 0.3 + twinkle * 0.7;
         const starSize = (i % 3 === 0) ? 2 : 1;
-        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#F6CC60" : "#EBEBE3");
+        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#efac28" : "#efd8a1");
     }
     ctx.globalAlpha = 1;
 
     // === Centered Logo ===
-    const logoColor1 = "#BF7538";
-    const logoColor2 = "#F6CC60";
+    const logoColor1 = "#ab5c1c";
+    const logoColor2 = "#efac28";
 
     // Use measureText for accurate centering
     const bigFontSize = 20; // font size for GROOVE/GOBLINS
@@ -4225,7 +4225,7 @@ function renderTitleScreen() {
     for (let i = 0; i < goblinsText.length; i++) {
         const charX = gobStartX + i * gobCharW;
         const bounce = Math.sin(titleBlink * 0.06 + i * 0.8 + 3) * 3;
-        const col = i % 2 === 0 ? "#66cc66" : "#44aa44";
+        const col = i % 2 === 0 ? "#39FF14" : "#00CC00";
         drawText(goblinsText[i], charX + 1, gobY + bounce + 1, "#000000", bigFontSize);
         drawText(goblinsText[i], charX, gobY + bounce, col, bigFontSize);
     }
@@ -4234,23 +4234,23 @@ function renderTitleScreen() {
     const fp = 3;
     const faceX = W / 2 - 4*fp;
     const faceY = gobY + 40;
-    drawRect(faceX + 2*fp, faceY, 4*fp, fp, "#44aa44");
-    drawRect(faceX + fp, faceY + fp, 6*fp, fp, "#44aa44");
-    drawRect(faceX, faceY + 2*fp, 8*fp, 3*fp, "#66cc66");
-    drawRect(faceX + fp, faceY + 5*fp, 6*fp, fp, "#66cc66");
-    drawRect(faceX + 2*fp, faceY + 6*fp, 4*fp, fp, "#44aa44");
-    drawRect(faceX - fp, faceY + 2*fp, fp, 2*fp, "#44aa44");
-    drawRect(faceX + 8*fp, faceY + 2*fp, fp, 2*fp, "#44aa44");
-    drawRect(faceX + 2*fp, faceY + 3*fp, fp, fp, "#ff2222");
-    drawRect(faceX + 5*fp, faceY + 3*fp, fp, fp, "#ff2222");
+    drawRect(faceX + 2*fp, faceY, 4*fp, fp, "#00CC00");
+    drawRect(faceX + fp, faceY + fp, 6*fp, fp, "#00CC00");
+    drawRect(faceX, faceY + 2*fp, 8*fp, 3*fp, "#39FF14");
+    drawRect(faceX + fp, faceY + 5*fp, 6*fp, fp, "#39FF14");
+    drawRect(faceX + 2*fp, faceY + 6*fp, 4*fp, fp, "#00CC00");
+    drawRect(faceX - fp, faceY + 2*fp, fp, 2*fp, "#00CC00");
+    drawRect(faceX + 8*fp, faceY + 2*fp, fp, 2*fp, "#00CC00");
+    drawRect(faceX + 2*fp, faceY + 3*fp, fp, fp, "#FF00FF");
+    drawRect(faceX + 5*fp, faceY + 3*fp, fp, fp, "#FF00FF");
     drawRect(faceX + 2*fp, faceY + 5*fp, 4*fp, fp, "#1a1a1a");
-    drawRect(faceX + 3*fp, faceY + 5*fp, fp, fp, "#EBEBE3");
-    drawRect(faceX + 5*fp, faceY + 5*fp, fp, fp, "#EBEBE3");
+    drawRect(faceX + 3*fp, faceY + 5*fp, fp, fp, "#efd8a1");
+    drawRect(faceX + 5*fp, faceY + 5*fp, fp, fp, "#efd8a1");
     drawRect(faceX - fp, faceY + fp, fp, 3*fp, "#333");
     drawRect(faceX + 8*fp, faceY + fp, fp, 3*fp, "#333");
     drawRect(faceX + fp, faceY - fp, 6*fp, fp, "#333");
-    drawRect(faceX - 2*fp, faceY + fp, 2*fp, 2*fp, "#BF7538");
-    drawRect(faceX + 8*fp, faceY + fp, 2*fp, 2*fp, "#BF7538");
+    drawRect(faceX - 2*fp, faceY + fp, 2*fp, 2*fp, "#FF00FF");
+    drawRect(faceX + 8*fp, faceY + fp, 2*fp, 2*fp, "#FF00FF");
 
     // Musical notes floating around the face
     const notePositions = [
@@ -4262,7 +4262,7 @@ function renderTitleScreen() {
     for (let i = 0; i < notePositions.length; i++) {
         const np = notePositions[i];
         const ny = np.y + Math.sin(titleBlink * 0.1 + i * 2) * 4;
-        const noteCol = ["#F6CC60", "#BF7538", "#E86A6A", "#9B59B6"][i];
+        const noteCol = ["#efac28", "#ab5c1c", "#ef3a0c", "#3c9f9c"][i];
         ctx.globalAlpha = 0.6 + Math.sin(titleBlink * 0.08 + i) * 0.4;
         drawRect(np.x, ny, 3, 2, noteCol);
         drawRect(np.x + 3, ny - 5, 1, 6, noteCol);
@@ -4284,17 +4284,17 @@ function renderTitleScreen() {
     const hasScores = highScores.length > 0;
     const pressY = hasScores ? H - 80 : H - 30;
     if (titleBlink % 60 < 40) {
-        drawCentered("PRESS ENTER", pressY, "#EBEBE3", 5);
+        drawCentered("PRESS ENTER", pressY, "#efd8a1", 5);
     }
 
     // High score leaderboard
     if (hasScores) {
-        drawCentered("HIGH SCORES", H - 68, "#F6CC60", 3);
+        drawCentered("HIGH SCORES", H - 68, "#efac28", 3);
 
         for (let i = 0; i < highScores.length; i++) {
             const entry = highScores[i];
             const rank = (i + 1) + ". " + entry.name + "  " + String(entry.score).padStart(7, "0");
-            const color = i === 0 ? "#F6CC60" : "#BFCDC0";
+            const color = i === 0 ? "#efac28" : "#efb775";
             drawCentered(rank, H - 58 + i * 10, color, 3);
         }
     }
@@ -4407,7 +4407,7 @@ function renderStoryScreen() {
     const H = ROWS * TILE;
 
     // Dark background
-    drawRect(0, 0, W, H, "#0a0a12");
+    drawRect(0, 0, W, H, "#1f240a");
 
     // Starfield
     for (let i = 0; i < 60; i++) {
@@ -4416,7 +4416,7 @@ function renderStoryScreen() {
         const twinkle = Math.sin(storyBlink * 0.05 + i) * 0.5 + 0.5;
         ctx.globalAlpha = 0.3 + twinkle * 0.7;
         const starSize = (i % 3 === 0) ? 2 : 1;
-        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#F6CC60" : "#EBEBE3");
+        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#efac28" : "#efd8a1");
     }
     ctx.globalAlpha = 1;
 
@@ -4431,12 +4431,12 @@ function renderStoryScreen() {
 
     // Story text
     const storyLines = [
-        { text: "ONCE UPON A TIME,", color: "#F6CC60", scale: 7, gap: 18 },
-        { text: "SICK BEATS ECHOED THROUGH STUDIOLAND.", color: "#BFCDC0", scale: 5, gap: 22 },
-        { text: "UNTIL THE GOBLINS BECAME JEALOUS", color: "#66cc66", scale: 5, gap: 16 },
-        { text: "AND STARTED TO SABOTAGE THE MUSIC.", color: "#E86A6A", scale: 5, gap: 24 },
-        { text: "YOU ARE THE DJ, AND YOU HAVE FISTS OF FURY.", color: "#F6CC60", scale: 5, gap: 24 },
-        { text: "IT'S TIME TO GET PUNCHIN'!", color: "#E86A6A", scale: 7, gap: 0 },
+        { text: "ONCE UPON A TIME,", color: "#efac28", scale: 7, gap: 18 },
+        { text: "SICK BEATS ECHOED THROUGH STUDIOLAND.", color: "#efb775", scale: 5, gap: 22 },
+        { text: "UNTIL THE GOBLINS BECAME JEALOUS", color: "#39FF14", scale: 5, gap: 16 },
+        { text: "AND STARTED TO SABOTAGE THE MUSIC.", color: "#ef3a0c", scale: 5, gap: 24 },
+        { text: "YOU ARE THE DJ, AND YOU HAVE FISTS OF FURY.", color: "#efac28", scale: 5, gap: 24 },
+        { text: "IT'S TIME TO GET PUNCHIN'!", color: "#ef3a0c", scale: 7, gap: 0 },
     ];
 
     // Calculate total height to vertically center story block
@@ -4478,8 +4478,8 @@ function renderStoryScreen() {
 
     // Dancers (slots 4 and 5)
     const dancerPals = [
-        { body: "#E86A6A", dark: "#C05050", head: "#F09090", hair: "#8B4513" },
-        { body: "#6AB8E8", dark: "#4A98C8", head: "#F0D0B0", hair: "#2a2a2a" },
+        { body: "#ef3a0c", dark: "#9b1a0a", head: "#efb775", hair: "#724113" },
+        { body: "#3c9f9c", dark: "#276468", head: "#efb775", hair: "#2a1d0d" },
     ];
     for (let d = 0; d < 2; d++) {
         const dx = charMargin + slotW * (3 + d) - 6;
@@ -4492,7 +4492,7 @@ function renderStoryScreen() {
     // Blinking "PRESS ENTER TO BEGIN"
     storyBlink++;
     if (storyBlink % 60 < 40) {
-        drawCenteredText("PRESS ENTER TO BEGIN", H - 10, "#EBEBE3", 5);
+        drawCenteredText("PRESS ENTER TO BEGIN", H - 10, "#efd8a1", 5);
     }
 
 }
@@ -4502,14 +4502,14 @@ function renderHighScoreEntry() {
     const H = ROWS * TILE;
 
     // Dark background with starfield
-    drawRect(0, 0, W, H, "#0a0a12");
+    drawRect(0, 0, W, H, "#1f240a");
     for (let i = 0; i < 60; i++) {
         const sx = ((i * 137 + 50) % W);
         const sy = ((i * 97 + 30) % H);
         const twinkle = Math.sin(initialsBlink * 0.05 + i) * 0.5 + 0.5;
         ctx.globalAlpha = 0.3 + twinkle * 0.7;
         const starSize = (i % 3 === 0) ? 2 : 1;
-        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#F6CC60" : "#EBEBE3");
+        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#efac28" : "#efd8a1");
     }
     ctx.globalAlpha = 1;
 
@@ -4518,17 +4518,17 @@ function renderHighScoreEntry() {
     // "NEW HIGH SCORE!" header
     const header = "NEW HIGH SCORE!";
     const headerW = header.length * 5;
-    drawText(header, W / 2 - headerW / 2, 20, "#F6CC60", 5);
+    drawText(header, W / 2 - headerW / 2, 20, "#efac28", 5);
 
     // Score display
     const scoreStr = String(finalScore);
     const scoreW = scoreStr.length * 6;
-    drawText(scoreStr, W / 2 - scoreW / 2, 40, "#EBEBE3", 6);
+    drawText(scoreStr, W / 2 - scoreW / 2, 40, "#efd8a1", 6);
 
     // "ENTER YOUR INITIALS" label
     const label = "ENTER YOUR INITIALS";
     const labelW = label.length * 3;
-    drawText(label, W / 2 - labelW / 2, 65, "#BFCDC0", 3);
+    drawText(label, W / 2 - labelW / 2, 65, "#efb775", 3);
 
     // Three letter slots — large and centered
     const letterScale = 18;
@@ -4546,31 +4546,31 @@ function renderHighScoreEntry() {
             ctx.globalAlpha = blinkAlpha;
 
             // Up arrow indicator above
-            drawText("^", lx + letterScale * 0.1, ly - 20, "#F6CC60", 8);
+            drawText("^", lx + letterScale * 0.1, ly - 20, "#efac28", 8);
             // Down arrow indicator below
-            drawText("v", lx + letterScale * 0.1, ly + letterScale + 10, "#F6CC60", 8);
+            drawText("v", lx + letterScale * 0.1, ly + letterScale + 10, "#efac28", 8);
         }
 
         // Draw the letter
-        const color = i < initialsPos ? "#88AA88" : (i === initialsPos ? "#F6CC60" : "#555555");
+        const color = i < initialsPos ? "#a58c27" : (i === initialsPos ? "#efac28" : "#392a1c");
         drawText(initialsEntry[i], lx, ly, color, letterScale);
         ctx.globalAlpha = 1;
 
         // Underline
-        drawRect(lx, ly + letterScale + 4, letterScale, 2, i === initialsPos ? "#F6CC60" : "#555555");
+        drawRect(lx, ly + letterScale + 4, letterScale, 2, i === initialsPos ? "#efac28" : "#392a1c");
     }
 
     // "PRESS ENTER TO CONFIRM" blinking
     const confirmText = "PRESS ENTER TO CONFIRM";
     const confirmW = confirmText.length * 3;
     if (initialsBlink % 60 < 40) {
-        drawText(confirmText, W / 2 - confirmW / 2, H - 30, "#BFCDC0", 3);
+        drawText(confirmText, W / 2 - confirmW / 2, H - 30, "#efb775", 3);
     }
 
     // Controls hint
     const hint = "UP/DOWN: LETTER   ENTER: CONFIRM";
     const hintW = hint.length * 2;
-    drawText(hint, W / 2 - hintW / 2, H - 18, "#666666", 2);
+    drawText(hint, W / 2 - hintW / 2, H - 18, "#684c3c", 2);
 }
 
 function renderLevelComplete() {
@@ -4584,7 +4584,7 @@ function renderLevelComplete() {
     render();
     const fadeAlpha = Math.min(1, levelCelebrateTimer / 90);
     ctx.globalAlpha = fadeAlpha;
-    drawRect(0, 0, COLS * TILE, ROWS * TILE, "#1a2a2e");
+    drawRect(0, 0, COLS * TILE, ROWS * TILE, "#1f240a");
     ctx.globalAlpha = 1.0;
 
     // "LEVEL X COMPLETE!" text
@@ -4605,14 +4605,14 @@ function renderLevelComplete() {
         ctx.fillStyle = "#000000";
         ctx.fillText(levelText, (W * SCALE) / 2 + SCALE, (ty + bounce + 1) * SCALE);
         // Main
-        ctx.fillStyle = "#F6CC60";
+        ctx.fillStyle = "#efac28";
         ctx.fillText(levelText, (W * SCALE) / 2, (ty + bounce) * SCALE);
 
         // "COMPLETE!" below
         const cy = ty + 20;
         ctx.fillStyle = "#000000";
         ctx.fillText(completeText, (W * SCALE) / 2 + SCALE, (cy + bounce + 1) * SCALE);
-        ctx.fillStyle = "#F6CC60";
+        ctx.fillStyle = "#efac28";
         ctx.fillText(completeText, (W * SCALE) / 2, (cy + bounce) * SCALE);
 
         // Time bonus and score below
@@ -4623,14 +4623,14 @@ function renderLevelComplete() {
             const bonusText = "TIME BONUS: +" + lastTimeBonus;
             ctx.fillStyle = "#000000";
             ctx.fillText(bonusText, (W * SCALE) / 2 + SCALE, (by + 1) * SCALE);
-            ctx.fillStyle = "#6AB8E8";
+            ctx.fillStyle = "#3c9f9c";
             ctx.fillText(bonusText, (W * SCALE) / 2, by * SCALE);
         }
         const sy = cy + (lastTimeBonus > 0 ? 42 : 28);
         const scoreText = "SCORE: " + score;
         ctx.fillStyle = "#000000";
         ctx.fillText(scoreText, (W * SCALE) / 2 + SCALE, (sy + 1) * SCALE);
-        ctx.fillStyle = "#EBEBE3";
+        ctx.fillStyle = "#efd8a1";
         ctx.fillText(scoreText, (W * SCALE) / 2, sy * SCALE);
 
         ctx.textAlign = "start";
@@ -4640,7 +4640,7 @@ function renderLevelComplete() {
 
     // Celebration particles
     if (levelCelebrateTimer % 5 === 0 && levelCelebrateTimer < 240) {
-        const colors = ["#F6CC60", "#ff88bb", "#66cc66", "#6AB8E8", "#EBEBE3", "#BF7538"];
+        const colors = ["#efac28", "#ef3a0c", "#3c9f9c", "#ef692f", "#efd8a1", "#ab5c1c"];
         for (let i = 0; i < 5; i++) {
             deathParticles.push({
                 x: Math.random() * W,
@@ -4680,7 +4680,7 @@ function renderLevelComplete() {
             const pressText = "PRESS ENTER TO CONTINUE";
             ctx.textAlign = "center";
             ctx.font = `${5 * SCALE}px monospace`;
-            ctx.fillStyle = "#EBEBE3";
+            ctx.fillStyle = "#efd8a1";
             ctx.fillText(pressText, (W * SCALE) / 2, (H / 2 + 30) * SCALE);
             ctx.textAlign = "start";
         }
@@ -4819,7 +4819,7 @@ function renderGameOverScreen() {
 
             // Red flash overlay on initial impact
             if (da.flashTimer > 0) {
-                ctx.fillStyle = "#cc2222";
+                ctx.fillStyle = "#FF00FF";
                 ctx.globalAlpha = (da.flashTimer / 8) * 0.35;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.globalAlpha = 1.0;
@@ -4858,7 +4858,7 @@ function renderGameOverScreen() {
         // Position below the player (offset by collapse)
         const textY = player.y + player.h + 20;
         drawText(shitText, W / 2 - shitW / 2 + 1, textY + 1, "#000000", 5);
-        drawText(shitText, W / 2 - shitW / 2, textY, "#BFCDC0", 5);
+        drawText(shitText, W / 2 - shitW / 2, textY, "#efb775", 5);
         ctx.globalAlpha = 1.0;
     }
 
@@ -4890,7 +4890,7 @@ function renderTutorialScreen() {
     const t = tutorialTimer;
 
     // Dark background
-    drawRect(0, 0, W, H, "#0a0a12");
+    drawRect(0, 0, W, H, "#1f240a");
 
     // Starfield
     for (let i = 0; i < 60; i++) {
@@ -4899,7 +4899,7 @@ function renderTutorialScreen() {
         const twinkle = Math.sin(t * 0.05 + i) * 0.5 + 0.5;
         ctx.globalAlpha = 0.3 + twinkle * 0.7;
         const starSize = (i % 3 === 0) ? 2 : 1;
-        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#F6CC60" : "#EBEBE3");
+        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#efac28" : "#efd8a1");
     }
     ctx.globalAlpha = 1;
 
@@ -4916,19 +4916,19 @@ function renderTutorialScreen() {
     for (let i = 0; i < 2; i++) {
         const dx = W / 2 - 6 + i * 8;
         const active = i === tutorialPage;
-        drawRect(dx, dotY, 3, 3, active ? "#F6CC60" : "#555555");
+        drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
     }
 
     // ======== PAGE 0: PUNCH BLOCKS ========
     if (tutorialPage === 0) {
         // Title
-        drawCenteredText("PUNCH BLOCKS TO TOGGLE BEATS", 25, "#F6CC60", 7);
+        drawCenteredText("PUNCH BLOCKS TO TOGGLE BEATS", 25, "#efac28", 7);
 
         // Animated demo grid — player walks to blocks and hits them
         const gridStartX = W / 2 - 4 * TILE / 2;
         const gridStartY = 58;
         const miniRows = 2;
-        const rowColors = ["#F6CC60", "#BFCDC0"];
+        const rowColors = ["#efac28", "#efb775"];
         const demoTarget = [[true, false, true, false], [false, true, false, true]];
         const toggleOrder = [[0,0], [0,2], [1,1], [1,3]];
         const WALK_FRAMES = 35, ATTACK_AT = 38, ATTACK_DUR = 15, HIT_OFFSET = 45;
@@ -5035,16 +5035,16 @@ function renderTutorialScreen() {
                     const armLen = 3 + thrust * 6;
                     const shX = (pcx + pLeanX + shOX) * SCALE, shY = (pcy + pLeanY + shOY) * SCALE;
                     const fiX = (pcx + pLeanX + shOX + ddx2 * armLen) * SCALE, fiY = (pcy + pLeanY + shOY + ddy2 * armLen) * SCALE;
-                    ctx.strokeStyle = "#E8CBA8"; ctx.lineWidth = 4 * SCALE; ctx.lineCap = "round";
+                    ctx.strokeStyle = "#efb775"; ctx.lineWidth = 4 * SCALE; ctx.lineCap = "round";
                     ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(fiX, fiY); ctx.stroke();
                     // Fist
-                    ctx.fillStyle = "#E8CBA8"; ctx.beginPath(); ctx.arc(fiX, fiY, 3.5 * SCALE, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = "#efb775"; ctx.beginPath(); ctx.arc(fiX, fiY, 3.5 * SCALE, 0, Math.PI * 2); ctx.fill();
                     // Impact flash
                     if (thrust > 0.5) {
                         const burstCount = 6;
                         for (let bi = 0; bi < burstCount; bi++) {
                             const angle = (bi / burstCount) * Math.PI * 2 + (stepT - ATTACK_AT) * 0.3;
-                            ctx.strokeStyle = "#FFF8B0"; ctx.lineWidth = 2 * SCALE; ctx.globalAlpha = thrust * 0.8;
+                            ctx.strokeStyle = "#efd8a1"; ctx.lineWidth = 2 * SCALE; ctx.globalAlpha = thrust * 0.8;
                             ctx.beginPath();
                             ctx.moveTo(fiX + Math.cos(angle) * 5 * SCALE, fiY + Math.sin(angle) * 5 * SCALE);
                             ctx.lineTo(fiX + Math.cos(angle) * (8 + thrust * 4) * SCALE, fiY + Math.sin(angle) * (8 + thrust * 4) * SCALE);
@@ -5058,7 +5058,7 @@ function renderTutorialScreen() {
                     const btx = gridStartX + toggleOrder[step.toggleIdx][1] * TILE;
                     const bty = gridStartY + toggleOrder[step.toggleIdx][0] * TILE;
                     ctx.globalAlpha = demoAlpha * playerAlpha * (0.25 + Math.sin(t * 0.1) * 0.15);
-                    const bc = "#F6CC60";
+                    const bc = "#efac28";
                     drawRect(btx, bty, 4, 1, bc); drawRect(btx, bty, 1, 4, bc);
                     drawRect(btx + TILE - 4, bty, 4, 1, bc); drawRect(btx + TILE - 1, bty, 1, 4, bc);
                     drawRect(btx, bty + TILE - 1, 4, 1, bc); drawRect(btx, bty + TILE - 4, 1, 4, bc);
@@ -5074,9 +5074,9 @@ function renderTutorialScreen() {
             const ky = gridStartY + miniRows * TILE + 18;
             const ks = 9; // key size
             const kg = 2; // key gap
-            const keyCol = "#3a3a5a";
-            const keyHi = "#5a5a8a";
-            const labelCol = "#EBEBE3";
+            const keyCol = "#392a1c";
+            const keyHi = "#684c3c";
+            const labelCol = "#efd8a1";
             const arrowGroupW = 3 * ks + 2 * kg; // width of arrow key cluster
             const spW = 28; // space bar width
             const gap = 14; // gap between arrow keys and space bar
@@ -5115,7 +5115,7 @@ function renderTutorialScreen() {
 
             // Labels below each group
             ctx.font = `${5 * SCALE}px monospace`;
-            ctx.fillStyle = "#BFCDC0";
+            ctx.fillStyle = "#efb775";
             const arrowCenterX = kx + ks + kg + ks / 2;
             ctx.fillText("MOVE", arrowCenterX * SCALE, (ky + 2 * ks + 2 * kg + 8) * SCALE);
             ctx.fillText("ATTACK", (spX + spW / 2) * SCALE, (ky + 2 * ks + 2 * kg + 8) * SCALE);
@@ -5125,13 +5125,13 @@ function renderTutorialScreen() {
 
     // ======== PAGE 1: MATCH THE PATTERN + BEAT THE CLOCK ========
     else if (tutorialPage === 1) {
-        drawCenteredText("MATCH THE PATTERN", 15, "#F6CC60", 7);
+        drawCenteredText("MATCH THE PATTERN", 15, "#efac28", 7);
 
         // --- TOP LEFT: Pulsing outlines (beats to ADD) ---
         const gx = W / 2 - 4 * TILE;
         const gy = 36;
         const patCols = 4;
-        const addColor = "#F6CC60";
+        const addColor = "#efac28";
         const addTarget = [true, false, true, false];
         const addFillOrder = [0, 2];
         const ADD_INTERVAL = 60;
@@ -5168,12 +5168,12 @@ function renderTutorialScreen() {
                 }
             }
         }
-        drawText("OUTLINES = ADD", gx - 2, gy + TILE + 10, "#BFCDC0", 4);
+        drawText("OUTLINES = ADD", gx - 2, gy + TILE + 10, "#efb775", 4);
 
         // --- TOP RIGHT: X marks (beats to REMOVE) ---
         const xgx = W / 2 + TILE;
-        const xColor = "#BFCDC0";
-        const xIndicatorColor = "#0933A0";
+        const xColor = "#efb775";
+        const xIndicatorColor = "#9b1a0a";
         const xStartOn = [true, true, false, true];
         const xTarget = [true, false, false, true];
         const xRemoveOrder = [1];
@@ -5214,7 +5214,7 @@ function renderTutorialScreen() {
                 }
             }
         }
-        drawText("X MARKS = REMOVE", xgx, gy + TILE + 10, "#BFCDC0", 4);
+        drawText("X MARKS = REMOVE", xgx, gy + TILE + 10, "#efb775", 4);
 
         // --- BOTTOM: Timer countdown ---
         const timerY = gy + TILE + 30;
@@ -5223,10 +5223,10 @@ function renderTutorialScreen() {
         const timerVal = Math.max(5, 30 - Math.floor(cT / 6));
         const isLow = timerVal <= 10;
         const isUrgent = timerVal <= 20;
-        const timerColor = isUrgent ? "#FF4466" : "#EBEBE3";
-        const borderCol = isUrgent ? "#4a1a1a" : "#1a3438";
-        const bgCol = isUrgent ? "#3a1a22" : "#243e42";
-        const hlCol = isUrgent ? "#6a2a3a" : "#3a6a70";
+        const timerColor = isUrgent ? "#ef3a0c" : "#efd8a1";
+        const borderCol = isUrgent ? "#550f0a" : "#2a1d0d";
+        const bgCol = isUrgent ? "#45230d" : "#392a1c";
+        const hlCol = isUrgent ? "#9b1a0a" : "#684c3c";
         const blinkOn = !isUrgent || Math.floor(cT / (isLow ? 8 : 15)) % 2 === 0;
 
         const pxSz = 4;
@@ -5253,17 +5253,17 @@ function renderTutorialScreen() {
 
         if (isLow && !blinkOn) {
             ctx.globalAlpha = 0.08;
-            drawRect(0, 0, W, H, "#FF4466");
+            drawRect(0, 0, W, H, "#ef3a0c");
         }
         ctx.globalAlpha = 1;
 
-        drawCenteredText("COMPLETE THE PATTERN BEFORE TIME RUNS OUT!", timerY + panelH + 12, "#BFCDC0", 4);
+        drawCenteredText("COMPLETE THE PATTERN BEFORE TIME RUNS OUT!", timerY + panelH + 12, "#efb775", 4);
     }
 
     // Blinking prompt
     const promptText = tutorialPage < 1 ? "PRESS ENTER" : "PRESS ENTER TO START";
     if (t > 20 && t % 60 < 40) {
-        drawCenteredText(promptText, H - 10, "#EBEBE3", 5);
+        drawCenteredText(promptText, H - 10, "#efd8a1", 5);
     }
 }
 
@@ -5323,11 +5323,11 @@ function renderEnemyWarningIntro() {
     const H = ROWS * TILE;
 
     // Dark background
-    drawRect(0, 0, W, H, "#0a0a12");
+    drawRect(0, 0, W, H, "#1f240a");
 
     // Dramatic flash effect — bright flash that fades
     if (progress < 0.4) {
-        ctx.fillStyle = "#FF4466";
+        ctx.fillStyle = "#ef3a0c";
         ctx.globalAlpha = (1 - progress / 0.4) * 0.6;
         ctx.fillRect(0, 0, W * SCALE, H * SCALE);
         ctx.globalAlpha = 1;
@@ -5347,7 +5347,7 @@ function renderEnemyWarning() {
     const H = ROWS * TILE;
 
     // Dark background (same as tutorial/instrument screens)
-    drawRect(0, 0, W, H, "#0a0a12");
+    drawRect(0, 0, W, H, "#1f240a");
 
     // Starfield
     for (let i = 0; i < 60; i++) {
@@ -5356,7 +5356,7 @@ function renderEnemyWarning() {
         const twinkle = Math.sin(t * 0.05 + i) * 0.5 + 0.5;
         ctx.globalAlpha = 0.3 + twinkle * 0.7;
         const starSize = (i % 3 === 0) ? 2 : 1;
-        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#F6CC60" : "#EBEBE3");
+        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#efac28" : "#efd8a1");
     }
     ctx.globalAlpha = 1;
 
@@ -5375,32 +5375,32 @@ function renderEnemyWarning() {
     const gobBob = gobFrame % 2 === 1 ? 1 : 0;
 
     if (enemyWarningType === "normal") {
-        drawCenteredText("WATCH OUT!", 30, "#66cc66", 8);
-        drawCenteredText("GOBLINS!", 55, "#66cc66", 6);
+        drawCenteredText("WATCH OUT!", 30, "#39FF14", 8);
+        drawCenteredText("GOBLINS!", 55, "#39FF14", 6);
         drawGoblinSprite("normal", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
-        drawCenteredText("THEY SABOTAGE YOUR BEATS!", 115, "#BFCDC0", 5);
-        drawCenteredText("PUNCH THEM TO DEFEAT THEM!", 132, "#F6CC60", 5);
+        drawCenteredText("THEY SABOTAGE YOUR BEATS!", 115, "#efb775", 5);
+        drawCenteredText("PUNCH THEM TO DEFEAT THEM!", 132, "#efac28", 5);
 
     } else if (enemyWarningType === "elite") {
-        drawCenteredText("WARNING!", 30, "#FF4466", 8);
-        drawCenteredText("ELITE GOBLIN", 55, "#FF88CC", 6);
+        drawCenteredText("WARNING!", 30, "#FF00FF", 8);
+        drawCenteredText("ELITE GOBLIN", 55, "#FF44FF", 6);
         drawGoblinSprite("elite", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
-        drawCenteredText("THIS GOBLIN IS EXTRA STRONG!", 115, "#BFCDC0", 5);
-        drawCenteredText("IT TAKES 3 HITS TO DEFEAT!", 132, "#FF88CC", 5);
-        drawCenteredText("IT ALSO MOVES FASTER THAN NORMAL GOBLINS.", 155, "#BFCDC0", 4);
+        drawCenteredText("THIS GOBLIN IS EXTRA STRONG!", 115, "#efb775", 5);
+        drawCenteredText("IT TAKES 3 HITS TO DEFEAT!", 132, "#FF44FF", 5);
+        drawCenteredText("IT ALSO MOVES FASTER THAN NORMAL GOBLINS.", 155, "#efb775", 4);
 
     } else if (enemyWarningType === "catapult") {
-        drawCenteredText("WARNING!", 30, "#FF4466", 8);
-        drawCenteredText("CATAPULT GOBLIN", 55, "#88AAFF", 6);
+        drawCenteredText("WARNING!", 30, "#FF00FF", 8);
+        drawCenteredText("CATAPULT GOBLIN", 55, "#00FFFF", 6);
         drawGoblinSprite("catapult", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
-        drawCenteredText("THIS GOBLIN THROWS BOULDERS!", 115, "#BFCDC0", 5);
-        drawCenteredText("IT HURLS ROCKS AT YOUR BEAT GRID FROM A DISTANCE.", 138, "#BFCDC0", 4);
-        drawCenteredText("IT CAN'T BE KILLED, BUT IT CAN KILL YOU!", 172, "#FF4466", 4);
+        drawCenteredText("THIS GOBLIN THROWS BOULDERS!", 115, "#efb775", 5);
+        drawCenteredText("IT HURLS ROCKS AT YOUR BEAT GRID FROM A DISTANCE.", 138, "#efb775", 4);
+        drawCenteredText("IT CAN'T BE KILLED, BUT IT CAN KILL YOU!", 172, "#FF00FF", 4);
     }
 
     // Blinking "PRESS ENTER TO CONTINUE"
     if (t > 60 && t % 60 < 40) {
-        drawCenteredText("PRESS ENTER TO CONTINUE", H - 10, "#EBEBE3", 5);
+        drawCenteredText("PRESS ENTER TO CONTINUE", H - 10, "#efd8a1", 5);
     }
 
 }
@@ -5413,7 +5413,7 @@ function renderNewInstrument() {
     const H = ROWS * TILE;
 
     // Dark background (same as tutorial)
-    drawRect(0, 0, W, H, "#0a0a12");
+    drawRect(0, 0, W, H, "#1f240a");
 
     // Starfield
     for (let i = 0; i < 60; i++) {
@@ -5422,7 +5422,7 @@ function renderNewInstrument() {
         const twinkle = Math.sin(t * 0.05 + i) * 0.5 + 0.5;
         ctx.globalAlpha = 0.3 + twinkle * 0.7;
         const starSize = (i % 3 === 0) ? 2 : 1;
-        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#F6CC60" : "#EBEBE3");
+        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#efac28" : "#efd8a1");
     }
     ctx.globalAlpha = 1;
 
@@ -5438,13 +5438,13 @@ function renderNewInstrument() {
         // Title with entrance animation
         const titleAlpha = Math.min(1, t / 30);
         ctx.globalAlpha = titleAlpha;
-        drawCenteredText("NEW INSTRUMENT!", 28, "#F6CC60", 8);
+        drawCenteredText("NEW INSTRUMENT!", 28, "#efac28", 8);
         ctx.globalAlpha = 1;
 
         // Instrument name
         const nameAlpha = Math.min(1, Math.max(0, (t - 15) / 30));
         ctx.globalAlpha = nameAlpha;
-        drawCenteredText("COWBELL", 52, "#E86A6A", 7);
+        drawCenteredText("COWBELL", 52, "#ef3a0c", 7);
         ctx.globalAlpha = 1;
 
         // Animated cowbell icon — larger, centered
@@ -5459,7 +5459,7 @@ function renderNewInstrument() {
             ctx.translate(cx, cy + bob);
             ctx.rotate(swing);
             // Bell body (trapezoid) — bigger
-            ctx.fillStyle = "#E86A6A";
+            ctx.fillStyle = "#ef3a0c";
             ctx.beginPath();
             ctx.moveTo(-12 * SCALE, -9 * SCALE);
             ctx.lineTo(12 * SCALE, -9 * SCALE);
@@ -5468,13 +5468,13 @@ function renderNewInstrument() {
             ctx.closePath();
             ctx.fill();
             // Highlight stripe
-            ctx.fillStyle = "#F09090";
+            ctx.fillStyle = "#efb775";
             ctx.fillRect(-9 * SCALE, -6 * SCALE, 18 * SCALE, 3 * SCALE);
             // Handle on top
-            ctx.fillStyle = "#EBEBE3";
+            ctx.fillStyle = "#efd8a1";
             ctx.fillRect(-4 * SCALE, -15 * SCALE, 8 * SCALE, 6 * SCALE);
             // Clapper at bottom
-            ctx.fillStyle = "#EBEBE3";
+            ctx.fillStyle = "#efd8a1";
             ctx.beginPath();
             ctx.arc(0, 12 * SCALE, 3 * SCALE, 0, Math.PI * 2);
             ctx.fill();
@@ -5486,14 +5486,14 @@ function renderNewInstrument() {
         if (t > 40) {
             const descAlpha = Math.min(1, (t - 40) / 30);
             ctx.globalAlpha = descAlpha;
-            drawCenteredText("A NEW ROW APPEARS BELOW THE KICK!", 135, "#BFCDC0", 5);
+            drawCenteredText("A NEW ROW APPEARS BELOW THE KICK!", 135, "#efb775", 5);
             ctx.globalAlpha = 1;
         }
         if (t > 55) {
             const desc2Alpha = Math.min(1, (t - 55) / 30);
             ctx.globalAlpha = desc2Alpha;
-            drawCenteredText("FILL IN THE COWBELL BEATS", 160, "#E86A6A", 5);
-            drawCenteredText("TO COMPLETE THE PATTERN!", 178, "#E86A6A", 5);
+            drawCenteredText("FILL IN THE COWBELL BEATS", 160, "#ef3a0c", 5);
+            drawCenteredText("TO COMPLETE THE PATTERN!", 178, "#ef3a0c", 5);
             ctx.globalAlpha = 1;
         }
 
@@ -5501,13 +5501,13 @@ function renderNewInstrument() {
         // Title with entrance animation
         const titleAlpha = Math.min(1, t / 30);
         ctx.globalAlpha = titleAlpha;
-        drawCenteredText("NEW INSTRUMENT!", 28, "#F6CC60", 8);
+        drawCenteredText("NEW INSTRUMENT!", 28, "#efac28", 8);
         ctx.globalAlpha = 1;
 
         // Instrument name
         const nameAlpha = Math.min(1, Math.max(0, (t - 15) / 30));
         ctx.globalAlpha = nameAlpha;
-        drawCenteredText("TOM DRUM", 52, "#6AB8E8", 7);
+        drawCenteredText("TOM DRUM", 52, "#3c9f9c", 7);
         ctx.globalAlpha = 1;
 
         // Animated tom drum icon — larger, centered
@@ -5521,20 +5521,20 @@ function renderNewInstrument() {
             ctx.save();
             ctx.translate(cx, cy + bob);
             // Drum body — bigger
-            ctx.fillStyle = hitFlash ? "#8AD0FF" : "#6AB8E8";
+            ctx.fillStyle = hitFlash ? "#efac28" : "#3c9f9c";
             ctx.fillRect(-15 * SCALE, -6 * SCALE, 30 * SCALE, 18 * SCALE);
             // Drum head (top ellipse)
-            ctx.fillStyle = hitFlash ? "#FFFFFF" : "#EBEBE3";
+            ctx.fillStyle = hitFlash ? "#FFFFFF" : "#efd8a1";
             ctx.beginPath();
             ctx.ellipse(0, -6 * SCALE, 15 * SCALE, 6 * SCALE, 0, 0, Math.PI * 2);
             ctx.fill();
             // Drum bottom rim
-            ctx.fillStyle = "#4A8AB0";
+            ctx.fillStyle = "#276468";
             ctx.beginPath();
             ctx.ellipse(0, 12 * SCALE, 15 * SCALE, 6 * SCALE, 0, 0, Math.PI);
             ctx.fill();
             // Side stripes
-            ctx.fillStyle = "#4A8AB0";
+            ctx.fillStyle = "#276468";
             ctx.fillRect(-15 * SCALE, -6 * SCALE, 3 * SCALE, 18 * SCALE);
             ctx.fillRect(12 * SCALE, -6 * SCALE, 3 * SCALE, 18 * SCALE);
             ctx.restore();
@@ -5545,20 +5545,20 @@ function renderNewInstrument() {
         if (t > 40) {
             const descAlpha = Math.min(1, (t - 40) / 30);
             ctx.globalAlpha = descAlpha;
-            drawCenteredText("THE TOM DRUM JOINS THE MIX!", 135, "#BFCDC0", 5);
+            drawCenteredText("THE TOM DRUM JOINS THE MIX!", 135, "#efb775", 5);
             ctx.globalAlpha = 1;
         }
         if (t > 55) {
             const desc2Alpha = Math.min(1, (t - 55) / 30);
             ctx.globalAlpha = desc2Alpha;
-            drawCenteredText("EVEN MORE BEATS TO MASTER!", 160, "#6AB8E8", 5);
+            drawCenteredText("EVEN MORE BEATS TO MASTER!", 160, "#3c9f9c", 5);
             ctx.globalAlpha = 1;
         }
     }
 
     // Blinking "PRESS ENTER TO CONTINUE"
     if (t > 80 && t % 60 < 40) {
-        drawCenteredText("PRESS ENTER TO CONTINUE", H - 12, "#EBEBE3", 5);
+        drawCenteredText("PRESS ENTER TO CONTINUE", H - 12, "#efd8a1", 5);
     }
 }
 
