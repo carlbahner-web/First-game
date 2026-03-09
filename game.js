@@ -879,37 +879,62 @@ const player = {
 // ---- Caves (goblin spawn points) ----
 const CAVES = [
     { tileX: COLS - 1, tileY: GRID_Y + 3 },   // right wall
-    { tileX: Math.floor(COLS / 2), tileY: ROWS - 1 }, // bottom wall
+    { tileX: Math.floor(COLS / 2), tileY: 0 }, // top wall (moved from bottom)
     { tileX: 0, tileY: GRID_Y + 1 },           // left wall
 ];
 
-// ---- Goblin Enemy State ----
-const goblin = {
-    x: CAVES[0].tileX * TILE,
-    y: CAVES[0].tileY * TILE,
-    destX: CAVES[0].tileX * TILE,
-    destY: CAVES[0].tileY * TILE,
-    w: TILE,
-    h: TILE,
-    dir: 0,
-    frame: 0,
-    frameTimer: 0,
-    speed: 0.5, // pixels per frame at 60fps
-    dead: true,
-    respawnTimer: 300, // start dead, spawn after 5 seconds
-    respawnDelay: 600, // ~10 seconds at 60fps
-    spawnCave: 0,
-    targetRow: -1,
-    targetCol: -1,
-    sabotageTimer: 0,
-    moveSteps: 0, // count steps for re-picking target
-    elite: false, // true for every 3rd goblin (pink & fast)
-    hp: 1,        // normal goblins have 1 hp, elites have 3
-    hurtTimer: 0, // flash white when hit
-    deathAnimTimer: 0,  // poof animation countdown (24 frames)
-    deathAnimActive: false, // true while poof animation is playing
-    deathAnimElite: false,  // was elite when killed (for poof colors)
-};
+// ---- Multiple Goblin System ----
+// Max concurrent goblins scales with level: 1 for L3-9, 2 for L10-19, 3 for L20+
+function getMaxGoblins() {
+    if (currentLevel < 10) return 1;
+    if (currentLevel < 20) return 2;
+    return 3;
+}
+
+// Sabotage flip chance scales with level (used during level-start scramble)
+function getSabotageFlipChance() {
+    // Starts at 12%, gradually increases to 30% by level 30
+    return 0.12 + (currentLevel / LEVELS.length) * 0.18;
+}
+
+// Elite weighting: random chance that increases with level
+function shouldBeElite() {
+    if (currentLevel < 6) return false;
+    // Base 25% chance, increases to ~50% by late levels
+    const weight = 0.25 + (currentLevel / LEVELS.length) * 0.25;
+    return Math.random() < weight;
+}
+
+function createGoblin(caveIndex) {
+    const cave = CAVES[caveIndex];
+    const spawnX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
+    const spawnY = cave.tileY === 0 ? TILE * 2 : cave.tileY === ROWS - 1 ? (ROWS - 2) * TILE : cave.tileY * TILE;
+    return {
+        x: spawnX, y: spawnY,
+        destX: spawnX, destY: spawnY,
+        w: TILE, h: TILE,
+        dir: 0, frame: 0, frameTimer: 0,
+        speed: 0.5,
+        dead: true,
+        respawnTimer: 300,
+        respawnDelay: 600,
+        spawnCave: caveIndex,
+        targetRow: -1, targetCol: -1,
+        sabotageTimer: 0,
+        moveSteps: 0,
+        elite: false,
+        hp: 1,
+        hurtTimer: 0,
+        deathAnimTimer: 0,
+        deathAnimActive: false,
+        deathAnimElite: false,
+    };
+}
+
+// Goblins array — up to 3 concurrent goblins
+let goblins = [createGoblin(0), createGoblin(2), createGoblin(1)];
+// Backward compat: `goblin` is an alias for goblins[0] (used by legacy rendering code)
+let goblin = goblins[0];
 
 // Death particles
 let deathParticles = [];
@@ -1517,153 +1542,140 @@ function update(dt) {
         }
 
 
-        // Check goblin hit (always check, even if we hit a grid block)
-        const gobTileX = Math.round(goblin.x / TILE);
-        const gobTileY = Math.round(goblin.y / TILE);
-        if (!goblin.dead && targetTileX === gobTileX && targetTileY === gobTileY) {
-            p.swordHit = true;
-            goblin.hp--;
+        // Check goblin hit (always check, even if we hit a grid block) — check all goblins
+        for (const hitGob of goblins) {
+            const gobTileX = Math.round(hitGob.x / TILE);
+            const gobTileY = Math.round(hitGob.y / TILE);
+            if (!hitGob.dead && targetTileX === gobTileX && targetTileY === gobTileY) {
+                p.swordHit = true;
+                hitGob.hp--;
 
-            if (goblin.hp > 0) {
-                // Non-lethal hit on elite goblin — hurt feedback
-                goblin.hurtTimer = 12; // flash white for 12 frames
-                const baseSpd = currentLevel < LEVELS.length ? LEVELS[currentLevel].goblinSpeed : 0.5;
-                goblin.speed = baseSpd * (goblin.hp === 2 ? 1.3 : 1.4); // get faster each hit, scaled to level
+                if (hitGob.hp > 0) {
+                    hitGob.hurtTimer = 12;
+                    const baseSpd = currentLevel < LEVELS.length ? LEVELS[currentLevel].goblinSpeed : 0.5;
+                    hitGob.speed = baseSpd * (hitGob.hp === 2 ? 1.3 : 1.4);
 
-                // Small hit freeze + shake
-                hitFreeze = 2;
-                pendingShake = true;
-                pendingShakeElite = false;
+                    hitFreeze = 2;
+                    pendingShake = true;
+                    pendingShakeElite = false;
 
-                // Knockback: push goblin 1 tile away from player
-                const knockDx = gobTileX - Math.round(p.x / TILE);
-                const knockDy = gobTileY - Math.round(p.y / TILE);
-                const knockX = goblin.x + Math.sign(knockDx) * TILE;
-                const knockY = goblin.y + Math.sign(knockDy) * TILE;
-                goblin.destX = Math.max(TILE, Math.min((COLS - 2) * TILE, knockX));
-                goblin.destY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, knockY));
+                    const knockDx = gobTileX - Math.round(p.x / TILE);
+                    const knockDy = gobTileY - Math.round(p.y / TILE);
+                    const knockX = hitGob.x + Math.sign(knockDx) * TILE;
+                    const knockY = hitGob.y + Math.sign(knockDy) * TILE;
+                    hitGob.destX = Math.max(TILE, Math.min((COLS - 2) * TILE, knockX));
+                    hitGob.destY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, knockY));
 
-                // Small burst of particles
-                for (let i = 0; i < 8; i++) {
-                    deathParticles.push({
-                        x: goblin.x + goblin.w / 2,
-                        y: goblin.y + goblin.h / 2,
-                        vx: (Math.random() - 0.5) * 2,
-                        vy: (Math.random() - 0.5) * 2 - 0.5,
-                        life: 15 + Math.random() * 15,
-                        color: goblin.hp === 2 ? "#d46a9a" : "#ff4444",
-                        size: 2 + Math.random() * 2,
-                        sparkle: false,
-                    });
-                }
+                    for (let i = 0; i < 8; i++) {
+                        deathParticles.push({
+                            x: hitGob.x + hitGob.w / 2,
+                            y: hitGob.y + hitGob.h / 2,
+                            vx: (Math.random() - 0.5) * 2,
+                            vy: (Math.random() - 0.5) * 2 - 0.5,
+                            life: 15 + Math.random() * 15,
+                            color: hitGob.hp === 2 ? "#d46a9a" : "#ff4444",
+                            size: 2 + Math.random() * 2,
+                            sparkle: false,
+                        });
+                    }
 
-                // Hurt text
-                const owTexts = ["OW MY SPLEEN!", "OW MY WEENIS!", "OW MY SKULL!", "OW MY FACE!", "OW MY EVERYTHING!"];
-                const ht = owTexts[Math.floor(Math.random() * owTexts.length)];
-                const htCol = goblin.hp === 2 ? "#ffaacc" : "#ff6666";
-                deathText = { x: goblin.x - 20, y: goblin.y - 8, timer: 40, text: ht, color: htCol, scale: 4 };
+                    const owTexts = ["OW MY SPLEEN!", "OW MY WEENIS!", "OW MY SKULL!", "OW MY FACE!", "OW MY EVERYTHING!"];
+                    const ht = owTexts[Math.floor(Math.random() * owTexts.length)];
+                    const htCol = hitGob.hp === 2 ? "#ffaacc" : "#ff6666";
+                    deathText = { x: hitGob.x - 20, y: hitGob.y - 8, timer: 40, text: ht, color: htCol, scale: 4 };
 
-                // Hurt sound — descending pitch, angrier each hit
-                if (audioCtx) {
-                    const now = audioCtx.currentTime;
-                    const osc = audioCtx.createOscillator();
-                    const g = audioCtx.createGain();
-                    osc.type = "square";
-                    const startFreq = goblin.hp === 2 ? 500 : 700;
-                    osc.frequency.setValueAtTime(startFreq, now);
-                    osc.frequency.exponentialRampToValueAtTime(150, now + 0.15);
-                    g.gain.setValueAtTime(0.12, now);
-                    g.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-                    osc.connect(g); g.connect(audioCtx.destination);
-                    osc.start(now); osc.stop(now + 0.15);
-                }
-            } else {
-            // Lethal hit — start poof animation, then full death
-            const wasElite = goblin.elite;
-            goblin.deathAnimActive = true;
-            goblin.deathAnimTimer = 24; // 24 frames of shrink/spin/dissolve
-            goblin.deathAnimElite = wasElite;
-            goblin.dead = true;
-            // Always 10s respawn
-            goblin.respawnTimer = 600;
-
-            // Death text (shows immediately)
-            const deathOwTexts = ["OW MY SPLEEN!", "OW MY WEENIS!", "OW MY SKULL!", "OW MY FACE!", "OW MY EVERYTHING!"];
-            const deathOw = deathOwTexts[Math.floor(Math.random() * deathOwTexts.length)];
-            deathText = wasElite
-                ? { x: goblin.x - 40, y: goblin.y - 12, timer: 120, text: "bro why you gotta stab me?", color: "#ffee44", scale: 4 }
-                : { x: goblin.x - 20, y: goblin.y - 8, timer: 60, text: deathOw, color: "#cc2222", scale: 5 };
-
-            // Screen flash for elite kill
-            if (wasElite) screenFlash = 15;
-
-            // Hit freeze + screen shake (juice)
-            hitFreeze = wasElite ? 5 : 3;
-            pendingShake = true;
-            pendingShakeElite = wasElite;
-
-            // Sound: fanfare for elite, simple boop for normal
-            if (audioCtx) {
-                const now = audioCtx.currentTime;
-                if (wasElite) {
-                    // Bright happy major arpeggio — Cmaj7 up two octaves
-                    const notes = [523, 659, 784, 988, 1047, 1319, 1568, 1976, 2093]; // C5 E5 G5 B5 C6 E6 G6 B6 C7
-                    notes.forEach((freq, i) => {
+                    if (audioCtx) {
+                        const now = audioCtx.currentTime;
                         const osc = audioCtx.createOscillator();
-                        const g = audioCtx.createGain();
-                        osc.type = "triangle";
-                        osc.frequency.setValueAtTime(freq, now + i * 0.07);
-                        g.gain.setValueAtTime(0.15 - i * 0.015, now + i * 0.07);
-                        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.35);
-                        osc.connect(g); g.connect(audioCtx.destination);
-                        osc.start(now + i * 0.07); osc.stop(now + i * 0.07 + 0.35);
-                    });
-                    // Sparkly high shimmer on top
-                    const shimmer = audioCtx.createOscillator();
-                    const sg = audioCtx.createGain();
-                    shimmer.type = "sine";
-                    shimmer.frequency.setValueAtTime(2093, now + 0.49);
-                    shimmer.frequency.linearRampToValueAtTime(2637, now + 0.8);
-                    sg.gain.setValueAtTime(0.08, now + 0.49);
-                    sg.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
-                    shimmer.connect(sg); sg.connect(audioCtx.destination);
-                    shimmer.start(now + 0.49); shimmer.stop(now + 1.0);
-                    // Warm held chord underneath (C major triad)
-                    [523, 659, 784].forEach((freq) => {
-                        const osc = audioCtx.createOscillator();
-                        const g = audioCtx.createGain();
-                        osc.type = "triangle";
-                        osc.frequency.setValueAtTime(freq, now + 0.49);
-                        g.gain.setValueAtTime(0.06, now + 0.49);
-                        g.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
-                        osc.connect(g); g.connect(audioCtx.destination);
-                        osc.start(now + 0.49); osc.stop(now + 1.2);
-                    });
+                        const gain = audioCtx.createGain();
+                        osc.type = "square";
+                        const startFreq = hitGob.hp === 2 ? 500 : 700;
+                        osc.frequency.setValueAtTime(startFreq, now);
+                        osc.frequency.exponentialRampToValueAtTime(150, now + 0.15);
+                        gain.gain.setValueAtTime(0.12, now);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                        osc.connect(gain); gain.connect(audioCtx.destination);
+                        osc.start(now); osc.stop(now + 0.15);
+                    }
                 } else {
-                    const osc = audioCtx.createOscillator();
-                    const g = audioCtx.createGain();
-                    osc.type = "square";
-                    osc.frequency.setValueAtTime(600, now);
-                    osc.frequency.exponentialRampToValueAtTime(80, now + 0.3);
-                    g.gain.setValueAtTime(0.15, now);
-                    g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-                    osc.connect(g); g.connect(audioCtx.destination);
-                    osc.start(now); osc.stop(now + 0.3);
-                }
-            }
+                    // Lethal hit — start poof animation, then full death
+                    const wasElite = hitGob.elite;
+                    hitGob.deathAnimActive = true;
+                    hitGob.deathAnimTimer = 24;
+                    hitGob.deathAnimElite = wasElite;
+                    hitGob.dead = true;
+                    hitGob.respawnTimer = 600;
 
-            // Kill counter & dancer spawn
-            killCount++;
-            catapultSpawnedThisCycle = false; // allow catapult to spawn on next qualifying kill
+                    const deathOwTexts = ["OW MY SPLEEN!", "OW MY WEENIS!", "OW MY SKULL!", "OW MY FACE!", "OW MY EVERYTHING!"];
+                    const deathOw = deathOwTexts[Math.floor(Math.random() * deathOwTexts.length)];
+                    deathText = wasElite
+                        ? { x: hitGob.x - 40, y: hitGob.y - 12, timer: 120, text: "bro why you gotta stab me?", color: "#ffee44", scale: 4 }
+                        : { x: hitGob.x - 20, y: hitGob.y - 8, timer: 60, text: deathOw, color: "#cc2222", scale: 5 };
 
-            // If pattern was already matched, check if all goblins are now dead
-            if (patternMatched && !areGoblinsAlive()) {
-                triggerLevelComplete();
+                    if (wasElite) screenFlash = 15;
+
+                    hitFreeze = wasElite ? 5 : 3;
+                    pendingShake = true;
+                    pendingShakeElite = wasElite;
+
+                    if (audioCtx) {
+                        const now = audioCtx.currentTime;
+                        if (wasElite) {
+                            const notes = [523, 659, 784, 988, 1047, 1319, 1568, 1976, 2093];
+                            notes.forEach((freq, i) => {
+                                const osc = audioCtx.createOscillator();
+                                const gain = audioCtx.createGain();
+                                osc.type = "triangle";
+                                osc.frequency.setValueAtTime(freq, now + i * 0.07);
+                                gain.gain.setValueAtTime(0.15 - i * 0.015, now + i * 0.07);
+                                gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.35);
+                                osc.connect(gain); gain.connect(audioCtx.destination);
+                                osc.start(now + i * 0.07); osc.stop(now + i * 0.07 + 0.35);
+                            });
+                            const shimmer = audioCtx.createOscillator();
+                            const sg = audioCtx.createGain();
+                            shimmer.type = "sine";
+                            shimmer.frequency.setValueAtTime(2093, now + 0.49);
+                            shimmer.frequency.linearRampToValueAtTime(2637, now + 0.8);
+                            sg.gain.setValueAtTime(0.08, now + 0.49);
+                            sg.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+                            shimmer.connect(sg); sg.connect(audioCtx.destination);
+                            shimmer.start(now + 0.49); shimmer.stop(now + 1.0);
+                            [523, 659, 784].forEach((freq) => {
+                                const osc = audioCtx.createOscillator();
+                                const gain = audioCtx.createGain();
+                                osc.type = "triangle";
+                                osc.frequency.setValueAtTime(freq, now + 0.49);
+                                gain.gain.setValueAtTime(0.06, now + 0.49);
+                                gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+                                osc.connect(gain); gain.connect(audioCtx.destination);
+                                osc.start(now + 0.49); osc.stop(now + 1.2);
+                            });
+                        } else {
+                            const osc = audioCtx.createOscillator();
+                            const gain = audioCtx.createGain();
+                            osc.type = "square";
+                            osc.frequency.setValueAtTime(600, now);
+                            osc.frequency.exponentialRampToValueAtTime(80, now + 0.3);
+                            gain.gain.setValueAtTime(0.15, now);
+                            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                            osc.connect(gain); gain.connect(audioCtx.destination);
+                            osc.start(now); osc.stop(now + 0.3);
+                        }
+                    }
+
+                    killCount++;
+                    catapultSpawnedThisCycle = false;
+
+                    if (patternMatched && !areGoblinsAlive()) {
+                        triggerLevelComplete();
+                    }
+                    if (killCount % 3 === 0) {
+                        spawnDancers(3);
+                    }
+                } // end else (lethal hit)
+                break; // only hit one goblin per attack
             }
-            if (killCount % 3 === 0) {
-                spawnDancers(3);
-            }
-            } // end else (lethal hit)
         }
 
         // Check catapult goblin hit — invincible! Clang + knockback
@@ -1701,11 +1713,15 @@ function update(dt) {
                     tryY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, tryY));
                     const ttx = Math.round(tryX / TILE);
                     const tty = Math.round(tryY / TILE);
-                    const gRX = Math.round(goblin.x / TILE) * TILE;
-                    const gRY = Math.round(goblin.y / TILE) * TILE;
+                    let gobBlocked = false;
+                    for (const gg of goblins) {
+                        if (!gg.dead && tryX === Math.round(gg.x / TILE) * TILE && tryY === Math.round(gg.y / TILE) * TILE) {
+                            gobBlocked = true; break;
+                        }
+                    }
                     const blocked = isTileBlockedByObjects(ttx, tty)
                         || isTileOccupiedByDancer(ttx, tty)
-                        || (!goblin.dead && tryX === gRX && tryY === gRY);
+                        || gobBlocked;
                     if (!blocked) { kbDist = d; break; }
                 }
                 if (kbDist > 0) {
@@ -1792,11 +1808,15 @@ function update(dt) {
             // Check collisions
             const ntx = Math.round(nx / TILE);
             const nty = Math.round(ny / TILE);
-            const gRoundX = Math.round(goblin.x / TILE) * TILE;
-            const gRoundY = Math.round(goblin.y / TILE) * TILE;
             const cgRoundX = catapultGoblin ? Math.round(catapultGoblin.x / TILE) * TILE : -999;
             const cgRoundY = catapultGoblin ? Math.round(catapultGoblin.y / TILE) * TILE : -999;
-            const blocked = (!goblin.dead && nx === gRoundX && ny === gRoundY)
+            let goblinBlocks = false;
+            for (const gg of goblins) {
+                if (!gg.dead && nx === Math.round(gg.x / TILE) * TILE && ny === Math.round(gg.y / TILE) * TILE) {
+                    goblinBlocks = true; break;
+                }
+            }
+            const blocked = goblinBlocks
                 || (catapultGoblin && nx === cgRoundX && ny === cgRoundY)
                 || isTileBlockedByObjects(ntx, nty)
                 || isTileOccupiedByDancer(ntx, nty);
@@ -1832,70 +1852,81 @@ function update(dt) {
     p.blinkTimer++;
     if (p.blinkTimer >= 186) p.blinkTimer = 0; // 180 open + 6 closed
 
-    // Update goblin
-    if (goblin.dead) {
+    // Update all goblins (multiple concurrent)
+    const maxGobs = getMaxGoblins();
+    for (let gi = 0; gi < goblins.length; gi++) {
+        const gob = goblins[gi];
+        // Only allow spawning for goblins within the current max count
+        if (gi >= maxGobs) {
+            if (!gob.dead) { /* already alive, let them finish */ }
+            else { gob.respawnTimer = 300; continue; }
+        }
+
+    if (gob.dead) {
         // No goblins on practice levels (1-2)
         if (currentLevel < 2) {
-            goblin.respawnTimer = 300;
+            gob.respawnTimer = 300;
         }
-        // Don't respawn if pattern is already matched (player just needs to clear remaining goblins)
+        // Don't respawn if pattern is already matched
         else if (patternMatched) {
-            goblin.respawnTimer = 300;
+            gob.respawnTimer = 300;
         }
-        goblin.respawnTimer--;
-        if (goblin.respawnTimer <= 0) {
-            // Enemy warnings now shown at level transitions (see checkPendingFeatureScreens)
+        gob.respawnTimer--;
+        if (gob.respawnTimer <= 0) {
             // Every 6th goblin is a catapult goblin instead of normal/elite (from L15+)
             if (killCount % 6 === 5 && !catapultGoblin && !catapultSpawnedThisCycle && currentLevel >= 14) {
                 catapultSequenceCount = 0;
                 spawnCatapultGoblin();
                 catapultSpawnedThisCycle = true;
-                goblin.respawnTimer = 300; // wait until catapult goblin finishes
+                gob.respawnTimer = 300; // wait until catapult goblin finishes
             } else if (catapultGoblin) {
-                // Wait for catapult goblin to finish before spawning next
-                goblin.respawnTimer = 60;
+                gob.respawnTimer = 60;
             } else {
-            goblin.dead = false;
-            goblin.deathAnimActive = false;
-            goblin.deathAnimTimer = 0;
-            // Every 3rd goblin is elite (pink & fast), but not on catapult turns (from L7+)
-            goblin.elite = (killCount % 3 === 2 && killCount % 6 !== 5) && currentLevel >= 6;
-            goblin.hp = goblin.elite ? 3 : 1;
+            gob.dead = false;
+            gob.deathAnimActive = false;
+            gob.deathAnimTimer = 0;
+            // Elite determination: random with weighting (increases with level)
+            gob.elite = shouldBeElite();
+            gob.hp = gob.elite ? 3 : 1;
             const baseSpeed = currentLevel < LEVELS.length ? LEVELS[currentLevel].goblinSpeed : 0.5;
-            goblin.speed = goblin.elite ? baseSpeed * 1.25 : baseSpeed;
-            // Green & elite goblins spawn from side caves only (left/right walls)
-            const sideCaves = [0, 2]; // indices into CAVES: right wall, left wall
-            goblin.spawnCave = sideCaves[Math.floor(Math.random() * sideCaves.length)];
-            const cave = CAVES[goblin.spawnCave];
-            // Start one tile inside the room from the cave
+            gob.speed = gob.elite ? baseSpeed * 1.25 : baseSpeed;
+            // Spawn from any cave — pick one not occupied by another alive goblin
+            const availableCaves = [0, 1, 2].filter(ci => {
+                for (const og of goblins) {
+                    if (og !== gob && !og.dead && og.spawnCave === ci) return false;
+                }
+                return true;
+            });
+            gob.spawnCave = availableCaves.length > 0
+                ? availableCaves[Math.floor(Math.random() * availableCaves.length)]
+                : Math.floor(Math.random() * 3);
+            const cave = CAVES[gob.spawnCave];
             const spawnX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
-            const spawnY = cave.tileY === ROWS - 1 ? (ROWS - 2) * TILE : cave.tileY * TILE;
-            goblin.x = spawnX;
-            goblin.y = spawnY;
-            goblin.destX = spawnX;
-            goblin.destY = spawnY;
-            goblin.targetRow = -1;
-            goblin.moveSteps = 0;
+            const spawnY = cave.tileY === 0 ? TILE * 2 : cave.tileY === ROWS - 1 ? (ROWS - 2) * TILE : cave.tileY * TILE;
+            gob.x = spawnX;
+            gob.y = spawnY;
+            gob.destX = spawnX;
+            gob.destY = spawnY;
+            gob.targetRow = -1;
+            gob.moveSteps = 0;
 
             // Danger chord! Dissonant stinger on spawn
             ensureAudio();
             if (audioCtx) {
                 const now = audioCtx.currentTime;
-                if (goblin.elite) {
-                    // Elite gets a nastier, lower, more menacing chord
-                    const freqs = [110, 131, 165, 208]; // A2, C3, E3, Ab3 — diminished
+                if (gob.elite) {
+                    const freqs = [110, 131, 165, 208];
                     freqs.forEach((f, i) => {
                         const osc = audioCtx.createOscillator();
-                        const g = audioCtx.createGain();
+                        const gain = audioCtx.createGain();
                         osc.type = "sawtooth";
                         osc.frequency.setValueAtTime(f, now);
                         osc.frequency.linearRampToValueAtTime(f * 0.95, now + 0.4);
-                        g.gain.setValueAtTime(0.12, now);
-                        g.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
-                        osc.connect(g); g.connect(audioCtx.destination);
+                        gain.gain.setValueAtTime(0.12, now);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+                        osc.connect(gain); gain.connect(audioCtx.destination);
                         osc.start(now + i * 0.03); osc.stop(now + 0.5);
                     });
-                    // Low rumble underneath
                     const sub = audioCtx.createOscillator();
                     const sg = audioCtx.createGain();
                     sub.type = "sine";
@@ -1905,16 +1936,15 @@ function update(dt) {
                     sub.connect(sg); sg.connect(audioCtx.destination);
                     sub.start(now); sub.stop(now + 0.6);
                 } else {
-                    // Normal goblin — quick minor stab
-                    const freqs = [220, 262, 330]; // A3, C4, E4 — A minor
+                    const freqs = [220, 262, 330];
                     freqs.forEach((f, i) => {
                         const osc = audioCtx.createOscillator();
-                        const g = audioCtx.createGain();
+                        const gain = audioCtx.createGain();
                         osc.type = "square";
                         osc.frequency.setValueAtTime(f, now);
-                        g.gain.setValueAtTime(0.08, now);
-                        g.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
-                        osc.connect(g); g.connect(audioCtx.destination);
+                        gain.gain.setValueAtTime(0.08, now);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+                        osc.connect(gain); gain.connect(audioCtx.destination);
                         osc.start(now + i * 0.02); osc.stop(now + 0.3);
                     });
                 }
@@ -1923,87 +1953,85 @@ function update(dt) {
         } // end else (non-catapult spawn)
     } else {
         // Smooth pixel movement toward destination
-        const dx = goblin.destX - goblin.x;
-        const dy = goblin.destY - goblin.y;
+        const dx = gob.destX - gob.x;
+        const dy = gob.destY - gob.y;
         const dist = Math.abs(dx) + Math.abs(dy);
 
-        if (dist < goblin.speed) {
-            // Arrived at destination
-            goblin.x = goblin.destX;
-            goblin.y = goblin.destY;
+        if (dist < gob.speed) {
+            gob.x = gob.destX;
+            gob.y = gob.destY;
 
             // Check if on a grid cell to sabotage
-            const gc = Math.round(goblin.x / TILE) - GRID_X;
-            const gr = tileYToRow(Math.round(goblin.y / TILE));
+            const gc = Math.round(gob.x / TILE) - GRID_X;
+            const gr = tileYToRow(Math.round(gob.y / TILE));
             if (gr >= 0 && gr < getActiveRows() && gc >= 0 && gc < GRID_COLS) {
-                if (gc === goblin.targetCol && gr === goblin.targetRow) {
+                if (gc === gob.targetCol && gr === gob.targetRow) {
                     grid[gr][gc] = !grid[gr][gc];
-                    cellFlash[gr][gc] = 30; // trigger red flash
+                    cellFlash[gr][gc] = 30;
                     if (audioCtx) playSabotageSound(audioCtx.currentTime);
-                    goblin.targetRow = -1;
-                    // Sabotage may break a completed pattern
+                    gob.targetRow = -1;
                     if (patternMatched && !checkLevelComplete()) {
                         patternMatched = false;
                     }
-                    // Check if goblin accidentally completed the pattern
                     tryCompleteLevelOrWait();
                 }
             }
 
             // Pick next destination tile
-            goblin.moveSteps++;
-            if (goblin.targetRow < 0 || goblin.moveSteps > 5) {
-                goblin.targetRow = Math.floor(Math.random() * getActiveRows());
-                goblin.targetCol = Math.floor(Math.random() * GRID_COLS);
-                goblin.moveSteps = 0;
+            gob.moveSteps++;
+            if (gob.targetRow < 0 || gob.moveSteps > 5) {
+                gob.targetRow = Math.floor(Math.random() * getActiveRows());
+                gob.targetCol = Math.floor(Math.random() * GRID_COLS);
+                gob.moveSteps = 0;
             }
 
-            const goalX = (GRID_X + goblin.targetCol) * TILE;
-            const goalY = rowPixelY(goblin.targetRow);
-            const gdx = goalX - goblin.x;
-            const gdy = goalY - goblin.y;
+            const goalX = (GRID_X + gob.targetCol) * TILE;
+            const goalY = rowPixelY(gob.targetRow);
+            const gdx = goalX - gob.x;
+            const gdy = goalY - gob.y;
 
-            // Move one tile toward goal
-            let nx = goblin.x, ny = goblin.y;
+            let nx = gob.x, ny = gob.y;
             if (Math.abs(gdx) > Math.abs(gdy)) {
                 nx += Math.sign(gdx) * TILE;
-                goblin.dir = gdx > 0 ? 3 : 2;
+                gob.dir = gdx > 0 ? 3 : 2;
             } else if (gdy !== 0) {
                 ny += Math.sign(gdy) * TILE;
-                goblin.dir = gdy > 0 ? 0 : 1;
+                gob.dir = gdy > 0 ? 0 : 1;
             }
 
-            // Clamp to room bounds
             nx = Math.max(TILE, Math.min((COLS - 2) * TILE, nx));
             ny = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, ny));
 
-            // Don't walk into player or solid objects; push dancers aside
+            // Don't walk into player, other goblins, or solid objects; push dancers aside
             const cgBlockX = catapultGoblin ? Math.round(catapultGoblin.x / TILE) * TILE : -999;
             const cgBlockY = catapultGoblin ? Math.round(catapultGoblin.y / TILE) * TILE : -999;
-            function isGobTileBlocked(tx, ty) {
+            const isGobTileBlocked = (tx, ty) => {
                 const ttx = Math.round(tx / TILE);
                 const tty = Math.round(ty / TILE);
-                return (tx === p.x && ty === p.y)
-                    || isTileBlockedByObjects(ttx, tty)
-                    || (catapultGoblin && tx === cgBlockX && ty === cgBlockY);
-            }
-            // Push any dancer at the target tile perpendicular to goblin's movement
-            function pushDancerAt(tx, ty, moveDirX, moveDirY, depth) {
-                if (depth > 5) return false; // prevent infinite chain
+                if (tx === p.x && ty === p.y) return true;
+                if (isTileBlockedByObjects(ttx, tty)) return true;
+                if (catapultGoblin && tx === cgBlockX && ty === cgBlockY) return true;
+                // Check other alive goblins
+                for (const og of goblins) {
+                    if (og === gob || og.dead) continue;
+                    if (Math.round(og.x / TILE) * TILE === tx && Math.round(og.y / TILE) * TILE === ty) return true;
+                }
+                return false;
+            };
+            const pushDancerAt = (tx, ty, moveDirX, moveDirY, depth) => {
+                if (depth > 5) return false;
                 const ttx = Math.round(tx / TILE);
                 const tty = Math.round(ty / TILE);
                 for (const d of dancers) {
                     const dtx = Math.round(d.x / TILE);
                     const dty = Math.round(d.y / TILE);
                     if (dtx === ttx && dty === tty) {
-                        // Push perpendicular to goblin movement direction
                         let pushX = 0, pushY = 0;
                         if (moveDirX !== 0) {
-                            pushY = (d.y >= goblin.y) ? 1 : -1;
+                            pushY = (d.y >= gob.y) ? 1 : -1;
                         } else {
-                            pushX = (d.x >= goblin.x) ? 1 : -1;
+                            pushX = (d.x >= gob.x) ? 1 : -1;
                         }
-                        // Try the preferred perpendicular direction, then the opposite
                         for (const sign of [1, -1]) {
                             const px = pushX * sign, py = pushY * sign;
                             let newX = d.x + px * TILE;
@@ -2014,7 +2042,6 @@ function update(dt) {
                             const nty = Math.round(newY / TILE);
                             if (isTileBlockedByObjects(ntx, nty)
                                 || (ntx === Math.round(p.x / TILE) && nty === Math.round(p.y / TILE))) continue;
-                            // If another dancer is in the way, chain-push it in the same direction
                             if (isTileOccupiedByDancer(ntx, nty)) {
                                 if (!pushDancerAt(newX, newY, px * TILE, py * TILE, depth + 1)) continue;
                             }
@@ -2023,82 +2050,76 @@ function update(dt) {
                             d.walkingIn = true;
                             return true;
                         }
-                        return false; // couldn't push, dancer is stuck
+                        return false;
                     }
                 }
-                return true; // no dancer there
-            }
+                return true;
+            };
             if (!isGobTileBlocked(nx, ny)) {
-                const moveDirX = nx - goblin.x;
-                const moveDirY = ny - goblin.y;
+                const moveDirX = nx - gob.x;
+                const moveDirY = ny - gob.y;
                 if (isTileOccupiedByDancer(Math.round(nx / TILE), Math.round(ny / TILE))) {
                     pushDancerAt(nx, ny, moveDirX, moveDirY, 0);
                 }
-                goblin.destX = nx;
-                goblin.destY = ny;
+                gob.destX = nx;
+                gob.destY = ny;
             } else {
-                // Try the other axis instead of getting stuck
-                let ax = goblin.x, ay = goblin.y;
-                if (nx !== goblin.x) {
-                    // Was trying horizontal, try vertical instead
+                let ax = gob.x, ay = gob.y;
+                if (nx !== gob.x) {
                     if (gdy !== 0) {
                         ay += Math.sign(gdy) * TILE;
-                        goblin.dir = gdy > 0 ? 0 : 1;
+                        gob.dir = gdy > 0 ? 0 : 1;
                     }
                 } else {
-                    // Was trying vertical, try horizontal instead
                     if (gdx !== 0) {
                         ax += Math.sign(gdx) * TILE;
-                        goblin.dir = gdx > 0 ? 3 : 2;
+                        gob.dir = gdx > 0 ? 3 : 2;
                     }
                 }
                 ax = Math.max(TILE, Math.min((COLS - 2) * TILE, ax));
                 ay = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, ay));
-                if ((ax !== goblin.x || ay !== goblin.y) && !isGobTileBlocked(ax, ay)) {
-                    const aDirX = ax - goblin.x;
-                    const aDirY = ay - goblin.y;
+                if ((ax !== gob.x || ay !== gob.y) && !isGobTileBlocked(ax, ay)) {
+                    const aDirX = ax - gob.x;
+                    const aDirY = ay - gob.y;
                     if (isTileOccupiedByDancer(Math.round(ax / TILE), Math.round(ay / TILE))) {
                         pushDancerAt(ax, ay, aDirX, aDirY, 0);
                     }
-                    goblin.destX = ax;
-                    goblin.destY = ay;
+                    gob.destX = ax;
+                    gob.destY = ay;
                 }
             }
         } else {
-            // Move toward destination smoothly
             if (Math.abs(dx) > 0) {
-                goblin.x += Math.sign(dx) * Math.min(goblin.speed, Math.abs(dx));
+                gob.x += Math.sign(dx) * Math.min(gob.speed, Math.abs(dx));
             }
             if (Math.abs(dy) > 0) {
-                goblin.y += Math.sign(dy) * Math.min(goblin.speed, Math.abs(dy));
+                gob.y += Math.sign(dy) * Math.min(gob.speed, Math.abs(dy));
             }
-            // Animate walk frame
-            goblin.frameTimer++;
-            if (goblin.frameTimer >= 8) {
-                goblin.frameTimer = 0;
-                goblin.frame = (goblin.frame + 1) % 4;
+            gob.frameTimer++;
+            if (gob.frameTimer >= 8) {
+                gob.frameTimer = 0;
+                gob.frame = (gob.frame + 1) % 4;
             }
         }
     }
 
     // Decrement goblin hurt flash timer
-    if (goblin.hurtTimer > 0) goblin.hurtTimer--;
+    if (gob.hurtTimer > 0) gob.hurtTimer--;
 
     // Update goblin death poof animation
-    if (goblin.deathAnimActive) {
-        goblin.deathAnimTimer--;
-        // Shed particles during the poof (dissolving into bits)
-        const progress = 1 - goblin.deathAnimTimer / 24; // 0→1
-        const wasElite = goblin.deathAnimElite;
-        if (goblin.deathAnimTimer % 2 === 0) {
+    if (gob.deathAnimActive) {
+        gob.deathAnimTimer--;
+        const progress = 1 - gob.deathAnimTimer / 24;
+        const wasElite = gob.deathAnimElite;
+        if (gob.deathAnimTimer % 2 === 0) {
             const burstCount = wasElite ? 4 : 2;
             for (let i = 0; i < burstCount; i++) {
                 const angle = Math.random() * Math.PI * 2;
                 const speed = 0.5 + progress * 2;
                 const isSparkle = wasElite && Math.random() > 0.5;
                 deathParticles.push({
-                    x: goblin.x + goblin.w / 2 + (Math.random() - 0.5) * 10,
-                    y: goblin.y + goblin.h / 2 + (Math.random() - 0.5) * 10,
+                    x: gob.x + gob.w / 2 + (Math.random() - 0.5) * 10,
+                    y: gob.y + gob.h / 2 + (Math.random() - 0.5) * 10,
                     vx: Math.cos(angle) * speed,
                     vy: Math.sin(angle) * speed - 0.5,
                     life: wasElite ? 40 + Math.random() * 30 : 20 + Math.random() * 20,
@@ -2110,16 +2131,15 @@ function update(dt) {
                 });
             }
         }
-        // Final big burst when animation ends
-        if (goblin.deathAnimTimer <= 0) {
-            goblin.deathAnimActive = false;
+        if (gob.deathAnimTimer <= 0) {
+            gob.deathAnimActive = false;
             const particleCount = wasElite ? 35 : 15;
             const spreadMul = wasElite ? 3 : 2;
             for (let i = 0; i < particleCount; i++) {
                 const isSparkle = wasElite && Math.random() > 0.5;
                 deathParticles.push({
-                    x: goblin.x + goblin.w / 2,
-                    y: goblin.y + goblin.h / 2,
+                    x: gob.x + gob.w / 2,
+                    y: gob.y + gob.h / 2,
                     vx: (Math.random() - 0.5) * spreadMul,
                     vy: (Math.random() - 0.5) * spreadMul - 1,
                     life: wasElite ? 50 + Math.random() * 50 : 30 + Math.random() * 30,
@@ -2132,6 +2152,8 @@ function update(dt) {
             }
         }
     }
+
+    } // end for each goblin
 
     // Update catapult goblin
     if (catapultGoblin) updateCatapultGoblin();
@@ -2169,36 +2191,44 @@ function update(dt) {
     }
 
     // Dancers throw tomatoes at nearby goblins (cosmetic only)
-    if (!goblin.dead) {
-        for (const d of dancers) {
-            if (d.walkingIn) continue; // don't throw while moving
-            const ddx = Math.abs(d.x - goblin.x);
-            const ddy = Math.abs(d.y - goblin.y);
-            if (ddx <= 3 * TILE && ddy <= 3 * TILE) {
-                // Staggered awareness: each dancer waits a random delay before reacting
-                if (d.throwDelay === undefined) d.throwDelay = Math.floor(Math.random() * 30);
-                if (d.throwDelay > 0) { d.throwDelay--; continue; }
-                // Random chance each frame (~1 throw per 2 seconds on average)
-                if (!d.throwCooldown) d.throwCooldown = 0;
-                if (d.throwCooldown > 0) { d.throwCooldown--; continue; }
-                if (Math.random() < 0.015) {
-                    d.throwCooldown = 90 + Math.floor(Math.random() * 60); // 1.5-2.5s cooldown
-                    const tdx = goblin.x + 8 - (d.x + 8);
-                    const tdy = goblin.y + 4 - (d.y + 4);
-                    const tDist = Math.sqrt(tdx * tdx + tdy * tdy);
-                    tomatoes.push({
-                        x: d.x + 8, y: d.y + 4,
-                        targetX: goblin.x + 8, targetY: goblin.y + 4,
-                        speed: 1.0,
-                        progress: 0,       // 0 to 1 over flight
-                        totalDist: tDist,
-                        spin: 0,           // rotation frame for tumble
-                    });
-                }
-            } else {
-                // Goblin out of range — reset so it re-staggers next time
-                d.throwDelay = undefined;
+    // Find nearest alive goblin for each dancer
+    for (const d of dancers) {
+        if (d.walkingIn) continue;
+        // Find closest alive goblin
+        let nearestGob = null;
+        let nearestDist = Infinity;
+        for (const gg of goblins) {
+            if (gg.dead) continue;
+            const ddx = Math.abs(d.x - gg.x);
+            const ddy = Math.abs(d.y - gg.y);
+            const dist = ddx + ddy;
+            if (ddx <= 3 * TILE && ddy <= 3 * TILE && dist < nearestDist) {
+                nearestGob = gg;
+                nearestDist = dist;
             }
+        }
+        if (nearestGob) {
+            if (d.throwDelay === undefined) d.throwDelay = Math.floor(Math.random() * 30);
+            if (d.throwDelay > 0) { d.throwDelay--; continue; }
+            if (!d.throwCooldown) d.throwCooldown = 0;
+            if (d.throwCooldown > 0) { d.throwCooldown--; continue; }
+            if (Math.random() < 0.015) {
+                d.throwCooldown = 90 + Math.floor(Math.random() * 60);
+                const tdx = nearestGob.x + 8 - (d.x + 8);
+                const tdy = nearestGob.y + 4 - (d.y + 4);
+                const tDist = Math.sqrt(tdx * tdx + tdy * tdy);
+                tomatoes.push({
+                    x: d.x + 8, y: d.y + 4,
+                    targetX: nearestGob.x + 8, targetY: nearestGob.y + 4,
+                    speed: 1.0,
+                    progress: 0,
+                    totalDist: tDist,
+                    spin: 0,
+                    targetGoblin: nearestGob, // track which goblin to follow
+                });
+            }
+        } else {
+            d.throwDelay = undefined;
         }
     }
 
@@ -2216,11 +2246,11 @@ function update(dt) {
         t.y += (dy / dist) * t.speed;
         t.progress = Math.min(1, t.progress + t.speed / t.totalDist);
         t.spin++;
-        // Update target to track goblin's current position
-        if (!goblin.dead) {
-            t.targetX = goblin.x + 8;
-            t.targetY = goblin.y + 4;
-            t.totalDist = Math.max(t.totalDist, dist); // prevent arc from shrinking
+        // Update target to track the target goblin's current position
+        if (t.targetGoblin && !t.targetGoblin.dead) {
+            t.targetX = t.targetGoblin.x + 8;
+            t.targetY = t.targetGoblin.y + 4;
+            t.totalDist = Math.max(t.totalDist, dist);
         }
         return true;
     });
@@ -2398,10 +2428,12 @@ function resetGame() {
 
     // Reset enemies
     killCount = 0;
-    goblin.dead = true;
-    goblin.deathAnimActive = false;
-    goblin.deathAnimTimer = 0;
-    goblin.respawnTimer = 300;
+    for (const g of goblins) {
+        g.dead = true;
+        g.deathAnimActive = false;
+        g.deathAnimTimer = 0;
+        g.respawnTimer = 300;
+    }
     catapultGoblin = null;
     catapultSpawnedThisCycle = false;
     catapultSequenceCount = 0;
@@ -2451,7 +2483,9 @@ function checkLevelComplete() {
 }
 
 function areGoblinsAlive() {
-    if (!goblin.dead) return true;
+    for (const g of goblins) {
+        if (!g.dead) return true;
+    }
     if (catapultGoblin) return true;
     return false;
 }
@@ -2501,11 +2535,13 @@ function triggerLevelComplete() {
     levelComplete = true;
     levelCelebrateTimer = 0;
     gameState = "levelcomplete";
-    // Kill the goblin so it stops sabotaging
-    goblin.dead = true;
-    goblin.deathAnimActive = false;
-    goblin.deathAnimTimer = 0;
-    goblin.respawnTimer = 9999;
+    // Kill all goblins so they stop sabotaging
+    for (const g of goblins) {
+        g.dead = true;
+        g.deathAnimActive = false;
+        g.deathAnimTimer = 0;
+        g.respawnTimer = 9999;
+    }
     // Kill catapult goblin too
     catapultGoblin = null;
     // Screen flash for celebration
@@ -2541,7 +2577,7 @@ function advanceLevel() {
     for (let r = 0; r < ar; r++) {
         for (let i = 0; i < GRID_COLS; i++) {
             const c = r % 2 === 0 ? i : GRID_COLS - 1 - i;
-            sabotageCells.push({ r, c, flip: Math.random() < 0.12 });
+            sabotageCells.push({ r, c, flip: Math.random() < getSabotageFlipChance() });
         }
     }
 
@@ -2554,11 +2590,14 @@ function advanceLevel() {
     player.attackTimer = 0;
     player.swordHit = false;
 
-    // Reset goblin with new speed
-    goblin.dead = true;
-    goblin.deathAnimActive = false;
-    goblin.deathAnimTimer = 0;
-    goblin.respawnTimer = 120;
+    // Reset all goblins with staggered respawn timers
+    for (let i = 0; i < goblins.length; i++) {
+        const g = goblins[i];
+        g.dead = true;
+        g.deathAnimActive = false;
+        g.deathAnimTimer = 0;
+        g.respawnTimer = 120 + i * 180; // stagger spawns: 2s, 5s, 8s
+    }
     catapultGoblin = null;
     catapultSpawnedThisCycle = false;
     catapultSequenceCount = 0;
@@ -2609,7 +2648,7 @@ function spawnCatapultGoblin() {
     const caveIdx = Math.floor(Math.random() * CAVES.length);
     const cave = CAVES[caveIdx];
     const spawnX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
-    const spawnY = cave.tileY === ROWS - 1 ? (ROWS - 2) * TILE : cave.tileY * TILE;
+    const spawnY = cave.tileY === 0 ? TILE * 2 : cave.tileY === ROWS - 1 ? (ROWS - 2) * TILE : cave.tileY * TILE;
 
     // Pick a random grid cell as boulder target
     const tRow = Math.floor(Math.random() * getActiveRows());
@@ -2622,7 +2661,8 @@ function spawnCatapultGoblin() {
     } else if (cave.tileX === COLS - 1) {
         stopX = (COLS - 3) * TILE; stopY = rowPixelY(tRow);
     } else {
-        stopX = (GRID_X + tCol) * TILE; stopY = (ROWS - 3) * TILE;
+        // Top cave: position above the grid
+        stopX = (GRID_X + tCol) * TILE; stopY = TILE * 3;
     }
     // Clamp to room bounds
     stopX = Math.max(TILE, Math.min((COLS - 2) * TILE, stopX));
@@ -2768,7 +2808,7 @@ function updateCatapultGoblin() {
             // Set retreat destination back to cave
             const cave = CAVES[cg.caveIndex];
             const retreatX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
-            const retreatY = cave.tileY === ROWS - 1 ? (ROWS - 2) * TILE : cave.tileY * TILE;
+            const retreatY = cave.tileY === 0 ? TILE * 2 : cave.tileY === ROWS - 1 ? (ROWS - 2) * TILE : cave.tileY * TILE;
             cg.destX = retreatX;
             cg.destY = retreatY;
         }
@@ -2894,21 +2934,21 @@ function render() {
         // Stalagmites
         drawRect(cx + 5, cy + TILE - 2, 2, 4, "#6a6a5a");
         drawRect(cx + 11, cy + TILE - 1, 2, 3, "#6a6a5a");
-        // Eye gleam inside cave (if goblin is dead / about to respawn from this cave)
-        const willSpawnHere = goblin.dead && goblin.respawnTimer < 90;
-        if (willSpawnHere) {
-            // Show eyes in the cave it'll spawn from
-            const showEyes = goblin.respawnTimer < 60 && ci === goblin.spawnCave;
-            if (showEyes) {
-                const caveEyeCol = goblin.elite ? "#ffee44" : "#cc2222";
+        // Eye gleam inside cave (if any goblin is about to respawn from this cave)
+        for (const g of goblins) {
+            if (g.dead && g.respawnTimer < 90 && g.respawnTimer < 60 && ci === g.spawnCave) {
+                const caveEyeCol = g.elite ? "#ffee44" : "#cc2222";
                 drawRect(cx + 5, cy + 5, 2, 2, caveEyeCol);
                 drawRect(cx + 9, cy + 5, 2, 2, caveEyeCol);
+                break; // only show one pair of eyes per cave
             }
         }
     }
 
-    // Carnival string lights along top
+    // Carnival string lights along top (skip cave entrance column)
+    const topCaveCol = Math.floor(COLS / 2);
     for (let c = 1; c < COLS - 1; c++) {
+        if (c === topCaveCol) continue;
         const bulbY = TILE + 6;
         const bulbX = c * TILE + TILE / 2;
         // Bulb
@@ -2922,10 +2962,8 @@ function render() {
         ctx.globalAlpha = 1.0;
     }
 
-    // Banner lights along bottom wall (skip cave entrance column)
-    const caveCol = Math.floor(COLS / 2);
+    // Banner lights along bottom wall
     for (let c = 1; c < COLS - 1; c++) {
-        if (c === caveCol) continue;
         const lx = c * TILE + TILE / 2;
         const ly = (ROWS - 1) * TILE + 2;
         const bulbColors = ["#8a7a40", "#6a4a28", "#7a8a7a", "#8a8a82"];
@@ -3130,34 +3168,35 @@ function render() {
         drawDancer(d);
     }
 
-    // Goblin
-    if (!goblin.dead) {
-        drawGoblin();
-    } else if (goblin.deathAnimActive) {
-        // Poof animation: shrink, spin, and dissolve
-        const progress = 1 - goblin.deathAnimTimer / 24; // 0→1
-        const scale = 1 - progress * 0.85; // shrink to 15%
-        const alpha = 1 - progress * 0.9;  // fade to 10%
-        const rotation = progress * Math.PI * 2.5; // 2.5 full spins
-        const cx = (goblin.x + goblin.w / 2) * SCALE;
-        const cy = (goblin.y + goblin.h / 2) * SCALE;
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(rotation);
-        ctx.scale(scale, scale);
-        ctx.translate(-cx, -cy);
-        ctx.globalAlpha = alpha;
-        // Flash between normal colors and white as it dissolves
-        if (progress > 0.5 && Math.floor(goblin.deathAnimTimer) % 3 === 0) {
-            const g = goblin;
-            drawGoblinSprite(g.deathAnimElite ? "elite" : "normal", g.x, g.y, 0, {
-                dir: g.dir, bodyCol: "#ffffff", darkCol: "#dddddd", headCol: "#ffffff", eyeCol: "#ffee44"
-            });
-        } else {
-            drawGoblin();
+    // Goblins (all active ones)
+    for (const g of goblins) {
+        if (!g.dead) {
+            drawGoblinFor(g);
+        } else if (g.deathAnimActive) {
+            // Poof animation: shrink, spin, and dissolve
+            const progress = 1 - g.deathAnimTimer / 24; // 0→1
+            const scale = 1 - progress * 0.85; // shrink to 15%
+            const alpha = 1 - progress * 0.9;  // fade to 10%
+            const rotation = progress * Math.PI * 2.5; // 2.5 full spins
+            const cx = (g.x + g.w / 2) * SCALE;
+            const cy = (g.y + g.h / 2) * SCALE;
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(rotation);
+            ctx.scale(scale, scale);
+            ctx.translate(-cx, -cy);
+            ctx.globalAlpha = alpha;
+            // Flash between normal colors and white as it dissolves
+            if (progress > 0.5 && Math.floor(g.deathAnimTimer) % 3 === 0) {
+                drawGoblinSprite(g.deathAnimElite ? "elite" : "normal", g.x, g.y, 0, {
+                    dir: g.dir, bodyCol: "#ffffff", darkCol: "#dddddd", headCol: "#ffffff", eyeCol: "#ffee44"
+                });
+            } else {
+                drawGoblinFor(g);
+            }
+            ctx.restore();
+            ctx.globalAlpha = 1.0;
         }
-        ctx.restore();
-        ctx.globalAlpha = 1.0;
     }
 
     // Catapult goblin
@@ -3802,9 +3841,7 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
     }
 }
 
-function drawGoblin() {
-    const g = goblin;
-
+function drawGoblinFor(g) {
     // Color palette: elite changes color based on HP
     let bodyCol, darkCol, headCol, eyeCol;
     if (g.hurtTimer > 0 && g.hurtTimer % 4 < 2) {
@@ -3823,6 +3860,9 @@ function drawGoblin() {
         dir: g.dir, bodyCol, darkCol, headCol, eyeCol
     });
 }
+
+// Legacy alias
+function drawGoblin() { drawGoblinFor(goblin); }
 
 function drawCatapultGoblin() {
     const cg = catapultGoblin;
