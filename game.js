@@ -4306,7 +4306,7 @@ function renderTitleScreen() {
 
         for (let i = 0; i < highScores.length; i++) {
             const entry = highScores[i];
-            const rank = (i + 1) + ". " + entry.name + "  " + String(entry.score).padStart(5, "0");
+            const rank = (i + 1) + ". " + entry.name + "  " + String(entry.score).padStart(7, "0");
             const color = i === 0 ? "#F6CC60" : "#BFCDC0";
             drawCentered(rank, H - 58 + i * 10, color, 3);
         }
