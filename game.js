@@ -5082,14 +5082,7 @@ function renderIntro() {
         // Start drums partway through
         if (t === 180) startIntroDrums();
 
-        // Fade out at end
-        if (t > INTRO_SCENE_DURATIONS[0] - 60) {
-            const fadeOut = (t - (INTRO_SCENE_DURATIONS[0] - 60)) / 60;
-            ctx.fillStyle = "#000";
-            ctx.globalAlpha = fadeOut;
-            ctx.fillRect(0, 0, W * SCALE, H * SCALE);
-            ctx.globalAlpha = 1;
-        }
+        // Scene loops in place — no fade out
     }
 
     // ==================== SCENE 1: THE GOOD TIMES ====================
@@ -5729,19 +5722,13 @@ function renderIntro() {
         }
         ctx.globalAlpha = 1;
 
-        // Fade out at very end
-        if (t > INTRO_SCENE_DURATIONS[7] - 30) {
-            const fo = (t - (INTRO_SCENE_DURATIONS[7] - 30)) / 30;
-            ctx.fillStyle = "#000";
-            ctx.globalAlpha = fo;
-            ctx.fillRect(0, 0, W * SCALE, H * SCALE);
-            ctx.globalAlpha = 1;
-        }
+        // Scene loops in place — no fade out
     }
 
-    // Skip prompt (bottom right, subtle)
+    // Skip prompt (bottom right, pulsating glow)
     if (introGlobalTimer > 60) {
-        ctx.globalAlpha = 0.4;
+        const pulse = Math.sin(introGlobalTimer * 0.08) * 0.4 + 0.6; // oscillates 0.2 — 1.0
+        ctx.globalAlpha = pulse;
         drawText("ENTER: NEXT", W - 55, H - 6, "#efd8a1", 3);
         ctx.globalAlpha = 1;
     }
