@@ -2888,8 +2888,8 @@ function render() {
     // Clear
     drawRect(0, 0, COLS * TILE, ROWS * TILE, PAL.bg);
 
-    // Solid floor
-    drawRect(0, 0, COLS * TILE, ROWS * TILE, "#52422a");
+    // Solid floor — charcoal
+    drawRect(0, 0, COLS * TILE, ROWS * TILE, "#2C2C2A");
     // Subtle noise/grain texture
     for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
@@ -2901,7 +2901,7 @@ function render() {
                 const gy = (seed % (TILE - 1));
                 seed = (seed * 9301 + 49297) % 233280;
                 const bright = seed / 233280 > 0.5;
-                const grainCol = bright ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.08)";
+                const grainCol = bright ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.10)";
                 drawRect(c * TILE + gx, r * TILE + gy, 1, 1, grainCol);
             }
         }
