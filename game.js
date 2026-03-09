@@ -1545,15 +1545,11 @@ function update(dt) {
         }
 
 
-        // Check goblin hit (always check, even if we hit a grid block) — check all goblins
+        // Check goblin hit using sword hitbox vs goblin bounding box
+        const swordBox = getSwordBox();
         for (const hitGob of goblins) {
-            const gobTileX = Math.round(hitGob.x / TILE);
-            const gobTileY = Math.round(hitGob.y / TILE);
-            const gobDestTileX = Math.round(hitGob.destX / TILE);
-            const gobDestTileY = Math.round(hitGob.destY / TILE);
-            const onCurrentTile = targetTileX === gobTileX && targetTileY === gobTileY;
-            const onDestTile = targetTileX === gobDestTileX && targetTileY === gobDestTileY;
-            if (!hitGob.dead && (onCurrentTile || onDestTile)) {
+            const gobBox = { x: hitGob.x, y: hitGob.y, w: hitGob.w, h: hitGob.h };
+            if (!hitGob.dead && aabb(swordBox, gobBox)) {
                 p.swordHit = true;
                 hitGob.hp--;
 
@@ -1687,9 +1683,8 @@ function update(dt) {
 
         // Check catapult goblin hit — invincible! Clang + knockback
         if (catapultGoblin) {
-            const cgTileX = Math.round(catapultGoblin.x / TILE);
-            const cgTileY = Math.round(catapultGoblin.y / TILE);
-            if (targetTileX === cgTileX && targetTileY === cgTileY) {
+            const cgBox = { x: catapultGoblin.x, y: catapultGoblin.y, w: catapultGoblin.w, h: catapultGoblin.h };
+            if (aabb(swordBox, cgBox)) {
                 p.swordHit = true;
                 ensureAudio();
                 if (audioCtx) playClang(audioCtx.currentTime);
