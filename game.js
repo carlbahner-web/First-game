@@ -5570,6 +5570,10 @@ function gameLoop(timestamp) {
         frameAccum -= FRAME_MS;
         if (frameAccum > FRAME_MS) frameAccum = 0; // prevent spiral
         try {
+            // Clear HUD canvas when not in gameplay
+            if (gameState !== "playing") {
+                hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+            }
             if (gameState === "title") {
                 renderTitleScreen();
             } else if (gameState === "story") {
