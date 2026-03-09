@@ -526,8 +526,8 @@ const PAL = {
     playhead:  "#F6CC60",
     player:    "#EBEBE3",
     playerDark:"#BFCDC0",
-    sword:     "#F6CC60",
-    swordGlow: "#BF7538",
+    punch:     "#F6CC60",
+    punchGlow: "#BF7538",
     shadow:    "rgba(0,0,0,0.3)",
     startBtn:  "#BFCDC0",
     stopBtn:   "#BF7538",
@@ -871,7 +871,7 @@ const player = {
     attacking: false,
     attackTimer: 0,
     attackDuration: 12,
-    swordHit: false, // did this swing already toggle a block?
+    punchHit: false, // did this swing already toggle a block?
     speed: 2.0, // pixels per frame at 60fps — snappy tile-to-tile glide
     blinkTimer: 0, // counts up each frame, blinks at 180
 };
@@ -1269,8 +1269,8 @@ window.addEventListener("keydown", (e) => {
 });
 window.addEventListener("keyup", (e) => { keys[e.code] = false; });
 
-// ---- Helper: get sword hitbox ----
-function getSwordBox() {
+// ---- Helper: get punch hitbox ----
+function getPunchBox() {
     const p = player;
     const px = p.x, py = p.y;
     const sw = 6, sh = 14;
@@ -1484,7 +1484,7 @@ function update(dt) {
     if (spaceJustPressed && !p.attacking) {
         p.attacking = true;
         p.attackTimer = p.attackDuration;
-        p.swordHit = false;
+        p.punchHit = false;
         ensureAudio();
         // play a punchy impact sound
         if (audioCtx) {
@@ -1527,7 +1527,7 @@ function update(dt) {
         const row = tileYToRow(targetTileY);
         if (row >= 0 && row < getActiveRows() && col >= 0 && col < GRID_COLS) {
             grid[row][col] = !grid[row][col];
-            p.swordHit = true;
+            p.punchHit = true;
             // play a toggle blip
             if (audioCtx) {
                 const now = audioCtx.currentTime;
@@ -1545,12 +1545,12 @@ function update(dt) {
         }
 
 
-        // Check goblin hit using sword hitbox vs goblin bounding box
-        const swordBox = getSwordBox();
+        // Check goblin hit using punch hitbox vs goblin bounding box
+        const punchBox = getPunchBox();
         for (const hitGob of goblins) {
             const gobBox = { x: hitGob.x, y: hitGob.y, w: hitGob.w, h: hitGob.h };
-            if (!hitGob.dead && aabb(swordBox, gobBox)) {
-                p.swordHit = true;
+            if (!hitGob.dead && aabb(punchBox, gobBox)) {
+                p.punchHit = true;
                 hitGob.hp--;
 
                 if (hitGob.hp > 0) {
@@ -1684,8 +1684,8 @@ function update(dt) {
         // Check catapult goblin hit — invincible! Clang + knockback
         if (catapultGoblin) {
             const cgBox = { x: catapultGoblin.x, y: catapultGoblin.y, w: catapultGoblin.w, h: catapultGoblin.h };
-            if (aabb(swordBox, cgBox)) {
-                p.swordHit = true;
+            if (aabb(punchBox, cgBox)) {
+                p.punchHit = true;
                 ensureAudio();
                 if (audioCtx) playClang(audioCtx.currentTime);
                 // Spark particles
@@ -1747,7 +1747,7 @@ function update(dt) {
             const dTileX = Math.round(d.x / TILE);
             const dTileY = Math.round(d.y / TILE);
             if (targetTileX === dTileX && targetTileY === dTileY) {
-                p.swordHit = true;
+                p.punchHit = true;
                 if (audioCtx) {
                     playDonk(audioCtx.currentTime);
                 }
@@ -2425,7 +2425,7 @@ function resetGame() {
     player.frame = 0;
     player.attacking = false;
     player.attackTimer = 0;
-    player.swordHit = false;
+    player.punchHit = false;
     player.blinkTimer = 0;
 
     // Reset enemies
@@ -2590,7 +2590,7 @@ function advanceLevel() {
     player.destY = player.y;
     player.attacking = false;
     player.attackTimer = 0;
-    player.swordHit = false;
+    player.punchHit = false;
 
     // Reset all goblins with staggered respawn timers
     for (let i = 0; i < goblins.length; i++) {
@@ -3287,7 +3287,7 @@ function render() {
         ctx.globalAlpha = 1.0;
     }
 
-    // Sword target tile indicator (gold corner brackets)
+    // Punch target tile indicator (gold corner brackets)
     if (!player.attacking && player.x === player.destX && player.y === player.destY) {
         const ptx = Math.round(player.x / TILE);
         const pty = Math.round(player.y / TILE);
@@ -3302,7 +3302,7 @@ function render() {
         const ty = tty * TILE;
         const pulse = 0.25 + Math.sin(performance.now() * 0.004) * 0.15;
         ctx.globalAlpha = pulse;
-        const c = PAL.sword; // "#F6CC60"
+        const c = PAL.punch; // "#F6CC60"
         const s = 1; // bracket stroke width
         const L = 4; // bracket arm length
         // Top-left corner
@@ -3324,13 +3324,13 @@ function render() {
     drawRect(player.x + 2, player.y + player.h - 2, player.w - 4, 4, PAL.shadow);
 
     // Punch (draw behind player for up-facing, in front otherwise)
-    if (player.attacking && player.dir === 1) drawSword();
+    if (player.attacking && player.dir === 1) drawPunch();
 
     // Player sprite
     drawPlayer();
 
     // Punch (in front for down/left/right)
-    if (player.attacking && player.dir !== 1) drawSword();
+    if (player.attacking && player.dir !== 1) drawPunch();
 
     // "SLAY THE GOBLIN!" indicator when pattern is done but goblins remain
     if (patternMatched && !levelComplete && areGoblinsAlive()) {
@@ -3388,7 +3388,7 @@ function render() {
         drawText("ARROWS", ctrlX, ctrlY + 12, labelCol, 4);
         drawText("Move around", ctrlX + 32, ctrlY + 12, ctrlCol, 4);
         drawText("SPACE", ctrlX, ctrlY + 22, labelCol, 4);
-        drawText("Sword attack", ctrlX + 28, ctrlY + 22, ctrlCol, 4);
+        drawText("Punch attack", ctrlX + 28, ctrlY + 22, ctrlCol, 4);
         drawText("ENTER", ctrlX, ctrlY + 32, labelCol, 4);
         drawText("Pause / Unpause", ctrlX + 28, ctrlY + 32, ctrlCol, 4);
 
@@ -3435,7 +3435,7 @@ function ghostTint(color) {
 // Reusable 48x48 player sprite for all screens
 // gx, gy: top-left position (game coords)
 // frame: animation frame (0-3), dir: facing direction (0-3)
-// options: { showSword, isBlinking }
+// options: { isBlinking, punchThrust }
 function drawPlayerSprite(gx, gy, frame, dir, options) {
     const opts = options || {};
     const sx = gx * SCALE;
@@ -3557,7 +3557,7 @@ function drawPlayer() {
     drawPlayerSprite(p.x, p.y, p.frame, p.dir, { isBlinking: p.blinkTimer >= 180, punchThrust: punchThrust });
 }
 
-function drawSword() {
+function drawPunch() {
     const p = player;
     const px = p.x;
     const py = p.y;
@@ -3566,7 +3566,7 @@ function drawSword() {
     const progress = 1 - (p.attackTimer / p.attackDuration);
 
     ctx.save();
-    const sbox = getSwordBox();
+    const sbox = getPunchBox();
 
     // Punch thrust: arm extends outward, peaks at progress=0.5
     const thrust = Math.sin(progress * Math.PI); // 0→1→0
@@ -3641,7 +3641,7 @@ function drawSword() {
     }
 
     // === IMPACT EFFECT on hit ===
-    if (thrust > 0.5 && p.swordHit) {
+    if (thrust > 0.5 && p.punchHit) {
         // Impact burst lines
         const burstCount = 6;
         for (let i = 0; i < burstCount; i++) {
@@ -5008,7 +5008,7 @@ function renderTutorialScreen() {
                 const punchProg = isAttacking ? Math.sin(((stepT - ATTACK_AT) / ATTACK_DUR) * Math.PI) : 0;
                 drawPlayerSprite(px, py, walkFrame, faceDir, { punchThrust: punchProg });
                 if (isAttacking) {
-                    // Draw punch arm + fist (matching drawSword style)
+                    // Draw punch arm + fist (matching drawPunch style)
                     const thrust = punchProg;
                     const pDir = faceDir;
                     let ddx2 = 0, ddy2 = 0;
