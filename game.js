@@ -846,6 +846,8 @@ let lastStepTime = 0;
 
 // ---- Kill Counter & Dancers ----
 let killCount = 0;
+let score = 0;
+let lastTimeBonus = 0;
 const dancers = [];
 const DANCER_PALETTES = [
     { body: "#E86A6A", dark: "#C05050", head: "#F09090", hair: "#8B4513" },
@@ -1318,7 +1320,7 @@ function isTileBlockedByObjects(tileX, tileY) {
     const iconW = 3 * pxSz + 2;
     const skullW = 5 * pxSz + 2;
     const lvlPanelW = iconW + String(currentLevel + 1).length * digitW + 6;
-    const killPanelW = skullW + String(killCount).length * digitW + 6;
+    const killPanelW = skullW + String(score).length * digitW + 6;
     const timerSec = Math.max(0, Math.ceil(levelTimer / 90));
     const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
     const timerPanelW = iconW + timerStr.length * digitW + 6;
@@ -1668,6 +1670,7 @@ function update(dt) {
                     }
 
                     killCount++;
+                    score += hitGob.elite ? 150 : 50;
                     catapultSpawnedThisCycle = false;
 
                     if (patternMatched && !areGoblinsAlive()) {
@@ -2286,7 +2289,7 @@ function triggerGameOver() {
     gameState = "gameover";
     gameOverTimer = 0;
     sadSongStarted = false;
-    finalScore = killCount;
+    finalScore = score;
 
     // Start player death animation
     playerDeathAnim.active = true;
@@ -2430,6 +2433,8 @@ function resetGame() {
 
     // Reset enemies
     killCount = 0;
+    score = 0;
+    lastTimeBonus = 0;
     for (const g of goblins) {
         g.dead = true;
         g.deathAnimActive = false;
@@ -2546,6 +2551,9 @@ function triggerLevelComplete() {
     }
     // Kill catapult goblin too
     catapultGoblin = null;
+    // Award time bonus
+    lastTimeBonus = Math.ceil(levelTimer / 90) * 10;
+    score += lastTimeBonus;
     // Screen flash for celebration
     screenFlash = 20;
     // Play fanfare instead of drums
@@ -2556,7 +2564,7 @@ function advanceLevel() {
     currentLevel++;
     if (currentLevel >= LEVELS.length) {
         // Player beat all levels — victory!
-        finalScore = killCount;
+        finalScore = score;
         if (scoreQualifies(finalScore)) {
             enterHighScoreState();
         } else {
@@ -3098,11 +3106,11 @@ function render() {
         const numY = kcY + 3;
         drawPixelDigits(lvlStr, lvlNumX + (lvlStr.length * digitW) / 2, numY, "#EBEBE3", pxSz);
 
-        // --- Kill counter ---
+        // --- Score counter ---
         const kcX = baseX + lvlPanelW + panelGap;
-        const killStr = String(killCount);
+        const scoreStr = String(score);
         const skullW = 5 * pxSz + 2; // skull icon width + padding
-        const killPanelW = skullW + killStr.length * digitW + 6;
+        const killPanelW = skullW + scoreStr.length * digitW + 6;
         drawRect(kcX - 2, kcY - 2, killPanelW + 4, panelH + 4, "#1a3438");
         drawRect(kcX, kcY, killPanelW, panelH, "#243e42");
         drawRect(kcX, kcY, killPanelW, 1, "#3a6a70");
@@ -3119,9 +3127,9 @@ function render() {
         drawRect(sx + 3 * p, sy + p, p, p, skullBg);            // right eye
         drawRect(sx + 2 * p, sy + 2 * p, p, p, skullBg);        // nose
         drawRect(sx + 2 * p, sy + 4 * p, p, p, skullBg);        // tooth gap
-        // Kill digits
+        // Score digits
         const killNumX = kcX + skullW;
-        drawPixelDigits(killStr, killNumX + (killStr.length * digitW) / 2, numY, "#EBEBE3", pxSz);
+        drawPixelDigits(scoreStr, killNumX + (scoreStr.length * digitW) / 2, numY, "#EBEBE3", pxSz);
 
         // --- Timer counter ---
         const timerSec = Math.max(0, Math.ceil(levelTimer / 90));
@@ -4298,7 +4306,7 @@ function renderTitleScreen() {
 
         for (let i = 0; i < highScores.length; i++) {
             const entry = highScores[i];
-            const rank = (i + 1) + ". " + entry.name + "  " + String(entry.score).padStart(3, "0");
+            const rank = (i + 1) + ". " + entry.name + "  " + String(entry.score).padStart(5, "0");
             const color = i === 0 ? "#F6CC60" : "#BFCDC0";
             drawCentered(rank, H - 58 + i * 10, color, 3);
         }
@@ -4525,7 +4533,7 @@ function renderHighScoreEntry() {
     const headerW = header.length * 5;
     drawText(header, W / 2 - headerW / 2, 20, "#F6CC60", 5);
 
-    // Kill count display
+    // Score display
     const scoreStr = String(finalScore);
     const scoreW = scoreStr.length * 6;
     drawText(scoreStr, W / 2 - scoreW / 2, 40, "#EBEBE3", 6);
@@ -4619,6 +4627,25 @@ function renderLevelComplete() {
         ctx.fillText(completeText, (W * SCALE) / 2 + SCALE, (cy + bounce + 1) * SCALE);
         ctx.fillStyle = "#F6CC60";
         ctx.fillText(completeText, (W * SCALE) / 2, (cy + bounce) * SCALE);
+
+        // Time bonus and score below
+        const bonusScale = 8;
+        ctx.font = `${bonusScale * SCALE}px monospace`;
+        if (lastTimeBonus > 0) {
+            const by = cy + 28;
+            const bonusText = "TIME BONUS: +" + lastTimeBonus;
+            ctx.fillStyle = "#000000";
+            ctx.fillText(bonusText, (W * SCALE) / 2 + SCALE, (by + 1) * SCALE);
+            ctx.fillStyle = "#6AB8E8";
+            ctx.fillText(bonusText, (W * SCALE) / 2, by * SCALE);
+        }
+        const sy = cy + (lastTimeBonus > 0 ? 42 : 28);
+        const scoreText = "SCORE: " + score;
+        ctx.fillStyle = "#000000";
+        ctx.fillText(scoreText, (W * SCALE) / 2 + SCALE, (sy + 1) * SCALE);
+        ctx.fillStyle = "#EBEBE3";
+        ctx.fillText(scoreText, (W * SCALE) / 2, sy * SCALE);
+
         ctx.textAlign = "start";
 
         ctx.globalAlpha = 1.0;
