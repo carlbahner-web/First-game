@@ -977,6 +977,26 @@ let tomatoSplats = []; // { x, y, timer }
 
 let gamePaused = false;
 let gameState = "title"; // "title", "story", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim"
+
+// --- Visual Improvement State ---
+// Block toggle animation (pop/glow when punched)
+const blockToggleAnim = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).fill(0));
+// Beat pulse: tracks which rows triggered on the current step (for string lights + column pulse)
+const rowTrigger = new Array(GRID_ROWS).fill(0); // countdown frames per row
+// Scene transition effect
+let sceneTransition = { active: false, from: null, to: null, progress: 0, duration: 20 };
+// Title text entrance animation
+let titleEntrancePhase = 0; // frames since title screen entered
+// Story typewriter state
+let storyTypewriterPos = 0; // character index across all lines
+let storyTypewriterTimer = 0;
+// Firework system for level complete
+let fireworks = []; // { x, y, vx, vy, life, maxLife, color, exploded, particles: [] }
+// Screen crack effect for game over
+let screenCracks = []; // { x1, y1, x2, y2, branches: [...] }
+let screenCrackTimer = 0;
+// Enemy warning zoom state
+let enemyWarningZoom = 0; // 0→1 zoom-in progress
 let enemyWarningType = null;   // "elite" or "catapult"
 let enemyWarningShown = { normal: false, elite: false, catapult: false }; // track which warnings have been shown
 let enemyWarningBlink = 0;     // blink timer for "PRESS ENTER"
@@ -1176,12 +1196,14 @@ window.addEventListener("keydown", (e) => {
         if (gameState === "sabotage-anim") return; // ignore input during sabotage animation
         if (gameState === "enemywarning") {
             // Check if there's another warning or instrument screen queued
+            sceneTransition = { active: true, from: "enemywarning", to: "playing", progress: 0, duration: 18 };
             if (checkPendingFeatureScreens()) return;
             advanceLevel();
             return;
         }
         if (gameState === "newinstrument") {
             // Check if there's an enemy warning queued for the next level
+            sceneTransition = { active: true, from: "newinstrument", to: "playing", progress: 0, duration: 18 };
             if (checkPendingFeatureScreens()) return;
             advanceLevel();
             return;
@@ -1191,13 +1213,17 @@ window.addEventListener("keydown", (e) => {
             stopTitleDrums();
             gameState = "story";
             storyBlink = 0;
+            storyTypewriterPos = 0;
+            storyTypewriterTimer = 0;
             startStoryDrums();
+            sceneTransition = { active: true, from: "title", to: "story", progress: 0, duration: 18 };
             return;
         }
         if (gameState === "story") {
             gameState = "tutorial";
             tutorialTimer = 0;
             tutorialPage = 0;
+            sceneTransition = { active: true, from: "story", to: "tutorial", progress: 0, duration: 18 };
             return;
         }
         if (gameState === "tutorial") {
@@ -1208,6 +1234,7 @@ window.addEventListener("keydown", (e) => {
                 gameState = "playing";
                 currentStep = 0;
                 lastStepTime = performance.now();
+                sceneTransition = { active: true, from: "tutorial", to: "playing", progress: 0, duration: 20 };
             }
             return;
         }
@@ -1416,7 +1443,10 @@ function tickSequencer() {
             if (audioCtx) {
                 const ar = getActiveRows();
                 for (let r = 0; r < ar; r++) {
-                    if (grid[r][currentStep]) drumFns[r](t);
+                    if (grid[r][currentStep]) {
+                        drumFns[r](t);
+                        rowTrigger[r] = 8; // pulse for 8 frames
+                    }
                 }
             }
             currentStep = (currentStep + 1) % GRID_COLS;
@@ -1427,6 +1457,14 @@ function tickSequencer() {
 // ---- Update ----
 function update(dt) {
     if (gamePaused) return;
+
+    // Decay visual effect timers
+    for (let r = 0; r < GRID_ROWS; r++) {
+        if (rowTrigger[r] > 0) rowTrigger[r]--;
+        for (let c = 0; c < GRID_COLS; c++) {
+            if (blockToggleAnim[r][c] > 0) blockToggleAnim[r][c]--;
+        }
+    }
 
     // Level countdown timer
     if (levelTimer > 0) {
@@ -1500,6 +1538,7 @@ function update(dt) {
         const row = tileYToRow(targetTileY);
         if (row >= 0 && row < getActiveRows() && col >= 0 && col < GRID_COLS) {
             grid[row][col] = !grid[row][col];
+            blockToggleAnim[row][col] = 12; // trigger pop animation
             p.punchHit = true;
             // play a toggle blip
             if (audioCtx) {
@@ -2254,6 +2293,38 @@ function triggerGameOver() {
     sadSongStarted = false;
     finalScore = score;
 
+    // Generate screen cracks radiating from player position
+    screenCracks = [];
+    screenCrackTimer = 30; // display for 30 frames
+    const crackOriginX = player.x + player.w / 2;
+    const crackOriginY = player.y + player.h / 2;
+    const numCracks = 8 + Math.floor(Math.random() * 5);
+    for (let i = 0; i < numCracks; i++) {
+        const angle = (i / numCracks) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+        const len = 30 + Math.random() * 60;
+        const crack = {
+            x1: crackOriginX, y1: crackOriginY,
+            x2: crackOriginX + Math.cos(angle) * len,
+            y2: crackOriginY + Math.sin(angle) * len,
+            branches: [],
+        };
+        // Add 1-2 branches per crack
+        const numBranches = 1 + Math.floor(Math.random() * 2);
+        for (let b = 0; b < numBranches; b++) {
+            const branchT = 0.3 + Math.random() * 0.5;
+            const bx = crack.x1 + (crack.x2 - crack.x1) * branchT;
+            const by = crack.y1 + (crack.y2 - crack.y1) * branchT;
+            const bAngle = angle + (Math.random() - 0.5) * 1.2;
+            const bLen = 10 + Math.random() * 25;
+            crack.branches.push({
+                x1: bx, y1: by,
+                x2: bx + Math.cos(bAngle) * bLen,
+                y2: by + Math.sin(bAngle) * bLen,
+            });
+        }
+        screenCracks.push(crack);
+    }
+
     // Start player death animation
     playerDeathAnim.active = true;
     playerDeathAnim.collapseProgress = 0;
@@ -2420,6 +2491,12 @@ function resetGame() {
     screenFlash = 0;
     screenShake = 0;
     hitFreeze = 0;
+    titleEntrancePhase = 0;
+    storyTypewriterPos = 0;
+    storyTypewriterTimer = 0;
+    fireworks = [];
+    screenCracks = [];
+    screenCrackTimer = 0;
     playerDeathAnim.active = false;
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
@@ -3035,29 +3112,47 @@ function render() {
         }
     }
 
-    // Carnival string lights along top (skip cave entrance column)
+    // Carnival string lights along top — drum-synced! Each light maps to a drum row
+    // Colors match the grid row colors: O, H, S, K, B, T
     const topCaveCol = Math.floor(COLS / 2);
+    const ar_lights = getActiveRows();
     for (let c = 1; c < COLS - 1; c++) {
         if (c === topCaveCol) continue;
         const bulbY = TILE + 6;
         const bulbX = c * TILE + TILE / 2;
-        // Bulb
-        const bulbColors = ["#efac28", "#ef692f", "#3c9f9c", "#ef3a0c"];
-        const bulbCol = bulbColors[c % bulbColors.length];
-        drawRect(bulbX - 2, bulbY, 4, 4, bulbCol);
-        // Glow
+        const rowIdx = c % ar_lights; // cycle through active drum rows
+        const bulbCol = PAL.gridOn[rowIdx];
+        const triggered = rowTrigger[rowIdx] > 0;
+        const pulseIntensity = triggered ? rowTrigger[rowIdx] / 8 : 0;
+        // Bulb — brighter when triggered
+        const bulbSize = triggered ? 5 : 4;
+        const bulbOffset = triggered ? -1 : 0;
+        drawRect(bulbX - 2 + bulbOffset, bulbY + bulbOffset, bulbSize, bulbSize, bulbCol);
+        // Glow — much stronger when the corresponding drum layer plays
         ctx.fillStyle = bulbCol;
-        ctx.globalAlpha = 0.15;
-        ctx.fillRect((bulbX - 4) * SCALE, (bulbY - 2) * SCALE, 8 * SCALE, 8 * SCALE);
+        const baseGlow = 0.12;
+        const pulseGlow = pulseIntensity * 0.4;
+        ctx.globalAlpha = baseGlow + pulseGlow;
+        const glowSize = triggered ? 12 : 8;
+        ctx.fillRect((bulbX - glowSize / 2) * SCALE, (bulbY - glowSize / 2 + 2) * SCALE, glowSize * SCALE, glowSize * SCALE);
         ctx.globalAlpha = 1.0;
     }
 
-    // Banner lights along bottom wall
+    // Banner lights along bottom wall — also drum-synced
     for (let c = 1; c < COLS - 1; c++) {
         const lx = c * TILE + TILE / 2;
         const ly = (ROWS - 1) * TILE + 2;
-        const bulbColors2 = ["#efac28", "#ef692f", "#3c9f9c", "#ef3a0c"];
-        drawRect(lx - 1, ly, 3, 3, bulbColors2[(c + 2) % bulbColors2.length]);
+        const rowIdx = (c + 2) % ar_lights;
+        const bulbCol = PAL.gridOn[rowIdx];
+        const triggered = rowTrigger[rowIdx] > 0;
+        const sz = triggered ? 4 : 3;
+        drawRect(lx - 1, ly, sz, sz, bulbCol);
+        if (triggered) {
+            ctx.fillStyle = bulbCol;
+            ctx.globalAlpha = rowTrigger[rowIdx] / 8 * 0.3;
+            ctx.fillRect((lx - 3) * SCALE, (ly - 2) * SCALE, 8 * SCALE, 8 * SCALE);
+            ctx.globalAlpha = 1.0;
+        }
     }
 
     // Row labels (O, H, S, K, B, T) in the column just left of the first beat block
@@ -3091,6 +3186,24 @@ function render() {
                 ctx.fillRect((bx + 1) * SCALE, (by + 1) * SCALE, (TILE - 2) * SCALE, 2 * SCALE);
                 ctx.fillStyle = "rgba(0,0,0,0.2)";
                 ctx.fillRect((bx + 1) * SCALE, (by + TILE - 3) * SCALE, (TILE - 2) * SCALE, 2 * SCALE);
+            }
+
+            // Block toggle pop animation (scale + glow burst)
+            if (blockToggleAnim[r][c] > 0) {
+                const animProg = blockToggleAnim[r][c] / 12; // 1→0
+                const popScale = 1 + animProg * 0.3; // 1.3→1.0
+                const cx_b = (bx + TILE / 2) * SCALE;
+                const cy_b = (by + TILE / 2) * SCALE;
+                // Glow burst in the row's color
+                ctx.fillStyle = PAL.gridOn[r];
+                ctx.globalAlpha = animProg * 0.5;
+                const glowR = TILE * popScale;
+                ctx.fillRect(cx_b - glowR * SCALE / 2, cy_b - glowR * SCALE / 2, glowR * SCALE, glowR * SCALE);
+                // White flash overlay
+                ctx.fillStyle = "#ffffff";
+                ctx.globalAlpha = animProg * 0.4;
+                ctx.fillRect((bx + 1) * SCALE, (by + 1) * SCALE, (TILE - 2) * SCALE, (TILE - 2) * SCALE);
+                ctx.globalAlpha = 1.0;
             }
 
             // Sabotage flash overlay
@@ -3139,7 +3252,7 @@ function render() {
         }
     }
 
-    // Playhead
+    // Playhead with beat pulse on active blocks
     if (playing) {
         const px = (GRID_X + currentStep) * TILE;
         ctx.fillStyle = PAL.playhead;
@@ -3149,6 +3262,17 @@ function render() {
         ctx.globalAlpha = 1.0;
         // Top marker
         drawRect(px + 2, (GRID_Y - 1) * TILE + 10, TILE - 4, 4, PAL.playhead);
+        // Beat pulse: brighten blocks under the playhead that are ON
+        for (let r = 0; r < ar; r++) {
+            if (grid[r][currentStep] && rowTrigger[r] > 0) {
+                const by = rowPixelY(r);
+                const pulseAlpha = rowTrigger[r] / 8 * 0.45;
+                ctx.fillStyle = "#ffffff";
+                ctx.globalAlpha = pulseAlpha;
+                ctx.fillRect((px + 1) * SCALE, (by + 1) * SCALE, (TILE - 2) * SCALE, (TILE - 2) * SCALE);
+                ctx.globalAlpha = 1.0;
+            }
+        }
     }
 
     // Step numbers (below grid)
@@ -3332,6 +3456,25 @@ function render() {
         const blink = Math.floor(performance.now() / 400) % 2 === 0;
         if (blink) {
             drawCenteredText("SLAY THE GOBLIN!", 14, "#ef3a0c", 6);
+        }
+    }
+
+    // Timer urgency vignette (pulsing red edges when ≤10 seconds)
+    {
+        const timerSec_v = Math.max(0, Math.ceil(levelTimer / 90));
+        if (timerSec_v <= 10 && timerSec_v > 0 && !levelComplete) {
+            const urgency = 1 - timerSec_v / 10; // 0→1 as timer approaches 0
+            const pulse = 0.3 + Math.sin(performance.now() * 0.008) * 0.2;
+            const vigAlpha = (urgency * 0.4 + 0.1) * pulse;
+            const W_v = COLS * TILE * SCALE;
+            const H_v = ROWS * TILE * SCALE;
+            const grad = ctx.createRadialGradient(W_v / 2, H_v / 2, W_v * 0.3, W_v / 2, H_v / 2, W_v * 0.7);
+            grad.addColorStop(0, "rgba(0,0,0,0)");
+            grad.addColorStop(1, "#ef3a0c");
+            ctx.fillStyle = grad;
+            ctx.globalAlpha = vigAlpha;
+            ctx.fillRect(0, 0, W_v, H_v);
+            ctx.globalAlpha = 1.0;
         }
     }
 
@@ -3857,6 +4000,27 @@ function drawGoblinFor(g) {
     drawGoblinSprite(g.elite ? "elite" : "normal", g.x, g.y, g.frame, {
         dir: g.dir, bodyCol, darkCol, headCol, eyeCol
     });
+
+    // Damage flash: bright white burst when hurt
+    if (g.hurtTimer > 8) {
+        ctx.fillStyle = "#ffffff";
+        ctx.globalAlpha = (g.hurtTimer - 8) / 4 * 0.6;
+        ctx.fillRect((g.x - 2) * SCALE, (g.y - 6) * SCALE, (g.w + 4) * SCALE, (g.h + 8) * SCALE);
+        ctx.globalAlpha = 1.0;
+    }
+
+    // HP pips for elite goblins (above head)
+    if (g.elite && g.hp > 0 && g.hp <= 3) {
+        const pipY = g.y - 10;
+        const pipStartX = g.x + g.w / 2 - (3 * 4) / 2;
+        for (let i = 0; i < 3; i++) {
+            const filled = i < g.hp;
+            drawRect(pipStartX + i * 4, pipY, 3, 3, filled ? "#FF00FF" : "#333333");
+            if (filled) {
+                drawRect(pipStartX + i * 4, pipY, 3, 1, "#FF88FF"); // highlight
+            }
+        }
+    }
 }
 
 // Legacy alias
@@ -4168,6 +4332,7 @@ function stopTitleDrums() {
 // ---- Title Screen (page 1: live gameplay scene) ----
 let titleStep = 0;        // simulated sequencer step (0-15)
 let titleStepTimer = 0;   // frame counter for step advance
+titleEntrancePhase = 0;   // reset entrance animation
 const TITLE_STEP_FRAMES = 7.5; // frames per sixteenth note at 120bpm @ 60fps
 
 // Title screen drum pattern (matches audio)
@@ -4303,11 +4468,35 @@ function renderTitleScreen() {
     drawPlayerSprite(playerX, playerY, walkFrame, 3, { punchThrust }); // dir 3 = right
 
     // Goblin (right-center, below grid, approaching from right)
+    // Recoil when punch connects (punchCycle ~10 = peak thrust)
+    const gobHitFrame = punchCycle >= 8 && punchCycle < 18;
+    const gobRecoil = gobHitFrame ? Math.sin((punchCycle - 8) / 10 * Math.PI) * 6 : 0;
     const goblinBaseX = (gStartX + 11) * TILE;
     const goblinWander = Math.sin(titleBlink * 0.02) * 16; // wander back and forth
-    const goblinX = goblinBaseX + goblinWander;
+    const goblinX = goblinBaseX + goblinWander + gobRecoil;
     const goblinY = (gStartY + gridRows + 2) * TILE;
-    drawGoblinSprite("normal", goblinX, goblinY, walkFrame, { dir: 2 }); // dir 2 = left
+    // Flash white when hit
+    if (gobHitFrame) {
+        drawGoblinSprite("normal", goblinX, goblinY, walkFrame, {
+            dir: 2, bodyCol: "#ffffff", darkCol: "#dddddd", headCol: "#ffffff", eyeCol: "#00FFFF"
+        });
+        // Impact particles
+        if (punchCycle === 10) {
+            for (let pi = 0; pi < 6; pi++) {
+                deathParticles.push({
+                    x: goblinX, y: goblinY + 4,
+                    vx: Math.random() * 2 + 0.5,
+                    vy: (Math.random() - 0.5) * 2,
+                    life: 12 + Math.random() * 8,
+                    color: pi % 2 === 0 ? "#39FF14" : "#ffffff",
+                    size: 1 + Math.random() * 2,
+                    sparkle: false,
+                });
+            }
+        }
+    } else {
+        drawGoblinSprite("normal", goblinX, goblinY, walkFrame, { dir: 2 }); // dir 2 = left
+    }
 
     // Elite goblin lurking further right
     const eliteX = (gStartX + 14) * TILE;
@@ -4318,6 +4507,7 @@ function renderTitleScreen() {
     ctx.globalAlpha = 1.0;
 
     // === TITLE TEXT (overlaid on scene) ===
+    titleEntrancePhase++;
     function drawCentered(text, y, color, scale) {
         ctx.font = `${scale * SCALE}px monospace`;
         ctx.fillStyle = color;
@@ -4326,12 +4516,21 @@ function renderTitleScreen() {
         ctx.textAlign = "start";
     }
 
-    // "ATTACK OF THE" subtitle
+    // Entrance animation easing (smooth overshoot)
+    function entranceEase(t) {
+        if (t >= 1) return 1;
+        return 1 - Math.pow(1 - t, 3) * Math.cos(t * Math.PI * 0.5);
+    }
+
+    // "ATTACK OF THE" subtitle — fades in
+    const subAlpha = Math.min(1, titleEntrancePhase / 30);
+    ctx.globalAlpha = subAlpha;
     const subY = 28;
     drawCentered("ATTACK OF THE", subY + 1, "#000000", 5);
     drawCentered("ATTACK OF THE", subY, "#ab5c1c", 5);
+    ctx.globalAlpha = 1.0;
 
-    // "GROOVE" — big bouncing letters with glow
+    // "GROOVE" — slams in from the left
     const bigFontSize = 22;
     const grooveText = "GROOVE";
     ctx.font = `${bigFontSize * SCALE}px monospace`;
@@ -4339,40 +4538,63 @@ function renderTitleScreen() {
     const grooveCharW = grooveMeasured / (SCALE * grooveText.length);
     const grooveY = 48;
     const grooveStartX = ((W * SCALE) - grooveMeasured) / (2 * SCALE);
+    const grooveEntrance = entranceEase(Math.min(1, Math.max(0, (titleEntrancePhase - 10) / 25)));
+    const grooveSlideX = (1 - grooveEntrance) * -W * 0.6;
+    const grooveScale = 0.5 + grooveEntrance * 0.5;
     for (let i = 0; i < grooveText.length; i++) {
-        const charX = grooveStartX + i * grooveCharW;
-        const bounce = Math.sin(titleBlink * 0.07 + i * 0.9) * 4;
+        const charX = grooveStartX + i * grooveCharW + grooveSlideX;
+        const bounce = grooveEntrance >= 1 ? Math.sin(titleBlink * 0.07 + i * 0.9) * 4 : 0;
         const col = i % 2 === 0 ? "#efac28" : "#ab5c1c";
+        ctx.globalAlpha = grooveEntrance;
         // Shadow
         drawText(grooveText[i], charX + 1, grooveY + bounce + 2, "#000000", bigFontSize);
         drawText(grooveText[i], charX - 1, grooveY + bounce + 2, "#000000", bigFontSize);
         // Glow layer
-        ctx.globalAlpha = 0.3;
+        ctx.globalAlpha = 0.3 * grooveEntrance;
         drawText(grooveText[i], charX, grooveY + bounce - 1, "#efac28", bigFontSize);
-        ctx.globalAlpha = 1.0;
+        ctx.globalAlpha = grooveEntrance;
         // Main text
         drawText(grooveText[i], charX, grooveY + bounce, col, bigFontSize);
     }
+    ctx.globalAlpha = 1.0;
+    // Impact flash when GROOVE lands
+    if (titleEntrancePhase >= 35 && titleEntrancePhase < 42) {
+        ctx.fillStyle = "#efac28";
+        ctx.globalAlpha = (42 - titleEntrancePhase) / 7 * 0.25;
+        ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+        ctx.globalAlpha = 1.0;
+    }
 
-    // "GOBLINS" — big bouncing green letters with glow
+    // "GOBLINS" — slams in from the right
     const goblinsText = "GOBLINS";
     const gobMeasured = ctx.measureText(goblinsText).width;
     const gobCharW = gobMeasured / (SCALE * goblinsText.length);
     const gobY = grooveY + 32;
     const gobStartX = ((W * SCALE) - gobMeasured) / (2 * SCALE);
+    const gobEntrance = entranceEase(Math.min(1, Math.max(0, (titleEntrancePhase - 25) / 25)));
+    const gobSlideX = (1 - gobEntrance) * W * 0.6;
     for (let i = 0; i < goblinsText.length; i++) {
-        const charX = gobStartX + i * gobCharW;
-        const bounce = Math.sin(titleBlink * 0.07 + i * 0.9 + 3) * 4;
+        const charX = gobStartX + i * gobCharW + gobSlideX;
+        const bounce = gobEntrance >= 1 ? Math.sin(titleBlink * 0.07 + i * 0.9 + 3) * 4 : 0;
         const col = i % 2 === 0 ? "#39FF14" : "#00CC00";
+        ctx.globalAlpha = gobEntrance;
         // Shadow
         drawText(goblinsText[i], charX + 1, gobY + bounce + 2, "#000000", bigFontSize);
         drawText(goblinsText[i], charX - 1, gobY + bounce + 2, "#000000", bigFontSize);
         // Glow
-        ctx.globalAlpha = 0.25;
+        ctx.globalAlpha = 0.25 * gobEntrance;
         drawText(goblinsText[i], charX, gobY + bounce - 1, "#39FF14", bigFontSize);
-        ctx.globalAlpha = 1.0;
+        ctx.globalAlpha = gobEntrance;
         // Main text
         drawText(goblinsText[i], charX, gobY + bounce, col, bigFontSize);
+    }
+    ctx.globalAlpha = 1.0;
+    // Impact flash when GOBLINS lands
+    if (titleEntrancePhase >= 50 && titleEntrancePhase < 57) {
+        ctx.fillStyle = "#39FF14";
+        ctx.globalAlpha = (57 - titleEntrancePhase) / 7 * 0.2;
+        ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+        ctx.globalAlpha = 1.0;
     }
 
     // === "PRESS ENTER" with energy pulse ===
@@ -4576,9 +4798,37 @@ function renderStoryScreen() {
     const availableH = charY - 30;
     let textY = Math.max(10, 15 + (availableH - totalTextH) / 2);
 
+    // Typewriter text reveal — advance character position over time
+    storyTypewriterTimer++;
+    if (storyTypewriterTimer % 2 === 0) storyTypewriterPos++; // 2 frames per character
+    let totalChars = 0;
+    for (let i = 0; i < storyLines.length; i++) {
+        totalChars += storyLines[i].text.length;
+    }
+    storyTypewriterPos = Math.min(storyTypewriterPos, totalChars);
+
+    let charsSoFar = 0;
     for (let i = 0; i < storyLines.length; i++) {
         const line = storyLines[i];
-        drawCenteredText(line.text, textY, line.color, line.scale);
+        const lineLen = line.text.length;
+        const charsAvail = Math.max(0, Math.min(lineLen, storyTypewriterPos - charsSoFar));
+        charsSoFar += lineLen;
+        if (charsAvail > 0) {
+            const visibleText = line.text.substring(0, charsAvail);
+            // Fade in: full alpha once revealed, slight fade on current character
+            const lineAlpha = charsAvail >= lineLen ? 1.0 : 0.9;
+            ctx.globalAlpha = lineAlpha;
+            drawCenteredText(visibleText, textY, line.color, line.scale);
+            ctx.globalAlpha = 1.0;
+            // Cursor blink on active line
+            if (charsAvail < lineLen && storyBlink % 20 < 14) {
+                // Draw a small blinking cursor at the end of the visible text
+                ctx.font = `${line.scale * SCALE}px monospace`;
+                const measured = ctx.measureText(visibleText).width;
+                const cursorX = (W * SCALE) / 2 - ctx.measureText(line.text).width / 2 + measured;
+                drawRect(cursorX / SCALE, textY - line.scale * 0.6, 2, line.scale * 0.8, line.color);
+            }
+        }
         textY += line.scale + line.gap;
     }
 
@@ -4766,10 +5016,82 @@ function renderLevelComplete() {
         ctx.globalAlpha = 1.0;
     }
 
-    // Celebration particles
-    if (levelCelebrateTimer % 5 === 0 && levelCelebrateTimer < 240) {
+    // Firework bursts + confetti
+    const fwColors = ["#efac28", "#ef3a0c", "#3c9f9c", "#ef692f", "#efd8a1", "#39FF14", "#FF00FF"];
+    // Launch new fireworks periodically
+    if (levelCelebrateTimer % 25 === 0 && levelCelebrateTimer < 240) {
+        fireworks.push({
+            x: W * 0.2 + Math.random() * W * 0.6,
+            y: H + 5,
+            vx: (Math.random() - 0.5) * 0.8,
+            vy: -(2.5 + Math.random() * 1.5),
+            life: 40 + Math.random() * 20,
+            maxLife: 40 + Math.random() * 20,
+            color: fwColors[Math.floor(Math.random() * fwColors.length)],
+            exploded: false,
+            particles: [],
+        });
+    }
+
+    // Update fireworks
+    for (let i = fireworks.length - 1; i >= 0; i--) {
+        const fw = fireworks[i];
+        if (!fw.exploded) {
+            fw.x += fw.vx;
+            fw.y += fw.vy;
+            fw.vy += 0.03; // slight gravity on rocket
+            fw.life--;
+            // Draw rocket trail
+            drawRect(fw.x, fw.y, 2, 2, fw.color);
+            ctx.fillStyle = "#ffffff";
+            ctx.globalAlpha = 0.6;
+            drawRect(fw.x, fw.y + 2, 1, 3, "#ffffff");
+            ctx.globalAlpha = 1.0;
+            // Explode when life runs out or velocity slows
+            if (fw.life <= 0 || fw.vy > -0.5) {
+                fw.exploded = true;
+                // Spawn explosion particles in a starburst
+                const particleCount = 20 + Math.floor(Math.random() * 15);
+                for (let p = 0; p < particleCount; p++) {
+                    const angle = (p / particleCount) * Math.PI * 2 + Math.random() * 0.3;
+                    const speed = 1 + Math.random() * 2;
+                    fw.particles.push({
+                        x: fw.x, y: fw.y,
+                        vx: Math.cos(angle) * speed,
+                        vy: Math.sin(angle) * speed,
+                        life: 30 + Math.random() * 30,
+                        maxLife: 30 + Math.random() * 30,
+                        color: Math.random() > 0.3 ? fw.color : "#ffffff",
+                        size: 1 + Math.random() * 2,
+                    });
+                }
+            }
+        } else {
+            // Update explosion particles
+            let allDead = true;
+            for (const ep of fw.particles) {
+                ep.x += ep.vx;
+                ep.y += ep.vy;
+                ep.vy += 0.04; // gravity
+                ep.vx *= 0.98; // drag
+                ep.life--;
+                if (ep.life > 0) {
+                    allDead = false;
+                    ctx.globalAlpha = Math.min(1, ep.life / ep.maxLife);
+                    const twinkle = Math.sin(levelCelebrateTimer * 0.3 + ep.x) > 0.3;
+                    const sz = twinkle ? ep.size * 1.5 : ep.size;
+                    drawRect(ep.x, ep.y, sz, sz, ep.color);
+                }
+            }
+            ctx.globalAlpha = 1.0;
+            if (allDead) fireworks.splice(i, 1);
+        }
+    }
+
+    // Confetti (lighter, supplement to fireworks)
+    if (levelCelebrateTimer % 8 === 0 && levelCelebrateTimer < 240) {
         const colors = ["#efac28", "#ef3a0c", "#3c9f9c", "#ef692f", "#efd8a1", "#ab5c1c"];
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 3; i++) {
             deathParticles.push({
                 x: Math.random() * W,
                 y: -5,
@@ -4777,13 +5099,13 @@ function renderLevelComplete() {
                 vy: Math.random() * 1.5 + 0.5,
                 life: 80 + Math.random() * 40,
                 color: colors[Math.floor(Math.random() * colors.length)],
-                size: 2 + Math.random() * 3,
+                size: 1 + Math.random() * 3,
                 sparkle: Math.random() > 0.5,
             });
         }
     }
 
-    // Update & render particles
+    // Update & render confetti particles
     for (let i = deathParticles.length - 1; i >= 0; i--) {
         const p = deathParticles[i];
         p.x += p.vx;
@@ -4824,9 +5146,35 @@ function renderGameOverScreen() {
         hitFreeze--;
         // During freeze, just render the frozen game world + shake
         render();
+
+        // Screen crack effect during freeze
+        if (screenCrackTimer > 0) {
+            const crackAlpha = screenCrackTimer / 30;
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 2 * SCALE;
+            ctx.globalAlpha = crackAlpha * 0.9;
+            for (const crack of screenCracks) {
+                ctx.beginPath();
+                ctx.moveTo(crack.x1 * SCALE, crack.y1 * SCALE);
+                ctx.lineTo(crack.x2 * SCALE, crack.y2 * SCALE);
+                ctx.stroke();
+                for (const b of crack.branches) {
+                    ctx.lineWidth = 1 * SCALE;
+                    ctx.beginPath();
+                    ctx.moveTo(b.x1 * SCALE, b.y1 * SCALE);
+                    ctx.lineTo(b.x2 * SCALE, b.y2 * SCALE);
+                    ctx.stroke();
+                    ctx.lineWidth = 2 * SCALE;
+                }
+            }
+            ctx.globalAlpha = 1.0;
+        }
+
         if (screenShake > 0) screenShake--;
         return;
     }
+    // Continue fading screen cracks into the game over
+    if (screenCrackTimer > 0) screenCrackTimer--;
 
     gameOverTimer++;
 
@@ -4841,6 +5189,29 @@ function renderGameOverScreen() {
     // Phase 1: Render frozen game world + fade to black around player
     if (gameOverTimer <= 150) {
         render(); // draw the frozen world
+    }
+
+    // Render fading screen cracks over the game world
+    if (screenCrackTimer > 0 && gameOverTimer < 60) {
+        const crackAlpha = screenCrackTimer / 30 * (1 - gameOverTimer / 60);
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2 * SCALE;
+        ctx.globalAlpha = crackAlpha * 0.7;
+        for (const crack of screenCracks) {
+            ctx.beginPath();
+            ctx.moveTo(crack.x1 * SCALE, crack.y1 * SCALE);
+            ctx.lineTo(crack.x2 * SCALE, crack.y2 * SCALE);
+            ctx.stroke();
+            for (const b of crack.branches) {
+                ctx.lineWidth = 1 * SCALE;
+                ctx.beginPath();
+                ctx.moveTo(b.x1 * SCALE, b.y1 * SCALE);
+                ctx.lineTo(b.x2 * SCALE, b.y2 * SCALE);
+                ctx.stroke();
+                ctx.lineWidth = 2 * SCALE;
+            }
+        }
+        ctx.globalAlpha = 1.0;
     }
 
     // Fade overlay — everything goes black except a spotlight on the player
@@ -5197,7 +5568,7 @@ function renderTutorialScreen() {
             ctx.globalAlpha = 1;
         }
 
-        // Control instructions
+        // Control instructions with key press highlights
         {
             const ky = gridStartY + miniRows * TILE + 18;
             const ks = 9; // key size
@@ -5205,39 +5576,73 @@ function renderTutorialScreen() {
             const keyCol = "#392a1c";
             const keyHi = "#684c3c";
             const labelCol = "#efd8a1";
+            const activeKeyCol = "#efac28"; // bright highlight for active keys
+            const activeKeyBg = "#684c3c";
             const arrowGroupW = 3 * ks + 2 * kg; // width of arrow key cluster
             const spW = 28; // space bar width
             const gap = 14; // gap between arrow keys and space bar
             const totalW = arrowGroupW + gap + spW;
             const kx = W / 2 - totalW / 2; // left edge of arrow keys
 
+            // Determine which keys are "pressed" based on demo player state
+            const cycleT_k = t % CYCLE;
+            let demoWalking_k = false, demoAttacking_k = false, demoDir_k = 0;
+            if (cycleT_k < STEPS_TOTAL) {
+                let stepIdx_k = 0;
+                for (let i = 0; i < demoSteps.length; i++) {
+                    if (cycleT_k < stepStart[i] + demoSteps[i].dur) { stepIdx_k = i; break; }
+                }
+                const step_k = demoSteps[stepIdx_k];
+                const stepT_k = cycleT_k - stepStart[stepIdx_k];
+                const prevPos_k = stepIdx_k === 0 ? { x: gridStartX - 3 * TILE, y: gridStartY } : demoSteps[stepIdx_k - 1];
+                const ddx_k = step_k.x - prevPos_k.x;
+                const ddy_k = step_k.y - prevPos_k.y;
+                demoDir_k = Math.abs(ddx_k) >= Math.abs(ddy_k) ? (ddx_k >= 0 ? 3 : 2) : (ddy_k >= 0 ? 0 : 1);
+                demoWalking_k = stepT_k < WALK_FRAMES;
+                demoAttacking_k = step_k.attack && stepT_k >= ATTACK_AT && stepT_k < ATTACK_AT + ATTACK_DUR;
+            }
+
+            // Helper to draw a key with optional active highlight
+            function drawKey(x, y, w, h, active) {
+                drawRect(x, y, w, h, active ? activeKeyCol : keyCol);
+                drawRect(x + 1, y + 1, w - 2, h - 2, active ? activeKeyCol : keyHi);
+                if (active) {
+                    // Glow effect
+                    ctx.fillStyle = activeKeyCol;
+                    ctx.globalAlpha = 0.3;
+                    ctx.fillRect((x - 1) * SCALE, (y - 1) * SCALE, (w + 2) * SCALE, (h + 2) * SCALE);
+                    ctx.globalAlpha = 1.0;
+                }
+            }
+
+            const upActive = demoWalking_k && demoDir_k === 1;
+            const downActive = demoWalking_k && demoDir_k === 0;
+            const leftActive = demoWalking_k && demoDir_k === 2;
+            const rightActive = demoWalking_k && demoDir_k === 3;
+            const spaceActive = demoAttacking_k;
+
             // Up arrow
-            drawRect(kx + ks + kg, ky, ks, ks, keyCol);
-            drawRect(kx + ks + kg + 1, ky + 1, ks - 2, ks - 2, keyHi);
-            drawRect(kx + ks + kg + 3, ky + 3, 3, 1, labelCol);
-            drawRect(kx + ks + kg + 4, ky + 2, 1, 1, labelCol);
+            drawKey(kx + ks + kg, ky, ks, ks, upActive);
+            drawRect(kx + ks + kg + 3, ky + 3, 3, 1, upActive ? "#000" : labelCol);
+            drawRect(kx + ks + kg + 4, ky + 2, 1, 1, upActive ? "#000" : labelCol);
             // Down arrow
-            drawRect(kx + ks + kg, ky + ks + kg, ks, ks, keyCol);
-            drawRect(kx + ks + kg + 1, ky + ks + kg + 1, ks - 2, ks - 2, keyHi);
-            drawRect(kx + ks + kg + 3, ky + ks + kg + 5, 3, 1, labelCol);
-            drawRect(kx + ks + kg + 4, ky + ks + kg + 6, 1, 1, labelCol);
+            drawKey(kx + ks + kg, ky + ks + kg, ks, ks, downActive);
+            drawRect(kx + ks + kg + 3, ky + ks + kg + 5, 3, 1, downActive ? "#000" : labelCol);
+            drawRect(kx + ks + kg + 4, ky + ks + kg + 6, 1, 1, downActive ? "#000" : labelCol);
             // Left arrow
-            drawRect(kx, ky + ks + kg, ks, ks, keyCol);
-            drawRect(kx + 1, ky + ks + kg + 1, ks - 2, ks - 2, keyHi);
-            drawRect(kx + 3, ky + ks + kg + 4, 1, 1, labelCol);
-            drawRect(kx + 4, ky + ks + kg + 3, 1, 3, labelCol);
+            drawKey(kx, ky + ks + kg, ks, ks, leftActive);
+            drawRect(kx + 3, ky + ks + kg + 4, 1, 1, leftActive ? "#000" : labelCol);
+            drawRect(kx + 4, ky + ks + kg + 3, 1, 3, leftActive ? "#000" : labelCol);
             // Right arrow
-            drawRect(kx + 2 * (ks + kg), ky + ks + kg, ks, ks, keyCol);
-            drawRect(kx + 2 * (ks + kg) + 1, ky + ks + kg + 1, ks - 2, ks - 2, keyHi);
-            drawRect(kx + 2 * (ks + kg) + 5, ky + ks + kg + 4, 1, 1, labelCol);
-            drawRect(kx + 2 * (ks + kg) + 4, ky + ks + kg + 3, 1, 3, labelCol);
+            drawKey(kx + 2 * (ks + kg), ky + ks + kg, ks, ks, rightActive);
+            drawRect(kx + 2 * (ks + kg) + 5, ky + ks + kg + 4, 1, 1, rightActive ? "#000" : labelCol);
+            drawRect(kx + 2 * (ks + kg) + 4, ky + ks + kg + 3, 1, 3, rightActive ? "#000" : labelCol);
 
             // Space bar icon (to the right of arrow keys)
             const spX = kx + arrowGroupW + gap;
-            drawRect(spX, ky + ks + kg, spW, ks, keyCol);
-            drawRect(spX + 1, ky + ks + kg + 1, spW - 2, ks - 2, keyHi);
+            drawKey(spX, ky + ks + kg, spW, ks, spaceActive);
             ctx.font = `${3 * SCALE}px monospace`;
-            ctx.fillStyle = labelCol;
+            ctx.fillStyle = spaceActive ? "#000" : labelCol;
             ctx.textAlign = "center";
             ctx.fillText("SPACE", (spX + spW / 2) * SCALE, (ky + ks + kg + 7) * SCALE);
 
@@ -5419,13 +5824,57 @@ function renderSabotageAnim() {
     // Render the normal game board (grid reflects real-time flips)
     render();
 
-    // Draw goblin sprite on top at current position
+    // Red alert overlay on edges during sabotage
+    {
+        const W_s = COLS * TILE * SCALE;
+        const H_s = ROWS * TILE * SCALE;
+        const alertPulse = 0.08 + Math.sin(t * 0.15) * 0.06;
+        const grad_s = ctx.createRadialGradient(W_s / 2, H_s / 2, W_s * 0.35, W_s / 2, H_s / 2, W_s * 0.65);
+        grad_s.addColorStop(0, "rgba(0,0,0,0)");
+        grad_s.addColorStop(1, "#FF00FF");
+        ctx.fillStyle = grad_s;
+        ctx.globalAlpha = alertPulse;
+        ctx.fillRect(0, 0, W_s, H_s);
+        ctx.globalAlpha = 1.0;
+    }
+
+    // "SABOTAGE!" text flash at start
+    if (t < 30) {
+        const flashAlpha = 1 - t / 30;
+        ctx.globalAlpha = flashAlpha;
+        const W_s2 = COLS * TILE;
+        ctx.font = `${12 * SCALE}px monospace`;
+        ctx.fillStyle = "#000000";
+        ctx.textAlign = "center";
+        ctx.fillText("SABOTAGE!", (W_s2 * SCALE) / 2 + SCALE, (ROWS * TILE / 2) * SCALE + SCALE);
+        ctx.fillStyle = "#FF00FF";
+        ctx.fillText("SABOTAGE!", (W_s2 * SCALE) / 2, (ROWS * TILE / 2) * SCALE);
+        ctx.textAlign = "start";
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Draw goblin sprite on top at current position with green trail
     if (cellIndex < sabotageCells.length) {
         const current = sabotageCells[Math.min(cellIndex, sabotageCells.length - 1)];
         const gx = (GRID_X + current.c) * TILE;
         const gy = rowPixelY(current.r);
         const frame = Math.floor(t / 6) % 4;
         const dir = current.r % 2 === 0 ? 3 : 2; // 3=right, 2=left
+
+        // Green smoke trail behind goblin
+        for (let trail = 1; trail <= 3; trail++) {
+            const trailIdx = Math.max(0, sabotageFlipIndex - trail);
+            if (trailIdx < sabotageCells.length) {
+                const tc = sabotageCells[trailIdx];
+                const tx = (GRID_X + tc.c) * TILE;
+                const ty = rowPixelY(tc.r);
+                ctx.fillStyle = "#39FF14";
+                ctx.globalAlpha = (4 - trail) / 4 * 0.3;
+                ctx.fillRect((tx + 2) * SCALE, (ty + 2) * SCALE, (TILE - 4) * SCALE, (TILE - 4) * SCALE);
+            }
+        }
+        ctx.globalAlpha = 1.0;
+
         drawGoblinSprite("normal", gx, gy, frame, { dir: dir, showShadow: false });
     }
 
@@ -5502,17 +5951,47 @@ function renderEnemyWarning() {
     const gobFrame = Math.floor(t / 10) % 4;
     const gobBob = gobFrame % 2 === 1 ? 1 : 0;
 
+    // Dramatic zoom-in on sprite: starts small, zooms to full size
+    const zoomDuration = 30;
+    const zoomProgress = Math.min(1, t / zoomDuration);
+    // Overshoot easing for dramatic punch
+    const zoomEase = zoomProgress < 1 ? 1 - Math.pow(1 - zoomProgress, 3) * (1 - 0.3 * Math.sin(zoomProgress * Math.PI)) : 1;
+    const spriteScale = 0.2 + zoomEase * 0.8; // 0.2 → 1.0
+
+    // Danger border effect — animated hazard stripes pulsing on edges
+    const borderPulse = 0.3 + Math.sin(t * 0.1) * 0.2;
+    const borderCol = enemyWarningType === "normal" ? "#39FF14" : (enemyWarningType === "elite" ? "#FF00FF" : "#00FFFF");
+    ctx.strokeStyle = borderCol;
+    ctx.lineWidth = 3 * SCALE;
+    ctx.globalAlpha = borderPulse;
+    ctx.strokeRect(2 * SCALE, 2 * SCALE, (W - 4) * SCALE, (H - 4) * SCALE);
+    ctx.globalAlpha = 1.0;
+
     if (enemyWarningType === "normal") {
         drawCenteredText("WATCH OUT!", 30, "#39FF14", 8);
         drawCenteredText("GOBLINS!", 55, "#39FF14", 6);
+        ctx.save();
+        const cx_w = (W / 2) * SCALE;
+        const cy_w = (80 + bobOffset + 8) * SCALE;
+        ctx.translate(cx_w, cy_w);
+        ctx.scale(spriteScale, spriteScale);
+        ctx.translate(-cx_w, -cy_w);
         drawGoblinSprite("normal", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
+        ctx.restore();
         drawCenteredText("THEY SABOTAGE YOUR BEATS!", 115, "#efb775", 5);
         drawCenteredText("PUNCH THEM TO DEFEAT THEM!", 132, "#efac28", 5);
 
     } else if (enemyWarningType === "elite") {
         drawCenteredText("WARNING!", 30, "#FF00FF", 8);
         drawCenteredText("ELITE GOBLIN", 55, "#FF44FF", 6);
+        ctx.save();
+        const cx_w = (W / 2) * SCALE;
+        const cy_w = (80 + bobOffset + 8) * SCALE;
+        ctx.translate(cx_w, cy_w);
+        ctx.scale(spriteScale, spriteScale);
+        ctx.translate(-cx_w, -cy_w);
         drawGoblinSprite("elite", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
+        ctx.restore();
         drawCenteredText("THIS GOBLIN IS EXTRA STRONG!", 115, "#efb775", 5);
         drawCenteredText("IT TAKES 3 HITS TO DEFEAT!", 132, "#FF44FF", 5);
         drawCenteredText("IT ALSO MOVES FASTER THAN NORMAL GOBLINS.", 155, "#efb775", 4);
@@ -5520,7 +5999,14 @@ function renderEnemyWarning() {
     } else if (enemyWarningType === "catapult") {
         drawCenteredText("WARNING!", 30, "#FF00FF", 8);
         drawCenteredText("CATAPULT GOBLIN", 55, "#00FFFF", 6);
+        ctx.save();
+        const cx_w = (W / 2) * SCALE;
+        const cy_w = (80 + bobOffset + 8) * SCALE;
+        ctx.translate(cx_w, cy_w);
+        ctx.scale(spriteScale, spriteScale);
+        ctx.translate(-cx_w, -cy_w);
         drawGoblinSprite("catapult", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
+        ctx.restore();
         drawCenteredText("THIS GOBLIN THROWS BOULDERS!", 115, "#efb775", 5);
         drawCenteredText("IT HURLS ROCKS AT YOUR BEAT GRID FROM A DISTANCE.", 138, "#efb775", 4);
         drawCenteredText("IT CAN'T BE KILLED, BUT IT CAN KILL YOU!", 172, "#FF00FF", 4);
@@ -5625,6 +6111,33 @@ function renderNewInstrument() {
             ctx.globalAlpha = 1;
         }
 
+        // Mini sequencer demo strip (cowbell pattern preview)
+        if (t > 60) {
+            const stripAlpha = Math.min(1, (t - 60) / 20);
+            ctx.globalAlpha = stripAlpha;
+            const stripY = 198;
+            const stripX = W / 2 - 8 * (TILE / 2);
+            const cellW = TILE / 2;
+            const cowbellPattern = [1,0,0,1,0,0,1,0,1,0,0,1,0,0,1,0]; // typical cowbell pattern
+            const demoStep = Math.floor(t / 6) % 16;
+            for (let c = 0; c < 16; c++) {
+                const cx_s = stripX + c * cellW;
+                drawRect(cx_s, stripY, cellW, cellW, "#684c3c");
+                drawRect(cx_s + 1, stripY + 1, cellW - 2, cellW - 2,
+                    cowbellPattern[c] ? "#ef3a0c" : "#45230d");
+                // Playhead
+                if (c === demoStep) {
+                    ctx.fillStyle = "#efac28";
+                    ctx.globalAlpha = stripAlpha * 0.4;
+                    ctx.fillRect(cx_s * SCALE, stripY * SCALE, cellW * SCALE, cellW * SCALE);
+                    ctx.globalAlpha = stripAlpha;
+                }
+            }
+            // Row label
+            drawText("B", stripX - 8, stripY + 6, "#ef3a0c", 4);
+            ctx.globalAlpha = 1;
+        }
+
     } else if (newInstrumentType === "tom") {
         // Title with entrance animation
         const titleAlpha = Math.min(1, t / 30);
@@ -5682,6 +6195,31 @@ function renderNewInstrument() {
             drawCenteredText("EVEN MORE BEATS TO MASTER!", 160, "#3c9f9c", 5);
             ctx.globalAlpha = 1;
         }
+
+        // Mini sequencer demo strip (tom pattern preview)
+        if (t > 60) {
+            const stripAlpha = Math.min(1, (t - 60) / 20);
+            ctx.globalAlpha = stripAlpha;
+            const stripY = 198;
+            const stripX = W / 2 - 8 * (TILE / 2);
+            const cellW = TILE / 2;
+            const tomPattern = [0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0]; // typical tom fill
+            const demoStep = Math.floor(t / 6) % 16;
+            for (let c = 0; c < 16; c++) {
+                const cx_s = stripX + c * cellW;
+                drawRect(cx_s, stripY, cellW, cellW, "#684c3c");
+                drawRect(cx_s + 1, stripY + 1, cellW - 2, cellW - 2,
+                    tomPattern[c] ? "#3c9f9c" : "#45230d");
+                if (c === demoStep) {
+                    ctx.fillStyle = "#efac28";
+                    ctx.globalAlpha = stripAlpha * 0.4;
+                    ctx.fillRect(cx_s * SCALE, stripY * SCALE, cellW * SCALE, cellW * SCALE);
+                    ctx.globalAlpha = stripAlpha;
+                }
+            }
+            drawText("T", stripX - 8, stripY + 6, "#3c9f9c", 4);
+            ctx.globalAlpha = 1;
+        }
     }
 
     // Blinking "PRESS ENTER TO CONTINUE"
@@ -5725,6 +6263,27 @@ function gameLoop(timestamp) {
             } else {
                 update(dt);
                 render();
+            }
+            // Scene transition overlay (iris wipe)
+            if (sceneTransition.active) {
+                sceneTransition.progress += 1 / sceneTransition.duration;
+                if (sceneTransition.progress >= 1) {
+                    sceneTransition.active = false;
+                    sceneTransition.progress = 0;
+                } else {
+                    // Iris-in effect: circle expands from center revealing new scene
+                    const W_t = COLS * TILE * SCALE;
+                    const H_t = ROWS * TILE * SCALE;
+                    const maxRadius = Math.sqrt(W_t * W_t + H_t * H_t) / 2;
+                    const radius = sceneTransition.progress * maxRadius;
+                    ctx.save();
+                    ctx.fillStyle = "#000";
+                    ctx.beginPath();
+                    ctx.rect(0, 0, W_t, H_t);
+                    ctx.arc(W_t / 2, H_t / 2, radius, 0, Math.PI * 2, true);
+                    ctx.fill();
+                    ctx.restore();
+                }
             }
         } catch (e) {
             console.error("Game loop error:", e);
