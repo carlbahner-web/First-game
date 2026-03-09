@@ -884,12 +884,12 @@ const CAVES = [
 ];
 
 // ---- Multiple Goblin System ----
-// Max concurrent goblins scales with level: 1 for L3-9, 2 for L10-19, 3 for L20+
+// Max concurrent goblins scales with level: 2 for L3-9, 3 for L10-16, 4 for L17-22, 5 for L23+
 function getMaxGoblins() {
-    if (currentLevel < 6) return 2;   // L3-6
-    if (currentLevel < 13) return 3;  // L7-13
-    if (currentLevel < 19) return 4;  // L14-19
-    return 5;                         // L20-30
+    if (currentLevel < 10) return 2;  // L3-9
+    if (currentLevel < 17) return 3;  // L10-16
+    if (currentLevel < 23) return 4;  // L17-22
+    return 5;                         // L23-30
 }
 
 // Sabotage flip chance scales with level (used during level-start scramble)
@@ -1605,7 +1605,7 @@ function update(dt) {
                     hitGob.deathAnimTimer = 24;
                     hitGob.deathAnimElite = wasElite;
                     hitGob.dead = true;
-                    hitGob.respawnTimer = 600;
+                    hitGob.respawnTimer = 780;
 
                     const deathOwTexts = ["OW MY SPLEEN!", "OW MY WEENIS!", "OW MY SKULL!", "OW MY FACE!", "OW MY EVERYTHING!"];
                     const deathOw = deathOwTexts[Math.floor(Math.random() * deathOwTexts.length)];
