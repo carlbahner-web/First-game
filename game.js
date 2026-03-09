@@ -519,9 +519,9 @@ const PAL = {
     wallTop:   "#384f54",
     floor:     "#2a4245",
     floorAlt:  "#263e42",
-    gridOff:   "#223a3e",
-    gridOn:    ["#BF7538", "#F6CC60", "#BFCDC0", "#EBEBE3", "#E86A6A", "#6AB8E8"], // per-row colors (O,H,S,K,B,T)
-    gridX:     ["#4088C7", "#0933A0", "#403230", "#14141C", "#17959F", "#954717"], // per-row X indicator colors (complementary)
+    gridOff:   "#1e3438",
+    gridOn:    ["#EBEBE3", "#F6CC60", "#BF7538", "#3A6168", "#E86A6A", "#6AB8E8"], // per-row colors (O,H,S,K,B,T)
+    gridX:     ["#14141C", "#0933A0", "#4088C7", "#954717", "#17959F", "#954717"], // per-row X indicator colors (complementary)
     gridBorder:"#2e4448",
     playhead:  "#F6CC60",
     player:    "#EBEBE3",
