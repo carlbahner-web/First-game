@@ -510,6 +510,14 @@ canvas.width = COLS * TILE * SCALE;
 canvas.height = ROWS * TILE * SCALE;
 ctx.imageSmoothingEnabled = false;
 
+// ---- HUD canvas (below game canvas) ----
+const hudCanvas = document.getElementById("hud");
+const hudCtx = hudCanvas.getContext("2d");
+const HUD_H = 2 * TILE; // logical height for HUD strip
+hudCanvas.width = COLS * TILE * SCALE;
+hudCanvas.height = HUD_H * SCALE;
+hudCtx.imageSmoothingEnabled = false;
+
 // ---- Colors (carnival palette) ----
 // #EBEBE3 Ticket Paper, #F6CC60 Midway Mustard, #BFCDC0 Foggy Mint
 // #3A6168 Harbor Teal, #BF7538 Rusty Turnstile
@@ -1305,41 +1313,6 @@ function tileYToRow(tileY) {
     return tileY - GRID_Y;
 }
 
-// ---- Helper: check if a tile is blocked by solid objects ----
-function isTileBlockedByObjects(tileX, tileY) {
-    // HUD collision — panels sit just above bottom wall, flush with left border
-    const pxSz = 3;
-    const digitW = 3 * pxSz + pxSz;
-    const panelH = 5 * pxSz + 6;
-    const panelGap = 4;
-    const hudBaseX = 1 * TILE; // flush with inside of left border
-
-    const hudY = (ROWS - 1) * TILE - panelH - 6;
-
-    // Compute total HUD width from all three panels
-    const iconW = 3 * pxSz + 2;
-    const skullW = 5 * pxSz + 2;
-    const lvlPanelW = iconW + String(currentLevel + 1).length * digitW + 6;
-    const killPanelW = skullW + 7 * digitW + 6;
-    const timerSec = Math.max(0, Math.ceil(levelTimer / 90));
-    const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
-    const timerPanelW = iconW + timerStr.length * digitW + 6;
-
-    const hudLeft = hudBaseX - 2;
-    const hudRight = hudBaseX + lvlPanelW + panelGap + killPanelW + panelGap + timerPanelW + 2;
-    const hudTop = hudY - 2;
-    const hudBottom = hudY + panelH + 2;
-
-    // Check if the tile overlaps the HUD bounding box
-    const tilePxX = tileX * TILE;
-    const tilePxY = tileY * TILE;
-    if (tilePxX + TILE > hudLeft && tilePxX < hudRight &&
-        tilePxY + TILE > hudTop && tilePxY < hudBottom) {
-        return true;
-    }
-    return false;
-}
-
 // ---- Helper: check if a tile is occupied by a dancer ----
 function isTileOccupiedByDancer(tileX, tileY) {
     for (const d of dancers) {
@@ -1398,9 +1371,7 @@ function spawnDancers(count) {
             const nearCave = CAVES.some(c =>
                 Math.abs(c.tileX - tileX) <= 1 && Math.abs(c.tileY - tileY) <= 1
             );
-            // Check HUD overlap
-            const hudBlocked = isTileBlockedByObjects(tileX, tileY);
-            valid = !tooClose && !nearCave && !hudBlocked;
+            valid = !tooClose && !nearCave;
         } while (!valid && attempts < 80);
         if (!valid) continue; // skip this dancer if no valid spot found
         occupiedPositions.push({ x: targetX, y: targetY });
@@ -1724,8 +1695,7 @@ function update(dt) {
                             gobBlocked = true; break;
                         }
                     }
-                    const blocked = isTileBlockedByObjects(ttx, tty)
-                        || isTileOccupiedByDancer(ttx, tty)
+                    const blocked = isTileOccupiedByDancer(ttx, tty)
                         || gobBlocked;
                     if (!blocked) { kbDist = d; break; }
                 }
@@ -1761,13 +1731,9 @@ function update(dt) {
                 const newY = d.y + Math.sign(knockDy) * TILE;
                 const clampedX = Math.max(TILE, Math.min((COLS - 2) * TILE, newX));
                 const clampedY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, newY));
-                const kbTileX = Math.round(clampedX / TILE);
-                const kbTileY = Math.round(clampedY / TILE);
-                if (!isTileBlockedByObjects(kbTileX, kbTileY)) {
-                    d.targetX = clampedX;
-                    d.targetY = clampedY;
-                    d.walkingIn = true;
-                }
+                d.targetX = clampedX;
+                d.targetY = clampedY;
+                d.walkingIn = true;
                 break;
             }
         }
@@ -1823,7 +1789,6 @@ function update(dt) {
             }
             const blocked = goblinBlocks
                 || (catapultGoblin && nx === cgRoundX && ny === cgRoundY)
-                || isTileBlockedByObjects(ntx, nty)
                 || isTileOccupiedByDancer(ntx, nty);
             if (!blocked) {
                 p.destX = nx;
@@ -2014,7 +1979,6 @@ function update(dt) {
                 const ttx = Math.round(tx / TILE);
                 const tty = Math.round(ty / TILE);
                 if (tx === p.x && ty === p.y) return true;
-                if (isTileBlockedByObjects(ttx, tty)) return true;
                 if (catapultGoblin && tx === cgBlockX && ty === cgBlockY) return true;
                 // Check other alive goblins
                 for (const og of goblins) {
@@ -2045,8 +2009,7 @@ function update(dt) {
                             newY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, newY));
                             const ntx = Math.round(newX / TILE);
                             const nty = Math.round(newY / TILE);
-                            if (isTileBlockedByObjects(ntx, nty)
-                                || (ntx === Math.round(p.x / TILE) && nty === Math.round(p.y / TILE))) continue;
+                            if (ntx === Math.round(p.x / TILE) && nty === Math.round(p.y / TILE)) continue;
                             if (isTileOccupiedByDancer(ntx, nty)) {
                                 if (!pushDancerAt(newX, newY, px * TILE, py * TILE, depth + 1)) continue;
                             }
@@ -2863,6 +2826,29 @@ function drawRect(x, y, w, h, color) {
     ctx.fillRect(x * SCALE, y * SCALE, w * SCALE, h * SCALE);
 }
 
+function drawHudRect(x, y, w, h, color) {
+    hudCtx.fillStyle = color;
+    hudCtx.fillRect(x * SCALE, y * SCALE, w * SCALE, h * SCALE);
+}
+
+function drawHudPixelDigits(num, cx, cy, color, pixelSize) {
+    const str = String(num);
+    const digitW = 3 * pixelSize + pixelSize;
+    const totalW = str.length * digitW - pixelSize;
+    let startX = cx - totalW / 2;
+    for (let d = 0; d < str.length; d++) {
+        const bitmap = DIGIT_BITMAPS[parseInt(str[d])];
+        const dx = startX + d * digitW;
+        for (let row = 0; row < 5; row++) {
+            for (let col = 0; col < 3; col++) {
+                if (bitmap[row] & (1 << (2 - col))) {
+                    drawHudRect(dx + col * pixelSize, cy + row * pixelSize, pixelSize, pixelSize, color);
+                }
+            }
+        }
+    }
+}
+
 // Simple seeded random for deterministic floor grain (no flicker)
 function seededRandom(seed) {
     seed = (seed * 9301 + 49297) % 233280;
@@ -2873,6 +2859,102 @@ function drawText(text, x, y, color, size) {
     ctx.fillStyle = color;
     ctx.font = `${size * SCALE}px monospace`;
     ctx.fillText(text, x * SCALE, y * SCALE);
+}
+
+// ---- HUD Render (separate canvas below game) ----
+function renderHUD() {
+    hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+    // Background fill
+    drawHudRect(0, 0, COLS * TILE, HUD_H, "#1a3438");
+
+    const pxSz = 3;
+    const digitW = 3 * pxSz + pxSz;
+    const panelH = 5 * pxSz + 6;
+    const panelGap = 4;
+
+    const kcY = Math.floor((HUD_H - panelH) / 2);
+    const baseX = 1 * TILE;
+
+    // --- Level counter ---
+    const iconW = 3 * pxSz + 2;
+    const lvlStr = String(currentLevel + 1);
+    const lvlPanelW = iconW + lvlStr.length * digitW + 6;
+    drawHudRect(baseX - 2, kcY - 2, lvlPanelW + 4, panelH + 4, "#1a3438");
+    drawHudRect(baseX, kcY, lvlPanelW, panelH, "#243e42");
+    drawHudRect(baseX, kcY, lvlPanelW, 1, "#3a6a70");
+    // "L" icon
+    const fx = baseX + 2, fy = kcY + 3;
+    drawHudRect(fx, fy, pxSz, 5 * pxSz, "#EBEBE3");
+    drawHudRect(fx + pxSz, fy + 4 * pxSz, 2 * pxSz, pxSz, "#EBEBE3");
+    // Level digits
+    const lvlNumX = baseX + iconW;
+    const numY = kcY + 3;
+    drawHudPixelDigits(lvlStr, lvlNumX + (lvlStr.length * digitW) / 2, numY, "#EBEBE3", pxSz);
+
+    // --- Score counter ---
+    const kcX = baseX + lvlPanelW + panelGap;
+    const scoreStr = String(score).padStart(7, "0");
+    const skullW = 5 * pxSz + 2;
+    const killPanelW = skullW + 7 * digitW + 6;
+    drawHudRect(kcX - 2, kcY - 2, killPanelW + 4, panelH + 4, "#1a3438");
+    drawHudRect(kcX, kcY, killPanelW, panelH, "#243e42");
+    drawHudRect(kcX, kcY, killPanelW, 1, "#3a6a70");
+    // Skull icon
+    const sx = kcX + 2, sy = kcY + 3;
+    const p = pxSz;
+    const skullBg = "#243e42";
+    drawHudRect(sx + p, sy, 3 * p, p, "#EBEBE3");
+    drawHudRect(sx, sy + p, 5 * p, 2 * p, "#EBEBE3");
+    drawHudRect(sx + p, sy + 3 * p, 3 * p, p, "#EBEBE3");
+    drawHudRect(sx + p, sy + 4 * p, p, p, "#EBEBE3");
+    drawHudRect(sx + 3 * p, sy + 4 * p, p, p, "#EBEBE3");
+    drawHudRect(sx + p, sy + p, p, p, skullBg);
+    drawHudRect(sx + 3 * p, sy + p, p, p, skullBg);
+    drawHudRect(sx + 2 * p, sy + 2 * p, p, p, skullBg);
+    drawHudRect(sx + 2 * p, sy + 4 * p, p, p, skullBg);
+    // Score digits
+    const killNumX = kcX + skullW;
+    drawHudPixelDigits(scoreStr, killNumX + (scoreStr.length * digitW) / 2, numY, "#EBEBE3", pxSz);
+
+    // --- Timer counter ---
+    const timerSec = Math.max(0, Math.ceil(levelTimer / 90));
+    const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
+    const timerX = kcX + killPanelW + panelGap;
+    const timerPanelW = iconW + timerStr.length * digitW + 6;
+    const isUrgent = timerSec <= 30;
+    const isCritical = timerSec <= 10;
+    const blinkRate = isCritical ? 15 : 30;
+    const blinkOn = !isUrgent || Math.floor(levelTimer / blinkRate) % 2 === 0;
+    const timerColor = isUrgent ? "#FF4466" : "#EBEBE3";
+    const timerBorderColor = isUrgent ? "#4a1a1a" : "#1a3438";
+    const timerBgColor = isUrgent ? "#3a1a22" : "#243e42";
+    const timerHighlight = isUrgent ? "#6a2a3a" : "#3a6a70";
+    drawHudRect(timerX - 2, kcY - 2, timerPanelW + 4, panelH + 4, timerBorderColor);
+    drawHudRect(timerX, kcY, timerPanelW, panelH, timerBgColor);
+    drawHudRect(timerX, kcY, timerPanelW, 1, timerHighlight);
+    // "T" icon
+    const tx2 = timerX + 2, ty2 = kcY + 3;
+    drawHudRect(tx2, ty2, 3 * pxSz, pxSz, blinkOn ? timerColor : timerBgColor);
+    drawHudRect(tx2 + pxSz, ty2 + pxSz, pxSz, 4 * pxSz, blinkOn ? timerColor : timerBgColor);
+    // Timer digits
+    if (blinkOn) {
+        const tNumX = timerX + iconW;
+        drawHudPixelDigits(timerStr, tNumX + (timerStr.length * digitW) / 2, numY, timerColor, pxSz);
+    }
+
+    // Tick sound during last 10 seconds (once per second)
+    if (isCritical && timerSec > 0 && levelTimer % 90 === 0 && audioCtx) {
+        const now = audioCtx.currentTime;
+        const tick = audioCtx.createOscillator();
+        const tg = audioCtx.createGain();
+        tick.type = "square";
+        tick.frequency.setValueAtTime(880, now);
+        tick.frequency.exponentialRampToValueAtTime(660, now + 0.06);
+        tg.gain.setValueAtTime(0.15, now);
+        tg.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+        tick.connect(tg); tg.connect(audioCtx.destination);
+        tick.start(now); tick.stop(now + 0.08);
+    }
 }
 
 // ---- Render ----
@@ -3076,100 +3158,8 @@ function render() {
         drawText(num, tx, gridBottomTileY() * TILE + 8, c === currentStep && playing ? PAL.playhead : "#5a8a8f", 3);
     }
 
-    // Level counter, Kill counter, Timer — panels above bottom wall
-    {
-        const pxSz = 3;
-        const digitW = 3 * pxSz + pxSz; // per digit width
-        const panelH = 5 * pxSz + 6;
-        const panelGap = 4; // gap between panels
-
-        // Position: just above bottom wall, flush with inside of left border
-        const kcY = (ROWS - 1) * TILE - panelH - 6;
-        const baseX = 1 * TILE;
-
-        // --- Level counter ---
-        const iconW = 3 * pxSz + 2; // icon width + padding before digits
-        const lvlStr = String(currentLevel + 1);
-        const lvlPanelW = iconW + lvlStr.length * digitW + 6;
-        drawRect(baseX - 2, kcY - 2, lvlPanelW + 4, panelH + 4, "#1a3438");
-        drawRect(baseX, kcY, lvlPanelW, panelH, "#243e42");
-        drawRect(baseX, kcY, lvlPanelW, 1, "#3a6a70");
-        // "L" icon (3x5 bitmap at pxSz scale)
-        const fx = baseX + 2, fy = kcY + 3;
-        drawRect(fx, fy, pxSz, 5 * pxSz, "#EBEBE3");                     // vertical bar
-        drawRect(fx + pxSz, fy + 4 * pxSz, 2 * pxSz, pxSz, "#EBEBE3");  // horizontal foot
-        // Level digits
-        const lvlNumX = baseX + iconW;
-        const numY = kcY + 3;
-        drawPixelDigits(lvlStr, lvlNumX + (lvlStr.length * digitW) / 2, numY, "#EBEBE3", pxSz);
-
-        // --- Score counter ---
-        const kcX = baseX + lvlPanelW + panelGap;
-        const scoreStr = String(score).padStart(7, "0");
-        const skullW = 5 * pxSz + 2; // skull icon width + padding
-        const killPanelW = skullW + 7 * digitW + 6;
-        drawRect(kcX - 2, kcY - 2, killPanelW + 4, panelH + 4, "#1a3438");
-        drawRect(kcX, kcY, killPanelW, panelH, "#243e42");
-        drawRect(kcX, kcY, killPanelW, 1, "#3a6a70");
-        // Skull icon (5x5 bitmap at pxSz scale)
-        const sx = kcX + 2, sy = kcY + 3;
-        const p = pxSz;
-        const skullBg = "#243e42";
-        drawRect(sx + p, sy, 3 * p, p, "#EBEBE3");             // top cranium
-        drawRect(sx, sy + p, 5 * p, 2 * p, "#EBEBE3");         // mid cranium
-        drawRect(sx + p, sy + 3 * p, 3 * p, p, "#EBEBE3");     // jaw
-        drawRect(sx + p, sy + 4 * p, p, p, "#EBEBE3");          // left tooth
-        drawRect(sx + 3 * p, sy + 4 * p, p, p, "#EBEBE3");      // right tooth
-        drawRect(sx + p, sy + p, p, p, skullBg);                // left eye
-        drawRect(sx + 3 * p, sy + p, p, p, skullBg);            // right eye
-        drawRect(sx + 2 * p, sy + 2 * p, p, p, skullBg);        // nose
-        drawRect(sx + 2 * p, sy + 4 * p, p, p, skullBg);        // tooth gap
-        // Score digits
-        const killNumX = kcX + skullW;
-        drawPixelDigits(scoreStr, killNumX + (scoreStr.length * digitW) / 2, numY, "#EBEBE3", pxSz);
-
-        // --- Timer counter ---
-        const timerSec = Math.max(0, Math.ceil(levelTimer / 90));
-        const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
-        const timerX = kcX + killPanelW + panelGap;
-        const timerPanelW = iconW + timerStr.length * digitW + 6;
-        // Urgency colors
-        const isUrgent = timerSec <= 30;
-        const isCritical = timerSec <= 10;
-        const blinkRate = isCritical ? 15 : 30;
-        const blinkOn = !isUrgent || Math.floor(levelTimer / blinkRate) % 2 === 0;
-        const timerColor = isUrgent ? "#FF4466" : "#EBEBE3";
-        const timerBorderColor = isUrgent ? "#4a1a1a" : "#1a3438";
-        const timerBgColor = isUrgent ? "#3a1a22" : "#243e42";
-        const timerHighlight = isUrgent ? "#6a2a3a" : "#3a6a70";
-        // Panel
-        drawRect(timerX - 2, kcY - 2, timerPanelW + 4, panelH + 4, timerBorderColor);
-        drawRect(timerX, kcY, timerPanelW, panelH, timerBgColor);
-        drawRect(timerX, kcY, timerPanelW, 1, timerHighlight);
-        // "T" icon (3x5 bitmap at pxSz scale)
-        const tx2 = timerX + 2, ty2 = kcY + 3;
-        drawRect(tx2, ty2, 3 * pxSz, pxSz, blinkOn ? timerColor : timerBgColor);              // horizontal bar
-        drawRect(tx2 + pxSz, ty2 + pxSz, pxSz, 4 * pxSz, blinkOn ? timerColor : timerBgColor); // vertical bar
-        // Timer digits
-        if (blinkOn) {
-            const tNumX = timerX + iconW;
-            drawPixelDigits(timerStr, tNumX + (timerStr.length * digitW) / 2, numY, timerColor, pxSz);
-        }
-
-        // Tick sound during last 10 seconds (once per second)
-        if (isCritical && timerSec > 0 && levelTimer % 90 === 0 && audioCtx) {
-            const now = audioCtx.currentTime;
-            const tick = audioCtx.createOscillator();
-            const tg = audioCtx.createGain();
-            tick.type = "square";
-            tick.frequency.setValueAtTime(880, now);
-            tick.frequency.exponentialRampToValueAtTime(660, now + 0.06);
-            tg.gain.setValueAtTime(0.15, now);
-            tg.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
-            tick.connect(tg); tg.connect(audioCtx.destination);
-            tick.start(now); tick.stop(now + 0.08);
-        }
-    }
+    // HUD is rendered on separate canvas
+    renderHUD();
 
     // Dancers (rendered behind player/goblin)
     for (const d of dancers) {
