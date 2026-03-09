@@ -4165,112 +4165,159 @@ function stopTitleDrums() {
     }
 }
 
-// ---- Title Screen (page 1: logo only) ----
+// ---- Title Screen (page 1: live gameplay scene) ----
+let titleStep = 0;        // simulated sequencer step (0-15)
+let titleStepTimer = 0;   // frame counter for step advance
+const TITLE_STEP_FRAMES = 7.5; // frames per sixteenth note at 120bpm @ 60fps
+
+// Title screen drum pattern (matches audio)
+const TITLE_PATTERN = {
+    K: [1,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0],
+    S: [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+    H: [0,1,1,1,0,1,1,0,1,1,0,1,0,1,1,1],
+    O: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+};
+
 function renderTitleScreen() {
     const W = COLS * TILE;
     const H = ROWS * TILE;
 
-    // Dark background
-    drawRect(0, 0, W, H, "#1f240a");
+    titleBlink++;
 
-    // Starfield
-    for (let i = 0; i < 60; i++) {
+    // Advance simulated playhead
+    titleStepTimer++;
+    if (titleStepTimer >= TITLE_STEP_FRAMES) {
+        titleStepTimer -= TITLE_STEP_FRAMES;
+        titleStep = (titleStep + 1) % 16;
+    }
+
+    // === BACKGROUND: Deep black void ===
+    drawRect(0, 0, W, H, "#0a0a0a");
+
+    // Sparse twinkling stars for depth
+    for (let i = 0; i < 40; i++) {
         const sx = ((i * 137 + 50) % W);
         const sy = ((i * 97 + 30) % H);
-        const twinkle = Math.sin(titleBlink * 0.05 + i) * 0.5 + 0.5;
-        ctx.globalAlpha = 0.3 + twinkle * 0.7;
-        const starSize = (i % 3 === 0) ? 2 : 1;
-        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#efac28" : "#efd8a1");
+        const twinkle = Math.sin(titleBlink * 0.03 + i * 1.7) * 0.5 + 0.5;
+        ctx.globalAlpha = 0.15 + twinkle * 0.35;
+        const starSize = (i % 5 === 0) ? 2 : 1;
+        drawRect(sx, sy, starSize, starSize, i % 3 === 0 ? "#efac28" : "#efd8a1");
     }
     ctx.globalAlpha = 1;
 
-    // === Centered Logo ===
-    const logoColor1 = "#ab5c1c";
-    const logoColor2 = "#efac28";
+    // === LIVE SEQUENCER GRID (center of screen) ===
+    const gridRows = 4; // K, S, H, O
+    const gridLabels = ["O", "H", "S", "K"];
+    const gridColors = ["#efd8a1", "#efac28", "#ef692f", "#276468"];
+    const gridXColors = ["#ef3a0c", "#550f0a", "#efd8a1", "#efac28"];
+    const patternRows = [TITLE_PATTERN.O, TITLE_PATTERN.H, TITLE_PATTERN.S, TITLE_PATTERN.K];
+    const gStartX = GRID_X;
+    const gStartY = 7; // tile row for grid
 
-    // Use measureText for accurate centering
-    const bigFontSize = 20; // font size for GROOVE/GOBLINS
-
-    // "REVENGE OF THE" — smaller, well above GROOVE
-    const subTitle = "ATTACK OF THE";
-    const subFontSize = 4;
-    ctx.font = `${subFontSize * SCALE}px monospace`;
-    const subMeasured = ctx.measureText(subTitle).width;
-    const subY = H / 2 - 90;
-    // Draw static centered subtitle
-    const subStartX = ((W * SCALE) - subMeasured) / (2 * SCALE);
-    drawText(subTitle, subStartX, subY, logoColor1, subFontSize);
-
-    // Big "GROOVE" — use textAlign center for the whole word block
-    const grooveText = "GROOVE";
-    ctx.font = `${bigFontSize * SCALE}px monospace`;
-    const grooveMeasured = ctx.measureText(grooveText).width;
-    const grooveCharW = grooveMeasured / (SCALE * grooveText.length);
-    const grooveY = H / 2 - 66;
-    const grooveStartX = ((W * SCALE) - grooveMeasured) / (2 * SCALE);
-    for (let i = 0; i < grooveText.length; i++) {
-        const charX = grooveStartX + i * grooveCharW;
-        const bounce = Math.sin(titleBlink * 0.06 + i * 0.8) * 3;
-        const col = i % 2 === 0 ? logoColor2 : logoColor1;
-        drawText(grooveText[i], charX + 1, grooveY + bounce + 1, "#000000", bigFontSize);
-        drawText(grooveText[i], charX, grooveY + bounce, col, bigFontSize);
+    // Row labels
+    for (let r = 0; r < gridRows; r++) {
+        const lx = (gStartX - 1) * TILE + 3;
+        const ly = (gStartY + r) * TILE + 12;
+        drawText(gridLabels[r], lx, ly, gridColors[r], 7);
     }
 
-    // Big "GOBLINS"
-    const goblinsText = "GOBLINS";
-    const gobMeasured = ctx.measureText(goblinsText).width;
-    const gobCharW = gobMeasured / (SCALE * goblinsText.length);
-    const gobY = grooveY + 30;
-    const gobStartX = ((W * SCALE) - gobMeasured) / (2 * SCALE);
-    for (let i = 0; i < goblinsText.length; i++) {
-        const charX = gobStartX + i * gobCharW;
-        const bounce = Math.sin(titleBlink * 0.06 + i * 0.8 + 3) * 3;
-        const col = i % 2 === 0 ? "#39FF14" : "#00CC00";
-        drawText(goblinsText[i], charX + 1, gobY + bounce + 1, "#000000", bigFontSize);
-        drawText(goblinsText[i], charX, gobY + bounce, col, bigFontSize);
+    // Grid blocks
+    for (let r = 0; r < gridRows; r++) {
+        for (let c = 0; c < 16; c++) {
+            const bx = (gStartX + c) * TILE;
+            const by = (gStartY + r) * TILE;
+            const on = patternRows[r][c];
+
+            drawRect(bx, by, TILE, TILE, "#684c3c");
+            drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, on ? gridColors[r] : "#45230d");
+
+            // Beat markers on empty
+            if (!on && c % 4 === 0) {
+                drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, "#3a6068");
+            }
+
+            // 3D highlight for on-blocks
+            if (on) {
+                ctx.fillStyle = "rgba(255,255,255,0.2)";
+                ctx.fillRect((bx + 1) * SCALE, (by + 1) * SCALE, (TILE - 2) * SCALE, 2 * SCALE);
+                ctx.fillStyle = "rgba(0,0,0,0.2)";
+                ctx.fillRect((bx + 1) * SCALE, (by + TILE - 3) * SCALE, (TILE - 2) * SCALE, 2 * SCALE);
+            }
+
+            // X marks on active blocks
+            if (on) {
+                const xCol = gridXColors[r];
+                drawRect(bx + 3, by + 3, 2, 2, xCol);
+                drawRect(bx + 5, by + 5, 2, 2, xCol);
+                drawRect(bx + 7, by + 7, 2, 2, xCol);
+                drawRect(bx + 9, by + 9, 2, 2, xCol);
+                drawRect(bx + 9, by + 3, 2, 2, xCol);
+                drawRect(bx + 7, by + 5, 2, 2, xCol);
+                drawRect(bx + 5, by + 7, 2, 2, xCol);
+                drawRect(bx + 3, by + 9, 2, 2, xCol);
+            }
+        }
     }
 
-    // Pixel art goblin face below logo
-    const fp = 3;
-    const faceX = W / 2 - 4*fp;
-    const faceY = gobY + 40;
-    drawRect(faceX + 2*fp, faceY, 4*fp, fp, "#00CC00");
-    drawRect(faceX + fp, faceY + fp, 6*fp, fp, "#00CC00");
-    drawRect(faceX, faceY + 2*fp, 8*fp, 3*fp, "#39FF14");
-    drawRect(faceX + fp, faceY + 5*fp, 6*fp, fp, "#39FF14");
-    drawRect(faceX + 2*fp, faceY + 6*fp, 4*fp, fp, "#00CC00");
-    drawRect(faceX - fp, faceY + 2*fp, fp, 2*fp, "#00CC00");
-    drawRect(faceX + 8*fp, faceY + 2*fp, fp, 2*fp, "#00CC00");
-    drawRect(faceX + 2*fp, faceY + 3*fp, fp, fp, "#FF00FF");
-    drawRect(faceX + 5*fp, faceY + 3*fp, fp, fp, "#FF00FF");
-    drawRect(faceX + 2*fp, faceY + 5*fp, 4*fp, fp, "#1a1a1a");
-    drawRect(faceX + 3*fp, faceY + 5*fp, fp, fp, "#efd8a1");
-    drawRect(faceX + 5*fp, faceY + 5*fp, fp, fp, "#efd8a1");
-    drawRect(faceX - fp, faceY + fp, fp, 3*fp, "#333");
-    drawRect(faceX + 8*fp, faceY + fp, fp, 3*fp, "#333");
-    drawRect(faceX + fp, faceY - fp, 6*fp, fp, "#333");
-    drawRect(faceX - 2*fp, faceY + fp, 2*fp, 2*fp, "#FF00FF");
-    drawRect(faceX + 8*fp, faceY + fp, 2*fp, 2*fp, "#FF00FF");
+    // Playhead (animated, synced to beat)
+    const phX = (gStartX + titleStep) * TILE;
+    ctx.fillStyle = "#efac28";
+    ctx.globalAlpha = 0.3;
+    ctx.fillRect(phX * SCALE, gStartY * TILE * SCALE, TILE * SCALE, (gridRows * TILE) * SCALE);
+    ctx.globalAlpha = 1.0;
+    // Top playhead marker
+    drawRect(phX + 2, (gStartY - 1) * TILE + 10, TILE - 4, 4, "#efac28");
 
-    // Musical notes floating around the face
-    const notePositions = [
-        { x: faceX - 16, y: faceY - 10 },
-        { x: faceX + 38, y: faceY - 5 },
-        { x: faceX - 12, y: faceY + 20 },
-        { x: faceX + 36, y: faceY + 15 },
-    ];
-    for (let i = 0; i < notePositions.length; i++) {
-        const np = notePositions[i];
-        const ny = np.y + Math.sin(titleBlink * 0.1 + i * 2) * 4;
-        const noteCol = ["#efac28", "#ab5c1c", "#ef3a0c", "#3c9f9c"][i];
-        ctx.globalAlpha = 0.6 + Math.sin(titleBlink * 0.08 + i) * 0.4;
-        drawRect(np.x, ny, 3, 2, noteCol);
-        drawRect(np.x + 3, ny - 5, 1, 6, noteCol);
-        drawRect(np.x + 3, ny - 5, 2, 1, noteCol);
+    // Step numbers below grid
+    for (let c = 0; c < 16; c++) {
+        const num = String(c + 1);
+        const tx = (gStartX + c) * TILE + (c < 9 ? 4 : 1);
+        const numCol = c === titleStep ? "#efac28" : "#5a8a8f";
+        drawText(num, tx, (gStartY + gridRows) * TILE + 8, numCol, 3);
     }
-    ctx.globalAlpha = 1;
 
-    // Helper to draw centered text
+    // === CHARACTERS (animated scene) ===
+    const walkFrame = Math.floor(titleBlink / 10) % 4;
+
+    // Dancer (left side, grooving to the beat)
+    const dancerX = 2 * TILE + 4;
+    const dancerY = (gStartY + 1) * TILE;
+    const dBeat = (titleStep % 4 === 0);
+    const dBob = dBeat ? 3 : (titleStep % 2 === 0 ? 1 : 0);
+    const dArmBlend = dBeat ? 1.0 : 0.0;
+    const dFootOffset = Math.sin(titleBlink * 0.15) * 1.5;
+    drawDancerSprite(dancerX, dancerY, DANCER_PALETTES[0], { bob: dBob, armBlend: dArmBlend, footOffset: dFootOffset });
+
+    // Second dancer (right side)
+    const dancer2X = (COLS - 2) * TILE - 12;
+    const dancer2Y = (gStartY + 1) * TILE;
+    drawDancerSprite(dancer2X, dancer2Y, DANCER_PALETTES[2], { bob: dBob, armBlend: dArmBlend, footOffset: -dFootOffset });
+
+    // Player (left-center, below grid, facing right toward goblin)
+    const playerX = (gStartX + 2) * TILE;
+    const playerY = (gStartY + gridRows + 2) * TILE;
+    // Periodic punch animation
+    const punchCycle = titleBlink % 90;
+    const isPunching = punchCycle < 20;
+    const punchThrust = isPunching ? Math.sin(punchCycle / 20 * Math.PI) : 0;
+    drawPlayerSprite(playerX, playerY, walkFrame, 3, { punchThrust }); // dir 3 = right
+
+    // Goblin (right-center, below grid, approaching from right)
+    const goblinBaseX = (gStartX + 11) * TILE;
+    const goblinWander = Math.sin(titleBlink * 0.02) * 16; // wander back and forth
+    const goblinX = goblinBaseX + goblinWander;
+    const goblinY = (gStartY + gridRows + 2) * TILE;
+    drawGoblinSprite("normal", goblinX, goblinY, walkFrame, { dir: 2 }); // dir 2 = left
+
+    // Elite goblin lurking further right
+    const eliteX = (gStartX + 14) * TILE;
+    const eliteWander = Math.sin(titleBlink * 0.015 + 2) * 10;
+    const eliteY = (gStartY + gridRows + 2) * TILE + 4;
+    ctx.globalAlpha = 0.7 + Math.sin(titleBlink * 0.05) * 0.3;
+    drawGoblinSprite("elite", eliteX + eliteWander, eliteY, walkFrame, { dir: 2 });
+    ctx.globalAlpha = 1.0;
+
+    // === TITLE TEXT (overlaid on scene) ===
     function drawCentered(text, y, color, scale) {
         ctx.font = `${scale * SCALE}px monospace`;
         ctx.fillStyle = color;
@@ -4279,18 +4326,79 @@ function renderTitleScreen() {
         ctx.textAlign = "start";
     }
 
-    // Blinking "PRESS ENTER"
-    titleBlink++;
-    const hasScores = highScores.length > 0;
-    const pressY = hasScores ? H - 80 : H - 30;
-    if (titleBlink % 60 < 40) {
-        drawCentered("PRESS ENTER", pressY, "#efd8a1", 5);
+    // "ATTACK OF THE" subtitle
+    const subY = 28;
+    drawCentered("ATTACK OF THE", subY + 1, "#000000", 5);
+    drawCentered("ATTACK OF THE", subY, "#ab5c1c", 5);
+
+    // "GROOVE" — big bouncing letters with glow
+    const bigFontSize = 22;
+    const grooveText = "GROOVE";
+    ctx.font = `${bigFontSize * SCALE}px monospace`;
+    const grooveMeasured = ctx.measureText(grooveText).width;
+    const grooveCharW = grooveMeasured / (SCALE * grooveText.length);
+    const grooveY = 48;
+    const grooveStartX = ((W * SCALE) - grooveMeasured) / (2 * SCALE);
+    for (let i = 0; i < grooveText.length; i++) {
+        const charX = grooveStartX + i * grooveCharW;
+        const bounce = Math.sin(titleBlink * 0.07 + i * 0.9) * 4;
+        const col = i % 2 === 0 ? "#efac28" : "#ab5c1c";
+        // Shadow
+        drawText(grooveText[i], charX + 1, grooveY + bounce + 2, "#000000", bigFontSize);
+        drawText(grooveText[i], charX - 1, grooveY + bounce + 2, "#000000", bigFontSize);
+        // Glow layer
+        ctx.globalAlpha = 0.3;
+        drawText(grooveText[i], charX, grooveY + bounce - 1, "#efac28", bigFontSize);
+        ctx.globalAlpha = 1.0;
+        // Main text
+        drawText(grooveText[i], charX, grooveY + bounce, col, bigFontSize);
     }
 
-    // High score leaderboard
+    // "GOBLINS" — big bouncing green letters with glow
+    const goblinsText = "GOBLINS";
+    const gobMeasured = ctx.measureText(goblinsText).width;
+    const gobCharW = gobMeasured / (SCALE * goblinsText.length);
+    const gobY = grooveY + 32;
+    const gobStartX = ((W * SCALE) - gobMeasured) / (2 * SCALE);
+    for (let i = 0; i < goblinsText.length; i++) {
+        const charX = gobStartX + i * gobCharW;
+        const bounce = Math.sin(titleBlink * 0.07 + i * 0.9 + 3) * 4;
+        const col = i % 2 === 0 ? "#39FF14" : "#00CC00";
+        // Shadow
+        drawText(goblinsText[i], charX + 1, gobY + bounce + 2, "#000000", bigFontSize);
+        drawText(goblinsText[i], charX - 1, gobY + bounce + 2, "#000000", bigFontSize);
+        // Glow
+        ctx.globalAlpha = 0.25;
+        drawText(goblinsText[i], charX, gobY + bounce - 1, "#39FF14", bigFontSize);
+        ctx.globalAlpha = 1.0;
+        // Main text
+        drawText(goblinsText[i], charX, gobY + bounce, col, bigFontSize);
+    }
+
+    // === "PRESS ENTER" with energy pulse ===
+    const hasScores = highScores.length > 0;
+    const pressY = hasScores ? H - 80 : H - 26;
+
+    // Pulsing glow behind "PRESS ENTER"
+    const pulseAlpha = 0.15 + Math.sin(titleBlink * 0.08) * 0.1;
+    ctx.fillStyle = "#efac28";
+    ctx.globalAlpha = pulseAlpha;
+    const pressTextW = 180;
+    ctx.fillRect(((W * SCALE) / 2) - pressTextW, (pressY - 4) * SCALE, pressTextW * 2, 14 * SCALE);
+    ctx.globalAlpha = 1.0;
+
+    // Blink the text with a faster, more urgent rhythm
+    if (titleBlink % 45 < 32) {
+        // Shadow
+        drawCentered("PRESS ENTER", pressY + 1, "#000000", 6);
+        // Alternate color on beat
+        const enterCol = (titleStep % 4 === 0) ? "#efac28" : "#efd8a1";
+        drawCentered("PRESS ENTER", pressY, enterCol, 6);
+    }
+
+    // === HIGH SCORES ===
     if (hasScores) {
         drawCentered("HIGH SCORES", H - 68, "#efac28", 3);
-
         for (let i = 0; i < highScores.length; i++) {
             const entry = highScores[i];
             const rank = (i + 1) + ". " + entry.name + "  " + String(entry.score).padStart(7, "0");
@@ -4298,6 +4406,26 @@ function renderTitleScreen() {
             drawCentered(rank, H - 58 + i * 10, color, 3);
         }
     }
+
+    // === FLOATING MUSICAL NOTES (scattered around scene) ===
+    const notePositions = [
+        { x: 40, y: 30 },
+        { x: W - 50, y: 35 },
+        { x: 30, y: H - 70 },
+        { x: W - 40, y: H - 65 },
+        { x: W / 2 - 60, y: 100 },
+        { x: W / 2 + 50, y: 105 },
+    ];
+    const noteColors = ["#efac28", "#3c9f9c", "#ef692f", "#ef3a0c", "#efd8a1", "#ab5c1c"];
+    for (let i = 0; i < notePositions.length; i++) {
+        const np = notePositions[i];
+        const ny = np.y + Math.sin(titleBlink * 0.1 + i * 1.5) * 5;
+        ctx.globalAlpha = 0.5 + Math.sin(titleBlink * 0.08 + i) * 0.4;
+        drawRect(np.x, ny, 3, 2, noteColors[i]);
+        drawRect(np.x + 3, ny - 5, 1, 6, noteColors[i]);
+        drawRect(np.x + 3, ny - 5, 2, 1, noteColors[i]);
+    }
+    ctx.globalAlpha = 1;
 }
 
 // ---- Story Screen (page 2: backstory + instructions + characters) ----
