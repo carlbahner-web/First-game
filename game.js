@@ -1006,6 +1006,7 @@ let levelTimer = LEVELS[0].timerSeconds * 90; // countdown in frames (seconds * 
 let levelComplete = false;
 let patternMatched = false; // pattern correct but goblins may still be alive
 let levelCelebrateTimer = 0;
+let levelCelebrateDisplayScore = 0; // for count-up animation
 let titleBlink = 0; // blink timer for "PRESS ENTER"
 let tutorialTimer = 0; // animation frame counter for tutorial screen
 let tutorialPage = 0;  // current tutorial page (0-1)
@@ -2513,6 +2514,7 @@ function resetGame() {
     levelComplete = false;
     patternMatched = false;
     levelCelebrateTimer = 0;
+    levelCelebrateDisplayScore = 0;
 
     // Set tempo for level 0
     setLevelTempo(0);
@@ -2581,6 +2583,7 @@ function playLevelFanfare() {
 function triggerLevelComplete() {
     levelComplete = true;
     levelCelebrateTimer = 0;
+    levelCelebrateDisplayScore = 0;
     gameState = "levelcomplete";
     // Kill all goblins so they stop sabotaging
     for (const g of goblins) {
@@ -2666,6 +2669,7 @@ function advanceLevel() {
     levelComplete = false;
     patternMatched = false;
     levelCelebrateTimer = 0;
+    levelCelebrateDisplayScore = 0;
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
             cellFlash[r][c] = 0;
@@ -3112,10 +3116,11 @@ function render() {
         }
     }
 
-    // Carnival string lights along top — drum-synced! Each light maps to a drum row
+    // Carnival string lights along top — drum-synced with chase/twinkle patterns
     // Colors match the grid row colors: O, H, S, K, B, T
     const topCaveCol = Math.floor(COLS / 2);
     const ar_lights = getActiveRows();
+    const now_lights = performance.now();
     for (let c = 1; c < COLS - 1; c++) {
         if (c === topCaveCol) continue;
         const bulbY = TILE + 6;
@@ -3124,16 +3129,23 @@ function render() {
         const bulbCol = PAL.gridOn[rowIdx];
         const triggered = rowTrigger[rowIdx] > 0;
         const pulseIntensity = triggered ? rowTrigger[rowIdx] / 8 : 0;
-        // Bulb — brighter when triggered
-        const bulbSize = triggered ? 5 : 4;
+        // Chase pattern — wave of brightness traveling across the lights
+        const chasePhase = (now_lights * 0.003 + c * 0.4) % (Math.PI * 2);
+        const chaseBright = Math.sin(chasePhase) * 0.5 + 0.5;
+        // Twinkle — individual random-feeling sparkle
+        const twinkle = Math.sin(now_lights * 0.005 + c * 2.7) > 0.7 ? 0.3 : 0;
+        // Bulb — brighter when triggered, with chase modulation
+        const bulbSize = triggered ? 5 : (chaseBright > 0.7 ? 5 : 4);
         const bulbOffset = triggered ? -1 : 0;
+        ctx.globalAlpha = 0.5 + chaseBright * 0.3 + pulseIntensity * 0.2 + twinkle;
         drawRect(bulbX - 2 + bulbOffset, bulbY + bulbOffset, bulbSize, bulbSize, bulbCol);
+        ctx.globalAlpha = 1.0;
         // Glow — much stronger when the corresponding drum layer plays
         ctx.fillStyle = bulbCol;
-        const baseGlow = 0.12;
+        const baseGlow = 0.08 + chaseBright * 0.08;
         const pulseGlow = pulseIntensity * 0.4;
-        ctx.globalAlpha = baseGlow + pulseGlow;
-        const glowSize = triggered ? 12 : 8;
+        ctx.globalAlpha = baseGlow + pulseGlow + twinkle * 0.15;
+        const glowSize = triggered ? 12 : (chaseBright > 0.6 ? 10 : 8);
         ctx.fillRect((bulbX - glowSize / 2) * SCALE, (bulbY - glowSize / 2 + 2) * SCALE, glowSize * SCALE, glowSize * SCALE);
         ctx.globalAlpha = 1.0;
     }
@@ -3457,6 +3469,17 @@ function render() {
         if (blink) {
             drawCenteredText("SLAY THE GOBLIN!", 14, "#ef3a0c", 6);
         }
+    }
+
+    // Ambient vignette — subtle dark edges to focus attention on center
+    {
+        const W_a = COLS * TILE * SCALE;
+        const H_a = ROWS * TILE * SCALE;
+        const ambGrad = ctx.createRadialGradient(W_a / 2, H_a / 2, W_a * 0.35, W_a / 2, H_a / 2, W_a * 0.72);
+        ambGrad.addColorStop(0, "rgba(0,0,0,0)");
+        ambGrad.addColorStop(1, "rgba(0,0,0,0.35)");
+        ctx.fillStyle = ambGrad;
+        ctx.fillRect(0, 0, W_a, H_a);
     }
 
     // Timer urgency vignette (pulsing red edges when ≤10 seconds)
@@ -4044,6 +4067,22 @@ function drawCatapultGoblin() {
         const arcY = -4 * arcHeight * t * (1 - t);
         const by = baseY + arcY;
 
+        // Dust/smoke trail behind boulder in flight
+        const trailCount = 5;
+        for (let ti = 0; ti < trailCount; ti++) {
+            const trailT = Math.max(0, t - ti * 0.04);
+            const tx = b.startX + (b.targetX - b.startX) * trailT;
+            const tBaseY = b.startY + (b.targetY - b.startY) * trailT;
+            const tArcY = -4 * arcHeight * trailT * (1 - trailT);
+            const ty = tBaseY + tArcY;
+            const trailAlpha = (1 - ti / trailCount) * 0.3 * (1 - t); // fade as boulder lands
+            ctx.globalAlpha = trailAlpha;
+            const trailSize = (3 + ti * 2) * SCALE;
+            ctx.fillStyle = ti % 2 === 0 ? "#aaaaaa" : "#888888";
+            ctx.fillRect(tx * SCALE - trailSize / 2, ty * SCALE - trailSize / 2, trailSize, trailSize);
+        }
+        ctx.globalAlpha = 1.0;
+
         // Shadow on ground (grows as boulder descends) — 48×48 detail
         const shadowPx = (3 + (1 - Math.abs(arcY) / arcHeight) * 4) * SCALE;
         const sx = bx * SCALE - shadowPx / 2;
@@ -4359,6 +4398,32 @@ function renderTitleScreen() {
     // === BACKGROUND: Deep black void ===
     drawRect(0, 0, W, H, "#0a0a0a");
 
+    // Parallax star layers — 3 depth layers with varying speed/brightness
+    const starLayers = [
+        { count: 15, speed: 0.003, alpha: 0.15, sizeChance: 0.1, seed: 200 },
+        { count: 20, speed: 0.008, alpha: 0.3, sizeChance: 0.15, seed: 500 },
+        { count: 12, speed: 0.02, alpha: 0.5, sizeChance: 0.25, seed: 800 },
+    ];
+    for (const layer of starLayers) {
+        const drift = titleBlink * layer.speed;
+        for (let i = 0; i < layer.count; i++) {
+            const sx = ((i * 137 + layer.seed) % W);
+            const sy = ((i * 97 + 30 + drift) % H);
+            const twinkle = Math.sin(titleBlink * 0.04 + i * 2.1) * 0.3 + 0.7;
+            ctx.globalAlpha = layer.alpha * twinkle;
+            const starSize = (i % Math.round(1 / layer.sizeChance) === 0) ? 2 : 1;
+            drawRect(sx, sy, starSize, starSize, i % 4 === 0 ? "#efac28" : "#efd8a1");
+        }
+    }
+    ctx.globalAlpha = 1;
+
+    // Beat-reactive background pulse — brief flash on every 4th beat
+    if (titleStep % 4 === 0 && titleStepTimer < 3) {
+        ctx.fillStyle = "#efac28";
+        ctx.globalAlpha = 0.06 * (1 - titleStepTimer / 3);
+        ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+        ctx.globalAlpha = 1.0;
+    }
 
     // === LIVE SEQUENCER GRID (center of screen) ===
     const gridRows = 4; // K, S, H, O
@@ -4429,6 +4494,20 @@ function renderTitleScreen() {
         const tx = (gStartX + c) * TILE + (c < 9 ? 4 : 1);
         const numCol = c === titleStep ? "#efac28" : "#5a8a8f";
         drawText(num, tx, (gStartY + gridRows) * TILE + 8, numCol, 3);
+    }
+
+    // === STAGE PLATFORM beneath characters ===
+    const stageY = (gStartY + gridRows + 1) * TILE + 10;
+    const stageW = (COLS - 2) * TILE;
+    const stageX = TILE;
+    // Platform surface
+    drawRect(stageX, stageY, stageW, 4, "#684c3c");
+    drawRect(stageX, stageY, stageW, 1, "#927e6a"); // highlight edge
+    // Platform front face
+    drawRect(stageX, stageY + 4, stageW, 6, "#45230d");
+    // Wood plank lines
+    for (let px = stageX; px < stageX + stageW; px += 24) {
+        drawRect(px, stageY + 4, 1, 6, "#392a1c");
     }
 
     // === CHARACTERS (animated scene) ===
@@ -4531,6 +4610,10 @@ function renderTitleScreen() {
     const grooveEntrance = entranceEase(Math.min(1, Math.max(0, (titleEntrancePhase - 10) / 25)));
     const grooveSlideX = (1 - grooveEntrance) * -W * 0.6;
     const grooveScale = 0.5 + grooveEntrance * 0.5;
+    // Logo shimmer — traveling highlight across GROOVE periodically
+    const shimmerCycle = 180; // frames per shimmer cycle
+    const shimmerPos = (titleBlink % shimmerCycle) / shimmerCycle; // 0→1
+    const shimmerActive = grooveEntrance >= 1;
     for (let i = 0; i < grooveText.length; i++) {
         const charX = grooveStartX + i * grooveCharW + grooveSlideX;
         const bounce = grooveEntrance >= 1 ? Math.sin(titleBlink * 0.07 + i * 0.9) * 4 : 0;
@@ -4545,6 +4628,16 @@ function renderTitleScreen() {
         ctx.globalAlpha = grooveEntrance;
         // Main text
         drawText(grooveText[i], charX, grooveY + bounce, col, bigFontSize);
+        // Shimmer highlight pass
+        if (shimmerActive) {
+            const charNorm = i / grooveText.length;
+            const dist = Math.abs(shimmerPos - charNorm);
+            if (dist < 0.15) {
+                const shimmerAlpha = (1 - dist / 0.15) * 0.5;
+                ctx.globalAlpha = shimmerAlpha;
+                drawText(grooveText[i], charX, grooveY + bounce, "#ffffff", bigFontSize);
+            }
+        }
     }
     ctx.globalAlpha = 1.0;
     // Impact flash when GROOVE lands
@@ -4807,6 +4900,16 @@ function renderStoryScreen() {
             const visibleText = line.text.substring(0, charsAvail);
             // Fade in: full alpha once revealed, slight fade on current character
             const lineAlpha = charsAvail >= lineLen ? 1.0 : 0.9;
+            // Colored text emphasis glow — subtle glow behind key colored lines
+            if (charsAvail >= lineLen && (line.color === "#39FF14" || line.color === "#ef3a0c")) {
+                ctx.font = `${line.scale * SCALE}px monospace`;
+                const glowW = ctx.measureText(line.text).width;
+                const glowX = (W * SCALE) / 2 - glowW / 2;
+                ctx.fillStyle = line.color;
+                ctx.globalAlpha = 0.08 + Math.sin(storyBlink * 0.06) * 0.04;
+                ctx.fillRect(glowX - 4 * SCALE, (textY - line.scale) * SCALE, glowW + 8 * SCALE, (line.scale + 4) * SCALE);
+                ctx.globalAlpha = 1.0;
+            }
             ctx.globalAlpha = lineAlpha;
             drawCenteredText(visibleText, textY, line.color, line.scale);
             ctx.globalAlpha = 1.0;
@@ -4829,6 +4932,22 @@ function renderStoryScreen() {
     const slotW = charArea / (charSlots - 1); // space between characters
     const gobFrame = Math.floor(storyBlink / 10) % 4;
     const gobBob = gobFrame % 2 === 1 ? 1 : 0;
+
+    // Dramatic spotlight glow beneath each character
+    const spotlightColors = ["#FF00FF", "#39FF14", "#efac28", "#ef3a0c", "#3c9f9c"];
+    for (let s = 0; s < charSlots; s++) {
+        const spotX = (charMargin + slotW * s - 2) * SCALE;
+        const spotY = (charY + 12) * SCALE;
+        const spotW = 20 * SCALE;
+        const spotH = 8 * SCALE;
+        const grad = ctx.createRadialGradient(spotX + spotW / 2, spotY, 2, spotX + spotW / 2, spotY, spotW * 0.6);
+        grad.addColorStop(0, spotlightColors[s]);
+        grad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = grad;
+        ctx.globalAlpha = 0.15 + Math.sin(storyBlink * 0.04 + s) * 0.05;
+        ctx.fillRect(spotX - spotW * 0.3, spotY - spotH, spotW * 1.6, spotH * 2);
+    }
+    ctx.globalAlpha = 1;
 
     // Elite goblin (slot 0 — left)
     const eliteX = charMargin + slotW * 0 - 8 + Math.sin(storyBlink * 0.025 + 1) * 3;
@@ -4995,7 +5114,12 @@ function renderLevelComplete() {
             ctx.fillText(bonusText, (W * SCALE) / 2, by * SCALE);
         }
         const sy = cy + (lastTimeBonus > 0 ? 42 : 28);
-        const scoreText = "SCORE: " + score;
+        // Score count-up animation — ramp toward final score
+        const countUpSpeed = Math.max(1, Math.ceil(score / 90)); // reaches target in ~1.5s
+        if (levelCelebrateDisplayScore < score) {
+            levelCelebrateDisplayScore = Math.min(score, levelCelebrateDisplayScore + countUpSpeed);
+        }
+        const scoreText = "SCORE: " + levelCelebrateDisplayScore;
         ctx.fillStyle = "#000000";
         ctx.fillText(scoreText, (W * SCALE) / 2 + SCALE, (sy + 1) * SCALE);
         ctx.fillStyle = "#efd8a1";
@@ -5078,6 +5202,57 @@ function renderLevelComplete() {
         }
     }
 
+    // Confetti — varied shapes (rectangles, triangles, pennants)
+    if (levelCelebrateTimer % 6 === 0 && levelCelebrateTimer < 240) {
+        const confColors = ["#efac28", "#ef3a0c", "#3c9f9c", "#ef692f", "#efd8a1", "#ab5c1c"];
+        for (let ci = 0; ci < 3; ci++) {
+            deathParticles.push({
+                x: Math.random() * W,
+                y: -5,
+                vx: (Math.random() - 0.5) * 1.5,
+                vy: Math.random() * 1.5 + 0.5,
+                life: 80 + Math.random() * 40,
+                color: confColors[Math.floor(Math.random() * confColors.length)],
+                size: 1 + Math.random() * 3,
+                sparkle: Math.random() > 0.5,
+                confShape: Math.floor(Math.random() * 3), // 0=rect, 1=triangle, 2=pennant
+                confRot: Math.random() * Math.PI * 2,
+            });
+        }
+    }
+    // Update & render confetti particles with varied shapes
+    for (let ci = deathParticles.length - 1; ci >= 0; ci--) {
+        const p = deathParticles[ci];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vx += (Math.random() - 0.5) * 0.05; // flutter
+        p.life--;
+        if (p.life <= 0) { deathParticles.splice(ci, 1); continue; }
+        ctx.globalAlpha = Math.min(1, p.life / 20);
+        const sz = p.sparkle && Math.sin(levelCelebrateTimer * 0.2 + ci) > 0 ? p.size * 1.5 : p.size;
+        ctx.fillStyle = p.color;
+        if (p.confShape === 1) {
+            // Triangle
+            ctx.beginPath();
+            ctx.moveTo(p.x * SCALE, (p.y - sz) * SCALE);
+            ctx.lineTo((p.x - sz) * SCALE, (p.y + sz) * SCALE);
+            ctx.lineTo((p.x + sz) * SCALE, (p.y + sz) * SCALE);
+            ctx.closePath();
+            ctx.fill();
+        } else if (p.confShape === 2) {
+            // Pennant (tall narrow triangle)
+            ctx.beginPath();
+            ctx.moveTo(p.x * SCALE, (p.y - sz * 1.5) * SCALE);
+            ctx.lineTo((p.x - sz * 0.5) * SCALE, (p.y + sz) * SCALE);
+            ctx.lineTo((p.x + sz * 0.5) * SCALE, (p.y + sz) * SCALE);
+            ctx.closePath();
+            ctx.fill();
+        } else {
+            // Rectangle (wider than tall)
+            drawRect(p.x - sz * 0.5, p.y, sz * 1.5, sz * 0.7, p.color);
+        }
+    }
+    ctx.globalAlpha = 1.0;
 
     // Start marching snare after fanfare finishes (~2s = 180 frames at 90fps)
     if (levelCelebrateTimer === 180) {
@@ -5384,9 +5559,10 @@ function renderTutorialScreen() {
         // Title
         drawCenteredText("PUNCH BLOCKS TO TOGGLE BEATS", 25, "#efac28", 7);
 
-        // Animated demo grid — player walks to blocks and hits them
-        const gridStartX = W / 2 - 4 * TILE / 2;
-        const gridStartY = 58;
+        // Animated demo grid — player walks to blocks and hits them (scaled up)
+        const DT = Math.floor(TILE * 1.4); // larger demo tile size
+        const gridStartX = W / 2 - 4 * DT / 2;
+        const gridStartY = 50;
         const miniRows = 2;
         const rowColors = ["#efac28", "#efb775"];
         const demoTarget = [[true, false, true, false], [false, true, false, true]];
@@ -5394,11 +5570,11 @@ function renderTutorialScreen() {
         const WALK_FRAMES = 35, ATTACK_AT = 38, ATTACK_DUR = 15, HIT_OFFSET = 45;
         const ATTACK_STEP_LEN = 80, WALK_STEP_LEN = 40;
         const demoSteps = [
-            { x: gridStartX - TILE, y: gridStartY, attack: true, toggleIdx: 0, dur: ATTACK_STEP_LEN },
-            { x: gridStartX + TILE, y: gridStartY, attack: true, toggleIdx: 1, dur: ATTACK_STEP_LEN },
-            { x: gridStartX + TILE, y: gridStartY + TILE, attack: false, toggleIdx: -1, dur: WALK_STEP_LEN },
-            { x: gridStartX, y: gridStartY + TILE, attack: true, toggleIdx: 2, dur: ATTACK_STEP_LEN },
-            { x: gridStartX + 2 * TILE, y: gridStartY + TILE, attack: true, toggleIdx: 3, dur: ATTACK_STEP_LEN },
+            { x: gridStartX - DT, y: gridStartY, attack: true, toggleIdx: 0, dur: ATTACK_STEP_LEN },
+            { x: gridStartX + DT, y: gridStartY, attack: true, toggleIdx: 1, dur: ATTACK_STEP_LEN },
+            { x: gridStartX + DT, y: gridStartY + DT, attack: false, toggleIdx: -1, dur: WALK_STEP_LEN },
+            { x: gridStartX, y: gridStartY + DT, attack: true, toggleIdx: 2, dur: ATTACK_STEP_LEN },
+            { x: gridStartX + 2 * DT, y: gridStartY + DT, attack: true, toggleIdx: 3, dur: ATTACK_STEP_LEN },
         ];
         const stepStart = [0];
         for (let i = 1; i < demoSteps.length; i++) stepStart.push(stepStart[i - 1] + demoSteps[i - 1].dur);
@@ -5418,25 +5594,25 @@ function renderTutorialScreen() {
                 if (cycleT >= hf.frame && cycleT < CYCLE - 30) blockOn[hf.toggleIdx] = true;
             }
 
-            // Draw grid cells
+            // Draw grid cells (scaled up with DT)
             for (let r = 0; r < miniRows; r++) {
                 for (let c = 0; c < 4; c++) {
-                    const bx = gridStartX + c * TILE;
-                    const by = gridStartY + r * TILE;
+                    const bx = gridStartX + c * DT;
+                    const by = gridStartY + r * DT;
                     let isOn = false;
                     for (let i = 0; i < toggleOrder.length; i++) {
                         if (toggleOrder[i][0] === r && toggleOrder[i][1] === c && blockOn[i]) isOn = true;
                     }
-                    drawRect(bx, by, TILE, TILE, PAL.gridBorder);
-                    drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? rowColors[r] : PAL.gridOff);
+                    drawRect(bx, by, DT, DT, PAL.gridBorder);
+                    drawRect(bx + 1, by + 1, DT - 2, DT - 2, isOn ? rowColors[r] : PAL.gridOff);
                     if (demoTarget[r][c] && !isOn) {
                         const pulse = 0.3 + Math.sin(t * 0.06) * 0.15;
                         ctx.globalAlpha = pulse;
-                        drawRect(bx + 1, by + 1, TILE - 2, 1, rowColors[r]);
-                        drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, rowColors[r]);
-                        drawRect(bx + 1, by + 1, 1, TILE - 2, rowColors[r]);
-                        drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, rowColors[r]);
-                        drawRect(bx + 6, by + 6, 4, 4, rowColors[r]);
+                        drawRect(bx + 1, by + 1, DT - 2, 1, rowColors[r]);
+                        drawRect(bx + 1, by + DT - 2, DT - 2, 1, rowColors[r]);
+                        drawRect(bx + 1, by + 1, 1, DT - 2, rowColors[r]);
+                        drawRect(bx + DT - 2, by + 1, 1, DT - 2, rowColors[r]);
+                        drawRect(bx + DT / 2 - 2, by + DT / 2 - 2, 4, 4, rowColors[r]);
                         ctx.globalAlpha = demoAlpha;
                     }
                     if (isOn) {
@@ -5445,7 +5621,7 @@ function renderTutorialScreen() {
                                 const flashAge = cycleT - hf.frame;
                                 if (flashAge >= 0 && flashAge < 10) {
                                     ctx.globalAlpha = (1 - flashAge / 10) * 0.6;
-                                    drawRect(bx, by, TILE, TILE, "#ffffff");
+                                    drawRect(bx, by, DT, DT, "#ffffff");
                                     ctx.globalAlpha = demoAlpha;
                                 }
                             }
@@ -5463,7 +5639,7 @@ function renderTutorialScreen() {
                 }
                 const step = demoSteps[stepIdx];
                 const stepT = cycleT - stepStart[stepIdx];
-                const prevPos = stepIdx === 0 ? { x: gridStartX - 3 * TILE, y: gridStartY } : demoSteps[stepIdx - 1];
+                const prevPos = stepIdx === 0 ? { x: gridStartX - 3 * DT, y: gridStartY } : demoSteps[stepIdx - 1];
                 const ddx = step.x - prevPos.x;
                 const ddy = step.y - prevPos.y;
                 let walkDir = Math.abs(ddx) >= Math.abs(ddy) ? (ddx >= 0 ? 3 : 2) : (ddy >= 0 ? 0 : 1);
@@ -5515,14 +5691,14 @@ function renderTutorialScreen() {
                 }
                 // Gold bracket indicator
                 if (!isAttacking && step.attack && step.toggleIdx >= 0 && cycleT < STEPS_TOTAL && !blockOn[step.toggleIdx]) {
-                    const btx = gridStartX + toggleOrder[step.toggleIdx][1] * TILE;
-                    const bty = gridStartY + toggleOrder[step.toggleIdx][0] * TILE;
+                    const btx = gridStartX + toggleOrder[step.toggleIdx][1] * DT;
+                    const bty = gridStartY + toggleOrder[step.toggleIdx][0] * DT;
                     ctx.globalAlpha = demoAlpha * playerAlpha * (0.25 + Math.sin(t * 0.1) * 0.15);
                     const bc = "#efac28";
                     drawRect(btx, bty, 4, 1, bc); drawRect(btx, bty, 1, 4, bc);
-                    drawRect(btx + TILE - 4, bty, 4, 1, bc); drawRect(btx + TILE - 1, bty, 1, 4, bc);
-                    drawRect(btx, bty + TILE - 1, 4, 1, bc); drawRect(btx, bty + TILE - 4, 1, 4, bc);
-                    drawRect(btx + TILE - 4, bty + TILE - 1, 4, 1, bc); drawRect(btx + TILE - 1, bty + TILE - 4, 1, 4, bc);
+                    drawRect(btx + DT - 4, bty, 4, 1, bc); drawRect(btx + DT - 1, bty, 1, 4, bc);
+                    drawRect(btx, bty + DT - 1, 4, 1, bc); drawRect(btx, bty + DT - 4, 1, 4, bc);
+                    drawRect(btx + DT - 4, bty + DT - 1, 4, 1, bc); drawRect(btx + DT - 1, bty + DT - 4, 1, 4, bc);
                 }
                 ctx.globalAlpha = demoAlpha;
             }
@@ -5531,7 +5707,7 @@ function renderTutorialScreen() {
 
         // Control instructions with key press highlights
         {
-            const ky = gridStartY + miniRows * TILE + 18;
+            const ky = gridStartY + miniRows * DT + 18;
             const ks = 9; // key size
             const kg = 2; // key gap
             const keyCol = "#392a1c";
@@ -5555,7 +5731,7 @@ function renderTutorialScreen() {
                 }
                 const step_k = demoSteps[stepIdx_k];
                 const stepT_k = cycleT_k - stepStart[stepIdx_k];
-                const prevPos_k = stepIdx_k === 0 ? { x: gridStartX - 3 * TILE, y: gridStartY } : demoSteps[stepIdx_k - 1];
+                const prevPos_k = stepIdx_k === 0 ? { x: gridStartX - 3 * DT, y: gridStartY } : demoSteps[stepIdx_k - 1];
                 const ddx_k = step_k.x - prevPos_k.x;
                 const ddy_k = step_k.y - prevPos_k.y;
                 demoDir_k = Math.abs(ddx_k) >= Math.abs(ddy_k) ? (ddx_k >= 0 ? 3 : 2) : (ddy_k >= 0 ? 0 : 1);
@@ -5602,6 +5778,13 @@ function renderTutorialScreen() {
             // Space bar icon (to the right of arrow keys)
             const spX = kx + arrowGroupW + gap;
             drawKey(spX, ky + ks + kg, spW, ks, spaceActive);
+            // Impact flash when SPACE is pressed
+            if (spaceActive) {
+                ctx.fillStyle = "#ffffff";
+                ctx.globalAlpha = 0.4;
+                ctx.fillRect((spX - 3) * SCALE, (ky + ks + kg - 3) * SCALE, (spW + 6) * SCALE, (ks + 6) * SCALE);
+                ctx.globalAlpha = 1.0;
+            }
             ctx.font = `${3 * SCALE}px monospace`;
             ctx.fillStyle = spaceActive ? "#000" : labelCol;
             ctx.textAlign = "center";
@@ -5663,6 +5846,22 @@ function renderTutorialScreen() {
             }
         }
         drawText("OUTLINES = ADD", gx - 2, gy + TILE + 10, "#efb775", 4);
+
+        // Vertical divider between ADD and REMOVE sections
+        const divX = W / 2;
+        const divTop = gy - 4;
+        const divBot = gy + TILE + 18;
+        ctx.strokeStyle = "#684c3c";
+        ctx.lineWidth = SCALE;
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(divX * SCALE, divTop * SCALE);
+        ctx.lineTo(divX * SCALE, divBot * SCALE);
+        ctx.stroke();
+        ctx.globalAlpha = 1.0;
+        // Diamond accent at center of divider
+        const dMid = (divTop + divBot) / 2;
+        drawRect(divX - 1, dMid - 2, 3, 3, "#efac28");
 
         // --- TOP RIGHT: X marks (beats to REMOVE) ---
         const xgx = W / 2 + TILE;
@@ -5884,8 +6083,15 @@ function renderEnemyWarning() {
     const W = COLS * TILE;
     const H = ROWS * TILE;
 
-    // Dark background (same as tutorial/instrument screens)
+    // Dark background with threat color tint by enemy type
     drawRect(0, 0, W, H, "#1f240a");
+    // Threat color tint — subtle background hue based on enemy type
+    const threatCol = enemyWarningType === "normal" ? "#39FF14" : (enemyWarningType === "elite" ? "#FF00FF" : "#00FFFF");
+    const threatPulse = 0.03 + Math.sin(t * 0.06) * 0.02;
+    ctx.fillStyle = threatCol;
+    ctx.globalAlpha = threatPulse;
+    ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+    ctx.globalAlpha = 1.0;
 
     // Starfield
     for (let i = 0; i < 60; i++) {
@@ -5922,10 +6128,26 @@ function renderEnemyWarning() {
     // Danger border effect — animated hazard stripes pulsing on edges
     const borderPulse = 0.3 + Math.sin(t * 0.1) * 0.2;
     const borderCol = enemyWarningType === "normal" ? "#39FF14" : (enemyWarningType === "elite" ? "#FF00FF" : "#00FFFF");
-    ctx.strokeStyle = borderCol;
-    ctx.lineWidth = 3 * SCALE;
+    const stripeW = 8; // stripe width in game pixels
+    const borderThick = 4;
+    const stripeOffset = (t * 0.5) % (stripeW * 2); // animation offset
     ctx.globalAlpha = borderPulse;
-    ctx.strokeRect(2 * SCALE, 2 * SCALE, (W - 4) * SCALE, (H - 4) * SCALE);
+    // Top border hazard stripes
+    for (let sx = -stripeW * 2; sx < W; sx += stripeW * 2) {
+        drawRect(sx + stripeOffset, 0, stripeW, borderThick, borderCol);
+    }
+    // Bottom border hazard stripes
+    for (let sx = -stripeW * 2; sx < W; sx += stripeW * 2) {
+        drawRect(sx - stripeOffset + stripeW, H - borderThick, stripeW, borderThick, borderCol);
+    }
+    // Left border hazard stripes
+    for (let sy = -stripeW * 2; sy < H; sy += stripeW * 2) {
+        drawRect(0, sy + stripeOffset, borderThick, stripeW, borderCol);
+    }
+    // Right border hazard stripes
+    for (let sy = -stripeW * 2; sy < H; sy += stripeW * 2) {
+        drawRect(W - borderThick, sy - stripeOffset + stripeW, borderThick, stripeW, borderCol);
+    }
     ctx.globalAlpha = 1.0;
 
     if (enemyWarningType === "normal") {
