@@ -1332,26 +1332,48 @@ function spawnDancers(count) {
         const j = Math.floor(Math.random() * (i + 1));
         [edges[i], edges[j]] = [edges[j], edges[i]];
     }
-    const occupied = new Set();
+    // Build list of occupied zones (check pixel proximity, not just tile)
+    const occupiedPositions = [];
     for (const dd of dancers) {
-        const tx = Math.round((dd.targetX ?? dd.x) / TILE);
-        const ty = Math.round((dd.targetY ?? dd.y) / TILE);
-        occupied.add(tx + "," + ty);
+        occupiedPositions.push({
+            x: dd.targetX ?? dd.x,
+            y: dd.targetY ?? dd.y
+        });
     }
+    const MIN_DIST = 14; // minimum pixel distance between dancer targets
     for (let di = 0; di < count; di++) {
         const palette = DANCER_PALETTES[dancers.length % DANCER_PALETTES.length];
-        let targetTX, targetTY, attempts = 0;
+        // Dancer area: rows 11-16, cols 2-17, with sub-tile pixel offsets
+        const minPxX = 2 * TILE + 2;
+        const maxPxX = (COLS - 3) * TILE - 2;
+        const minPxY = 11 * TILE;
+        const maxPxY = (ROWS - 1) * TILE - TILE;
+        let targetX, targetY, attempts = 0;
+        let valid = false;
         do {
-            targetTX = 2 + Math.floor(Math.random() * (COLS - 5));
-            targetTY = 14 + Math.floor(Math.random() * 3);
+            // Random pixel position within the dancer area (not grid-locked)
+            targetX = minPxX + Math.random() * (maxPxX - minPxX);
+            targetY = minPxY + Math.random() * (maxPxY - minPxY);
+            // Round to nearest pixel (not tile)
+            targetX = Math.round(targetX);
+            targetY = Math.round(targetY);
+            const tileX = Math.floor(targetX / TILE);
+            const tileY = Math.floor(targetY / TILE);
             attempts++;
-        } while ((occupied.has(targetTX + "," + targetTY) ||
-            CAVES.some(c => Math.abs(c.tileX - targetTX) <= 1 && Math.abs(c.tileY - targetTY) <= 1) ||
-            isTileBlockedByObjects(targetTX, targetTY)) &&
-            attempts < 50);
-        occupied.add(targetTX + "," + targetTY);
-        const targetX = targetTX * TILE;
-        const targetY = targetTY * TILE;
+            // Check distance from other dancers
+            const tooClose = occupiedPositions.some(p =>
+                Math.abs(p.x - targetX) < MIN_DIST && Math.abs(p.y - targetY) < MIN_DIST
+            );
+            // Check cave proximity
+            const nearCave = CAVES.some(c =>
+                Math.abs(c.tileX - tileX) <= 1 && Math.abs(c.tileY - tileY) <= 1
+            );
+            // Check HUD overlap
+            const hudBlocked = isTileBlockedByObjects(tileX, tileY);
+            valid = !tooClose && !nearCave && !hudBlocked;
+        } while (!valid && attempts < 80);
+        if (!valid) continue; // skip this dancer if no valid spot found
+        occupiedPositions.push({ x: targetX, y: targetY });
         const edge = edges[di % edges.length];
         let startX, startY;
         if (edge === 0) { startX = -TILE; startY = targetY; }
