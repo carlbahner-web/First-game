@@ -4359,16 +4359,6 @@ function renderTitleScreen() {
     // === BACKGROUND: Deep black void ===
     drawRect(0, 0, W, H, "#0a0a0a");
 
-    // Sparse twinkling stars for depth
-    for (let i = 0; i < 40; i++) {
-        const sx = ((i * 137 + 50) % W);
-        const sy = ((i * 97 + 30) % H);
-        const twinkle = Math.sin(titleBlink * 0.03 + i * 1.7) * 0.5 + 0.5;
-        ctx.globalAlpha = 0.15 + twinkle * 0.35;
-        const starSize = (i % 5 === 0) ? 2 : 1;
-        drawRect(sx, sy, starSize, starSize, i % 3 === 0 ? "#efac28" : "#efd8a1");
-    }
-    ctx.globalAlpha = 1;
 
     // === LIVE SEQUENCER GRID (center of screen) ===
     const gridRows = 4; // K, S, H, O
@@ -5088,35 +5078,6 @@ function renderLevelComplete() {
         }
     }
 
-    // Confetti (lighter, supplement to fireworks)
-    if (levelCelebrateTimer % 8 === 0 && levelCelebrateTimer < 240) {
-        const colors = ["#efac28", "#ef3a0c", "#3c9f9c", "#ef692f", "#efd8a1", "#ab5c1c"];
-        for (let i = 0; i < 3; i++) {
-            deathParticles.push({
-                x: Math.random() * W,
-                y: -5,
-                vx: (Math.random() - 0.5) * 1.5,
-                vy: Math.random() * 1.5 + 0.5,
-                life: 80 + Math.random() * 40,
-                color: colors[Math.floor(Math.random() * colors.length)],
-                size: 1 + Math.random() * 3,
-                sparkle: Math.random() > 0.5,
-            });
-        }
-    }
-
-    // Update & render confetti particles
-    for (let i = deathParticles.length - 1; i >= 0; i--) {
-        const p = deathParticles[i];
-        p.x += p.vx;
-        p.y += p.vy;
-        p.life--;
-        if (p.life <= 0) { deathParticles.splice(i, 1); continue; }
-        ctx.globalAlpha = Math.min(1, p.life / 20);
-        const sz = p.sparkle && Math.sin(levelCelebrateTimer * 0.2 + i) > 0 ? p.size * 1.5 : p.size;
-        drawRect(p.x, p.y, sz, sz, p.color);
-    }
-    ctx.globalAlpha = 1.0;
 
     // Start marching snare after fanfare finishes (~2s = 180 frames at 90fps)
     if (levelCelebrateTimer === 180) {
