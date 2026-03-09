@@ -1320,7 +1320,7 @@ function isTileBlockedByObjects(tileX, tileY) {
     const iconW = 3 * pxSz + 2;
     const skullW = 5 * pxSz + 2;
     const lvlPanelW = iconW + String(currentLevel + 1).length * digitW + 6;
-    const killPanelW = skullW + String(score).length * digitW + 6;
+    const killPanelW = skullW + 7 * digitW + 6;
     const timerSec = Math.max(0, Math.ceil(levelTimer / 90));
     const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
     const timerPanelW = iconW + timerStr.length * digitW + 6;
@@ -3105,9 +3105,9 @@ function render() {
 
         // --- Score counter ---
         const kcX = baseX + lvlPanelW + panelGap;
-        const scoreStr = String(score);
+        const scoreStr = String(score).padStart(7, "0");
         const skullW = 5 * pxSz + 2; // skull icon width + padding
-        const killPanelW = skullW + scoreStr.length * digitW + 6;
+        const killPanelW = skullW + 7 * digitW + 6;
         drawRect(kcX - 2, kcY - 2, killPanelW + 4, panelH + 4, "#1a3438");
         drawRect(kcX, kcY, killPanelW, panelH, "#243e42");
         drawRect(kcX, kcY, killPanelW, 1, "#3a6a70");
