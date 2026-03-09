@@ -976,7 +976,7 @@ let tomatoes = []; // { x, y, targetX, targetY, speed, life }
 let tomatoSplats = []; // { x, y, timer }
 
 let gamePaused = false;
-let gameState = "title"; // "title", "story", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim"
+let gameState = "title"; // "title", "intro", "story", "tutorial", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim"
 
 // --- Visual Improvement State ---
 // Block toggle animation (pop/glow when punched)
@@ -1008,6 +1008,34 @@ let patternMatched = false; // pattern correct but goblins may still be alive
 let levelCelebrateTimer = 0;
 let levelCelebrateDisplayScore = 0; // for count-up animation
 let titleBlink = 0; // blink timer for "PRESS ENTER"
+
+// ---- Animated Intro Cutscene State ----
+let introScene = 0;         // current scene index (0-7)
+let introTimer = 0;         // frame counter within current scene
+let introGlobalTimer = 0;   // total frames since intro started
+let introBeatStep = 0;      // simulated sequencer step for the intro beat
+let introBeatTimer = 0;     // frame counter for beat stepping
+let introSkipHeld = 0;      // frames Enter is held for skip
+let introDrumGain = null;   // audio gain node for intro drums
+let introDrumStarted = false;
+let introDrumTimer = null;
+// Intro beat pattern (funky groove the DJ is playing)
+const INTRO_BEAT = {
+    K: [1,0,0,0,1,0,0,1,0,0,1,0,0,0,0,0],
+    S: [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+    H: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    O: [0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0],
+};
+const INTRO_SCENE_DURATIONS = [
+    480,  // Scene 0: "STUDIOLAND" title card (8s at 60fps)
+    420,  // Scene 1: The Good Times — DJ + dancers vibing (7s)
+    360,  // Scene 2: The Groove — beat grid closeup (6s)
+    300,  // Scene 3: The Earthquake — rumble begins (5s)
+    360,  // Scene 4: Caves Open — walls crack (6s)
+    420,  // Scene 5: Goblin Attack — chaos (7s)
+    360,  // Scene 6: The Aftermath — destruction (6s)
+    300,  // Scene 7: Call to Action — DJ rises (5s)
+];
 let tutorialTimer = 0; // animation frame counter for tutorial screen
 let tutorialPage = 0;  // current tutorial page (0-1)
 let newInstrumentType = null;   // "cowbell" or "tom"
@@ -1212,12 +1240,23 @@ window.addEventListener("keydown", (e) => {
         if (gameState === "title") {
             ensureAudio();
             stopTitleDrums();
-            gameState = "story";
-            storyBlink = 0;
-            storyTypewriterPos = 0;
-            storyTypewriterTimer = 0;
+            gameState = "intro";
+            introScene = 0;
+            introTimer = 0;
+            introGlobalTimer = 0;
+            introBeatStep = 0;
+            introBeatTimer = 0;
+            sceneTransition = { active: true, from: "title", to: "intro", progress: 0, duration: 18 };
+            return;
+        }
+        if (gameState === "intro") {
+            // Skip intro — go straight to tutorial
+            stopIntroDrums();
             startStoryDrums();
-            sceneTransition = { active: true, from: "title", to: "story", progress: 0, duration: 18 };
+            gameState = "tutorial";
+            tutorialTimer = 0;
+            tutorialPage = 0;
+            sceneTransition = { active: true, from: "intro", to: "tutorial", progress: 0, duration: 20 };
             return;
         }
         if (gameState === "story") {
@@ -2443,6 +2482,7 @@ function playSadSong() {
 }
 
 function resetGame() {
+    stopIntroDrums();
     // Load starting pattern for current level (or empty if none)
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
@@ -4835,6 +4875,896 @@ function stopStoryDrums() {
     }
 }
 
+// ---- Animated Intro Cutscene ----
+function startIntroDrums() {
+    if (introDrumStarted) return;
+    introDrumStarted = true;
+    ensureAudio();
+    if (!audioCtx) return;
+    introDrumGain = audioCtx.createGain();
+    introDrumGain.gain.setValueAtTime(1, audioCtx.currentTime);
+    introDrumGain.connect(audioCtx.destination);
+    const bpm = 110;
+    const beat = 60 / bpm;
+    const sixteenth = beat / 4;
+    const loopLen = 16 * sixteenth;
+    function scheduleLoop() {
+        if (!introDrumStarted || !audioCtx || !introDrumGain) return;
+        const now = audioCtx.currentTime;
+        const dest = introDrumGain;
+        for (let i = 0; i < 16; i++) {
+            const t = now + i * sixteenth;
+            // Kick
+            if (INTRO_BEAT.K[i]) {
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc.type = "sine";
+                osc.frequency.setValueAtTime(150, t);
+                osc.frequency.exponentialRampToValueAtTime(40, t + 0.15);
+                g.gain.setValueAtTime(0.6, t);
+                g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+                osc.connect(g); g.connect(dest);
+                osc.start(t); osc.stop(t + 0.2);
+            }
+            // Snare
+            if (INTRO_BEAT.S[i]) {
+                const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.1, audioCtx.sampleRate);
+                const d = buf.getChannelData(0);
+                for (let s = 0; s < d.length; s++) d[s] = Math.random() * 2 - 1;
+                const n = audioCtx.createBufferSource(); n.buffer = buf;
+                const g = audioCtx.createGain();
+                g.gain.setValueAtTime(0.35, t);
+                g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+                const f = audioCtx.createBiquadFilter(); f.type = "highpass"; f.frequency.value = 1000;
+                n.connect(f); f.connect(g); g.connect(dest);
+                n.start(t); n.stop(t + 0.1);
+                const osc = audioCtx.createOscillator();
+                const og = audioCtx.createGain();
+                osc.type = "triangle"; osc.frequency.setValueAtTime(180, t);
+                osc.frequency.exponentialRampToValueAtTime(100, t + 0.05);
+                og.gain.setValueAtTime(0.2, t);
+                og.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+                osc.connect(og); og.connect(dest);
+                osc.start(t); osc.stop(t + 0.05);
+            }
+            // Hi-hat
+            if (INTRO_BEAT.H[i]) {
+                const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.03, audioCtx.sampleRate);
+                const d = buf.getChannelData(0);
+                for (let s = 0; s < d.length; s++) d[s] = Math.random() * 2 - 1;
+                const n = audioCtx.createBufferSource(); n.buffer = buf;
+                const g = audioCtx.createGain();
+                const vol = i % 2 === 0 ? 0.12 : 0.06;
+                g.gain.setValueAtTime(vol, t);
+                g.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
+                const f = audioCtx.createBiquadFilter(); f.type = "highpass"; f.frequency.value = 6000;
+                n.connect(f); f.connect(g); g.connect(dest);
+                n.start(t); n.stop(t + 0.03);
+            }
+            // Open hat
+            if (INTRO_BEAT.O[i]) {
+                const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.15, audioCtx.sampleRate);
+                const d = buf.getChannelData(0);
+                for (let s = 0; s < d.length; s++) d[s] = Math.random() * 2 - 1;
+                const n = audioCtx.createBufferSource(); n.buffer = buf;
+                const g = audioCtx.createGain();
+                g.gain.setValueAtTime(0.15, t);
+                g.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+                const f = audioCtx.createBiquadFilter(); f.type = "highpass"; f.frequency.value = 4000;
+                n.connect(f); f.connect(g); g.connect(dest);
+                n.start(t); n.stop(t + 0.15);
+            }
+        }
+        introDrumTimer = setTimeout(scheduleLoop, loopLen * 1000);
+    }
+    scheduleLoop();
+}
+
+function stopIntroDrums() {
+    introDrumStarted = false;
+    if (introDrumTimer !== null) { clearTimeout(introDrumTimer); introDrumTimer = null; }
+    if (introDrumGain && audioCtx) {
+        introDrumGain.gain.setValueAtTime(0, audioCtx.currentTime);
+        introDrumGain.disconnect();
+        introDrumGain = null;
+    }
+}
+
+function playEarthquakeRumble() {
+    if (!audioCtx) return;
+    // Deep rumble: low-frequency oscillator + noise
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(30, audioCtx.currentTime);
+    osc.frequency.setValueAtTime(25, audioCtx.currentTime + 1);
+    g.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    g.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 1);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 3);
+    osc.connect(g); g.connect(audioCtx.destination);
+    osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime + 3);
+    // Crumbling noise
+    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let s = 0; s < d.length; s++) d[s] = (Math.random() * 2 - 1) * Math.exp(-s / (audioCtx.sampleRate * 0.8));
+    const n = audioCtx.createBufferSource(); n.buffer = buf;
+    const ng = audioCtx.createGain();
+    ng.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    ng.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.5);
+    ng.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2.5);
+    const lp = audioCtx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 200;
+    n.connect(lp); lp.connect(ng); ng.connect(audioCtx.destination);
+    n.start(audioCtx.currentTime); n.stop(audioCtx.currentTime + 2.5);
+}
+
+function playGoblinCackle() {
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    // Quick ascending cackle notes
+    [0, 0.08, 0.16, 0.24, 0.32].forEach((offset, i) => {
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = "square";
+        osc.frequency.setValueAtTime(300 + i * 80, now + offset);
+        g.gain.setValueAtTime(0.1, now + offset);
+        g.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.07);
+        osc.connect(g); g.connect(audioCtx.destination);
+        osc.start(now + offset); osc.stop(now + offset + 0.07);
+    });
+}
+
+function renderIntro() {
+    const W = COLS * TILE;
+    const H = ROWS * TILE;
+    introTimer++;
+    introGlobalTimer++;
+
+    // Advance simulated beat
+    introBeatTimer++;
+    const INTRO_BEAT_FRAMES = 8.2; // ~110bpm
+    if (introBeatTimer >= INTRO_BEAT_FRAMES) {
+        introBeatTimer -= INTRO_BEAT_FRAMES;
+        introBeatStep = (introBeatStep + 1) % 16;
+    }
+
+    // Check scene advance
+    if (introTimer >= INTRO_SCENE_DURATIONS[introScene]) {
+        introScene++;
+        introTimer = 0;
+        if (introScene >= INTRO_SCENE_DURATIONS.length) {
+            // Intro complete — go to tutorial
+            stopIntroDrums();
+            startStoryDrums();
+            gameState = "tutorial";
+            tutorialTimer = 0;
+            tutorialPage = 0;
+            sceneTransition = { active: true, from: "intro", to: "tutorial", progress: 0, duration: 20 };
+            return;
+        }
+        // Scene-specific triggers
+        if (introScene === 3) playEarthquakeRumble();
+        if (introScene === 4) playEarthquakeRumble();
+        if (introScene === 5) {
+            playGoblinCackle();
+            // Corrupt the drum pattern
+            if (introDrumGain) introDrumGain.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + 1);
+        }
+        if (introScene === 6) stopIntroDrums();
+    }
+
+    // Helper
+    function drawCentered(text, y, color, scale) {
+        ctx.font = `${scale * SCALE}px monospace`;
+        ctx.fillStyle = color;
+        ctx.textAlign = "center";
+        ctx.fillText(text, (W * SCALE) / 2, y * SCALE);
+        ctx.textAlign = "start";
+    }
+
+    const t = introTimer;
+    const beatOn = introBeatStep % 4 === 0; // downbeat
+
+    // ==================== SCENE 0: STUDIOLAND TITLE CARD ====================
+    if (introScene === 0) {
+        drawRect(0, 0, W, H, "#0a0a0a");
+        // Stars fade in
+        const starAlpha = Math.min(1, t / 60);
+        for (let i = 0; i < 40; i++) {
+            const sx = ((i * 137 + 50) % W);
+            const sy = ((i * 97 + 30) % H);
+            const twinkle = Math.sin(t * 0.03 + i * 1.7) * 0.5 + 0.5;
+            ctx.globalAlpha = starAlpha * (0.15 + twinkle * 0.35);
+            const starSize = (i % 5 === 0) ? 2 : 1;
+            drawRect(sx, sy, starSize, starSize, i % 3 === 0 ? "#efac28" : "#efd8a1");
+        }
+        ctx.globalAlpha = 1;
+
+        // "STUDIOLAND" fades in then pulses
+        const titleAlpha = Math.min(1, t / 90);
+        ctx.globalAlpha = titleAlpha;
+        const titleY = H / 2 - 20;
+        // Shadow
+        drawCentered("STUDIOLAND", titleY + 2, "#000000", 18);
+        // Main with color cycle
+        const col1 = "#efac28";
+        drawCentered("STUDIOLAND", titleY, col1, 18);
+
+        // Subtitle fades in later
+        if (t > 120) {
+            const subAlpha = Math.min(1, (t - 120) / 60);
+            ctx.globalAlpha = subAlpha;
+            drawCentered("WHERE THE BEATS NEVER STOP", titleY + 30, "#efb775", 6);
+        }
+        ctx.globalAlpha = 1;
+
+        // Start drums partway through
+        if (t === 180) startIntroDrums();
+
+        // Fade out at end
+        if (t > INTRO_SCENE_DURATIONS[0] - 60) {
+            const fadeOut = (t - (INTRO_SCENE_DURATIONS[0] - 60)) / 60;
+            ctx.fillStyle = "#000";
+            ctx.globalAlpha = fadeOut;
+            ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // ==================== SCENE 1: THE GOOD TIMES ====================
+    else if (introScene === 1) {
+        // Full venue scene: floor, walls, DJ booth, dancers
+        drawRect(0, 0, W, H, "#2C2C2A"); // floor
+
+        // Walls
+        for (let c = 0; c < COLS; c++) {
+            const stripe = c % 2 === 0 ? "#724113" : "#927e6a";
+            drawRect(c * TILE, 0, TILE, TILE, stripe);
+            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+        }
+        for (let r = 0; r < ROWS; r++) {
+            drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+        }
+
+        // String lights (animated, happy)
+        for (let c = 1; c < COLS - 1; c++) {
+            const bulbY = TILE + 6;
+            const bulbX = c * TILE + TILE / 2;
+            const lightCol = PAL.gridOn[c % 4];
+            const chase = Math.sin(introGlobalTimer * 0.05 + c * 0.6) * 0.5 + 0.5;
+            ctx.globalAlpha = 0.5 + chase * 0.5;
+            drawRect(bulbX - 2, bulbY, 4, 4, lightCol);
+            ctx.fillStyle = lightCol;
+            ctx.globalAlpha = 0.15 + chase * 0.2;
+            ctx.fillRect((bulbX - 5) * SCALE, (bulbY - 3) * SCALE, 10 * SCALE, 10 * SCALE);
+        }
+        ctx.globalAlpha = 1;
+
+        // DJ Booth (center)
+        const boothX = W / 2 - 24;
+        const boothY = GRID_Y * TILE - 8;
+        // Booth platform
+        drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
+        drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
+        // Equipment on booth
+        drawRect(boothX, boothY + 4, 16, 8, "#392a1c"); // left turntable
+        drawRect(boothX + 32, boothY + 4, 16, 8, "#392a1c"); // right turntable
+        drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e"); // mixer
+        // Spinning platters
+        const spin = introGlobalTimer * 0.1;
+        drawRect(boothX + 4 + Math.cos(spin) * 2, boothY + 6, 8, 4, "#efd8a1");
+        drawRect(boothX + 36 + Math.cos(spin + Math.PI) * 2, boothY + 6, 8, 4, "#efd8a1");
+        // Mixer lights
+        for (let ml = 0; ml < 4; ml++) {
+            const mlOn = introBeatStep === ml * 4;
+            drawRect(boothX + 20 + ml * 2, boothY + 3, 1, 2, mlOn ? "#39FF14" : "#1f240a");
+        }
+
+        // DJ (player sprite behind booth)
+        const djFrame = Math.floor(introGlobalTimer / 10) % 4;
+        const djBob = beatOn ? 3 : 0;
+        drawPlayerSprite(W / 2 - 8, boothY - 10 - djBob, djFrame, 0, {});
+
+        // Dancers (crowd of ~8 dancers on the dance floor)
+        const danceFloorY = (GRID_Y + 5) * TILE;
+        const crowdPositions = [
+            { x: 3 * TILE, pal: 0 }, { x: 5 * TILE, pal: 1 },
+            { x: 7 * TILE, pal: 2 }, { x: 9 * TILE, pal: 3 },
+            { x: 11 * TILE, pal: 4 }, { x: 13 * TILE, pal: 5 },
+            { x: 15 * TILE, pal: 0 }, { x: 17 * TILE, pal: 1 },
+        ];
+        for (let di = 0; di < crowdPositions.length; di++) {
+            const dp = crowdPositions[di];
+            const dBob2 = Math.floor((introGlobalTimer + di * 7) / 8) % 2 === 0 ? 0 : 3;
+            const armUp = Math.floor((introGlobalTimer + di * 7) / 8) % 2 === 0;
+            const dfo = armUp ? 1.5 : -1.5;
+            drawDancerSprite(dp.x, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: dBob2, armBlend: armUp ? 1 : 0, footOffset: dfo });
+        }
+
+        // Beat grid (small, showing the beat is perfect)
+        const miniGridY = GRID_Y * TILE + 14;
+        const miniGridX = 3 * TILE;
+        const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
+        for (let r = 0; r < 4; r++) {
+            for (let c = 0; c < 16; c++) {
+                const gx = miniGridX + c * TILE;
+                const gy = miniGridY + r * TILE;
+                const on = patterns[r][c];
+                drawRect(gx, gy, TILE, TILE, "#684c3c");
+                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, on ? PAL.gridOn[r] : "#45230d");
+            }
+        }
+        // Playhead
+        const phX = miniGridX + introBeatStep * TILE;
+        ctx.fillStyle = "#efac28";
+        ctx.globalAlpha = 0.35;
+        ctx.fillRect(phX * SCALE, miniGridY * SCALE, TILE * SCALE, (4 * TILE) * SCALE);
+        ctx.globalAlpha = 1;
+
+        // Beat pulse background
+        if (beatOn) {
+            ctx.fillStyle = "#efac28";
+            ctx.globalAlpha = 0.04;
+            ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+            ctx.globalAlpha = 1;
+        }
+
+        // Caption
+        if (t > 60) {
+            const capAlpha = Math.min(1, (t - 60) / 30);
+            ctx.globalAlpha = capAlpha;
+            drawCentered("THE BEATS WERE PERFECT.", H - 18, "#efac28", 6);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // ==================== SCENE 2: THE GROOVE ====================
+    else if (introScene === 2) {
+        // Zoomed-in view of the beat grid, everything in sync
+        drawRect(0, 0, W, H, "#1f240a");
+
+        // Large beat grid (centered, bigger tiles)
+        const BT = 20; // bigger tiles
+        const lgX = W / 2 - 8 * BT;
+        const lgY = H / 2 - 2 * BT - 10;
+        const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
+        const rowLabels = ["O", "H", "S", "K"];
+        for (let r = 0; r < 4; r++) {
+            // Row label
+            drawText(rowLabels[r], lgX - 12, lgY + r * BT + BT - 4, PAL.gridOn[r], 7);
+            for (let c = 0; c < 16; c++) {
+                const gx = lgX + c * BT;
+                const gy = lgY + r * BT;
+                const on = patterns[r][c];
+                drawRect(gx, gy, BT, BT, "#684c3c");
+                drawRect(gx + 1, gy + 1, BT - 2, BT - 2, on ? PAL.gridOn[r] : "#45230d");
+                // 3D highlight
+                if (on) {
+                    ctx.fillStyle = "rgba(255,255,255,0.2)";
+                    ctx.fillRect((gx + 1) * SCALE, (gy + 1) * SCALE, (BT - 2) * SCALE, 2 * SCALE);
+                }
+                // Beat pulse on active column
+                if (c === introBeatStep && on) {
+                    ctx.fillStyle = "#ffffff";
+                    ctx.globalAlpha = 0.25;
+                    ctx.fillRect(gx * SCALE, gy * SCALE, BT * SCALE, BT * SCALE);
+                    ctx.globalAlpha = 1;
+                }
+            }
+        }
+        // Playhead
+        ctx.fillStyle = "#efac28";
+        ctx.globalAlpha = 0.35;
+        ctx.fillRect((lgX + introBeatStep * BT) * SCALE, lgY * SCALE, BT * SCALE, (4 * BT) * SCALE);
+        ctx.globalAlpha = 1;
+        // Top marker
+        drawRect(lgX + introBeatStep * BT + 2, lgY - 6, BT - 4, 4, "#efac28");
+
+        // Musical notes floating
+        for (let i = 0; i < 8; i++) {
+            const nx = ((i * 47 + introGlobalTimer * 0.3) % W);
+            const ny = 20 + Math.sin(introGlobalTimer * 0.04 + i * 1.3) * 8;
+            ctx.globalAlpha = 0.4 + Math.sin(introGlobalTimer * 0.06 + i) * 0.3;
+            const nc = PAL.gridOn[i % 4];
+            drawRect(nx, ny, 3, 2, nc);
+            drawRect(nx + 3, ny - 5, 1, 6, nc);
+            drawRect(nx + 3, ny - 5, 2, 1, nc);
+        }
+        ctx.globalAlpha = 1;
+
+        // Caption
+        if (t > 60) {
+            const capAlpha = Math.min(1, (t - 60) / 30);
+            ctx.globalAlpha = capAlpha;
+            drawCentered("EVERYONE WAS IN THE GROOVE.", H - 18, "#efac28", 6);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // ==================== SCENE 3: THE EARTHQUAKE ====================
+    else if (introScene === 3) {
+        // Same venue but shaking — lights flicker, everyone looks confused
+        const shakeAmt = Math.min(1, t / 60); // ramps up
+        const shX = (Math.random() - 0.5) * shakeAmt * 6 * SCALE;
+        const shY = (Math.random() - 0.5) * shakeAmt * 6 * SCALE;
+        ctx.save();
+        ctx.translate(shX, shY);
+
+        drawRect(0, 0, W, H, "#2C2C2A");
+        // Walls
+        for (let c = 0; c < COLS; c++) {
+            drawRect(c * TILE, 0, TILE, TILE, c % 2 === 0 ? "#724113" : "#927e6a");
+            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+        }
+        for (let r = 0; r < ROWS; r++) {
+            drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+        }
+
+        // Flickering string lights
+        for (let c = 1; c < COLS - 1; c++) {
+            const bulbX = c * TILE + TILE / 2;
+            const bulbY = TILE + 6;
+            const flicker = Math.random() > 0.3 + shakeAmt * 0.4; // more off as shake increases
+            if (flicker) {
+                drawRect(bulbX - 2, bulbY, 4, 4, PAL.gridOn[c % 4]);
+            } else {
+                drawRect(bulbX - 2, bulbY, 4, 4, "#392a1c");
+            }
+        }
+
+        // DJ booth (same as scene 1 but shaking)
+        const boothX = W / 2 - 24;
+        const boothY = GRID_Y * TILE - 8;
+        drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
+        drawRect(boothX, boothY + 4, 16, 8, "#392a1c");
+        drawRect(boothX + 32, boothY + 4, 16, 8, "#392a1c");
+        drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e");
+
+        // DJ looking around confused
+        const djLook = Math.floor(t / 15) % 4;
+        const djDir = djLook < 2 ? 2 : 3; // looking left/right
+        drawPlayerSprite(W / 2 - 8, boothY - 10, 0, djDir, {});
+
+        // Dancers stumbling (offset positions, confused)
+        const danceFloorY = (GRID_Y + 5) * TILE;
+        const crowdPositions = [
+            { x: 3 * TILE, pal: 0 }, { x: 5 * TILE, pal: 1 },
+            { x: 7 * TILE, pal: 2 }, { x: 9 * TILE, pal: 3 },
+            { x: 11 * TILE, pal: 4 }, { x: 13 * TILE, pal: 5 },
+            { x: 15 * TILE, pal: 0 }, { x: 17 * TILE, pal: 1 },
+        ];
+        for (let di = 0; di < crowdPositions.length; di++) {
+            const dp = crowdPositions[di];
+            const stumble = Math.sin(t * 0.2 + di * 2) * shakeAmt * 4;
+            drawDancerSprite(dp.x + stumble, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: 0, armBlend: 0, footOffset: stumble * 0.5 });
+        }
+
+        // Beat grid — glitching
+        const miniGridY = GRID_Y * TILE + 14;
+        const miniGridX = 3 * TILE;
+        const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
+        for (let r = 0; r < 4; r++) {
+            for (let c = 0; c < 16; c++) {
+                const gx = miniGridX + c * TILE;
+                const gy = miniGridY + r * TILE;
+                const on = patterns[r][c];
+                // Glitch: random cells flicker
+                const glitched = Math.random() < shakeAmt * 0.3;
+                drawRect(gx, gy, TILE, TILE, "#684c3c");
+                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, glitched ? (Math.random() > 0.5 ? "#ef3a0c" : "#39FF14") : (on ? PAL.gridOn[r] : "#45230d"));
+            }
+        }
+
+        ctx.restore();
+
+        // Red warning flashes
+        if (t > 120) {
+            const alertPulse = Math.sin(t * 0.15) * 0.5 + 0.5;
+            ctx.fillStyle = "#ef3a0c";
+            ctx.globalAlpha = alertPulse * 0.15 * shakeAmt;
+            ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+            ctx.globalAlpha = 1;
+        }
+
+        // Caption
+        if (t > 90) {
+            const capAlpha = Math.min(1, (t - 90) / 30);
+            ctx.globalAlpha = capAlpha;
+            drawCentered("THEN THE GROUND BEGAN TO SHAKE...", H - 18, "#ef3a0c", 6);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // ==================== SCENE 4: CAVES OPEN ====================
+    else if (introScene === 4) {
+        // Heavy shake, cracks appear in walls, cave openings crumble open
+        const shX = (Math.random() - 0.5) * 8 * SCALE;
+        const shY = (Math.random() - 0.5) * 8 * SCALE;
+        ctx.save();
+        ctx.translate(shX, shY);
+
+        drawRect(0, 0, W, H, "#2C2C2A");
+        // Walls
+        for (let c = 0; c < COLS; c++) {
+            drawRect(c * TILE, 0, TILE, TILE, c % 2 === 0 ? "#724113" : "#927e6a");
+            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+        }
+        for (let r = 0; r < ROWS; r++) {
+            drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+        }
+
+        // Cracks spreading on walls before caves open
+        const crackProgress = Math.min(1, t / 180);
+        const caveLocations = CAVES;
+        for (let ci = 0; ci < caveLocations.length; ci++) {
+            const cave = caveLocations[ci];
+            const cx = cave.tileX * TILE;
+            const cy = cave.tileY * TILE;
+            const caveReveal = Math.min(1, Math.max(0, (t - 60 - ci * 60) / 120));
+
+            // Cracks radiating outward from future cave position
+            if (crackProgress > ci * 0.2) {
+                const cp = Math.min(1, (crackProgress - ci * 0.2) / 0.6);
+                ctx.strokeStyle = "#1f240a";
+                ctx.lineWidth = 2 * SCALE;
+                ctx.globalAlpha = cp;
+                // Crack lines
+                for (let cr = 0; cr < 4; cr++) {
+                    const angle = (ci * 1.5 + cr * 1.2);
+                    const len = cp * 20;
+                    ctx.beginPath();
+                    ctx.moveTo((cx + 8) * SCALE, (cy + 8) * SCALE);
+                    ctx.lineTo((cx + 8 + Math.cos(angle) * len) * SCALE, (cy + 8 + Math.sin(angle) * len) * SCALE);
+                    ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
+            }
+
+            // Cave opens: dark hole appears with rubble falling
+            if (caveReveal > 0) {
+                // Dark cave hole expands
+                const holeSize = caveReveal * TILE;
+                drawRect(cx + (TILE - holeSize) / 2, cy + (TILE - holeSize) / 2, holeSize, holeSize + 4, "#0a0a0a");
+                // Rocky arch
+                if (caveReveal > 0.5) {
+                    drawRect(cx - 2, cy - 4, TILE + 4, 3, "#684c3c");
+                    drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");
+                }
+                // Falling rubble particles
+                if (caveReveal < 0.8) {
+                    for (let ri = 0; ri < 5; ri++) {
+                        const rx = cx + (ri * 7 + t) % TILE;
+                        const ry = cy + TILE + (t * 0.5 + ri * 11) % 20;
+                        drawRect(rx, ry, 2, 2, "#684c3c");
+                    }
+                }
+                // Glowing eyes appear in darkness
+                if (caveReveal > 0.7) {
+                    const eyeAlpha = (caveReveal - 0.7) / 0.3;
+                    ctx.globalAlpha = eyeAlpha * (0.5 + Math.sin(t * 0.1 + ci) * 0.5);
+                    drawRect(cx + 5, cy + 5, 2, 2, "#39FF14");
+                    drawRect(cx + 9, cy + 5, 2, 2, "#39FF14");
+                    ctx.globalAlpha = 1;
+                }
+            }
+        }
+
+        // DJ booth sparking
+        const boothX = W / 2 - 24;
+        const boothY = GRID_Y * TILE - 8;
+        drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
+        drawRect(boothX, boothY + 4, 16, 8, "#392a1c");
+        drawRect(boothX + 32, boothY + 4, 16, 8, "#392a1c");
+        drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e");
+        // Sparks
+        if (t % 12 < 3) {
+            const sparkX = boothX + 20 + Math.random() * 12;
+            const sparkY = boothY + Math.random() * 8;
+            drawRect(sparkX, sparkY, 2, 2, "#efac28");
+            drawRect(sparkX + 1, sparkY - 2, 1, 2, "#ffffff");
+        }
+
+        // DJ ducking
+        drawPlayerSprite(W / 2 - 8, boothY - 6, 0, 0, {}); // crouching down
+
+        ctx.restore();
+
+        // Caption
+        if (t > 120) {
+            const capAlpha = Math.min(1, (t - 120) / 30);
+            ctx.globalAlpha = capAlpha;
+            drawCentered("THE WALLS CRUMBLED OPEN!", H - 18, "#ef3a0c", 6);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // ==================== SCENE 5: GOBLIN ATTACK ====================
+    else if (introScene === 5) {
+        // Goblins pouring out of caves, running across grid, corrupting beats
+        const shAmt = Math.max(0, 1 - t / 120);
+        const shX = (Math.random() - 0.5) * shAmt * 4 * SCALE;
+        const shY = (Math.random() - 0.5) * shAmt * 4 * SCALE;
+        ctx.save();
+        ctx.translate(shX, shY);
+
+        drawRect(0, 0, W, H, "#2C2C2A");
+        // Walls with caves now open
+        for (let c = 0; c < COLS; c++) {
+            drawRect(c * TILE, 0, TILE, TILE, c % 2 === 0 ? "#724113" : "#927e6a");
+            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+        }
+        for (let r = 0; r < ROWS; r++) {
+            drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+        }
+        // Open caves
+        for (const cave of CAVES) {
+            const cx = cave.tileX * TILE, cy = cave.tileY * TILE;
+            drawRect(cx, cy - 2, TILE, TILE + 4, "#0a0a0a");
+            drawRect(cx - 2, cy - 4, TILE + 4, 3, "#684c3c");
+            drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");
+        }
+
+        // Beat grid — being corrupted
+        const miniGridY = GRID_Y * TILE + 14;
+        const miniGridX = 3 * TILE;
+        const corruptProgress = Math.min(1, t / 300);
+        const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
+        for (let r = 0; r < 4; r++) {
+            for (let c = 0; c < 16; c++) {
+                const gx = miniGridX + c * TILE;
+                const gy = miniGridY + r * TILE;
+                const on = patterns[r][c];
+                // Some cells get corrupted (randomized based on progress)
+                const cellSeed = (r * 100 + c * 37 + 7) % 16;
+                const corrupted = cellSeed < corruptProgress * 16;
+                const cellOn = corrupted ? !on : on;
+                drawRect(gx, gy, TILE, TILE, "#684c3c");
+                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, cellOn ? PAL.gridOn[r] : "#45230d");
+                // Green flash on corrupted cells
+                if (corrupted && Math.abs(cellSeed - corruptProgress * 16) < 2) {
+                    ctx.globalAlpha = 0.4;
+                    drawRect(gx, gy, TILE, TILE, "#39FF14");
+                    ctx.globalAlpha = 1;
+                }
+            }
+        }
+
+        // Goblins running across — spawn from caves, run toward grid
+        const gobFrame = Math.floor(introGlobalTimer / 8) % 4;
+        const gobCount = Math.min(6, Math.floor(t / 40));
+        for (let gi = 0; gi < gobCount; gi++) {
+            const caveIdx = gi % CAVES.length;
+            const cave = CAVES[caveIdx];
+            const startX = cave.tileX * TILE;
+            const startY = cave.tileY * TILE;
+            const targetX = miniGridX + (gi * 3) % 16 * TILE;
+            const targetY = miniGridY + (gi % 4) * TILE;
+            const gobT = Math.min(1, (t - gi * 40) / 120);
+            if (gobT > 0) {
+                const gx = startX + (targetX - startX) * gobT;
+                const gy = startY + (targetY - startY) * gobT;
+                const gDir = gx > startX ? 3 : 2;
+                drawGoblinSprite(gi === 4 ? "elite" : "normal", gx, gy, gobFrame, { dir: gDir, showShadow: false });
+            }
+        }
+
+        // DJ booth damaged — sparks flying
+        const boothX = W / 2 - 24;
+        const boothY = GRID_Y * TILE - 8;
+        drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
+        // Damaged equipment
+        drawRect(boothX, boothY + 4, 16, 8, "#2a1d0d");
+        drawRect(boothX + 32, boothY + 4, 16, 8, "#2a1d0d");
+        drawRect(boothX + 18, boothY + 2, 12, 10, "#1f240a");
+        if (t % 8 < 2) {
+            drawRect(boothX + 10 + Math.random() * 30, boothY + Math.random() * 10, 2, 3, "#efac28");
+        }
+
+        ctx.restore();
+
+        // Green tint overlay
+        ctx.fillStyle = "#39FF14";
+        ctx.globalAlpha = 0.03 + Math.sin(t * 0.1) * 0.02;
+        ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+        ctx.globalAlpha = 1;
+
+        // Caption
+        if (t > 120) {
+            const capAlpha = Math.min(1, (t - 120) / 30);
+            ctx.globalAlpha = capAlpha;
+            drawCentered("GOBLINS ATTACKED AND SABOTAGED THE BEATS!", H - 18, "#39FF14", 5);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // ==================== SCENE 6: THE AFTERMATH ====================
+    else if (introScene === 6) {
+        // Dark, destroyed venue. Dancers fleeing. Beat grid scrambled.
+        drawRect(0, 0, W, H, "#1a1a18");
+
+        // Damaged walls
+        for (let c = 0; c < COLS; c++) {
+            const damaged = Math.random() > 0.7;
+            drawRect(c * TILE, 0, TILE, TILE, damaged ? "#45230d" : (c % 2 === 0 ? "#724113" : "#927e6a"));
+            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+        }
+        for (let r = 0; r < ROWS; r++) {
+            drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+        }
+
+        // Caves (open and menacing)
+        for (const cave of CAVES) {
+            const cx = cave.tileX * TILE, cy = cave.tileY * TILE;
+            drawRect(cx, cy - 2, TILE, TILE + 4, "#0a0a0a");
+            drawRect(cx - 2, cy - 4, TILE + 4, 3, "#684c3c");
+            drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");
+        }
+
+        // Dead string lights (all off)
+        for (let c = 1; c < COLS - 1; c++) {
+            drawRect(c * TILE + TILE / 2 - 2, TILE + 6, 4, 4, "#2a1d0d");
+        }
+
+        // Scrambled beat grid
+        const miniGridY = GRID_Y * TILE + 14;
+        const miniGridX = 3 * TILE;
+        for (let r = 0; r < 4; r++) {
+            for (let c = 0; c < 16; c++) {
+                const gx = miniGridX + c * TILE;
+                const gy = miniGridY + r * TILE;
+                const randomOn = ((r * 7 + c * 13 + 5) % 3) === 0;
+                drawRect(gx, gy, TILE, TILE, "#684c3c");
+                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, randomOn ? PAL.gridOn[r] : "#45230d");
+            }
+        }
+
+        // Destroyed DJ booth
+        const boothX = W / 2 - 24;
+        const boothY = GRID_Y * TILE - 8;
+        drawRect(boothX - 8, boothY + 12, 64, 8, "#2a1d0d");
+        drawRect(boothX + 5, boothY + 6, 10, 6, "#1f240a"); // broken turntable
+        drawRect(boothX + 35, boothY + 8, 8, 4, "#1f240a");
+        // Smoke wisps
+        for (let si = 0; si < 3; si++) {
+            const smokeX = boothX + 15 + si * 12;
+            const smokeY = boothY - (t * 0.3 + si * 20) % 30;
+            ctx.globalAlpha = 0.15 - (t * 0.3 + si * 20) % 30 / 200;
+            if (ctx.globalAlpha > 0) drawRect(smokeX, smokeY, 3, 3, "#888888");
+        }
+        ctx.globalAlpha = 1;
+
+        // Dancers running away (moving off screen)
+        const fleeProgress = Math.min(1, t / 240);
+        const crowdPositions = [
+            { x: 3 * TILE, pal: 0, dir: -1 }, { x: 5 * TILE, pal: 1, dir: -1 },
+            { x: 7 * TILE, pal: 2, dir: -1 }, { x: 9 * TILE, pal: 3, dir: 1 },
+            { x: 11 * TILE, pal: 4, dir: 1 }, { x: 13 * TILE, pal: 5, dir: 1 },
+            { x: 15 * TILE, pal: 0, dir: 1 }, { x: 17 * TILE, pal: 1, dir: 1 },
+        ];
+        const danceFloorY = (GRID_Y + 5) * TILE;
+        for (let di = 0; di < crowdPositions.length; di++) {
+            const dp = crowdPositions[di];
+            const fleeX = dp.x + dp.dir * fleeProgress * W * 0.8;
+            if (Math.abs(fleeX - W / 2) < W) {
+                const runFrame = Math.floor(introGlobalTimer / 5) % 4;
+                drawDancerSprite(fleeX, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: runFrame % 2 * 2, armBlend: 0.5, footOffset: runFrame % 2 * 2 - 1 });
+            }
+        }
+
+        // Goblins celebrating on the grid
+        const gobFrame = Math.floor(introGlobalTimer / 10) % 4;
+        drawGoblinSprite("normal", miniGridX + 4 * TILE, miniGridY, gobFrame, { dir: 3, showShadow: false });
+        drawGoblinSprite("normal", miniGridX + 10 * TILE, miniGridY + TILE, gobFrame, { dir: 2, showShadow: false });
+        drawGoblinSprite("elite", miniGridX + 7 * TILE, miniGridY + 2 * TILE, (gobFrame + 2) % 4, { dir: 0, showShadow: false });
+
+        // DJ collapsed by the booth
+        drawPlayerSprite(W / 2 + 15, boothY + 4, 0, 0, {});
+
+        // Dark vignette
+        const W_v = W * SCALE;
+        const H_v = H * SCALE;
+        const vGrad = ctx.createRadialGradient(W_v / 2, H_v / 2, W_v * 0.2, W_v / 2, H_v / 2, W_v * 0.6);
+        vGrad.addColorStop(0, "rgba(0,0,0,0)");
+        vGrad.addColorStop(1, "rgba(0,0,0,0.6)");
+        ctx.fillStyle = vGrad;
+        ctx.fillRect(0, 0, W_v, H_v);
+
+        // Caption
+        if (t > 90) {
+            const capAlpha = Math.min(1, (t - 90) / 30);
+            ctx.globalAlpha = capAlpha;
+            drawCentered("THE MUSIC DIED. THE CROWD FLED.", H - 18, "#efd8a1", 6);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // ==================== SCENE 7: CALL TO ACTION ====================
+    else if (introScene === 7) {
+        // DJ picks themselves up, clenches fists
+        drawRect(0, 0, W, H, "#0a0a0a");
+
+        // Spotlight on DJ
+        const spotW = W * SCALE;
+        const spotH = H * SCALE;
+        const spotGrad = ctx.createRadialGradient(spotW / 2, spotH * 0.55, 10, spotW / 2, spotH * 0.55, spotW * 0.3);
+        spotGrad.addColorStop(0, "#2a1d0d");
+        spotGrad.addColorStop(1, "#0a0a0a");
+        ctx.fillStyle = spotGrad;
+        ctx.fillRect(0, 0, spotW, spotH);
+
+        // DJ stands up animation
+        const riseProgress = Math.min(1, t / 90);
+        const djY = H / 2 + 10 - riseProgress * 20;
+        const djX = W / 2 - 8;
+        const riseFrame = riseProgress < 0.5 ? 0 : Math.floor((t - 45) / 8) % 4;
+        drawPlayerSprite(djX, djY, riseFrame, 0, {});
+
+        // Fist clench punch animation after standing
+        if (t > 120) {
+            const punchT = Math.min(1, (t - 120) / 30);
+            // Draw raised fists
+            const fistY = (djY - 4) * SCALE;
+            const fistSize = (3 + punchT * 2) * SCALE;
+            ctx.fillStyle = "#efb775";
+            // Left fist
+            ctx.beginPath();
+            ctx.arc((djX + 2) * SCALE, fistY, fistSize, 0, Math.PI * 2);
+            ctx.fill();
+            // Right fist
+            ctx.beginPath();
+            ctx.arc((djX + 14) * SCALE, fistY, fistSize, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Determination sparkles
+            if (punchT > 0.5) {
+                for (let si = 0; si < 6; si++) {
+                    const angle = (si / 6) * Math.PI * 2 + t * 0.05;
+                    const dist = 15 + Math.sin(t * 0.1 + si) * 5;
+                    const sx = (djX + 8 + Math.cos(angle) * dist) * SCALE;
+                    const sy = (djY - 4 + Math.sin(angle) * dist) * SCALE;
+                    ctx.fillStyle = si % 2 === 0 ? "#efac28" : "#efd8a1";
+                    ctx.globalAlpha = 0.6 + Math.sin(t * 0.2 + si) * 0.4;
+                    ctx.fillRect(sx - SCALE, sy - SCALE, 2 * SCALE, 2 * SCALE);
+                }
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        // Text builds up
+        if (t > 60) {
+            const txtAlpha = Math.min(1, (t - 60) / 30);
+            ctx.globalAlpha = txtAlpha;
+            drawCentered("BUT THE DJ HAD FISTS OF FURY.", 30, "#efac28", 7);
+        }
+        if (t > 150) {
+            const txtAlpha2 = Math.min(1, (t - 150) / 30);
+            ctx.globalAlpha = txtAlpha2;
+            drawCentered("IT'S TIME TO GET PUNCHIN'!", H - 30, "#ef3a0c", 8);
+        }
+        ctx.globalAlpha = 1;
+
+        // Fade out at very end
+        if (t > INTRO_SCENE_DURATIONS[7] - 30) {
+            const fo = (t - (INTRO_SCENE_DURATIONS[7] - 30)) / 30;
+            ctx.fillStyle = "#000";
+            ctx.globalAlpha = fo;
+            ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // Skip prompt (bottom right, subtle)
+    if (introGlobalTimer > 60) {
+        ctx.globalAlpha = 0.4;
+        drawText("PRESS ENTER TO SKIP", W - 95, H - 6, "#efd8a1", 3);
+        ctx.globalAlpha = 1;
+    }
+}
+
 function renderStoryScreen() {
     const W = COLS * TILE;
     const H = ROWS * TILE;
@@ -6425,6 +7355,8 @@ function gameLoop(timestamp) {
             }
             if (gameState === "title") {
                 renderTitleScreen();
+            } else if (gameState === "intro") {
+                renderIntro();
             } else if (gameState === "story") {
                 renderStoryScreen();
             } else if (gameState === "tutorial") {
