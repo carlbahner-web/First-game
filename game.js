@@ -2888,14 +2888,11 @@ function render() {
     // Clear
     drawRect(0, 0, COLS * TILE, ROWS * TILE, PAL.bg);
 
-    // Wooden plank floor
+    // Solid floor
+    drawRect(0, 0, COLS * TILE, ROWS * TILE, "#52422a");
+    // Subtle noise/grain texture
     for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
-            const col = (r + c) % 2 === 0 ? "#5a4a2a" : "#504228";
-            drawRect(c * TILE, r * TILE, TILE, TILE, col);
-            // Plank line
-            drawRect(c * TILE, r * TILE + TILE - 1, TILE, 1, "rgba(0,0,0,0.15)");
-            // Subtle noise/grain texture
             let seed = r * 1000 + c * 37;
             for (let i = 0; i < 10; i++) {
                 seed = (seed * 9301 + 49297) % 233280;
