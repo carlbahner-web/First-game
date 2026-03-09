@@ -4809,7 +4809,7 @@ function renderLevelComplete() {
             ctx.textAlign = "center";
             ctx.font = `${5 * SCALE}px monospace`;
             ctx.fillStyle = "#efd8a1";
-            ctx.fillText(pressText, (W * SCALE) / 2, (H / 2 + 30) * SCALE);
+            ctx.fillText(pressText, (W * SCALE) / 2, (H / 2 + 60) * SCALE);
             ctx.textAlign = "start";
         }
     }
