@@ -987,9 +987,6 @@ const rowTrigger = new Array(GRID_ROWS).fill(0); // countdown frames per row
 let sceneTransition = { active: false, from: null, to: null, progress: 0, duration: 20 };
 // Title text entrance animation
 let titleEntrancePhase = 0; // frames since title screen entered
-// Story typewriter state
-let storyTypewriterPos = 0; // character index across all lines
-let storyTypewriterTimer = 0;
 // Firework system for level complete
 let fireworks = []; // { x, y, vx, vy, life, maxLife, color, exploded, particles: [] }
 // Screen crack effect for game over
@@ -1257,13 +1254,6 @@ window.addEventListener("keydown", (e) => {
             tutorialTimer = 0;
             tutorialPage = 0;
             sceneTransition = { active: true, from: "intro", to: "tutorial", progress: 0, duration: 20 };
-            return;
-        }
-        if (gameState === "story") {
-            gameState = "tutorial";
-            tutorialTimer = 0;
-            tutorialPage = 0;
-            sceneTransition = { active: true, from: "story", to: "tutorial", progress: 0, duration: 18 };
             return;
         }
         if (gameState === "tutorial") {
@@ -2533,8 +2523,6 @@ function resetGame() {
     screenShake = 0;
     hitFreeze = 0;
     titleEntrancePhase = 0;
-    storyTypewriterPos = 0;
-    storyTypewriterTimer = 0;
     fireworks = [];
     screenCracks = [];
     screenCrackTimer = 0;
@@ -4773,8 +4761,7 @@ function renderTitleScreen() {
     ctx.globalAlpha = 1;
 }
 
-// ---- Story Screen (page 2: backstory + instructions + characters) ----
-let storyBlink = 0;
+// ---- Marching Snare Cadence (plays during tutorial, level complete, etc.) ----
 let storyDrumTimer = null;
 let storyDrumStarted = false;
 let storyDrumGain = null; // master gain node to mute on stop
@@ -5765,154 +5752,6 @@ function renderIntro() {
     }
 }
 
-function renderStoryScreen() {
-    const W = COLS * TILE;
-    const H = ROWS * TILE;
-
-    // Dark background
-    drawRect(0, 0, W, H, "#1f240a");
-
-    // Starfield
-    for (let i = 0; i < 60; i++) {
-        const sx = ((i * 137 + 50) % W);
-        const sy = ((i * 97 + 30) % H);
-        const twinkle = Math.sin(storyBlink * 0.05 + i) * 0.5 + 0.5;
-        ctx.globalAlpha = 0.3 + twinkle * 0.7;
-        const starSize = (i % 3 === 0) ? 2 : 1;
-        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#efac28" : "#efd8a1");
-    }
-    ctx.globalAlpha = 1;
-
-    // Helper to center text using canvas textAlign
-    function drawCenteredText(text, y, color, scale) {
-        ctx.font = `${scale * SCALE}px monospace`;
-        ctx.fillStyle = color;
-        ctx.textAlign = "center";
-        ctx.fillText(text, (W * SCALE) / 2, y * SCALE);
-        ctx.textAlign = "start";
-    }
-
-    // Story text
-    const storyLines = [
-        { text: "ONCE UPON A TIME,", color: "#efac28", scale: 7, gap: 18 },
-        { text: "SICK BEATS ECHOED THROUGH STUDIOLAND.", color: "#efb775", scale: 5, gap: 22 },
-        { text: "UNTIL THE GOBLINS BECAME JEALOUS", color: "#39FF14", scale: 5, gap: 16 },
-        { text: "AND STARTED TO SABOTAGE THE MUSIC.", color: "#ef3a0c", scale: 5, gap: 24 },
-        { text: "YOU ARE THE DJ, AND YOU HAVE FISTS OF FURY.", color: "#efac28", scale: 5, gap: 24 },
-        { text: "IT'S TIME TO GET PUNCHIN'!", color: "#ef3a0c", scale: 7, gap: 0 },
-    ];
-
-    // Calculate total height to vertically center story block
-    let totalTextH = 0;
-    for (let i = 0; i < storyLines.length; i++) {
-        totalTextH += storyLines[i].scale + (i < storyLines.length - 1 ? storyLines[i].gap : 0);
-    }
-    const charY = H - 36;
-    const availableH = charY - 30;
-    let textY = Math.max(10, 15 + (availableH - totalTextH) / 2);
-
-    // Typewriter text reveal — advance character position over time
-    storyTypewriterTimer++;
-    if (storyTypewriterTimer % 2 === 0) storyTypewriterPos++; // 2 frames per character
-    let totalChars = 0;
-    for (let i = 0; i < storyLines.length; i++) {
-        totalChars += storyLines[i].text.length;
-    }
-    storyTypewriterPos = Math.min(storyTypewriterPos, totalChars);
-
-    let charsSoFar = 0;
-    for (let i = 0; i < storyLines.length; i++) {
-        const line = storyLines[i];
-        const lineLen = line.text.length;
-        const charsAvail = Math.max(0, Math.min(lineLen, storyTypewriterPos - charsSoFar));
-        charsSoFar += lineLen;
-        if (charsAvail > 0) {
-            const visibleText = line.text.substring(0, charsAvail);
-            // Fade in: full alpha once revealed, slight fade on current character
-            const lineAlpha = charsAvail >= lineLen ? 1.0 : 0.9;
-            // Colored text emphasis glow — subtle glow behind key colored lines
-            if (charsAvail >= lineLen && (line.color === "#39FF14" || line.color === "#ef3a0c")) {
-                ctx.font = `${line.scale * SCALE}px monospace`;
-                const glowW = ctx.measureText(line.text).width;
-                const glowX = (W * SCALE) / 2 - glowW / 2;
-                ctx.fillStyle = line.color;
-                ctx.globalAlpha = 0.08 + Math.sin(storyBlink * 0.06) * 0.04;
-                ctx.fillRect(glowX - 4 * SCALE, (textY - line.scale) * SCALE, glowW + 8 * SCALE, (line.scale + 4) * SCALE);
-                ctx.globalAlpha = 1.0;
-            }
-            ctx.globalAlpha = lineAlpha;
-            drawCenteredText(visibleText, textY, line.color, line.scale);
-            ctx.globalAlpha = 1.0;
-            // Cursor blink on active line
-            if (charsAvail < lineLen && storyBlink % 20 < 14) {
-                // Draw a small blinking cursor at the end of the visible text
-                ctx.font = `${line.scale * SCALE}px monospace`;
-                const measured = ctx.measureText(visibleText).width;
-                const cursorX = (W * SCALE) / 2 - ctx.measureText(line.text).width / 2 + measured;
-                drawRect(cursorX / SCALE, textY - line.scale * 0.6, 2, line.scale * 0.8, line.color);
-            }
-        }
-        textY += line.scale + line.gap;
-    }
-
-    // Characters at the bottom — evenly spaced across center area
-    const charMargin = W * 0.15; // 15% margin on each side
-    const charArea = W - charMargin * 2;
-    const charSlots = 5;
-    const slotW = charArea / (charSlots - 1); // space between characters
-    const gobFrame = Math.floor(storyBlink / 10) % 4;
-    const gobBob = gobFrame % 2 === 1 ? 1 : 0;
-
-    // Dramatic spotlight glow beneath each character
-    const spotlightColors = ["#FF00FF", "#39FF14", "#efac28", "#ef3a0c", "#3c9f9c"];
-    for (let s = 0; s < charSlots; s++) {
-        const spotX = (charMargin + slotW * s - 2) * SCALE;
-        const spotY = (charY + 12) * SCALE;
-        const spotW = 20 * SCALE;
-        const spotH = 8 * SCALE;
-        const grad = ctx.createRadialGradient(spotX + spotW / 2, spotY, 2, spotX + spotW / 2, spotY, spotW * 0.6);
-        grad.addColorStop(0, spotlightColors[s]);
-        grad.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.fillStyle = grad;
-        ctx.globalAlpha = 0.15 + Math.sin(storyBlink * 0.04 + s) * 0.05;
-        ctx.fillRect(spotX - spotW * 0.3, spotY - spotH, spotW * 1.6, spotH * 2);
-    }
-    ctx.globalAlpha = 1;
-
-    // Elite goblin (slot 0 — left)
-    const eliteX = charMargin + slotW * 0 - 8 + Math.sin(storyBlink * 0.025 + 1) * 3;
-    const eliteFrame = (gobFrame + 1) % 4;
-    drawGoblinSprite("elite", eliteX, charY, eliteFrame, { showShadow: false });
-
-    // Goblin (slot 1)
-    const gobX = charMargin + slotW * 1 - 8 + Math.sin(storyBlink * 0.03) * 3;
-    drawGoblinSprite("normal", gobX, charY, gobFrame, { showShadow: false });
-
-    // Player (center, slot 2)
-    const playerX = charMargin + slotW * 2 - 8;
-    const playerFrame = Math.floor(storyBlink / 12) % 4;
-    drawPlayerSprite(playerX, charY, playerFrame, 0, {});
-
-    // Dancers (slots 4 and 5)
-    const dancerPals = [
-        { body: "#ef3a0c", dark: "#9b1a0a", head: "#efb775", hair: "#724113" },
-        { body: "#3c9f9c", dark: "#276468", head: "#efb775", hair: "#2a1d0d" },
-    ];
-    for (let d = 0; d < 2; d++) {
-        const dx = charMargin + slotW * (3 + d) - 6;
-        const dBob = Math.floor((storyBlink + d * 5) / 8) % 2 === 0 ? 0 : 2;
-        const armUp = Math.floor((storyBlink + d * 5) / 8) % 2 === 0;
-        const dfo = (Math.floor((storyBlink + d * 5) / 8) % 2 === 0) ? 1 : -1;
-        drawDancerSprite(dx, charY, dancerPals[d], { bob: dBob, armBlend: armUp ? 1 : 0, footOffset: dfo });
-    }
-
-    // Blinking "PRESS ENTER TO BEGIN"
-    storyBlink++;
-    if (storyBlink % 60 < 40) {
-        drawCenteredText("PRESS ENTER TO BEGIN", H - 10, "#efd8a1", 5);
-    }
-
-}
 
 function renderHighScoreEntry() {
     const W = COLS * TILE;
@@ -7357,8 +7196,6 @@ function gameLoop(timestamp) {
                 renderTitleScreen();
             } else if (gameState === "intro") {
                 renderIntro();
-            } else if (gameState === "story") {
-                renderStoryScreen();
             } else if (gameState === "tutorial") {
                 renderTutorialScreen();
             } else if (gameState === "enemywarning-intro") {
