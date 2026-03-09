@@ -527,10 +527,10 @@ const PAL = {
     wallTop:   "#384f54",
     floor:     "#2a4245",
     floorAlt:  "#263e42",
-    gridOff:   "#1e3438",
+    gridOff:   "#2a4a50",
     gridOn:    ["#EBEBE3", "#F6CC60", "#BF7538", "#3A6168", "#E86A6A", "#6AB8E8"], // per-row colors (O,H,S,K,B,T)
-    gridX:     ["#14141C", "#0933A0", "#4088C7", "#954717", "#17959F", "#954717"], // per-row X indicator colors (complementary)
-    gridBorder:"#2e4448",
+    gridX:     ["#FF6688", "#FF6688", "#FFEE88", "#FFAA66", "#FFEE88", "#FF6688"], // bright X indicators visible on colored blocks
+    gridBorder:"#3a5a60",
     playhead:  "#F6CC60",
     player:    "#EBEBE3",
     playerDark:"#BFCDC0",
@@ -3042,12 +3042,12 @@ function render() {
         const bulbY = TILE + 6;
         const bulbX = c * TILE + TILE / 2;
         // Bulb
-        const bulbColors = ["#8a7a40", "#6a4a28", "#7a8a7a", "#8a8a82"];
+        const bulbColors = ["#E8D44D", "#E8734D", "#4DE8A0", "#4DA0E8"];
         const bulbCol = bulbColors[c % bulbColors.length];
         drawRect(bulbX - 2, bulbY, 4, 4, bulbCol);
         // Glow
         ctx.fillStyle = bulbCol;
-        ctx.globalAlpha = 0.10;
+        ctx.globalAlpha = 0.15;
         ctx.fillRect((bulbX - 4) * SCALE, (bulbY - 2) * SCALE, 8 * SCALE, 8 * SCALE);
         ctx.globalAlpha = 1.0;
     }
@@ -3056,8 +3056,8 @@ function render() {
     for (let c = 1; c < COLS - 1; c++) {
         const lx = c * TILE + TILE / 2;
         const ly = (ROWS - 1) * TILE + 2;
-        const bulbColors = ["#8a7a40", "#6a4a28", "#7a8a7a", "#8a8a82"];
-        drawRect(lx - 1, ly, 3, 3, bulbColors[(c + 2) % bulbColors.length]);
+        const bulbColors2 = ["#E8D44D", "#E8734D", "#4DE8A0", "#4DA0E8"];
+        drawRect(lx - 1, ly, 3, 3, bulbColors2[(c + 2) % bulbColors2.length]);
     }
 
     // Row labels (O, H, S, K, B, T) in the column just left of the first beat block
@@ -3082,7 +3082,7 @@ function render() {
 
             // Beat markers (every 4th column)
             if (!on && c % 4 === 0) {
-                drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, "#2f4f53");
+                drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, "#3a6068");
             }
 
             // 3D highlight for on-blocks
@@ -3111,7 +3111,7 @@ function render() {
                 const target = LEVELS[currentLevel].pattern[r][c];
                 if (target && !on) {
                     // Needs to be ON — draw pulsing outline
-                    const pulse = 0.3 + Math.sin(performance.now() * 0.003) * 0.15;
+                    const pulse = 0.5 + Math.sin(performance.now() * 0.003) * 0.25;
                     ctx.globalAlpha = pulse;
                     const rowCol = PAL.gridOn[r];
                     drawRect(bx + 1, by + 1, TILE - 2, 1, rowCol);
@@ -3124,7 +3124,7 @@ function render() {
                 } else if (!target && on) {
                     // Needs to be OFF — draw X indicator in complementary color
                     const xCol = PAL.gridX[r];
-                    ctx.globalAlpha = 0.6 + Math.sin(performance.now() * 0.004) * 0.15;
+                    ctx.globalAlpha = 0.8 + Math.sin(performance.now() * 0.004) * 0.2;
                     drawRect(bx + 3, by + 3, 2, 2, xCol);
                     drawRect(bx + 5, by + 5, 2, 2, xCol);
                     drawRect(bx + 7, by + 7, 2, 2, xCol);
