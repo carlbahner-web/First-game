@@ -4285,14 +4285,13 @@ function startTitleDrums() {
     titleDrumGain.gain.setValueAtTime(1, audioCtx.currentTime);
     titleDrumGain.connect(audioCtx.destination);
 
-    const bpm = 120;
+    const bpm = 110;
     const sixteenth = 60 / bpm / 4;
 
-    //         1 . . . 2 . . . 3 . . . 4 . . .
-    const K = [1,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0];
-    const S = [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0];
-    const H = [0,1,1,1,0,1,1,0,1,1,0,1,0,1,1,1];
-    // O is all rests
+    const K = INTRO_BEAT.K;
+    const S = INTRO_BEAT.S;
+    const H = INTRO_BEAT.H;
+    const O = INTRO_BEAT.O;
 
     const loopLen = 16 * sixteenth;
 
@@ -4373,6 +4372,27 @@ function startTitleDrums() {
                 noise.start(t);
                 noise.stop(t + 0.06);
             }
+
+            if (O[i]) {
+                // Open hi-hat
+                const bufSz2 = audioCtx.sampleRate * 0.15;
+                const buf2 = audioCtx.createBuffer(1, bufSz2, audioCtx.sampleRate);
+                const data2 = buf2.getChannelData(0);
+                for (let s = 0; s < bufSz2; s++) data2[s] = Math.random() * 2 - 1;
+                const noise2 = audioCtx.createBufferSource();
+                noise2.buffer = buf2;
+                const gain2 = audioCtx.createGain();
+                gain2.gain.setValueAtTime(0.15, t);
+                gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+                const filt2 = audioCtx.createBiquadFilter();
+                filt2.type = "highpass";
+                filt2.frequency.value = 4000;
+                noise2.connect(filt2);
+                filt2.connect(gain2);
+                gain2.connect(dest);
+                noise2.start(t);
+                noise2.stop(t + 0.15);
+            }
         }
 
         titleDrumTimer = setTimeout(scheduleLoop, loopLen * 1000);
@@ -4398,15 +4418,9 @@ function stopTitleDrums() {
 let titleStep = 0;        // simulated sequencer step (0-15)
 let titleStepTimer = 0;   // frame counter for step advance
 titleEntrancePhase = 0;   // reset entrance animation
-const TITLE_STEP_FRAMES = 7.5; // frames per sixteenth note at 120bpm @ 60fps
+const TITLE_STEP_FRAMES = 8.2; // frames per sixteenth note at 110bpm @ 60fps
 
 // Title screen drum pattern (matches audio)
-const TITLE_PATTERN = {
-    K: [1,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0],
-    S: [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
-    H: [0,1,1,1,0,1,1,0,1,1,0,1,0,1,1,1],
-    O: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-};
 
 function renderTitleScreen() {
     const W = COLS * TILE;
@@ -4475,7 +4489,7 @@ function renderTitleScreen() {
     // Beat grid (small, showing the beat)
     const miniGridY = GRID_Y * TILE + 14;
     const miniGridX = 3 * TILE;
-    const patterns = [TITLE_PATTERN.O, TITLE_PATTERN.H, TITLE_PATTERN.S, TITLE_PATTERN.K];
+    const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
     for (let r = 0; r < 4; r++) {
         for (let c = 0; c < 16; c++) {
             const gx = miniGridX + c * TILE;
