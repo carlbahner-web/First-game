@@ -4492,20 +4492,48 @@ function renderTitleScreen() {
     ctx.fillRect(phX * SCALE, miniGridY * SCALE, TILE * SCALE, (4 * TILE) * SCALE);
     ctx.globalAlpha = 1;
 
-    // Dancers (crowd on the dance floor)
+    // Dancers (crowd on the dance floor — gameplay-quality animation)
     const danceFloorY = (GRID_Y + 5) * TILE;
     const crowdPositions = [
-        { x: 3 * TILE, pal: 0 }, { x: 5 * TILE, pal: 1 },
-        { x: 7 * TILE, pal: 2 }, { x: 9 * TILE, pal: 3 },
-        { x: 11 * TILE, pal: 4 }, { x: 13 * TILE, pal: 5 },
-        { x: 15 * TILE, pal: 0 }, { x: 17 * TILE, pal: 1 },
+        // Back row
+        { x: 2 * TILE, yOfs: 0, pal: 0, phase: 0 },
+        { x: 4 * TILE, yOfs: 4, pal: 1, phase: 3 },
+        { x: 6 * TILE, yOfs: 2, pal: 2, phase: 7 },
+        { x: 8 * TILE, yOfs: 0, pal: 3, phase: 11 },
+        { x: 10 * TILE, yOfs: 3, pal: 4, phase: 5 },
+        { x: 12 * TILE, yOfs: 1, pal: 5, phase: 9 },
+        { x: 14 * TILE, yOfs: 4, pal: 0, phase: 2 },
+        { x: 16 * TILE, yOfs: 0, pal: 3, phase: 13 },
+        { x: 18 * TILE, yOfs: 2, pal: 1, phase: 6 },
+        // Front row
+        { x: 3 * TILE, yOfs: 14, pal: 2, phase: 4 },
+        { x: 5 * TILE, yOfs: 16, pal: 5, phase: 8 },
+        { x: 7 * TILE, yOfs: 14, pal: 4, phase: 12 },
+        { x: 11 * TILE, yOfs: 15, pal: 1, phase: 1 },
+        { x: 13 * TILE, yOfs: 14, pal: 0, phase: 10 },
+        { x: 15 * TILE, yOfs: 16, pal: 3, phase: 14 },
+        { x: 17 * TILE, yOfs: 14, pal: 5, phase: 6 },
     ];
     for (let di = 0; di < crowdPositions.length; di++) {
         const dp = crowdPositions[di];
-        const dBob2 = Math.floor((titleBlink + di * 7) / 8) % 2 === 0 ? 0 : 3;
-        const armUp = Math.floor((titleBlink + di * 7) / 8) % 2 === 0;
-        const dfo = armUp ? 1.5 : -1.5;
-        drawDancerSprite(dp.x, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: dBob2, armBlend: armUp ? 1 : 0, footOffset: dfo });
+        const step = (titleStep + dp.phase) % 16;
+        const stepProgress = (titleBlink % 8) / 8;
+        const easedProgress = Math.sin(stepProgress * Math.PI / 2);
+        const smoothStep = step + stepProgress;
+
+        const onBeat = (step % 4 === 0);
+        const onEighth = (step % 2 === 0);
+        const targetBob = onBeat ? 3 : onEighth ? 1 : 0;
+        const nextStep = (step + 1) % 16;
+        const nextOnBeat = (nextStep % 4 === 0);
+        const nextOnEighth = (nextStep % 2 === 0);
+        const nextBob = nextOnBeat ? 3 : nextOnEighth ? 1 : 0;
+        const bob = targetBob + (nextBob - targetBob) * easedProgress;
+
+        const armBlend = (onBeat ? 1.0 : 0.0) + ((nextOnBeat ? 1.0 : 0.0) - (onBeat ? 1.0 : 0.0)) * easedProgress;
+        const footOffset = Math.sin(smoothStep * Math.PI) * 1.5;
+
+        drawDancerSprite(dp.x, danceFloorY + dp.yOfs, DANCER_PALETTES[dp.pal], { bob, armBlend, footOffset });
     }
 
     // Beat pulse background
@@ -5019,20 +5047,49 @@ function renderIntro() {
         ctx.fillRect(phX * SCALE, miniGridY * SCALE, TILE * SCALE, (4 * TILE) * SCALE);
         ctx.globalAlpha = 1;
 
-        // Dancers (crowd of ~8 dancers on the dance floor)
+        // Dancers (crowd on the dance floor — gameplay-quality animation)
         const danceFloorY = (GRID_Y + 5) * TILE;
         const crowdPositions = [
-            { x: 3 * TILE, pal: 0 }, { x: 5 * TILE, pal: 1 },
-            { x: 7 * TILE, pal: 2 }, { x: 9 * TILE, pal: 3 },
-            { x: 11 * TILE, pal: 4 }, { x: 13 * TILE, pal: 5 },
-            { x: 15 * TILE, pal: 0 }, { x: 17 * TILE, pal: 1 },
+            // Back row (higher up, slightly smaller feel from stagger)
+            { x: 2 * TILE, yOfs: 0, pal: 0, phase: 0 },
+            { x: 4 * TILE, yOfs: 4, pal: 1, phase: 3 },
+            { x: 6 * TILE, yOfs: 2, pal: 2, phase: 7 },
+            { x: 8 * TILE, yOfs: 0, pal: 3, phase: 11 },
+            { x: 10 * TILE, yOfs: 3, pal: 4, phase: 5 },
+            { x: 12 * TILE, yOfs: 1, pal: 5, phase: 9 },
+            { x: 14 * TILE, yOfs: 4, pal: 0, phase: 2 },
+            { x: 16 * TILE, yOfs: 0, pal: 3, phase: 13 },
+            { x: 18 * TILE, yOfs: 2, pal: 1, phase: 6 },
+            // Front row
+            { x: 3 * TILE, yOfs: 14, pal: 2, phase: 4 },
+            { x: 5 * TILE, yOfs: 16, pal: 5, phase: 8 },
+            { x: 7 * TILE, yOfs: 14, pal: 4, phase: 12 },
+            { x: 11 * TILE, yOfs: 15, pal: 1, phase: 1 },
+            { x: 13 * TILE, yOfs: 14, pal: 0, phase: 10 },
+            { x: 15 * TILE, yOfs: 16, pal: 3, phase: 14 },
+            { x: 17 * TILE, yOfs: 14, pal: 5, phase: 6 },
         ];
         for (let di = 0; di < crowdPositions.length; di++) {
             const dp = crowdPositions[di];
-            const dBob2 = Math.floor((introGlobalTimer + di * 7) / 8) % 2 === 0 ? 0 : 3;
-            const armUp = Math.floor((introGlobalTimer + di * 7) / 8) % 2 === 0;
-            const dfo = armUp ? 1.5 : -1.5;
-            drawDancerSprite(dp.x, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: dBob2, armBlend: armUp ? 1 : 0, footOffset: dfo });
+            // Gameplay-style smooth animation using beat phase
+            const step = (introBeatStep + dp.phase) % 16;
+            const stepProgress = (introGlobalTimer % 8) / 8;
+            const easedProgress = Math.sin(stepProgress * Math.PI / 2);
+            const smoothStep = step + stepProgress;
+
+            const onBeat = (step % 4 === 0);
+            const onEighth = (step % 2 === 0);
+            const targetBob = onBeat ? 3 : onEighth ? 1 : 0;
+            const nextStep = (step + 1) % 16;
+            const nextOnBeat = (nextStep % 4 === 0);
+            const nextOnEighth = (nextStep % 2 === 0);
+            const nextBob = nextOnBeat ? 3 : nextOnEighth ? 1 : 0;
+            const bob = targetBob + (nextBob - targetBob) * easedProgress;
+
+            const armBlend = (onBeat ? 1.0 : 0.0) + ((nextOnBeat ? 1.0 : 0.0) - (onBeat ? 1.0 : 0.0)) * easedProgress;
+            const footOffset = Math.sin(smoothStep * Math.PI) * 1.5;
+
+            drawDancerSprite(dp.x, danceFloorY + dp.yOfs, DANCER_PALETTES[dp.pal], { bob, armBlend, footOffset });
         }
 
         // Beat pulse background
@@ -5161,25 +5218,52 @@ function renderIntro() {
         // Dancers — stumble during phase 1, then flee once caves emerge
         const danceFloorY = (GRID_Y + 5) * TILE;
         const crowdPositions = [
-            { x: 3 * TILE, pal: 0, dx: -1, dy: 0 },    // flee left
-            { x: 5 * TILE, pal: 1, dx: -0.6, dy: 1 },   // flee down-left
-            { x: 7 * TILE, pal: 2, dx: -1, dy: -0.5 },  // flee up-left
-            { x: 9 * TILE, pal: 3, dx: 0.3, dy: 1 },    // flee mostly down
-            { x: 11 * TILE, pal: 4, dx: 0.5, dy: 1 },   // flee down-right
-            { x: 13 * TILE, pal: 5, dx: 1, dy: 0 },     // flee right
-            { x: 15 * TILE, pal: 0, dx: 1, dy: -0.4 },  // flee up-right
-            { x: 17 * TILE, pal: 1, dx: -0.4, dy: -1 }, // flee up-left
+            // Back row
+            { x: 2 * TILE, yOfs: 0, pal: 0, phase: 0, dx: -1, dy: 0 },
+            { x: 4 * TILE, yOfs: 4, pal: 1, phase: 3, dx: -0.7, dy: -0.7 },
+            { x: 6 * TILE, yOfs: 2, pal: 2, phase: 7, dx: -1, dy: 0.4 },
+            { x: 8 * TILE, yOfs: 0, pal: 3, phase: 11, dx: 0.2, dy: -1 },
+            { x: 10 * TILE, yOfs: 3, pal: 4, phase: 5, dx: -0.3, dy: 1 },
+            { x: 12 * TILE, yOfs: 1, pal: 5, phase: 9, dx: 0.8, dy: -0.6 },
+            { x: 14 * TILE, yOfs: 4, pal: 0, phase: 2, dx: 0.5, dy: 1 },
+            { x: 16 * TILE, yOfs: 0, pal: 3, phase: 13, dx: 1, dy: 0 },
+            { x: 18 * TILE, yOfs: 2, pal: 1, phase: 6, dx: 1, dy: -0.5 },
+            // Front row
+            { x: 3 * TILE, yOfs: 14, pal: 2, phase: 4, dx: -1, dy: 0.3 },
+            { x: 5 * TILE, yOfs: 16, pal: 5, phase: 8, dx: -0.6, dy: 1 },
+            { x: 7 * TILE, yOfs: 14, pal: 4, phase: 12, dx: 0.3, dy: 1 },
+            { x: 11 * TILE, yOfs: 15, pal: 1, phase: 1, dx: -0.4, dy: -0.8 },
+            { x: 13 * TILE, yOfs: 14, pal: 0, phase: 10, dx: 1, dy: 0.5 },
+            { x: 15 * TILE, yOfs: 16, pal: 3, phase: 14, dx: 0.7, dy: 1 },
+            { x: 17 * TILE, yOfs: 14, pal: 5, phase: 6, dx: 1, dy: -0.3 },
         ];
-        const fleeStart = 210; // each dancer starts fleeing at fleeStart + stagger
+        const fleeStart = 210;
         for (let di = 0; di < crowdPositions.length; di++) {
             const dp = crowdPositions[di];
-            const dancerFleeStart = fleeStart + di * 15;
+            const dancerFleeStart = fleeStart + di * 8;
             const fleeProgress = t >= dancerFleeStart ? Math.min(1, (t - dancerFleeStart) / 180) : 0;
-            const baseY = danceFloorY + (di % 2) * 12;
+            const baseY = danceFloorY + dp.yOfs;
             if (fleeProgress <= 0) {
-                // Still stumbling in place
+                // Stumbling in place with gameplay-quality animation
+                const step = (introBeatStep + dp.phase) % 16;
+                const stepProgress = (introGlobalTimer % 8) / 8;
+                const easedProgress = Math.sin(stepProgress * Math.PI / 2);
+                const smoothStep = step + stepProgress;
+
+                const onBeat = (step % 4 === 0);
+                const onEighth = (step % 2 === 0);
+                const targetBob = onBeat ? 3 : onEighth ? 1 : 0;
+                const nextStep = (step + 1) % 16;
+                const nextOnBeat = (nextStep % 4 === 0);
+                const nextOnEighth = (nextStep % 2 === 0);
+                const nextBob = nextOnBeat ? 3 : nextOnEighth ? 1 : 0;
+                const bob = targetBob + (nextBob - targetBob) * easedProgress;
+
                 const stumble = Math.sin(t * 0.2 + di * 2) * shakeAmt * 4;
-                drawDancerSprite(dp.x + stumble, baseY, DANCER_PALETTES[dp.pal], { bob: 0, armBlend: 0, footOffset: stumble * 0.5 });
+                const armBlend = (onBeat ? 1.0 : 0.0) + ((nextOnBeat ? 1.0 : 0.0) - (onBeat ? 1.0 : 0.0)) * easedProgress;
+                const footOffset = Math.sin(smoothStep * Math.PI) * 1.5 + stumble * 0.3;
+
+                drawDancerSprite(dp.x + stumble, baseY, DANCER_PALETTES[dp.pal], { bob, armBlend, footOffset });
             } else {
                 // Fleeing off-screen in varied directions
                 const fleeX = dp.x + dp.dx * fleeProgress * W * 0.8;
@@ -5187,7 +5271,6 @@ function renderIntro() {
                 const onScreen = Math.abs(fleeX - W / 2) < W && fleeY > -30 && fleeY < H + 30;
                 if (onScreen) {
                     const runFrame = Math.floor(introGlobalTimer / 5) % 4;
-                    // Shrink dancers fleeing into the distance (upward)
                     const scale = dp.dy < 0 ? Math.max(0.4, 1 - fleeProgress * 0.6) : 1;
                     drawDancerSprite(fleeX, fleeY, DANCER_PALETTES[dp.pal], { bob: runFrame % 2 * 2, armBlend: 0.5, footOffset: runFrame % 2 * 2 - 1, scale: scale });
                 }
