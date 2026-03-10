@@ -5247,9 +5247,9 @@ function renderIntro() {
         if (t > 60) {
             const capAlpha = Math.min(1, (t - 60) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("EVERY FRIDAY NIGHT, THE UNDERGROUND CAME ALIVE.", H - 30, "#efac28", 5);
-            drawCentered("THE DJ SPUN BEATS THAT MADE THE WALLS SHAKE", H - 20, "#efac28", 5);
-            drawCentered("AND THE FLOOR PULSE.", H - 10, "#efac28", 5);
+            drawCentered("EVERY FRIDAY NIGHT, THE UNDERGROUND CAME ALIVE.", H - 60, "#efac28", 5);
+            drawCentered("THE DJ SPUN BEATS THAT MADE THE WALLS SHAKE", H - 50, "#efac28", 5);
+            drawCentered("AND THE FLOOR PULSE.", H - 40, "#efac28", 5);
             ctx.globalAlpha = 1;
         }
     }
@@ -5587,15 +5587,15 @@ function renderIntro() {
         if (t > 60 && t < 300) {
             const capAlpha = Math.min(1, (t - 60) / 30) * Math.max(0, 1 - (t - 240) / 60);
             ctx.globalAlpha = Math.max(0, capAlpha);
-            drawCentered("BUT DEEP BENEATH THE DANCE FLOOR,", H - 24, "#ef3a0c", 5);
-            drawCentered("SOMETHING HAD BEEN LISTENING.", H - 14, "#ef3a0c", 5);
+            drawCentered("BUT DEEP BENEATH THE DANCE FLOOR,", H - 54, "#ef3a0c", 5);
+            drawCentered("SOMETHING HAD BEEN LISTENING.", H - 44, "#ef3a0c", 5);
             ctx.globalAlpha = 1;
         }
         if (t > 300) {
             const capAlpha = Math.min(1, (t - 300) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("THE EARTH SPLIT OPEN.", H - 24, "#ef3a0c", 5);
-            drawCentered("CRACKS TORE THROUGH THE WALLS LIKE JAGGED TEETH.", H - 14, "#ef3a0c", 5);
+            drawCentered("THE EARTH SPLIT OPEN.", H - 54, "#ef3a0c", 5);
+            drawCentered("CRACKS TORE THROUGH THE WALLS LIKE JAGGED TEETH.", H - 44, "#ef3a0c", 5);
             ctx.globalAlpha = 1;
         }
     }
@@ -5698,9 +5698,9 @@ function renderIntro() {
         if (t > 120) {
             const capAlpha = Math.min(1, (t - 120) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("THEY CAME POURING OUT. SMALL, VICIOUS, AND FAST.", H - 30, "#39FF14", 5);
-            drawCentered("THEY SWARMED THE BEAT GRID AND TORE IT APART,", H - 20, "#39FF14", 5);
-            drawCentered("NOTE BY NOTE. THE MUSIC TWISTED INTO NOISE.", H - 10, "#39FF14", 5);
+            drawCentered("THEY CAME POURING OUT. SMALL, VICIOUS, AND FAST.", H - 60, "#39FF14", 5);
+            drawCentered("THEY SWARMED THE BEAT GRID AND TORE IT APART,", H - 50, "#39FF14", 5);
+            drawCentered("NOTE BY NOTE. THE MUSIC TWISTED INTO NOISE.", H - 40, "#39FF14", 5);
             ctx.globalAlpha = 1;
         }
     }
@@ -5784,9 +5784,9 @@ function renderIntro() {
         if (t > 90) {
             const capAlpha = Math.min(1, (t - 90) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("THE CROWD SCATTERED. THE LIGHTS WENT DARK.", H - 30, "#efd8a1", 5);
-            drawCentered("AND FOR THE FIRST TIME ANYONE COULD REMEMBER,", H - 20, "#efd8a1", 5);
-            drawCentered("THE UNDERGROUND WAS SILENT.", H - 10, "#efd8a1", 5);
+            drawCentered("THE CROWD SCATTERED. THE LIGHTS WENT DARK.", H - 60, "#efd8a1", 5);
+            drawCentered("AND FOR THE FIRST TIME ANYONE COULD REMEMBER,", H - 50, "#efd8a1", 5);
+            drawCentered("THE UNDERGROUND WAS SILENT.", H - 40, "#efd8a1", 5);
             ctx.globalAlpha = 1;
         }
     }
