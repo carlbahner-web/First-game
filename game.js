@@ -5245,14 +5245,14 @@ function renderIntro() {
 
                 drawDancerSprite(dp.x + stumble, baseY, DANCER_PALETTES[dp.pal], { bob, armBlend, footOffset });
             } else {
-                // Fleeing off-screen in varied directions
-                const fleeX = dp.x + dp.dx * fleeProgress * W * 0.8;
-                const fleeY = baseY + dp.dy * fleeProgress * H * 0.6;
-                const onScreen = Math.abs(fleeX - W / 2) < W && fleeY > -30 && fleeY < H + 30;
+                // Fleeing off-screen in varied directions (normalize so all exit viewport)
+                const fleeSpeed = W * 1.2 / Math.max(Math.abs(dp.dx), Math.abs(dp.dy));
+                const fleeX = dp.x + dp.dx * fleeProgress * fleeSpeed;
+                const fleeY = baseY + dp.dy * fleeProgress * fleeSpeed;
+                const onScreen = fleeX > -TILE * 2 && fleeX < W + TILE * 2 && fleeY > -TILE * 2 && fleeY < H + TILE * 2;
                 if (onScreen) {
                     const runFrame = Math.floor(introGlobalTimer / 5) % 4;
-                    const scale = dp.dy < 0 ? Math.max(0.4, 1 - fleeProgress * 0.6) : 1;
-                    drawDancerSprite(fleeX, fleeY, DANCER_PALETTES[dp.pal], { bob: runFrame % 2 * 2, armBlend: 0.5, footOffset: runFrame % 2 * 2 - 1, scale: scale });
+                    drawDancerSprite(fleeX, fleeY, DANCER_PALETTES[dp.pal], { bob: runFrame % 2 * 2, armBlend: 0.5, footOffset: runFrame % 2 * 2 - 1 });
                 }
             }
         }
