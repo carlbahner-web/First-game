@@ -6490,7 +6490,7 @@ function renderHighScoreEntry() {
         drawText("HIGH SCORES", scoreX, scoreStartY - 12, "#efac28", 3);
         for (let i = 0; i < highScores.length; i++) {
             const entry = highScores[i];
-            const rank = (i + 1) + "." + entry.name + " " + String(entry.score).padStart(7, "0");
+            const rank = (i + 1) + "." + entry.name + " " + String(entry.score).padStart(5, "0");
             const color = i === 0 ? "#efac28" : "#efb775";
             drawText(rank, scoreX, scoreStartY + i * 9, color, 3);
         }
