@@ -1557,32 +1557,14 @@ function update(dt) {
         }
         const col = targetTileX - GRID_X;
         const row = tileYToRow(targetTileY);
-        if (row >= 0 && row < getActiveRows() && col >= 0 && col < GRID_COLS) {
-            grid[row][col] = !grid[row][col];
-            blockToggleAnim[row][col] = 12; // trigger pop animation
-            p.punchHit = true;
-            // play a toggle blip
-            if (audioCtx) {
-                const now = audioCtx.currentTime;
-                const osc = audioCtx.createOscillator();
-                const g = audioCtx.createGain();
-                osc.type = "square";
-                osc.frequency.value = grid[row][col] ? 880 : 440;
-                g.gain.setValueAtTime(0.1, now);
-                g.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
-                osc.connect(g); g.connect(audioCtx.destination);
-                osc.start(now); osc.stop(now + 0.06);
-            }
-            // Check if level pattern is now complete
-            tryCompleteLevelOrWait();
-        }
 
-
-        // Check goblin hit using punch hitbox vs goblin bounding box
+        // Check goblin hit first — if we hit a goblin, skip block toggle
         const punchBox = getPunchBox();
+        let hitAnyGoblin = false;
         for (const hitGob of goblins) {
             const gobBox = { x: hitGob.x, y: hitGob.y, w: hitGob.w, h: hitGob.h };
             if (!hitGob.dead && aabb(punchBox, gobBox)) {
+                hitAnyGoblin = true;
                 p.punchHit = true;
                 hitGob.hp--;
 
@@ -1796,6 +1778,27 @@ function update(dt) {
                 d.walkingIn = true;
                 break;
             }
+        }
+
+        // Toggle block only if no goblin was hit
+        if (!hitAnyGoblin && row >= 0 && row < getActiveRows() && col >= 0 && col < GRID_COLS) {
+            grid[row][col] = !grid[row][col];
+            blockToggleAnim[row][col] = 12; // trigger pop animation
+            p.punchHit = true;
+            // play a toggle blip
+            if (audioCtx) {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc.type = "square";
+                osc.frequency.value = grid[row][col] ? 880 : 440;
+                g.gain.setValueAtTime(0.1, now);
+                g.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+                osc.connect(g); g.connect(audioCtx.destination);
+                osc.start(now); osc.stop(now + 0.06);
+            }
+            // Check if level pattern is now complete
+            tryCompleteLevelOrWait();
         }
     }
     spaceJustPressed = false;
