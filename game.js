@@ -6449,13 +6449,49 @@ function renderIntro() {
         }
     }
 
-    // Skip/advance prompt
+    // Skip/advance prompt — small corner hint for cinematic scenes
     if (introScene <= 4 && introGlobalTimer > 60) {
-        // Cinematic scenes: subtle skip hint
         const pulse = Math.sin(introGlobalTimer * 0.08) * 0.4 + 0.6;
         ctx.globalAlpha = pulse;
         drawText("ENTER: NEXT", W - 55, H - 6, "#efd8a1", 3);
         ctx.globalAlpha = 1;
+    }
+
+    // HUD "PRESS ENTER" prompt — appears 60 frames after each scene's last story beat
+    const lastBeatFrame = [60, 300, 120, 90, 150, 120, 150, 185][introScene] || 60;
+    const hudPromptDelay = lastBeatFrame + 60;
+    if (t > hudPromptDelay) {
+        const promptText = introScene >= 7 ? "PRESS ENTER TO BEGIN" : "PRESS ENTER";
+        // Draw HUD background (matches gameplay HUD style)
+        drawHudRect(0, 0, COLS * TILE, HUD_H, "#2a1d0d");
+        // Teal border along top
+        for (let c = 0; c < COLS; c++) {
+            drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+        }
+        hudCtx.fillStyle = "rgba(255,255,255,0.08)";
+        hudCtx.fillRect(0, 0, COLS * TILE * SCALE, 1 * SCALE);
+        // Subtle grain texture
+        for (let c = 0; c < COLS; c++) {
+            let seed = c * 37 + 7;
+            for (let i = 0; i < 4; i++) {
+                seed = (seed * 9301 + 49297) % 233280;
+                const gx = c * TILE + (seed % TILE);
+                seed = (seed * 9301 + 49297) % 233280;
+                const gy = 3 + (seed % (HUD_H - 4));
+                const bright = (seed % 2) === 0;
+                hudCtx.fillStyle = bright ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.08)";
+                hudCtx.fillRect(gx * SCALE, gy * SCALE, SCALE, SCALE);
+            }
+        }
+        // Centered prompt text with gentle pulse
+        const promptPulse = Math.sin(t * 0.06) * 0.3 + 0.7;
+        hudCtx.globalAlpha = promptPulse;
+        hudCtx.font = `${5 * SCALE}px monospace`;
+        hudCtx.fillStyle = "#efd8a1";
+        hudCtx.textAlign = "center";
+        hudCtx.fillText(promptText, (COLS * TILE * SCALE) / 2, (HUD_H / 2 + 2) * SCALE);
+        hudCtx.textAlign = "start";
+        hudCtx.globalAlpha = 1;
     }
 }
 
