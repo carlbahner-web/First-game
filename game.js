@@ -5784,9 +5784,9 @@ function renderIntro() {
         if (t > 90) {
             const capAlpha = Math.min(1, (t - 90) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("THE CROWD SCATTERED. THE LIGHTS WENT DARK.", H - 24, "#efd8a1", 5);
-            drawCentered("AND FOR THE FIRST TIME ANYONE COULD REMEMBER,", H - 14, "#efd8a1", 5);
-            drawCentered("THE UNDERGROUND WAS SILENT.", H - 4, "#efd8a1", 5);
+            drawCentered("THE CROWD SCATTERED. THE LIGHTS WENT DARK.", H - 30, "#efd8a1", 5);
+            drawCentered("AND FOR THE FIRST TIME ANYONE COULD REMEMBER,", H - 20, "#efd8a1", 5);
+            drawCentered("THE UNDERGROUND WAS SILENT.", H - 10, "#efd8a1", 5);
             ctx.globalAlpha = 1;
         }
     }
@@ -5847,9 +5847,9 @@ function renderIntro() {
         if (t > 60) {
             const txtAlpha = Math.min(1, (t - 60) / 30);
             ctx.globalAlpha = txtAlpha;
-            drawCentered("BUT THE DJ DIDN'T RUN.", 24, "#efac28", 6);
-            drawCentered("ALONE IN THE WRECKAGE, SOMETHING STIRRED.", 34, "#efac28", 5);
-            drawCentered("A RHYTHM, DEEP IN THE CHEST, THAT REFUSED TO DIE.", 44, "#efac28", 5);
+            drawCentered("BUT THE DJ DIDN'T RUN.", 20, "#efac28", 5);
+            drawCentered("ALONE IN THE WRECKAGE, SOMETHING STIRRED.", 30, "#efac28", 5);
+            drawCentered("A RHYTHM, DEEP IN THE CHEST, THAT REFUSED TO DIE.", 40, "#efac28", 5);
         }
         if (t > 150) {
             const txtAlpha2 = Math.min(1, (t - 150) / 30);
@@ -5878,13 +5878,13 @@ function renderIntro() {
         if (t < 120) {
             const capAlpha = Math.min(1, Math.max(0, (t - 30) / 30));
             ctx.globalAlpha = capAlpha;
-            drawCentered("A SINGLE PUNCH. A SINGLE NOTE.", 16, "#efd8a1", 5);
-            drawCentered("THE SOUND RANG OUT THROUGH THE RUINS LIKE A BELL.", 26, "#efd8a1", 5);
+            drawCentered("A SINGLE PUNCH. A SINGLE NOTE.", 12, "#efd8a1", 5);
+            drawCentered("THE SOUND RANG OUT THROUGH THE RUINS LIKE A BELL.", 22, "#efd8a1", 5);
             ctx.globalAlpha = 1;
         } else {
             const capAlpha = Math.min(1, (t - 120) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("THE BEAT WASN'T DEAD. IT WAS WAITING.", 20, "#efac28", 6);
+            drawCentered("THE BEAT WASN'T DEAD. IT WAS WAITING.", 16, "#efac28", 6);
             ctx.globalAlpha = 1;
         }
 
