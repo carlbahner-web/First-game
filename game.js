@@ -5878,13 +5878,13 @@ function renderIntro() {
         if (t < 120) {
             const capAlpha = Math.min(1, Math.max(0, (t - 30) / 30));
             ctx.globalAlpha = capAlpha;
-            drawCentered("A SINGLE PUNCH. A SINGLE NOTE.", 12, "#efd8a1", 5);
-            drawCentered("THE SOUND RANG OUT THROUGH THE RUINS LIKE A BELL.", 22, "#efd8a1", 5);
+            drawCentered("A SINGLE PUNCH. A SINGLE NOTE.", 24, "#efd8a1", 5);
+            drawCentered("THE SOUND RANG OUT THROUGH THE RUINS LIKE A BELL.", 34, "#efd8a1", 5);
             ctx.globalAlpha = 1;
         } else {
             const capAlpha = Math.min(1, (t - 120) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("THE BEAT WASN'T DEAD. IT WAS WAITING.", 16, "#efac28", 6);
+            drawCentered("THE BEAT WASN'T DEAD. IT WAS WAITING.", 28, "#efac28", 6);
             ctx.globalAlpha = 1;
         }
 
@@ -6140,20 +6140,20 @@ function renderIntro() {
         if (t < 150) {
             const capAlpha = Math.min(1, Math.max(0, (t - 30) / 30));
             ctx.globalAlpha = capAlpha;
-            drawCentered("EACH BEAT HAD A PATTERN. A SHAPE THAT NEEDED", 10, "#efd8a1", 5);
-            drawCentered("TO BE MADE WHOLE. OUTLINES MARKED WHAT WAS MISSING.", 20, "#efd8a1", 5);
+            drawCentered("EACH BEAT HAD A PATTERN. A SHAPE THAT NEEDED", 24, "#efd8a1", 5);
+            drawCentered("TO BE MADE WHOLE. OUTLINES MARKED WHAT WAS MISSING.", 34, "#efd8a1", 5);
             ctx.globalAlpha = 1;
         } else {
             const capAlpha2 = Math.min(1, (t - 150) / 30);
             ctx.globalAlpha = capAlpha2;
-            drawCentered("AND IN THE SHADOWS, SMALL EYES WATCHED.", 10, "#ef3a0c", 5);
-            drawCentered("THEY WOULD BE BACK.", 20, "#ef3a0c", 5);
+            drawCentered("AND IN THE SHADOWS, SMALL EYES WATCHED.", 24, "#ef3a0c", 5);
+            drawCentered("THEY WOULD BE BACK.", 34, "#ef3a0c", 5);
             ctx.globalAlpha = 1;
         }
 
         // --- TOP LEFT: Pulsing outlines (beats to ADD) ---
         const gx = W / 2 - 4 * TILE;
-        const gy = 36;
+        const gy = 46;
         const patCols = 4;
         const addColor = "#efac28";
         const addTarget = [true, false, true, false];
@@ -6294,7 +6294,7 @@ function renderIntro() {
         if (t > CAPTION1_START) {
             const fadeIn = Math.min(1, (t - CAPTION1_START) / 20);
             ctx.globalAlpha = fadeIn;
-            drawCentered("ONE OF THEM CREPT BACK. BOLD. STUPID.", 20, "#efd8a1", 6);
+            drawCentered("ONE OF THEM CREPT BACK. BOLD. STUPID.", 28, "#efd8a1", 6);
             ctx.globalAlpha = 1;
         }
 
@@ -6371,8 +6371,8 @@ function renderIntro() {
         if (t > CAPTION2_START) {
             const fadeIn = Math.min(1, (t - CAPTION2_START) / 20);
             ctx.globalAlpha = fadeIn;
-            drawCentered("IT TURNS OUT FISTS THAT COULD FIX A BEAT", 34, "#efac28", 5);
-            drawCentered("COULD BREAK A GOBLIN JUST AS EASILY.", 44, "#efac28", 5);
+            drawCentered("IT TURNS OUT FISTS THAT COULD FIX A BEAT", 42, "#efac28", 5);
+            drawCentered("COULD BREAK A GOBLIN JUST AS EASILY.", 52, "#efac28", 5);
             ctx.globalAlpha = 1;
         }
     }
