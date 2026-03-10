@@ -2976,8 +2976,8 @@ function renderHUD() {
 
     // --- Level counter ---
     const iconW = 3 * pxSz + 2;
-    const lvlStr = String(currentLevel + 1);
-    const lvlPanelW = iconW + lvlStr.length * digitW + 6;
+    const lvlStr = String(currentLevel + 1).padStart(2, "0");
+    const lvlPanelW = iconW + 2 * digitW + 6;
     drawHudRect(baseX - 2, kcY - 2, lvlPanelW + 4, panelH + 4, "#2a1d0d");
     drawHudRect(baseX, kcY, lvlPanelW, panelH, "#392a1c");
     drawHudRect(baseX, kcY, lvlPanelW, 1, "#684c3c");
