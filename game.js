@@ -976,7 +976,7 @@ let tomatoes = []; // { x, y, targetX, targetY, speed, life }
 let tomatoSplats = []; // { x, y, timer }
 
 let gamePaused = false;
-let gameState = "title"; // "title", "intro", "story", "tutorial", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim"
+let gameState = "title"; // "title", "intro", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim"
 
 // --- Visual Improvement State ---
 // Block toggle animation (pop/glow when punched)
@@ -1010,7 +1010,7 @@ let levelCelebrateDisplayScore = 0; // for count-up animation
 let titleBlink = 0; // blink timer for "PRESS ENTER"
 
 // ---- Animated Intro Cutscene State ----
-let introScene = 0;         // current scene index (0-4)
+let introScene = 0;         // current scene index (0-7)
 let introTimer = 0;         // frame counter within current scene
 let introGlobalTimer = 0;   // total frames since intro started
 let introBeatStep = 0;      // simulated sequencer step for the intro beat
@@ -1034,14 +1034,15 @@ const INTRO_BEAT = {
     O: [0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0],
 };
 const INTRO_SCENE_DURATIONS = [
-    420,  // Scene 0: The Good Times — DJ + dancers vibing (7s)
-    540,  // Scene 1: Earthquake + Caves — lights die, walls crack open (9s)
-    420,  // Scene 2: Goblin Attack — chaos (7s)
-    360,  // Scene 3: The Aftermath — destruction (6s)
-    300,  // Scene 4: Call to Action — DJ rises (5s)
+    420,  // Scene 0: The Good Times (7s)
+    540,  // Scene 1: Earthquake + Caves (9s)
+    420,  // Scene 2: Goblin Attack (7s)
+    360,  // Scene 3: The Aftermath (6s)
+    300,  // Scene 4: Call to Action (5s)
+    Infinity, // Scene 5: The Discovery (wait for Enter)
+    Infinity, // Scene 6: The Threat (wait for Enter)
+    Infinity, // Scene 7: The Stand (wait for Enter)
 ];
-let tutorialTimer = 0; // animation frame counter for tutorial screen
-let tutorialPage = 0;  // current tutorial page (0-1)
 let newInstrumentType = null;   // "cowbell" or "tom"
 let newInstrumentTimer = 0;     // animation timer for new instrument popup
 let newInstrumentIntroTimer = 0; // transition timer before instrument popup
@@ -1252,18 +1253,6 @@ window.addEventListener("keydown", (e) => {
         if (gameState === "intro") {
             // Advance to next scene (or finish intro if on last scene)
             advanceIntroScene();
-            return;
-        }
-        if (gameState === "tutorial") {
-            tutorialPage++;
-            tutorialTimer = 0;
-            if (tutorialPage > 2) {
-                stopStoryDrums();
-                gameState = "playing";
-                currentStep = 0;
-                lastStepTime = performance.now();
-                sceneTransition = { active: true, from: "tutorial", to: "playing", progress: 0, duration: 20 };
-            }
             return;
         }
         if (gameState === "levelcomplete" && levelCelebrateTimer > 120) {
@@ -5041,13 +5030,12 @@ function advanceIntroScene() {
     introScene++;
     introTimer = 0;
     if (introScene >= INTRO_SCENE_DURATIONS.length) {
-        // Intro complete — go to tutorial
-        stopIntroDrums();
-        startStoryDrums();
-        gameState = "tutorial";
-        tutorialTimer = 0;
-        tutorialPage = 0;
-        sceneTransition = { active: true, from: "intro", to: "tutorial", progress: 0, duration: 20 };
+        // All scenes complete — start gameplay
+        stopStoryDrums();
+        gameState = "playing";
+        currentStep = 0;
+        lastStepTime = performance.now();
+        sceneTransition = { active: true, from: "intro", to: "playing", progress: 0, duration: 20 };
         return;
     }
     // Scene-specific triggers
@@ -5101,6 +5089,11 @@ function advanceIntroScene() {
         introCorruptedSoFar = 0;
     }
     if (introScene === 3) stopIntroDrums();
+    if (introScene === 5) {
+        // Transition from cinematic to tutorial scenes — switch audio
+        stopIntroDrums();
+        startStoryDrums();
+    }
 }
 
 function renderIntro() {
@@ -5869,12 +5862,535 @@ function renderIntro() {
         // Scene loops in place — no fade out
     }
 
-    // Skip prompt (bottom right, pulsating glow)
-    if (introGlobalTimer > 60) {
-        const pulse = Math.sin(introGlobalTimer * 0.08) * 0.4 + 0.6; // oscillates 0.2 — 1.0
+    // ==================== SCENE 5: THE DISCOVERY ====================
+    else if (introScene === 5) {
+        drawRuinedVenueBackdrop(t);
+
+        // Page indicator dots (scenes 5-7)
+        const dotY = H - 22;
+        for (let i = 0; i < 3; i++) {
+            const dx = W / 2 - 10 + i * 8;
+            const active = i === (introScene - 5);
+            drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
+        }
+
+        // Story captions
+        if (t < 120) {
+            const capAlpha = Math.min(1, Math.max(0, (t - 30) / 30));
+            ctx.globalAlpha = capAlpha;
+            drawCentered("A SINGLE PUNCH. A SINGLE NOTE.", 16, "#efd8a1", 5);
+            drawCentered("THE SOUND RANG OUT THROUGH THE RUINS LIKE A BELL.", 26, "#efd8a1", 5);
+            ctx.globalAlpha = 1;
+        } else {
+            const capAlpha = Math.min(1, (t - 120) / 30);
+            ctx.globalAlpha = capAlpha;
+            drawCentered("THE BEAT WASN'T DEAD. IT WAS WAITING.", 20, "#efac28", 6);
+            ctx.globalAlpha = 1;
+        }
+
+        // Animated demo grid — player walks to blocks and hits them (scaled up)
+        const DT = Math.floor(TILE * 1.4);
+        const gridStartX = W / 2 - 4 * DT / 2;
+        const gridStartY = 50;
+        const miniRows = 2;
+        const rowColors = ["#efac28", "#efb775"];
+        const demoTarget = [[true, false, true, false], [false, true, false, true]];
+        const toggleOrder = [[0,0], [0,2], [1,1], [1,3]];
+        const WALK_FRAMES = 35, ATTACK_AT = 38, ATTACK_DUR_5 = 15, HIT_OFFSET = 45;
+        const ATTACK_STEP_LEN = 80, WALK_STEP_LEN = 40;
+        const demoSteps = [
+            { x: gridStartX - DT, y: gridStartY, attack: true, toggleIdx: 0, dur: ATTACK_STEP_LEN },
+            { x: gridStartX + DT, y: gridStartY, attack: true, toggleIdx: 1, dur: ATTACK_STEP_LEN },
+            { x: gridStartX + DT, y: gridStartY + DT, attack: false, toggleIdx: -1, dur: WALK_STEP_LEN },
+            { x: gridStartX, y: gridStartY + DT, attack: true, toggleIdx: 2, dur: ATTACK_STEP_LEN },
+            { x: gridStartX + 2 * DT, y: gridStartY + DT, attack: true, toggleIdx: 3, dur: ATTACK_STEP_LEN },
+        ];
+        const stepStart = [0];
+        for (let i = 1; i < demoSteps.length; i++) stepStart.push(stepStart[i - 1] + demoSteps[i - 1].dur);
+        const STEPS_TOTAL = stepStart[demoSteps.length - 1] + demoSteps[demoSteps.length - 1].dur;
+        const CYCLE = STEPS_TOTAL + 60;
+        const hitFrames = [];
+        for (let i = 0; i < demoSteps.length; i++) {
+            if (demoSteps[i].attack) hitFrames.push({ toggleIdx: demoSteps[i].toggleIdx, frame: stepStart[i] + HIT_OFFSET });
+        }
+
+        {
+            const demoAlpha = 1;
+            const demoT = t;
+            const cycleT = demoT % CYCLE;
+            const blockOn = [false, false, false, false];
+            for (const hf of hitFrames) {
+                if (cycleT >= hf.frame && cycleT < CYCLE - 30) blockOn[hf.toggleIdx] = true;
+            }
+
+            for (let r = 0; r < miniRows; r++) {
+                for (let c = 0; c < 4; c++) {
+                    const bx = gridStartX + c * DT;
+                    const by = gridStartY + r * DT;
+                    let isOn = false;
+                    for (let i = 0; i < toggleOrder.length; i++) {
+                        if (toggleOrder[i][0] === r && toggleOrder[i][1] === c && blockOn[i]) isOn = true;
+                    }
+                    drawRect(bx, by, DT, DT, PAL.gridBorder);
+                    drawRect(bx + 1, by + 1, DT - 2, DT - 2, isOn ? rowColors[r] : PAL.gridOff);
+                    if (demoTarget[r][c] && !isOn) {
+                        const pulse = 0.3 + Math.sin(t * 0.06) * 0.15;
+                        ctx.globalAlpha = pulse;
+                        drawRect(bx + 1, by + 1, DT - 2, 1, rowColors[r]);
+                        drawRect(bx + 1, by + DT - 2, DT - 2, 1, rowColors[r]);
+                        drawRect(bx + 1, by + 1, 1, DT - 2, rowColors[r]);
+                        drawRect(bx + DT - 2, by + 1, 1, DT - 2, rowColors[r]);
+                        drawRect(bx + DT / 2 - 2, by + DT / 2 - 2, 4, 4, rowColors[r]);
+                        ctx.globalAlpha = demoAlpha;
+                    }
+                    if (isOn) {
+                        const glowR = DT * 1.2;
+                        const gcx = (bx + DT / 2) * SCALE, gcy = (by + DT / 2) * SCALE;
+                        const glow = ctx.createRadialGradient(gcx, gcy, 0, gcx, gcy, glowR * SCALE);
+                        glow.addColorStop(0, "rgba(239,172,40,0.12)");
+                        glow.addColorStop(1, "rgba(239,172,40,0)");
+                        ctx.fillStyle = glow;
+                        ctx.fillRect((bx - DT * 0.3) * SCALE, (by - DT * 0.3) * SCALE, DT * 1.6 * SCALE, DT * 1.6 * SCALE);
+                        for (const hf of hitFrames) {
+                            if (toggleOrder[hf.toggleIdx][0] === r && toggleOrder[hf.toggleIdx][1] === c) {
+                                const flashAge = cycleT - hf.frame;
+                                if (flashAge >= 0 && flashAge < 10) {
+                                    ctx.globalAlpha = (1 - flashAge / 10) * 0.6;
+                                    drawRect(bx, by, DT, DT, "#ffffff");
+                                    ctx.globalAlpha = demoAlpha;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Animated player
+            {
+                const playerAlpha = 1;
+                let stepIdx = demoSteps.length - 1;
+                for (let i = 0; i < demoSteps.length; i++) {
+                    if (cycleT < stepStart[i] + demoSteps[i].dur) { stepIdx = i; break; }
+                }
+                const step = demoSteps[stepIdx];
+                const stepT = cycleT - stepStart[stepIdx];
+                const prevPos = stepIdx === 0 ? { x: gridStartX - 3 * DT, y: gridStartY } : demoSteps[stepIdx - 1];
+                const ddx = step.x - prevPos.x;
+                const ddy = step.y - prevPos.y;
+                let walkDir = Math.abs(ddx) >= Math.abs(ddy) ? (ddx >= 0 ? 3 : 2) : (ddy >= 0 ? 0 : 1);
+                let px, py, isWalking = false, isAttacking = false;
+                if (cycleT >= STEPS_TOTAL) {
+                    px = demoSteps[demoSteps.length - 1].x; py = demoSteps[demoSteps.length - 1].y; walkDir = 3;
+                } else if (stepT < WALK_FRAMES) {
+                    const prog = stepT / WALK_FRAMES; const eased = prog * prog * (3 - 2 * prog);
+                    px = prevPos.x + (step.x - prevPos.x) * eased; py = prevPos.y + (step.y - prevPos.y) * eased; isWalking = true;
+                } else if (step.attack && stepT >= ATTACK_AT && stepT < ATTACK_AT + ATTACK_DUR_5) {
+                    px = step.x; py = step.y; isAttacking = true;
+                } else { px = step.x; py = step.y; }
+                const walkFrame = isWalking ? Math.floor(t / 6) % 4 : 0;
+                const bob = walkFrame % 2 === 1 ? 1 : 0;
+                const faceDir = isAttacking ? 3 : (isWalking ? walkDir : 3);
+                const punchProg = isAttacking ? Math.sin(((stepT - ATTACK_AT) / ATTACK_DUR_5) * Math.PI) : 0;
+                drawPlayerSprite(px, py, walkFrame, faceDir, { punchThrust: punchProg });
+                if (isAttacking) {
+                    const thrust = punchProg;
+                    const pDir = faceDir;
+                    let ddx2 = 0, ddy2 = 0;
+                    switch (pDir) { case 0: ddy2 = 1; break; case 1: ddy2 = -1; break; case 2: ddx2 = -1; break; case 3: ddx2 = 1; break; }
+                    const pLeanX = ddx2 !== 0 ? ddx2 * thrust * 5 : 0;
+                    const pLeanY = ddy2 !== 0 ? ddy2 * thrust * 4 : 0;
+                    const pcx = px + 8, pcy = py + 6;
+                    let shOX, shOY;
+                    switch (pDir) { case 0: shOX = -5; shOY = 2; break; case 1: shOX = 5; shOY = -8; break; case 2: shOX = -8; shOY = -2; break; case 3: shOX = 8; shOY = -2; break; }
+                    const armLen = 3 + thrust * 6;
+                    const shX = (pcx + pLeanX + shOX) * SCALE, shY = (pcy + pLeanY + shOY) * SCALE;
+                    const fiX = (pcx + pLeanX + shOX + ddx2 * armLen) * SCALE, fiY = (pcy + pLeanY + shOY + ddy2 * armLen) * SCALE;
+                    ctx.strokeStyle = "#efb775"; ctx.lineWidth = 4 * SCALE; ctx.lineCap = "round";
+                    ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(fiX, fiY); ctx.stroke();
+                    ctx.fillStyle = "#efb775"; ctx.beginPath(); ctx.arc(fiX, fiY, 3.5 * SCALE, 0, Math.PI * 2); ctx.fill();
+                    if (thrust > 0.5) {
+                        const burstCount = 6;
+                        for (let bi = 0; bi < burstCount; bi++) {
+                            const angle = (bi / burstCount) * Math.PI * 2 + (stepT - ATTACK_AT) * 0.3;
+                            ctx.strokeStyle = "#efd8a1"; ctx.lineWidth = 2 * SCALE; ctx.globalAlpha = thrust * 0.8;
+                            ctx.beginPath();
+                            ctx.moveTo(fiX + Math.cos(angle) * 5 * SCALE, fiY + Math.sin(angle) * 5 * SCALE);
+                            ctx.lineTo(fiX + Math.cos(angle) * (8 + thrust * 4) * SCALE, fiY + Math.sin(angle) * (8 + thrust * 4) * SCALE);
+                            ctx.stroke();
+                        }
+                        ctx.globalAlpha = demoAlpha * playerAlpha;
+                    }
+                }
+                // Gold bracket indicator
+                if (!isAttacking && step.attack && step.toggleIdx >= 0 && cycleT < STEPS_TOTAL && !blockOn[step.toggleIdx]) {
+                    const btx = gridStartX + toggleOrder[step.toggleIdx][1] * DT;
+                    const bty = gridStartY + toggleOrder[step.toggleIdx][0] * DT;
+                    ctx.globalAlpha = demoAlpha * playerAlpha * (0.25 + Math.sin(t * 0.1) * 0.15);
+                    const bc = "#efac28";
+                    drawRect(btx, bty, 4, 1, bc); drawRect(btx, bty, 1, 4, bc);
+                    drawRect(btx + DT - 4, bty, 4, 1, bc); drawRect(btx + DT - 1, bty, 1, 4, bc);
+                    drawRect(btx, bty + DT - 1, 4, 1, bc); drawRect(btx, bty + DT - 4, 1, 4, bc);
+                    drawRect(btx + DT - 4, bty + DT - 1, 4, 1, bc); drawRect(btx + DT - 1, bty + DT - 4, 1, 4, bc);
+                }
+                ctx.globalAlpha = demoAlpha;
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        // Control instructions with key press highlights
+        ctx.globalAlpha = 0.7;
+        {
+            const ky = gridStartY + miniRows * DT + 18;
+            const ks = 9;
+            const kg = 2;
+            const keyCol = "#392a1c";
+            const keyHi = "#684c3c";
+            const labelCol = "#efd8a1";
+            const activeKeyCol = "#efac28";
+            const activeKeyBg = "#684c3c";
+            const arrowGroupW = 3 * ks + 2 * kg;
+            const spW = 28;
+            const gap = 14;
+            const totalW = arrowGroupW + gap + spW;
+            const kx = W / 2 - totalW / 2;
+
+            const cycleT_k = t % CYCLE;
+            let demoWalking_k = false, demoAttacking_k = false, demoDir_k = 0;
+            if (cycleT_k < STEPS_TOTAL) {
+                let stepIdx_k = 0;
+                for (let i = 0; i < demoSteps.length; i++) {
+                    if (cycleT_k < stepStart[i] + demoSteps[i].dur) { stepIdx_k = i; break; }
+                }
+                const step_k = demoSteps[stepIdx_k];
+                const stepT_k = cycleT_k - stepStart[stepIdx_k];
+                const prevPos_k = stepIdx_k === 0 ? { x: gridStartX - 3 * DT, y: gridStartY } : demoSteps[stepIdx_k - 1];
+                const ddx_k = step_k.x - prevPos_k.x;
+                const ddy_k = step_k.y - prevPos_k.y;
+                demoDir_k = Math.abs(ddx_k) >= Math.abs(ddy_k) ? (ddx_k >= 0 ? 3 : 2) : (ddy_k >= 0 ? 0 : 1);
+                demoWalking_k = stepT_k < WALK_FRAMES;
+                demoAttacking_k = step_k.attack && stepT_k >= ATTACK_AT && stepT_k < ATTACK_AT + ATTACK_DUR_5;
+            }
+
+            function drawKey(x, y, w, h, active) {
+                drawRect(x, y, w, h, active ? activeKeyCol : keyCol);
+                drawRect(x + 1, y + 1, w - 2, h - 2, active ? activeKeyCol : keyHi);
+                if (active) {
+                    ctx.fillStyle = activeKeyCol;
+                    ctx.globalAlpha = 0.3;
+                    ctx.fillRect((x - 1) * SCALE, (y - 1) * SCALE, (w + 2) * SCALE, (h + 2) * SCALE);
+                    ctx.globalAlpha = 1.0;
+                }
+            }
+
+            const upActive = demoWalking_k && demoDir_k === 1;
+            const downActive = demoWalking_k && demoDir_k === 0;
+            const leftActive = demoWalking_k && demoDir_k === 2;
+            const rightActive = demoWalking_k && demoDir_k === 3;
+            const spaceActive = demoAttacking_k;
+
+            drawKey(kx + ks + kg, ky, ks, ks, upActive);
+            drawRect(kx + ks + kg + 3, ky + 3, 3, 1, upActive ? "#000" : labelCol);
+            drawRect(kx + ks + kg + 4, ky + 2, 1, 1, upActive ? "#000" : labelCol);
+            drawKey(kx + ks + kg, ky + ks + kg, ks, ks, downActive);
+            drawRect(kx + ks + kg + 3, ky + ks + kg + 5, 3, 1, downActive ? "#000" : labelCol);
+            drawRect(kx + ks + kg + 4, ky + ks + kg + 6, 1, 1, downActive ? "#000" : labelCol);
+            drawKey(kx, ky + ks + kg, ks, ks, leftActive);
+            drawRect(kx + 3, ky + ks + kg + 4, 1, 1, leftActive ? "#000" : labelCol);
+            drawRect(kx + 4, ky + ks + kg + 3, 1, 3, leftActive ? "#000" : labelCol);
+            drawKey(kx + 2 * (ks + kg), ky + ks + kg, ks, ks, rightActive);
+            drawRect(kx + 2 * (ks + kg) + 5, ky + ks + kg + 4, 1, 1, rightActive ? "#000" : labelCol);
+            drawRect(kx + 2 * (ks + kg) + 4, ky + ks + kg + 3, 1, 3, rightActive ? "#000" : labelCol);
+
+            const spX = kx + arrowGroupW + gap;
+            drawKey(spX, ky + ks + kg, spW, ks, spaceActive);
+            if (spaceActive) {
+                ctx.fillStyle = "#ffffff";
+                ctx.globalAlpha = 0.4;
+                ctx.fillRect((spX - 3) * SCALE, (ky + ks + kg - 3) * SCALE, (spW + 6) * SCALE, (ks + 6) * SCALE);
+                ctx.globalAlpha = 1.0;
+            }
+            ctx.font = `${3 * SCALE}px monospace`;
+            ctx.fillStyle = spaceActive ? "#000" : labelCol;
+            ctx.textAlign = "center";
+            ctx.fillText("SPACE", (spX + spW / 2) * SCALE, (ky + ks + kg + 7) * SCALE);
+
+            ctx.font = `${5 * SCALE}px monospace`;
+            ctx.fillStyle = "#efb775";
+            const arrowCenterX = kx + ks + kg + ks / 2;
+            ctx.fillText("MOVE", arrowCenterX * SCALE, (ky + 2 * ks + 2 * kg + 8) * SCALE);
+            ctx.fillText("ATTACK", (spX + spW / 2) * SCALE, (ky + 2 * ks + 2 * kg + 8) * SCALE);
+            ctx.textAlign = "start";
+        }
+        ctx.globalAlpha = 1;
+    }
+
+    // ==================== SCENE 6: THE THREAT ====================
+    else if (introScene === 6) {
+        drawRuinedVenueBackdrop(t);
+
+        // Page indicator dots (scenes 5-7)
+        const dotY = H - 22;
+        for (let i = 0; i < 3; i++) {
+            const dx = W / 2 - 10 + i * 8;
+            const active = i === (introScene - 5);
+            drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
+        }
+
+        // Story captions
+        if (t < 150) {
+            const capAlpha = Math.min(1, Math.max(0, (t - 30) / 30));
+            ctx.globalAlpha = capAlpha;
+            drawCentered("EACH BEAT HAD A PATTERN. A SHAPE THAT NEEDED", 10, "#efd8a1", 5);
+            drawCentered("TO BE MADE WHOLE. OUTLINES MARKED WHAT WAS MISSING.", 20, "#efd8a1", 5);
+            ctx.globalAlpha = 1;
+        } else {
+            const capAlpha2 = Math.min(1, (t - 150) / 30);
+            ctx.globalAlpha = capAlpha2;
+            drawCentered("AND IN THE SHADOWS, SMALL EYES WATCHED.", 10, "#ef3a0c", 5);
+            drawCentered("THEY WOULD BE BACK.", 20, "#ef3a0c", 5);
+            ctx.globalAlpha = 1;
+        }
+
+        // --- TOP LEFT: Pulsing outlines (beats to ADD) ---
+        const gx = W / 2 - 4 * TILE;
+        const gy = 36;
+        const patCols = 4;
+        const addColor = "#efac28";
+        const addTarget = [true, false, true, false];
+        const addFillOrder = [0, 2];
+        const ADD_INTERVAL = 60;
+        const ADD_CYCLE = addFillOrder.length * ADD_INTERVAL + 80;
+        const addT = Math.max(0, t - 40) % ADD_CYCLE;
+        const addFilled = Math.min(addFillOrder.length, Math.floor(addT / ADD_INTERVAL));
+
+        for (let c = 0; c < patCols; c++) {
+            const bx = gx + c * TILE, by = gy;
+            let isOn = false;
+            for (let i = 0; i < addFilled; i++) {
+                if (addFillOrder[i] === c) isOn = true;
+            }
+            drawRect(bx, by, TILE, TILE, PAL.gridBorder);
+            drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? addColor : PAL.gridOff);
+            if (addTarget[c] && !isOn) {
+                ctx.globalAlpha = 0.3 + Math.sin(t * 0.06) * 0.15;
+                drawRect(bx + 1, by + 1, TILE - 2, 1, addColor);
+                drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, addColor);
+                drawRect(bx + 1, by + 1, 1, TILE - 2, addColor);
+                drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, addColor);
+                drawRect(bx + 6, by + 6, 4, 4, addColor);
+                ctx.globalAlpha = 1;
+            }
+            if (isOn) {
+                const fIdx = addFillOrder.indexOf(c);
+                if (fIdx >= 0) {
+                    const flashAge = addT - fIdx * ADD_INTERVAL;
+                    if (flashAge >= 0 && flashAge < 12) {
+                        ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
+                        drawRect(bx, by, TILE, TILE, "#ffffff");
+                        ctx.globalAlpha = 1;
+                    }
+                }
+            }
+        }
+        drawText("OUTLINES = ADD", gx - 2, gy + TILE + 10, "#efb775", 4);
+
+        // Vertical divider
+        const divX = W / 2;
+        const divTop = gy - 4;
+        const divBot = gy + TILE + 18;
+        ctx.strokeStyle = "#684c3c";
+        ctx.lineWidth = SCALE;
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(divX * SCALE, divTop * SCALE);
+        ctx.lineTo(divX * SCALE, divBot * SCALE);
+        ctx.stroke();
+        ctx.globalAlpha = 1.0;
+        const dMid = (divTop + divBot) / 2;
+        drawRect(divX - 1, dMid - 2, 3, 3, "#efac28");
+
+        // --- TOP RIGHT: X marks (beats to REMOVE) ---
+        const xgx = W / 2 + TILE;
+        const xColor = "#efb775";
+        const xIndicatorColor = "#9b1a0a";
+        const xStartOn = [true, true, false, true];
+        const xTarget = [true, false, false, true];
+        const xRemoveOrder = [1];
+        const X_INTERVAL = 80;
+        const X_CYCLE = xRemoveOrder.length * X_INTERVAL + 100;
+        const xT = Math.max(0, t - 60) % X_CYCLE;
+        const xRemoved = Math.min(xRemoveOrder.length, Math.floor(xT / X_INTERVAL));
+
+        for (let c = 0; c < patCols; c++) {
+            const bx = xgx + c * TILE, by = gy;
+            let isOn = xStartOn[c];
+            for (let i = 0; i < xRemoved; i++) {
+                if (xRemoveOrder[i] === c) isOn = false;
+            }
+            drawRect(bx, by, TILE, TILE, PAL.gridBorder);
+            drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? xColor : PAL.gridOff);
+            if (isOn && !xTarget[c]) {
+                ctx.globalAlpha = 0.6 + Math.sin(t * 0.04) * 0.15;
+                drawRect(bx + 3, by + 3, 2, 2, xIndicatorColor);
+                drawRect(bx + 5, by + 5, 2, 2, xIndicatorColor);
+                drawRect(bx + 7, by + 7, 2, 2, xIndicatorColor);
+                drawRect(bx + 9, by + 9, 2, 2, xIndicatorColor);
+                drawRect(bx + 9, by + 3, 2, 2, xIndicatorColor);
+                drawRect(bx + 7, by + 5, 2, 2, xIndicatorColor);
+                drawRect(bx + 5, by + 7, 2, 2, xIndicatorColor);
+                drawRect(bx + 3, by + 9, 2, 2, xIndicatorColor);
+                ctx.globalAlpha = 1;
+            }
+            if (!isOn && xStartOn[c]) {
+                const fIdx = xRemoveOrder.indexOf(c);
+                if (fIdx >= 0) {
+                    const flashAge = xT - fIdx * X_INTERVAL;
+                    if (flashAge >= 0 && flashAge < 12) {
+                        ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
+                        drawRect(bx, by, TILE, TILE, "#ffffff");
+                        ctx.globalAlpha = 1;
+                    }
+                }
+            }
+        }
+        drawText("X MARKS = REMOVE", xgx, gy + TILE + 10, "#efb775", 4);
+
+        // --- Lurking goblins at the edges ---
+        const gobFrame = Math.floor(t / 20) % 4;
+        ctx.globalAlpha = 0.7;
+        drawGoblinSprite("normal", TILE + 4, GRID_Y * TILE + TILE, gobFrame, { dir: 3, showShadow: false });
+        drawGoblinSprite("normal", (COLS - 2) * TILE - 4, GRID_Y * TILE + TILE, (gobFrame + 2) % 4, { dir: 2, showShadow: false });
+        ctx.globalAlpha = 1;
+    }
+
+    // ==================== SCENE 7: THE STAND ====================
+    else if (introScene === 7) {
+        drawRuinedVenueBackdrop(t);
+
+        // Page indicator dots (scenes 5-7)
+        const dotY = H - 22;
+        for (let i = 0; i < 3; i++) {
+            const dx = W / 2 - 10 + i * 8;
+            const active = i === (introScene - 5);
+            drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
+        }
+
+        // Timeline constants
+        const CAPTION1_START = 30;
+        const GOB_START = 40;
+        const GOB_END = 140;
+        const PUNCH_START = 155;
+        const ATTACK_DUR_7 = 12;
+        const HIT_FRAME = 160;
+        const CAPTION2_START = 185;
+
+        // Positions
+        const djX = W / 2 + TILE;
+        const djY = GRID_Y * TILE - 4;
+        const gobStartX = TILE * 2;
+        const gobEndX = W / 2 - TILE * 2;
+
+        // --- Caption 1 ---
+        if (t > CAPTION1_START) {
+            const fadeIn = Math.min(1, (t - CAPTION1_START) / 20);
+            ctx.globalAlpha = fadeIn;
+            drawCentered("ONE OF THEM CREPT BACK. BOLD. STUPID.", 20, "#efd8a1", 6);
+            ctx.globalAlpha = 1;
+        }
+
+        // --- Goblin walk-in ---
+        const gobAlive = t < HIT_FRAME;
+        if (gobAlive) {
+            const gobProgress = Math.min(1, Math.max(0, (t - GOB_START) / (GOB_END - GOB_START)));
+            const eased = gobProgress * gobProgress * (3 - 2 * gobProgress);
+            const gobX = gobStartX + (gobEndX - gobStartX) * eased;
+            const gobFrame = t < GOB_END ? Math.floor(t / 10) % 4 : 0;
+            drawGoblinSprite("normal", gobX, djY, gobFrame, { dir: 3, showShadow: true });
+        }
+
+        // --- Death particles ---
+        if (t >= HIT_FRAME && t < HIT_FRAME + 30) {
+            const deathT = t - HIT_FRAME;
+            const particleColors = ["#39FF14", "#1a5c0a", "#efac28", "#39FF14", "#2d8a0e", "#efac28", "#39FF14", "#1a5c0a"];
+            for (let pi = 0; pi < 8; pi++) {
+                const angle = (pi / 8) * Math.PI * 2 + 0.3;
+                const speed = 1.5 + (pi % 3) * 0.5;
+                const px = gobEndX + 6 + Math.cos(angle) * speed * deathT;
+                const py = djY + 6 + Math.sin(angle) * speed * deathT + deathT * deathT * 0.04;
+                const life = 1 - deathT / 30;
+                if (life > 0) {
+                    ctx.globalAlpha = life;
+                    drawRect(px, py, 2, 2, particleColors[pi]);
+                }
+            }
+            ctx.globalAlpha = 1;
+            if (deathT < 3) {
+                ctx.globalAlpha = 0.3 * (1 - deathT / 3);
+                drawRect(0, 0, W, H, "#39FF14");
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        // --- DJ sprite ---
+        const djDir = 2;
+        let punchThrust = 0;
+        let djFrame = 0;
+        if (t >= PUNCH_START && t < PUNCH_START + ATTACK_DUR_7) {
+            const punchProgress = (t - PUNCH_START) / ATTACK_DUR_7;
+            punchThrust = Math.sin(punchProgress * Math.PI);
+        }
+        drawPlayerSprite(djX, djY, djFrame, djDir, { punchThrust: punchThrust });
+
+        if (punchThrust > 0) {
+            const thrust = punchThrust;
+            let ddx2 = -1, ddy2 = 0;
+            const pLeanX = ddx2 * thrust * 5;
+            const pLeanY = 0;
+            const pcx = djX + 8, pcy = djY + 6;
+            const shOX = -8, shOY = -2;
+            const armLen = 3 + thrust * 6;
+            const shX = (pcx + pLeanX + shOX) * SCALE, shY = (pcy + pLeanY + shOY) * SCALE;
+            const fiX = (pcx + pLeanX + shOX + ddx2 * armLen) * SCALE, fiY = (pcy + pLeanY + shOY + ddy2 * armLen) * SCALE;
+            ctx.strokeStyle = "#efb775"; ctx.lineWidth = 4 * SCALE; ctx.lineCap = "round";
+            ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(fiX, fiY); ctx.stroke();
+            ctx.fillStyle = "#efb775"; ctx.beginPath(); ctx.arc(fiX, fiY, 3.5 * SCALE, 0, Math.PI * 2); ctx.fill();
+            if (thrust > 0.5) {
+                for (let bi = 0; bi < 6; bi++) {
+                    const angle = (bi / 6) * Math.PI * 2 + (t - PUNCH_START) * 0.3;
+                    ctx.strokeStyle = "#efd8a1"; ctx.lineWidth = 2 * SCALE; ctx.globalAlpha = thrust * 0.8;
+                    ctx.beginPath();
+                    ctx.moveTo(fiX + Math.cos(angle) * 5 * SCALE, fiY + Math.sin(angle) * 5 * SCALE);
+                    ctx.lineTo(fiX + Math.cos(angle) * (8 + thrust * 4) * SCALE, fiY + Math.sin(angle) * (8 + thrust * 4) * SCALE);
+                    ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        // --- Caption 2 ---
+        if (t > CAPTION2_START) {
+            const fadeIn = Math.min(1, (t - CAPTION2_START) / 20);
+            ctx.globalAlpha = fadeIn;
+            drawCentered("IT TURNS OUT FISTS THAT COULD FIX A BEAT", 34, "#efac28", 5);
+            drawCentered("COULD BREAK A GOBLIN JUST AS EASILY.", 44, "#efac28", 5);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // Skip/advance prompt
+    if (introScene <= 4 && introGlobalTimer > 60) {
+        // Cinematic scenes: subtle skip hint
+        const pulse = Math.sin(introGlobalTimer * 0.08) * 0.4 + 0.6;
         ctx.globalAlpha = pulse;
         drawText("ENTER: NEXT", W - 55, H - 6, "#efd8a1", 3);
         ctx.globalAlpha = 1;
+    } else if (introScene >= 5) {
+        // Tutorial scenes: blinking prompt
+        const promptDelay = introScene === 7 ? 250 : 20;
+        const promptText = introScene < 7 ? "PRESS ENTER" : "PRESS ENTER TO START";
+        if (t > promptDelay && t % 60 < 40) {
+            drawCentered(promptText, H - 10, "#efd8a1", 5);
+        }
     }
 }
 
@@ -6426,548 +6942,6 @@ function renderGameOverScreen() {
     }
 }
 
-function renderTutorialScreen() {
-    tutorialTimer++;
-    const W = COLS * TILE;
-    const H = ROWS * TILE;
-    const t = tutorialTimer;
-
-    // Ruined venue backdrop (story continuity from intro)
-    drawRuinedVenueBackdrop(t);
-
-    function drawCenteredText(text, y, color, scale) {
-        ctx.font = `${scale * SCALE}px monospace`;
-        ctx.fillStyle = color;
-        ctx.textAlign = "center";
-        ctx.fillText(text, (W * SCALE) / 2, y * SCALE);
-        ctx.textAlign = "start";
-    }
-
-    // Page indicator dots (3 pages)
-    const dotY = H - 22;
-    for (let i = 0; i < 3; i++) {
-        const dx = W / 2 - 10 + i * 8;
-        const active = i === tutorialPage;
-        drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
-    }
-
-    // ======== PAGE 0: THE DISCOVERY ========
-    if (tutorialPage === 0) {
-        // Story captions (replace instructional title)
-        if (t < 120) {
-            const capAlpha = Math.min(1, Math.max(0, (t - 30) / 30));
-            ctx.globalAlpha = capAlpha;
-            drawCenteredText("A SINGLE PUNCH. A SINGLE NOTE.", 16, "#efd8a1", 5);
-            drawCenteredText("THE SOUND RANG OUT THROUGH THE RUINS LIKE A BELL.", 26, "#efd8a1", 5);
-            ctx.globalAlpha = 1;
-        } else {
-            const capAlpha = Math.min(1, (t - 120) / 30);
-            ctx.globalAlpha = capAlpha;
-            drawCenteredText("THE BEAT WASN'T DEAD. IT WAS WAITING.", 20, "#efac28", 6);
-            ctx.globalAlpha = 1;
-        }
-
-        // Animated demo grid — player walks to blocks and hits them (scaled up)
-        const DT = Math.floor(TILE * 1.4); // larger demo tile size
-        const gridStartX = W / 2 - 4 * DT / 2;
-        const gridStartY = 50;
-        const miniRows = 2;
-        const rowColors = ["#efac28", "#efb775"];
-        const demoTarget = [[true, false, true, false], [false, true, false, true]];
-        const toggleOrder = [[0,0], [0,2], [1,1], [1,3]];
-        const WALK_FRAMES = 35, ATTACK_AT = 38, ATTACK_DUR = 15, HIT_OFFSET = 45;
-        const ATTACK_STEP_LEN = 80, WALK_STEP_LEN = 40;
-        const demoSteps = [
-            { x: gridStartX - DT, y: gridStartY, attack: true, toggleIdx: 0, dur: ATTACK_STEP_LEN },
-            { x: gridStartX + DT, y: gridStartY, attack: true, toggleIdx: 1, dur: ATTACK_STEP_LEN },
-            { x: gridStartX + DT, y: gridStartY + DT, attack: false, toggleIdx: -1, dur: WALK_STEP_LEN },
-            { x: gridStartX, y: gridStartY + DT, attack: true, toggleIdx: 2, dur: ATTACK_STEP_LEN },
-            { x: gridStartX + 2 * DT, y: gridStartY + DT, attack: true, toggleIdx: 3, dur: ATTACK_STEP_LEN },
-        ];
-        const stepStart = [0];
-        for (let i = 1; i < demoSteps.length; i++) stepStart.push(stepStart[i - 1] + demoSteps[i - 1].dur);
-        const STEPS_TOTAL = stepStart[demoSteps.length - 1] + demoSteps[demoSteps.length - 1].dur;
-        const CYCLE = STEPS_TOTAL + 60;
-        const hitFrames = [];
-        for (let i = 0; i < demoSteps.length; i++) {
-            if (demoSteps[i].attack) hitFrames.push({ toggleIdx: demoSteps[i].toggleIdx, frame: stepStart[i] + HIT_OFFSET });
-        }
-
-        {
-            const demoAlpha = 1;
-            const demoT = t;
-            const cycleT = demoT % CYCLE;
-            const blockOn = [false, false, false, false];
-            for (const hf of hitFrames) {
-                if (cycleT >= hf.frame && cycleT < CYCLE - 30) blockOn[hf.toggleIdx] = true;
-            }
-
-            // Draw grid cells (scaled up with DT)
-            for (let r = 0; r < miniRows; r++) {
-                for (let c = 0; c < 4; c++) {
-                    const bx = gridStartX + c * DT;
-                    const by = gridStartY + r * DT;
-                    let isOn = false;
-                    for (let i = 0; i < toggleOrder.length; i++) {
-                        if (toggleOrder[i][0] === r && toggleOrder[i][1] === c && blockOn[i]) isOn = true;
-                    }
-                    drawRect(bx, by, DT, DT, PAL.gridBorder);
-                    drawRect(bx + 1, by + 1, DT - 2, DT - 2, isOn ? rowColors[r] : PAL.gridOff);
-                    if (demoTarget[r][c] && !isOn) {
-                        const pulse = 0.3 + Math.sin(t * 0.06) * 0.15;
-                        ctx.globalAlpha = pulse;
-                        drawRect(bx + 1, by + 1, DT - 2, 1, rowColors[r]);
-                        drawRect(bx + 1, by + DT - 2, DT - 2, 1, rowColors[r]);
-                        drawRect(bx + 1, by + 1, 1, DT - 2, rowColors[r]);
-                        drawRect(bx + DT - 2, by + 1, 1, DT - 2, rowColors[r]);
-                        drawRect(bx + DT / 2 - 2, by + DT / 2 - 2, 4, 4, rowColors[r]);
-                        ctx.globalAlpha = demoAlpha;
-                    }
-                    if (isOn) {
-                        // Golden glow — the beat is bringing light back
-                        const glowR = DT * 1.2;
-                        const gcx = (bx + DT / 2) * SCALE, gcy = (by + DT / 2) * SCALE;
-                        const glow = ctx.createRadialGradient(gcx, gcy, 0, gcx, gcy, glowR * SCALE);
-                        glow.addColorStop(0, "rgba(239,172,40,0.12)");
-                        glow.addColorStop(1, "rgba(239,172,40,0)");
-                        ctx.fillStyle = glow;
-                        ctx.fillRect((bx - DT * 0.3) * SCALE, (by - DT * 0.3) * SCALE, DT * 1.6 * SCALE, DT * 1.6 * SCALE);
-                        // White flash on hit
-                        for (const hf of hitFrames) {
-                            if (toggleOrder[hf.toggleIdx][0] === r && toggleOrder[hf.toggleIdx][1] === c) {
-                                const flashAge = cycleT - hf.frame;
-                                if (flashAge >= 0 && flashAge < 10) {
-                                    ctx.globalAlpha = (1 - flashAge / 10) * 0.6;
-                                    drawRect(bx, by, DT, DT, "#ffffff");
-                                    ctx.globalAlpha = demoAlpha;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Animated player
-            {
-                const playerAlpha = 1;
-                let stepIdx = demoSteps.length - 1;
-                for (let i = 0; i < demoSteps.length; i++) {
-                    if (cycleT < stepStart[i] + demoSteps[i].dur) { stepIdx = i; break; }
-                }
-                const step = demoSteps[stepIdx];
-                const stepT = cycleT - stepStart[stepIdx];
-                const prevPos = stepIdx === 0 ? { x: gridStartX - 3 * DT, y: gridStartY } : demoSteps[stepIdx - 1];
-                const ddx = step.x - prevPos.x;
-                const ddy = step.y - prevPos.y;
-                let walkDir = Math.abs(ddx) >= Math.abs(ddy) ? (ddx >= 0 ? 3 : 2) : (ddy >= 0 ? 0 : 1);
-                let px, py, isWalking = false, isAttacking = false;
-                if (cycleT >= STEPS_TOTAL) {
-                    px = demoSteps[demoSteps.length - 1].x; py = demoSteps[demoSteps.length - 1].y; walkDir = 3;
-                } else if (stepT < WALK_FRAMES) {
-                    const prog = stepT / WALK_FRAMES; const eased = prog * prog * (3 - 2 * prog);
-                    px = prevPos.x + (step.x - prevPos.x) * eased; py = prevPos.y + (step.y - prevPos.y) * eased; isWalking = true;
-                } else if (step.attack && stepT >= ATTACK_AT && stepT < ATTACK_AT + ATTACK_DUR) {
-                    px = step.x; py = step.y; isAttacking = true;
-                } else { px = step.x; py = step.y; }
-                const walkFrame = isWalking ? Math.floor(t / 6) % 4 : 0;
-                const bob = walkFrame % 2 === 1 ? 1 : 0;
-                const faceDir = isAttacking ? 3 : (isWalking ? walkDir : 3);
-                const punchProg = isAttacking ? Math.sin(((stepT - ATTACK_AT) / ATTACK_DUR) * Math.PI) : 0;
-                drawPlayerSprite(px, py, walkFrame, faceDir, { punchThrust: punchProg });
-                if (isAttacking) {
-                    // Draw punch arm + fist (matching drawPunch style)
-                    const thrust = punchProg;
-                    const pDir = faceDir;
-                    let ddx2 = 0, ddy2 = 0;
-                    switch (pDir) { case 0: ddy2 = 1; break; case 1: ddy2 = -1; break; case 2: ddx2 = -1; break; case 3: ddx2 = 1; break; }
-                    const pLeanX = ddx2 !== 0 ? ddx2 * thrust * 5 : 0;
-                    const pLeanY = ddy2 !== 0 ? ddy2 * thrust * 4 : 0;
-                    const pcx = px + 8, pcy = py + 6;
-                    let shOX, shOY;
-                    switch (pDir) { case 0: shOX = -5; shOY = 2; break; case 1: shOX = 5; shOY = -8; break; case 2: shOX = -8; shOY = -2; break; case 3: shOX = 8; shOY = -2; break; }
-                    const armLen = 3 + thrust * 6;
-                    const shX = (pcx + pLeanX + shOX) * SCALE, shY = (pcy + pLeanY + shOY) * SCALE;
-                    const fiX = (pcx + pLeanX + shOX + ddx2 * armLen) * SCALE, fiY = (pcy + pLeanY + shOY + ddy2 * armLen) * SCALE;
-                    ctx.strokeStyle = "#efb775"; ctx.lineWidth = 4 * SCALE; ctx.lineCap = "round";
-                    ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(fiX, fiY); ctx.stroke();
-                    // Fist
-                    ctx.fillStyle = "#efb775"; ctx.beginPath(); ctx.arc(fiX, fiY, 3.5 * SCALE, 0, Math.PI * 2); ctx.fill();
-                    // Impact flash
-                    if (thrust > 0.5) {
-                        const burstCount = 6;
-                        for (let bi = 0; bi < burstCount; bi++) {
-                            const angle = (bi / burstCount) * Math.PI * 2 + (stepT - ATTACK_AT) * 0.3;
-                            ctx.strokeStyle = "#efd8a1"; ctx.lineWidth = 2 * SCALE; ctx.globalAlpha = thrust * 0.8;
-                            ctx.beginPath();
-                            ctx.moveTo(fiX + Math.cos(angle) * 5 * SCALE, fiY + Math.sin(angle) * 5 * SCALE);
-                            ctx.lineTo(fiX + Math.cos(angle) * (8 + thrust * 4) * SCALE, fiY + Math.sin(angle) * (8 + thrust * 4) * SCALE);
-                            ctx.stroke();
-                        }
-                        ctx.globalAlpha = demoAlpha * playerAlpha;
-                    }
-                }
-                // Gold bracket indicator
-                if (!isAttacking && step.attack && step.toggleIdx >= 0 && cycleT < STEPS_TOTAL && !blockOn[step.toggleIdx]) {
-                    const btx = gridStartX + toggleOrder[step.toggleIdx][1] * DT;
-                    const bty = gridStartY + toggleOrder[step.toggleIdx][0] * DT;
-                    ctx.globalAlpha = demoAlpha * playerAlpha * (0.25 + Math.sin(t * 0.1) * 0.15);
-                    const bc = "#efac28";
-                    drawRect(btx, bty, 4, 1, bc); drawRect(btx, bty, 1, 4, bc);
-                    drawRect(btx + DT - 4, bty, 4, 1, bc); drawRect(btx + DT - 1, bty, 1, 4, bc);
-                    drawRect(btx, bty + DT - 1, 4, 1, bc); drawRect(btx, bty + DT - 4, 1, 4, bc);
-                    drawRect(btx + DT - 4, bty + DT - 1, 4, 1, bc); drawRect(btx + DT - 1, bty + DT - 4, 1, 4, bc);
-                }
-                ctx.globalAlpha = demoAlpha;
-            }
-            ctx.globalAlpha = 1;
-        }
-
-        // Control instructions with key press highlights (subtle HUD style)
-        ctx.globalAlpha = 0.7;
-        {
-            const ky = gridStartY + miniRows * DT + 18;
-            const ks = 9; // key size
-            const kg = 2; // key gap
-            const keyCol = "#392a1c";
-            const keyHi = "#684c3c";
-            const labelCol = "#efd8a1";
-            const activeKeyCol = "#efac28"; // bright highlight for active keys
-            const activeKeyBg = "#684c3c";
-            const arrowGroupW = 3 * ks + 2 * kg; // width of arrow key cluster
-            const spW = 28; // space bar width
-            const gap = 14; // gap between arrow keys and space bar
-            const totalW = arrowGroupW + gap + spW;
-            const kx = W / 2 - totalW / 2; // left edge of arrow keys
-
-            // Determine which keys are "pressed" based on demo player state
-            const cycleT_k = t % CYCLE;
-            let demoWalking_k = false, demoAttacking_k = false, demoDir_k = 0;
-            if (cycleT_k < STEPS_TOTAL) {
-                let stepIdx_k = 0;
-                for (let i = 0; i < demoSteps.length; i++) {
-                    if (cycleT_k < stepStart[i] + demoSteps[i].dur) { stepIdx_k = i; break; }
-                }
-                const step_k = demoSteps[stepIdx_k];
-                const stepT_k = cycleT_k - stepStart[stepIdx_k];
-                const prevPos_k = stepIdx_k === 0 ? { x: gridStartX - 3 * DT, y: gridStartY } : demoSteps[stepIdx_k - 1];
-                const ddx_k = step_k.x - prevPos_k.x;
-                const ddy_k = step_k.y - prevPos_k.y;
-                demoDir_k = Math.abs(ddx_k) >= Math.abs(ddy_k) ? (ddx_k >= 0 ? 3 : 2) : (ddy_k >= 0 ? 0 : 1);
-                demoWalking_k = stepT_k < WALK_FRAMES;
-                demoAttacking_k = step_k.attack && stepT_k >= ATTACK_AT && stepT_k < ATTACK_AT + ATTACK_DUR;
-            }
-
-            // Helper to draw a key with optional active highlight
-            function drawKey(x, y, w, h, active) {
-                drawRect(x, y, w, h, active ? activeKeyCol : keyCol);
-                drawRect(x + 1, y + 1, w - 2, h - 2, active ? activeKeyCol : keyHi);
-                if (active) {
-                    // Glow effect
-                    ctx.fillStyle = activeKeyCol;
-                    ctx.globalAlpha = 0.3;
-                    ctx.fillRect((x - 1) * SCALE, (y - 1) * SCALE, (w + 2) * SCALE, (h + 2) * SCALE);
-                    ctx.globalAlpha = 1.0;
-                }
-            }
-
-            const upActive = demoWalking_k && demoDir_k === 1;
-            const downActive = demoWalking_k && demoDir_k === 0;
-            const leftActive = demoWalking_k && demoDir_k === 2;
-            const rightActive = demoWalking_k && demoDir_k === 3;
-            const spaceActive = demoAttacking_k;
-
-            // Up arrow
-            drawKey(kx + ks + kg, ky, ks, ks, upActive);
-            drawRect(kx + ks + kg + 3, ky + 3, 3, 1, upActive ? "#000" : labelCol);
-            drawRect(kx + ks + kg + 4, ky + 2, 1, 1, upActive ? "#000" : labelCol);
-            // Down arrow
-            drawKey(kx + ks + kg, ky + ks + kg, ks, ks, downActive);
-            drawRect(kx + ks + kg + 3, ky + ks + kg + 5, 3, 1, downActive ? "#000" : labelCol);
-            drawRect(kx + ks + kg + 4, ky + ks + kg + 6, 1, 1, downActive ? "#000" : labelCol);
-            // Left arrow
-            drawKey(kx, ky + ks + kg, ks, ks, leftActive);
-            drawRect(kx + 3, ky + ks + kg + 4, 1, 1, leftActive ? "#000" : labelCol);
-            drawRect(kx + 4, ky + ks + kg + 3, 1, 3, leftActive ? "#000" : labelCol);
-            // Right arrow
-            drawKey(kx + 2 * (ks + kg), ky + ks + kg, ks, ks, rightActive);
-            drawRect(kx + 2 * (ks + kg) + 5, ky + ks + kg + 4, 1, 1, rightActive ? "#000" : labelCol);
-            drawRect(kx + 2 * (ks + kg) + 4, ky + ks + kg + 3, 1, 3, rightActive ? "#000" : labelCol);
-
-            // Space bar icon (to the right of arrow keys)
-            const spX = kx + arrowGroupW + gap;
-            drawKey(spX, ky + ks + kg, spW, ks, spaceActive);
-            // Impact flash when SPACE is pressed
-            if (spaceActive) {
-                ctx.fillStyle = "#ffffff";
-                ctx.globalAlpha = 0.4;
-                ctx.fillRect((spX - 3) * SCALE, (ky + ks + kg - 3) * SCALE, (spW + 6) * SCALE, (ks + 6) * SCALE);
-                ctx.globalAlpha = 1.0;
-            }
-            ctx.font = `${3 * SCALE}px monospace`;
-            ctx.fillStyle = spaceActive ? "#000" : labelCol;
-            ctx.textAlign = "center";
-            ctx.fillText("SPACE", (spX + spW / 2) * SCALE, (ky + ks + kg + 7) * SCALE);
-
-            // Labels below each group
-            ctx.font = `${5 * SCALE}px monospace`;
-            ctx.fillStyle = "#efb775";
-            const arrowCenterX = kx + ks + kg + ks / 2;
-            ctx.fillText("MOVE", arrowCenterX * SCALE, (ky + 2 * ks + 2 * kg + 8) * SCALE);
-            ctx.fillText("ATTACK", (spX + spW / 2) * SCALE, (ky + 2 * ks + 2 * kg + 8) * SCALE);
-            ctx.textAlign = "start";
-        }
-        ctx.globalAlpha = 1;
-    }
-
-    // ======== PAGE 1: THE THREAT ========
-    else if (tutorialPage === 1) {
-        // Story captions
-        if (t < 150) {
-            const capAlpha = Math.min(1, Math.max(0, (t - 30) / 30));
-            ctx.globalAlpha = capAlpha;
-            drawCenteredText("EACH BEAT HAD A PATTERN. A SHAPE THAT NEEDED", 10, "#efd8a1", 5);
-            drawCenteredText("TO BE MADE WHOLE. OUTLINES MARKED WHAT WAS MISSING.", 20, "#efd8a1", 5);
-            ctx.globalAlpha = 1;
-        } else {
-            const capAlpha2 = Math.min(1, (t - 150) / 30);
-            ctx.globalAlpha = capAlpha2;
-            drawCenteredText("AND IN THE SHADOWS, SMALL EYES WATCHED.", 10, "#ef3a0c", 5);
-            drawCenteredText("THEY WOULD BE BACK.", 20, "#ef3a0c", 5);
-            ctx.globalAlpha = 1;
-        }
-
-        // --- TOP LEFT: Pulsing outlines (beats to ADD) ---
-        const gx = W / 2 - 4 * TILE;
-        const gy = 36;
-        const patCols = 4;
-        const addColor = "#efac28";
-        const addTarget = [true, false, true, false];
-        const addFillOrder = [0, 2];
-        const ADD_INTERVAL = 60;
-        const ADD_CYCLE = addFillOrder.length * ADD_INTERVAL + 80;
-        const addT = Math.max(0, t - 40) % ADD_CYCLE;
-        const addFilled = Math.min(addFillOrder.length, Math.floor(addT / ADD_INTERVAL));
-
-        for (let c = 0; c < patCols; c++) {
-            const bx = gx + c * TILE, by = gy;
-            let isOn = false;
-            for (let i = 0; i < addFilled; i++) {
-                if (addFillOrder[i] === c) isOn = true;
-            }
-            drawRect(bx, by, TILE, TILE, PAL.gridBorder);
-            drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? addColor : PAL.gridOff);
-            if (addTarget[c] && !isOn) {
-                ctx.globalAlpha = 0.3 + Math.sin(t * 0.06) * 0.15;
-                drawRect(bx + 1, by + 1, TILE - 2, 1, addColor);
-                drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, addColor);
-                drawRect(bx + 1, by + 1, 1, TILE - 2, addColor);
-                drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, addColor);
-                drawRect(bx + 6, by + 6, 4, 4, addColor);
-                ctx.globalAlpha = 1;
-            }
-            if (isOn) {
-                const fIdx = addFillOrder.indexOf(c);
-                if (fIdx >= 0) {
-                    const flashAge = addT - fIdx * ADD_INTERVAL;
-                    if (flashAge >= 0 && flashAge < 12) {
-                        ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
-                        drawRect(bx, by, TILE, TILE, "#ffffff");
-                        ctx.globalAlpha = 1;
-                    }
-                }
-            }
-        }
-        drawText("OUTLINES = ADD", gx - 2, gy + TILE + 10, "#efb775", 4);
-
-        // Vertical divider between ADD and REMOVE sections
-        const divX = W / 2;
-        const divTop = gy - 4;
-        const divBot = gy + TILE + 18;
-        ctx.strokeStyle = "#684c3c";
-        ctx.lineWidth = SCALE;
-        ctx.globalAlpha = 0.5;
-        ctx.beginPath();
-        ctx.moveTo(divX * SCALE, divTop * SCALE);
-        ctx.lineTo(divX * SCALE, divBot * SCALE);
-        ctx.stroke();
-        ctx.globalAlpha = 1.0;
-        // Diamond accent at center of divider
-        const dMid = (divTop + divBot) / 2;
-        drawRect(divX - 1, dMid - 2, 3, 3, "#efac28");
-
-        // --- TOP RIGHT: X marks (beats to REMOVE) ---
-        const xgx = W / 2 + TILE;
-        const xColor = "#efb775";
-        const xIndicatorColor = "#9b1a0a";
-        const xStartOn = [true, true, false, true];
-        const xTarget = [true, false, false, true];
-        const xRemoveOrder = [1];
-        const X_INTERVAL = 80;
-        const X_CYCLE = xRemoveOrder.length * X_INTERVAL + 100;
-        const xT = Math.max(0, t - 60) % X_CYCLE;
-        const xRemoved = Math.min(xRemoveOrder.length, Math.floor(xT / X_INTERVAL));
-
-        for (let c = 0; c < patCols; c++) {
-            const bx = xgx + c * TILE, by = gy;
-            let isOn = xStartOn[c];
-            for (let i = 0; i < xRemoved; i++) {
-                if (xRemoveOrder[i] === c) isOn = false;
-            }
-            drawRect(bx, by, TILE, TILE, PAL.gridBorder);
-            drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? xColor : PAL.gridOff);
-            if (isOn && !xTarget[c]) {
-                ctx.globalAlpha = 0.6 + Math.sin(t * 0.04) * 0.15;
-                drawRect(bx + 3, by + 3, 2, 2, xIndicatorColor);
-                drawRect(bx + 5, by + 5, 2, 2, xIndicatorColor);
-                drawRect(bx + 7, by + 7, 2, 2, xIndicatorColor);
-                drawRect(bx + 9, by + 9, 2, 2, xIndicatorColor);
-                drawRect(bx + 9, by + 3, 2, 2, xIndicatorColor);
-                drawRect(bx + 7, by + 5, 2, 2, xIndicatorColor);
-                drawRect(bx + 5, by + 7, 2, 2, xIndicatorColor);
-                drawRect(bx + 3, by + 9, 2, 2, xIndicatorColor);
-                ctx.globalAlpha = 1;
-            }
-            if (!isOn && xStartOn[c]) {
-                const fIdx = xRemoveOrder.indexOf(c);
-                if (fIdx >= 0) {
-                    const flashAge = xT - fIdx * X_INTERVAL;
-                    if (flashAge >= 0 && flashAge < 12) {
-                        ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
-                        drawRect(bx, by, TILE, TILE, "#ffffff");
-                        ctx.globalAlpha = 1;
-                    }
-                }
-            }
-        }
-        drawText("X MARKS = REMOVE", xgx, gy + TILE + 10, "#efb775", 4);
-
-        // --- Lurking goblins at the edges (watching, waiting) ---
-        const gobFrame = Math.floor(t / 20) % 4; // slow idle animation
-        ctx.globalAlpha = 0.7;
-        // Left goblin — near left cave, facing right
-        drawGoblinSprite("normal", TILE + 4, GRID_Y * TILE + TILE, gobFrame, { dir: 3, showShadow: false });
-        // Right goblin — near right cave, facing left
-        drawGoblinSprite("normal", (COLS - 2) * TILE - 4, GRID_Y * TILE + TILE, (gobFrame + 2) % 4, { dir: 2, showShadow: false });
-        ctx.globalAlpha = 1;
-    }
-
-    // ======== PAGE 2: THE STAND ========
-    else if (tutorialPage === 2) {
-        // Timeline constants
-        const CAPTION1_START = 30;
-        const GOB_START = 40;
-        const GOB_END = 140;
-        const PUNCH_START = 155;
-        const ATTACK_DUR = 12;
-        const HIT_FRAME = 160;
-        const CAPTION2_START = 185;
-        const PROMPT_START = 250;
-
-        // Positions
-        const djX = W / 2 + TILE;
-        const djY = GRID_Y * TILE - 4;
-        const gobStartX = TILE * 2;
-        const gobEndX = W / 2 - TILE * 2;
-
-        // --- Caption 1: "BUT THEN ONE CAME BACK..." ---
-        if (t > CAPTION1_START) {
-            const fadeIn = Math.min(1, (t - CAPTION1_START) / 20);
-            ctx.globalAlpha = fadeIn;
-            drawCenteredText("ONE OF THEM CREPT BACK. BOLD. STUPID.", 20, "#efd8a1", 6);
-            ctx.globalAlpha = 1;
-        }
-
-        // --- Goblin walk-in ---
-        const gobAlive = t < HIT_FRAME;
-        if (gobAlive) {
-            const gobProgress = Math.min(1, Math.max(0, (t - GOB_START) / (GOB_END - GOB_START)));
-            const eased = gobProgress * gobProgress * (3 - 2 * gobProgress);
-            const gobX = gobStartX + (gobEndX - gobStartX) * eased;
-            const gobFrame = t < GOB_END ? Math.floor(t / 10) % 4 : 0;
-            drawGoblinSprite("normal", gobX, djY, gobFrame, { dir: 3, showShadow: true });
-        }
-
-        // --- Death particles ---
-        if (t >= HIT_FRAME && t < HIT_FRAME + 30) {
-            const deathT = t - HIT_FRAME;
-            const particleColors = ["#39FF14", "#1a5c0a", "#efac28", "#39FF14", "#2d8a0e", "#efac28", "#39FF14", "#1a5c0a"];
-            for (let pi = 0; pi < 8; pi++) {
-                const angle = (pi / 8) * Math.PI * 2 + 0.3;
-                const speed = 1.5 + (pi % 3) * 0.5;
-                const px = gobEndX + 6 + Math.cos(angle) * speed * deathT;
-                const py = djY + 6 + Math.sin(angle) * speed * deathT + deathT * deathT * 0.04;
-                const life = 1 - deathT / 30;
-                if (life > 0) {
-                    ctx.globalAlpha = life;
-                    drawRect(px, py, 2, 2, particleColors[pi]);
-                }
-            }
-            ctx.globalAlpha = 1;
-            // Screen flash on impact
-            if (deathT < 3) {
-                ctx.globalAlpha = 0.3 * (1 - deathT / 3);
-                drawRect(0, 0, W, H, "#39FF14");
-                ctx.globalAlpha = 1;
-            }
-        }
-
-        // --- DJ sprite ---
-        const djDir = 2; // facing left toward goblin
-        let punchThrust = 0;
-        let djFrame = 0;
-        if (t >= PUNCH_START && t < PUNCH_START + ATTACK_DUR) {
-            const punchProgress = (t - PUNCH_START) / ATTACK_DUR;
-            punchThrust = Math.sin(punchProgress * Math.PI);
-        }
-        drawPlayerSprite(djX, djY, djFrame, djDir, { punchThrust: punchThrust });
-
-        // Draw punch arm + fist (same style as Page 0)
-        if (punchThrust > 0) {
-            const thrust = punchThrust;
-            let ddx2 = -1, ddy2 = 0; // facing left
-            const pLeanX = ddx2 * thrust * 5;
-            const pLeanY = 0;
-            const pcx = djX + 8, pcy = djY + 6;
-            const shOX = -8, shOY = -2; // left-facing shoulder offset
-            const armLen = 3 + thrust * 6;
-            const shX = (pcx + pLeanX + shOX) * SCALE, shY = (pcy + pLeanY + shOY) * SCALE;
-            const fiX = (pcx + pLeanX + shOX + ddx2 * armLen) * SCALE, fiY = (pcy + pLeanY + shOY + ddy2 * armLen) * SCALE;
-            ctx.strokeStyle = "#efb775"; ctx.lineWidth = 4 * SCALE; ctx.lineCap = "round";
-            ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(fiX, fiY); ctx.stroke();
-            ctx.fillStyle = "#efb775"; ctx.beginPath(); ctx.arc(fiX, fiY, 3.5 * SCALE, 0, Math.PI * 2); ctx.fill();
-            // Impact burst
-            if (thrust > 0.5) {
-                for (let bi = 0; bi < 6; bi++) {
-                    const angle = (bi / 6) * Math.PI * 2 + (t - PUNCH_START) * 0.3;
-                    ctx.strokeStyle = "#efd8a1"; ctx.lineWidth = 2 * SCALE; ctx.globalAlpha = thrust * 0.8;
-                    ctx.beginPath();
-                    ctx.moveTo(fiX + Math.cos(angle) * 5 * SCALE, fiY + Math.sin(angle) * 5 * SCALE);
-                    ctx.lineTo(fiX + Math.cos(angle) * (8 + thrust * 4) * SCALE, fiY + Math.sin(angle) * (8 + thrust * 4) * SCALE);
-                    ctx.stroke();
-                }
-                ctx.globalAlpha = 1;
-            }
-        }
-
-        // --- Caption 2 ---
-        if (t > CAPTION2_START) {
-            const fadeIn = Math.min(1, (t - CAPTION2_START) / 20);
-            ctx.globalAlpha = fadeIn;
-            drawCenteredText("IT TURNS OUT FISTS THAT COULD FIX A BEAT", 34, "#efac28", 5);
-            drawCenteredText("COULD BREAK A GOBLIN JUST AS EASILY.", 44, "#efac28", 5);
-            ctx.globalAlpha = 1;
-        }
-    }
-
-    // Blinking prompt
-    // On Page 2, delay the prompt until the animation sequence finishes
-    const promptDelay = tutorialPage === 2 ? 250 : 20;
-    const promptText = tutorialPage < 2 ? "PRESS ENTER" : "PRESS ENTER TO START";
-    if (t > promptDelay && t % 60 < 40) {
-        drawCenteredText(promptText, H - 10, "#efd8a1", 5);
-    }
-}
-
 function renderSabotageAnim() {
     // Keep the drum sequencer playing during the scramble
     tickSequencer();
@@ -7437,8 +7411,6 @@ function gameLoop(timestamp) {
                 renderTitleScreen();
             } else if (gameState === "intro") {
                 renderIntro();
-            } else if (gameState === "tutorial") {
-                renderTutorialScreen();
             } else if (gameState === "enemywarning-intro") {
                 renderEnemyWarningIntro();
             } else if (gameState === "enemywarning") {
