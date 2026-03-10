@@ -985,8 +985,11 @@ const blockToggleAnim = Array.from({ length: GRID_ROWS }, () => new Array(GRID_C
 const rowTrigger = new Array(GRID_ROWS).fill(0); // countdown frames per row
 // Scene transition effect
 let sceneTransition = { active: false, from: null, to: null, progress: 0, duration: 20 };
-// Title text entrance animation
+// Title text entrance/exit animation
 let titleEntrancePhase = 0; // frames since title screen entered
+let titleFadingOut = false;  // true when transitioning title→intro
+let titleFadeTimer = 0;      // frames since fade-out started
+const TITLE_FADE_DURATION = 20; // frames for title text to fade out
 // Firework system for level complete
 let fireworks = []; // { x, y, vx, vy, life, maxLife, color, exploded, particles: [] }
 // Screen crack effect for game over
@@ -1235,16 +1238,11 @@ window.addEventListener("keydown", (e) => {
             return;
         }
         if (gameState === "title") {
+            if (titleFadingOut) return; // already transitioning
             ensureAudio();
-            stopTitleDrums();
-            gameState = "intro";
-            introScene = 1; // skip StudioLand card, go straight to Good Times
-            introTimer = 0;
-            introGlobalTimer = 0;
-            introBeatStep = 0;
-            introBeatTimer = 0;
-            startIntroDrums(); // start drums immediately (was in Scene 0)
-            sceneTransition = { active: true, from: "title", to: "intro", progress: 0, duration: 18 };
+            // Start fading title text — state change happens when fade completes
+            titleFadingOut = true;
+            titleFadeTimer = 0;
             return;
         }
         if (gameState === "intro") {
@@ -4511,6 +4509,27 @@ function renderTitleScreen() {
 
     // === TITLE TEXT (in the dance floor empty space) ===
     titleEntrancePhase++;
+
+    // Handle fade-out when transitioning to intro
+    if (titleFadingOut) {
+        titleFadeTimer++;
+        if (titleFadeTimer >= TITLE_FADE_DURATION) {
+            titleFadingOut = false;
+            titleFadeTimer = 0;
+            // Now switch to intro
+            stopTitleDrums();
+            gameState = "intro";
+            introScene = 1;
+            introTimer = 0;
+            introGlobalTimer = 0;
+            introBeatStep = 0;
+            introBeatTimer = 0;
+            startIntroDrums();
+            return;
+        }
+    }
+    const titleTextAlpha = titleFadingOut ? Math.max(0, 1 - titleFadeTimer / TITLE_FADE_DURATION) : 1;
+
     function drawCentered(text, y, color, scale) {
         ctx.font = `${scale * SCALE}px monospace`;
         ctx.fillStyle = color;
@@ -4529,7 +4548,7 @@ function renderTitleScreen() {
     const titleBaseY = (GRID_Y + 7) * TILE + 8; // in the open dance floor space
 
     // "ATTACK OF THE" subtitle — fades in
-    const subAlpha = Math.min(1, titleEntrancePhase / 30);
+    const subAlpha = Math.min(1, titleEntrancePhase / 30) * titleTextAlpha;
     ctx.globalAlpha = subAlpha;
     const subY = titleBaseY;
     drawCentered("ATTACK OF THE", subY + 1, "#000000", 5);
@@ -4554,14 +4573,14 @@ function renderTitleScreen() {
         const charX = grooveStartX + i * grooveCharW + grooveSlideX;
         const bounce = grooveEntrance >= 1 ? Math.sin(titleBlink * 0.07 + i * 0.9) * 3 : 0;
         const col = i % 2 === 0 ? "#efac28" : "#ab5c1c";
-        ctx.globalAlpha = grooveEntrance;
+        ctx.globalAlpha = grooveEntrance * titleTextAlpha;
         // Shadow
         drawText(grooveText[i], charX + 1, grooveY + bounce + 2, "#000000", bigFontSize);
         drawText(grooveText[i], charX - 1, grooveY + bounce + 2, "#000000", bigFontSize);
         // Glow layer
-        ctx.globalAlpha = 0.3 * grooveEntrance;
+        ctx.globalAlpha = 0.3 * grooveEntrance * titleTextAlpha;
         drawText(grooveText[i], charX, grooveY + bounce - 1, "#efac28", bigFontSize);
-        ctx.globalAlpha = grooveEntrance;
+        ctx.globalAlpha = grooveEntrance * titleTextAlpha;
         // Main text
         drawText(grooveText[i], charX, grooveY + bounce, col, bigFontSize);
         // Shimmer highlight pass
@@ -4569,7 +4588,7 @@ function renderTitleScreen() {
             const charNorm = i / grooveText.length;
             const dist = Math.abs(shimmerPos - charNorm);
             if (dist < 0.15) {
-                const shimmerAlpha = (1 - dist / 0.15) * 0.5;
+                const shimmerAlpha = (1 - dist / 0.15) * 0.5 * titleTextAlpha;
                 ctx.globalAlpha = shimmerAlpha;
                 drawText(grooveText[i], charX, grooveY + bounce, "#ffffff", bigFontSize);
             }
@@ -4596,14 +4615,14 @@ function renderTitleScreen() {
         const charX = gobStartX + i * gobCharW + gobSlideX;
         const bounce = gobEntrance >= 1 ? Math.sin(titleBlink * 0.07 + i * 0.9 + 3) * 3 : 0;
         const col = i % 2 === 0 ? "#39FF14" : "#00CC00";
-        ctx.globalAlpha = gobEntrance;
+        ctx.globalAlpha = gobEntrance * titleTextAlpha;
         // Shadow
         drawText(goblinsText[i], charX + 1, gobY + bounce + 2, "#000000", bigFontSize);
         drawText(goblinsText[i], charX - 1, gobY + bounce + 2, "#000000", bigFontSize);
         // Glow
-        ctx.globalAlpha = 0.25 * gobEntrance;
+        ctx.globalAlpha = 0.25 * gobEntrance * titleTextAlpha;
         drawText(goblinsText[i], charX, gobY + bounce - 1, "#39FF14", bigFontSize);
-        ctx.globalAlpha = gobEntrance;
+        ctx.globalAlpha = gobEntrance * titleTextAlpha;
         // Main text
         drawText(goblinsText[i], charX, gobY + bounce, col, bigFontSize);
     }
@@ -4620,24 +4639,10 @@ function renderTitleScreen() {
     const pressY = titleBaseY + 56;
 
     // Blink the text with a faster, more urgent rhythm
-    if (titleBlink % 45 < 32) {
+    if (titleBlink % 45 < 32 && !titleFadingOut) {
         drawCentered("PRESS ENTER", pressY + 1, "#000000", 6);
         const enterCol = (titleStep % 4 === 0) ? "#efac28" : "#efd8a1";
         drawCentered("PRESS ENTER", pressY, enterCol, 6);
-    }
-
-    // === HIGH SCORES (bottom right corner, compact) ===
-    const hasScores = highScores.length > 0;
-    if (hasScores) {
-        const scoreX = W - 70;
-        const scoreStartY = H - 8 - highScores.length * 8;
-        drawText("HIGH SCORES", scoreX - 4, scoreStartY - 10, "#efac28", 3);
-        for (let i = 0; i < highScores.length; i++) {
-            const entry = highScores[i];
-            const rank = (i + 1) + "." + entry.name + " " + String(entry.score).padStart(7, "0");
-            const color = i === 0 ? "#efac28" : "#efb775";
-            drawText(rank, scoreX - 4, scoreStartY + i * 8, color, 3);
-        }
     }
 }
 
@@ -5695,6 +5700,19 @@ function renderHighScoreEntry() {
 
         // Underline
         drawRect(lx, ly + letterScale + 4, letterScale, 2, i === initialsPos ? "#efac28" : "#392a1c");
+    }
+
+    // Existing high scores list
+    if (highScores.length > 0) {
+        const scoreX = 16;
+        const scoreStartY = H / 2 - 20;
+        drawText("HIGH SCORES", scoreX, scoreStartY - 12, "#efac28", 3);
+        for (let i = 0; i < highScores.length; i++) {
+            const entry = highScores[i];
+            const rank = (i + 1) + "." + entry.name + " " + String(entry.score).padStart(7, "0");
+            const color = i === 0 ? "#efac28" : "#efb775";
+            drawText(rank, scoreX, scoreStartY + i * 9, color, 3);
+        }
     }
 
     // "PRESS ENTER TO CONFIRM" blinking
