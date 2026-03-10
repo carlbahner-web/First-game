@@ -4697,7 +4697,7 @@ function renderTitleScreen() {
     }
 
     // Dance floor title area — positioned below the dancers
-    const titleBaseY = (GRID_Y + 7) * TILE + 8; // in the open dance floor space
+    const titleBaseY = (GRID_Y + 7) * TILE + 12; // in the open dance floor space
 
     // "ATTACK OF THE" subtitle — fades in
     const subAlpha = Math.min(1, titleEntrancePhase / 30) * titleTextAlpha;
