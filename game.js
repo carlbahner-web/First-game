@@ -6449,14 +6449,6 @@ function renderIntro() {
         }
     }
 
-    // Skip/advance prompt — small corner hint for cinematic scenes
-    if (introScene <= 4 && introGlobalTimer > 60) {
-        const pulse = Math.sin(introGlobalTimer * 0.08) * 0.4 + 0.6;
-        ctx.globalAlpha = pulse;
-        drawText("ENTER: NEXT", W - 55, H - 6, "#efd8a1", 3);
-        ctx.globalAlpha = 1;
-    }
-
     // HUD "PRESS ENTER" prompt — appears 60 frames after each scene's last story beat
     const lastBeatFrame = [60, 300, 120, 90, 150, 120, 150, 185][introScene] || 60;
     const hudPromptDelay = lastBeatFrame + 60;
