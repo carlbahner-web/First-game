@@ -1016,6 +1016,10 @@ let introGlobalTimer = 0;   // total frames since intro started
 let introBeatStep = 0;      // simulated sequencer step for the intro beat
 let introBeatTimer = 0;     // frame counter for beat stepping
 let introSkipHeld = 0;      // frames Enter is held for skip
+// Intro earthquake goblins — emerge from caves and flip grid cells
+let introGoblins = [];      // [{x, y, destX, destY, dir, frame, frameTimer, caveIdx, targetRow, targetCol, emerged, speed}]
+let introGridState = null;  // mutable copy of INTRO_BEAT patterns for goblin flipping
+let introGridFlash = null;  // flash timers per cell [row][col]
 let introDrumGain = null;   // audio gain node for intro drums
 let introDrumStarted = false;
 let introDrumTimer = null;
@@ -4566,6 +4570,9 @@ function renderTitleScreen() {
             introGlobalTimer = 0;
             introBeatStep = 0;
             introBeatTimer = 0;
+            introGoblins = [];
+            introGridState = null;
+            introGridFlash = null;
             startIntroDrums();
             return;
         }
@@ -4930,7 +4937,30 @@ function advanceIntroScene() {
         return;
     }
     // Scene-specific triggers
-    if (introScene === 1) playEarthquakeRumble();
+    if (introScene === 1) {
+        playEarthquakeRumble();
+        // Initialize mutable grid for goblin flipping
+        introGridState = [
+            INTRO_BEAT.O.slice(),
+            INTRO_BEAT.H.slice(),
+            INTRO_BEAT.S.slice(),
+            INTRO_BEAT.K.slice(),
+        ];
+        introGridFlash = Array.from({ length: 4 }, () => new Array(16).fill(0));
+        // Spawn goblins at each cave
+        introGoblins = CAVES.map((cave, ci) => {
+            const spawnX = cave.tileX * TILE;
+            const spawnY = cave.tileY * TILE;
+            return {
+                x: spawnX, y: spawnY,
+                destX: spawnX, destY: spawnY,
+                dir: 0, frame: 0, frameTimer: 0,
+                caveIdx: ci, emerged: false, speed: 0.5,
+                targetRow: -1, targetCol: -1,
+                moveSteps: 0,
+            };
+        });
+    }
     if (introScene === 2) {
         playGoblinCackle();
         // Corrupt the drum pattern
@@ -5173,10 +5203,10 @@ function renderIntro() {
         drawRect(boothX + 32, boothY + 4, 16, 8, "#392a1c");
         drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e");
 
-        // Beat grid — keeps playing through the earthquake
+        // Beat grid — uses mutable state so goblins can flip cells
         const miniGridY = GRID_Y * TILE + 14;
         const miniGridX = 3 * TILE;
-        const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
+        const patterns = introGridState || [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
         for (let r = 0; r < 4; r++) {
             for (let c = 0; c < 16; c++) {
                 const gx = miniGridX + c * TILE;
@@ -5184,6 +5214,14 @@ function renderIntro() {
                 const on = patterns[r][c];
                 drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
                 drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, on ? PAL.gridOn[r] : PAL.gridOff);
+                // Goblin sabotage flash
+                if (introGridFlash && introGridFlash[r][c] > 0) {
+                    ctx.fillStyle = "#39FF14";
+                    ctx.globalAlpha = (introGridFlash[r][c] / 30) * 0.5;
+                    ctx.fillRect(gx * SCALE, gy * SCALE, TILE * SCALE, TILE * SCALE);
+                    ctx.globalAlpha = 1;
+                    introGridFlash[r][c]--;
+                }
             }
         }
         // Playhead
@@ -5301,8 +5339,9 @@ function renderIntro() {
                             drawRect(rx, ry, 2, 2, "#684c3c");
                         }
                     }
-                    // Glowing eyes in darkness
-                    if (caveReveal > 0.7) {
+                    // Glowing eyes in darkness (hide once goblin has emerged)
+                    const gobEmerged = introGoblins[ci] && introGoblins[ci].emerged;
+                    if (caveReveal > 0.7 && !gobEmerged) {
                         const eyeAlpha = (caveReveal - 0.7) / 0.3;
                         ctx.globalAlpha = eyeAlpha * (0.5 + Math.sin(t * 0.1 + ci) * 0.5);
                         drawRect(cx + 5, cy + 5, 2, 2, "#39FF14");
@@ -5318,6 +5357,97 @@ function renderIntro() {
                 const sparkY = boothY + Math.random() * 8;
                 drawRect(sparkX, sparkY, 2, 2, "#efac28");
                 drawRect(sparkX + 1, sparkY - 2, 1, 2, "#ffffff");
+            }
+
+            // === Goblins emerge from caves and sabotage the grid ===
+            const goblinEmergeTime = 200; // when goblins start emerging (per cave stagger)
+            for (let gi = 0; gi < introGoblins.length; gi++) {
+                const gob = introGoblins[gi];
+                const cave = CAVES[gob.caveIdx];
+                const caveReady = caveT > goblinEmergeTime + gi * 40;
+                if (!caveReady) continue;
+
+                if (!gob.emerged) {
+                    // Set initial destination: walk from cave to a point on the grid
+                    gob.emerged = true;
+                    const gridCenterX = miniGridX + 8 * TILE;
+                    const gridCenterY = miniGridY + 2 * TILE;
+                    // Walk toward grid center from cave position
+                    if (cave.tileX === 0) {
+                        gob.destX = miniGridX;
+                        gob.destY = miniGridY + gi * TILE;
+                        gob.dir = 3; // right
+                    } else if (cave.tileX === COLS - 1) {
+                        gob.destX = miniGridX + 15 * TILE;
+                        gob.destY = miniGridY + gi * TILE;
+                        gob.dir = 2; // left
+                    } else {
+                        gob.destX = gridCenterX;
+                        gob.destY = miniGridY;
+                        gob.dir = 0; // down
+                    }
+                }
+
+                // Move toward destination (gameplay-style smooth movement)
+                const dx = gob.destX - gob.x;
+                const dy = gob.destY - gob.y;
+                const dist = Math.abs(dx) + Math.abs(dy);
+                if (dist > 1) {
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        gob.x += Math.sign(dx) * gob.speed;
+                        gob.dir = dx < 0 ? 2 : 3;
+                    } else {
+                        gob.y += Math.sign(dy) * gob.speed;
+                        gob.dir = dy < 0 ? 1 : 0;
+                    }
+                    gob.frameTimer++;
+                    if (gob.frameTimer >= 8) {
+                        gob.frameTimer = 0;
+                        gob.frame = (gob.frame + 1) % 4;
+                    }
+                } else {
+                    // Arrived at destination — check if we're on a grid cell
+                    gob.x = gob.destX;
+                    gob.y = gob.destY;
+                    const gc = Math.round((gob.x - miniGridX) / TILE);
+                    const gr = Math.round((gob.y - miniGridY) / TILE);
+                    if (gc === gob.targetCol && gr === gob.targetRow &&
+                        gr >= 0 && gr < 4 && gc >= 0 && gc < 16 && introGridState) {
+                        // Flip the cell!
+                        introGridState[gr][gc] = introGridState[gr][gc] ? 0 : 1;
+                        introGridFlash[gr][gc] = 30;
+                        if (audioCtx) playSabotageSound(audioCtx.currentTime);
+                        gob.targetRow = -1;
+                        gob.targetCol = -1;
+                    }
+
+                    // Pick a new target cell
+                    if (gob.targetRow < 0 || gob.moveSteps > 5) {
+                        gob.targetRow = Math.floor(Math.random() * 4);
+                        gob.targetCol = Math.floor(Math.random() * 16);
+                        gob.moveSteps = 0;
+                    }
+
+                    // Move toward target cell
+                    const goalX = miniGridX + gob.targetCol * TILE;
+                    const goalY = miniGridY + gob.targetRow * TILE;
+                    const gdx = goalX - gob.x;
+                    const gdy = goalY - gob.y;
+                    if (Math.abs(gdx) > Math.abs(gdy)) {
+                        gob.destX = gob.x + Math.sign(gdx) * TILE;
+                        gob.destY = gob.y;
+                    } else {
+                        gob.destX = gob.x;
+                        gob.destY = gob.y + Math.sign(gdy) * TILE;
+                    }
+                    // Clamp to grid area
+                    gob.destX = Math.max(miniGridX, Math.min(miniGridX + 15 * TILE, gob.destX));
+                    gob.destY = Math.max(miniGridY, Math.min(miniGridY + 3 * TILE, gob.destY));
+                    gob.moveSteps++;
+                }
+
+                // Draw goblin
+                drawGoblinSprite("normal", gob.x, gob.y, gob.frame, { dir: gob.dir, showShadow: false });
             }
         }
 
