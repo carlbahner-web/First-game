@@ -5254,7 +5254,9 @@ function renderIntro() {
         if (t > 60) {
             const capAlpha = Math.min(1, (t - 60) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("THE BEATS WERE PERFECT.", H - 18, "#efac28", 6);
+            drawCentered("EVERY FRIDAY NIGHT, THE UNDERGROUND CAME ALIVE.", H - 30, "#efac28", 5);
+            drawCentered("THE DJ SPUN BEATS THAT MADE THE WALLS SHAKE", H - 20, "#efac28", 5);
+            drawCentered("AND THE FLOOR PULSE.", H - 10, "#efac28", 5);
             ctx.globalAlpha = 1;
         }
     }
@@ -5592,13 +5594,15 @@ function renderIntro() {
         if (t > 60 && t < 300) {
             const capAlpha = Math.min(1, (t - 60) / 30) * Math.max(0, 1 - (t - 240) / 60);
             ctx.globalAlpha = Math.max(0, capAlpha);
-            drawCentered("THEN THE GROUND BEGAN TO SHAKE...", H - 18, "#ef3a0c", 6);
+            drawCentered("BUT DEEP BENEATH THE DANCE FLOOR,", H - 24, "#ef3a0c", 5);
+            drawCentered("SOMETHING HAD BEEN LISTENING.", H - 14, "#ef3a0c", 5);
             ctx.globalAlpha = 1;
         }
         if (t > 300) {
             const capAlpha = Math.min(1, (t - 300) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("THE WALLS CRUMBLED OPEN!", H - 18, "#ef3a0c", 6);
+            drawCentered("THE EARTH SPLIT OPEN.", H - 24, "#ef3a0c", 5);
+            drawCentered("CRACKS TORE THROUGH THE WALLS LIKE JAGGED TEETH.", H - 14, "#ef3a0c", 5);
             ctx.globalAlpha = 1;
         }
     }
@@ -5701,7 +5705,9 @@ function renderIntro() {
         if (t > 120) {
             const capAlpha = Math.min(1, (t - 120) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("GOBLINS ATTACKED AND SABOTAGED THE BEATS!", H - 18, "#39FF14", 5);
+            drawCentered("THEY CAME POURING OUT. SMALL, VICIOUS, AND FAST.", H - 30, "#39FF14", 5);
+            drawCentered("THEY SWARMED THE BEAT GRID AND TORE IT APART,", H - 20, "#39FF14", 5);
+            drawCentered("NOTE BY NOTE. THE MUSIC TWISTED INTO NOISE.", H - 10, "#39FF14", 5);
             ctx.globalAlpha = 1;
         }
     }
@@ -5785,7 +5791,9 @@ function renderIntro() {
         if (t > 90) {
             const capAlpha = Math.min(1, (t - 90) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("THE MUSIC DIED. THE CROWD FLED.", H - 18, "#efd8a1", 6);
+            drawCentered("THE CROWD SCATTERED. THE LIGHTS WENT DARK.", H - 24, "#efd8a1", 5);
+            drawCentered("AND FOR THE FIRST TIME ANYONE COULD REMEMBER,", H - 14, "#efd8a1", 5);
+            drawCentered("THE UNDERGROUND WAS SILENT.", H - 4, "#efd8a1", 5);
             ctx.globalAlpha = 1;
         }
     }
@@ -5846,12 +5854,15 @@ function renderIntro() {
         if (t > 60) {
             const txtAlpha = Math.min(1, (t - 60) / 30);
             ctx.globalAlpha = txtAlpha;
-            drawCentered("BUT THE DJ HAD FISTS OF FURY.", 30, "#efac28", 7);
+            drawCentered("BUT THE DJ DIDN'T RUN.", 24, "#efac28", 6);
+            drawCentered("ALONE IN THE WRECKAGE, SOMETHING STIRRED.", 34, "#efac28", 5);
+            drawCentered("A RHYTHM, DEEP IN THE CHEST, THAT REFUSED TO DIE.", 44, "#efac28", 5);
         }
         if (t > 150) {
             const txtAlpha2 = Math.min(1, (t - 150) / 30);
             ctx.globalAlpha = txtAlpha2;
-            drawCentered("IT'S TIME TO GET PUNCHIN'!", H - 30, "#ef3a0c", 8);
+            drawCentered("TWO FISTS. ONE BEAT.", H - 36, "#ef3a0c", 8);
+            drawCentered("THAT'S ALL IT WOULD TAKE.", H - 24, "#ef3a0c", 6);
         }
         ctx.globalAlpha = 1;
 
@@ -6446,12 +6457,13 @@ function renderTutorialScreen() {
         if (t < 120) {
             const capAlpha = Math.min(1, Math.max(0, (t - 30) / 30));
             ctx.globalAlpha = capAlpha;
-            drawCenteredText("THEN THE DJ MADE A DISCOVERY...", 20, "#efd8a1", 6);
+            drawCenteredText("A SINGLE PUNCH. A SINGLE NOTE.", 16, "#efd8a1", 5);
+            drawCenteredText("THE SOUND RANG OUT THROUGH THE RUINS LIKE A BELL.", 26, "#efd8a1", 5);
             ctx.globalAlpha = 1;
         } else {
             const capAlpha = Math.min(1, (t - 120) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCenteredText("FISTS COULD RESTORE THE BEAT!", 20, "#efac28", 7);
+            drawCenteredText("THE BEAT WASN'T DEAD. IT WAS WAITING.", 20, "#efac28", 6);
             ctx.globalAlpha = 1;
         }
 
@@ -6713,12 +6725,14 @@ function renderTutorialScreen() {
         if (t < 150) {
             const capAlpha = Math.min(1, Math.max(0, (t - 30) / 30));
             ctx.globalAlpha = capAlpha;
-            drawCenteredText("MATCH THE PATTERN TO RESTORE EACH BEAT...", 15, "#efd8a1", 5);
+            drawCenteredText("EACH BEAT HAD A PATTERN. A SHAPE THAT NEEDED", 10, "#efd8a1", 5);
+            drawCenteredText("TO BE MADE WHOLE. OUTLINES MARKED WHAT WAS MISSING.", 20, "#efd8a1", 5);
             ctx.globalAlpha = 1;
         } else {
             const capAlpha2 = Math.min(1, (t - 150) / 30);
             ctx.globalAlpha = capAlpha2;
-            drawCenteredText("...BEFORE THE GOBLINS RETURN!", 15, "#ef3a0c", 6);
+            drawCenteredText("AND IN THE SHADOWS, SMALL EYES WATCHED.", 10, "#ef3a0c", 5);
+            drawCenteredText("THEY WOULD BE BACK.", 20, "#ef3a0c", 5);
             ctx.globalAlpha = 1;
         }
 
@@ -6859,7 +6873,7 @@ function renderTutorialScreen() {
         if (t > CAPTION1_START) {
             const fadeIn = Math.min(1, (t - CAPTION1_START) / 20);
             ctx.globalAlpha = fadeIn;
-            drawCenteredText("BUT THEN ONE CAME BACK...", 20, "#efd8a1", 6);
+            drawCenteredText("ONE OF THEM CREPT BACK. BOLD. STUPID.", 20, "#efd8a1", 6);
             ctx.globalAlpha = 1;
         }
 
@@ -6935,11 +6949,12 @@ function renderTutorialScreen() {
             }
         }
 
-        // --- Caption 2: "THE FISTS WORKED ON GOBLINS TOO!" ---
+        // --- Caption 2 ---
         if (t > CAPTION2_START) {
             const fadeIn = Math.min(1, (t - CAPTION2_START) / 20);
             ctx.globalAlpha = fadeIn;
-            drawCenteredText("THE FISTS WORKED ON GOBLINS TOO!", 38, "#efac28", 7);
+            drawCenteredText("IT TURNS OUT FISTS THAT COULD FIX A BEAT", 34, "#efac28", 5);
+            drawCenteredText("COULD BREAK A GOBLIN JUST AS EASILY.", 44, "#efac28", 5);
             ctx.globalAlpha = 1;
         }
     }
@@ -7154,8 +7169,8 @@ function renderEnemyWarning() {
         ctx.translate(-cx_w, -cy_w);
         drawGoblinSprite("normal", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
         ctx.restore();
-        drawCenteredText("THEY SABOTAGE YOUR BEATS!", 115, "#efb775", 5);
-        drawCenteredText("PUNCH THEM TO DEFEAT THEM!", 132, "#efac28", 5);
+        drawCenteredText("THEY'LL SCRAMBLE YOUR BEATS THE MOMENT", 115, "#efb775", 5);
+        drawCenteredText("YOUR BACK IS TURNED. DON'T LET THEM.", 132, "#efac28", 5);
 
     } else if (enemyWarningType === "elite") {
         drawCenteredText("WARNING!", 30, "#FF00FF", 8);
@@ -7168,9 +7183,9 @@ function renderEnemyWarning() {
         ctx.translate(-cx_w, -cy_w);
         drawGoblinSprite("elite", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
         ctx.restore();
-        drawCenteredText("THIS GOBLIN IS EXTRA STRONG!", 115, "#efb775", 5);
-        drawCenteredText("IT TAKES 3 HITS TO DEFEAT!", 132, "#FF44FF", 5);
-        drawCenteredText("IT ALSO MOVES FASTER THAN NORMAL GOBLINS.", 155, "#efb775", 4);
+        drawCenteredText("BIGGER. MEANER. THIS ONE DOESN'T GO DOWN EASY.", 115, "#efb775", 5);
+        drawCenteredText("THREE SOLID HITS TO PUT IT ON THE FLOOR.", 132, "#FF44FF", 5);
+        drawCenteredText("AND IT'S FAST.", 149, "#efb775", 5);
 
     } else if (enemyWarningType === "catapult") {
         drawCenteredText("WARNING!", 30, "#FF00FF", 8);
@@ -7183,9 +7198,9 @@ function renderEnemyWarning() {
         ctx.translate(-cx_w, -cy_w);
         drawGoblinSprite("catapult", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
         ctx.restore();
-        drawCenteredText("THIS GOBLIN THROWS BOULDERS!", 115, "#efb775", 5);
-        drawCenteredText("IT HURLS ROCKS AT YOUR BEAT GRID FROM A DISTANCE.", 138, "#efb775", 4);
-        drawCenteredText("IT CAN'T BE KILLED, BUT IT CAN KILL YOU!", 172, "#FF00FF", 4);
+        drawCenteredText("THIS ONE FIGHTS DIRTY, HURLING BOULDERS", 115, "#efb775", 5);
+        drawCenteredText("AT YOUR GRID FROM ACROSS THE ROOM.", 132, "#efb775", 5);
+        drawCenteredText("YOU CAN'T KILL IT. BUT IT CAN SURE KILL YOU.", 149, "#FF00FF", 5);
     }
 
     // Blinking "PRESS ENTER TO CONTINUE"
@@ -7276,14 +7291,14 @@ function renderNewInstrument() {
         if (t > 40) {
             const descAlpha = Math.min(1, (t - 40) / 30);
             ctx.globalAlpha = descAlpha;
-            drawCenteredText("A NEW ROW APPEARS BELOW THE KICK!", 135, "#efb775", 5);
+            drawCenteredText("A NEW VOICE JOINS THE MIX.", 135, "#efb775", 5);
             ctx.globalAlpha = 1;
         }
         if (t > 55) {
             const desc2Alpha = Math.min(1, (t - 55) / 30);
             ctx.globalAlpha = desc2Alpha;
-            drawCenteredText("FILL IN THE COWBELL BEATS", 160, "#ef3a0c", 5);
-            drawCenteredText("TO COMPLETE THE PATTERN!", 178, "#ef3a0c", 5);
+            drawCenteredText("THE GROOVE GROWS DEEPER.", 155, "#ef3a0c", 5);
+            drawCenteredText("FILL IN THE COWBELL PATTERN TO MAKE IT SING.", 170, "#ef3a0c", 5);
             ctx.globalAlpha = 1;
         }
 
@@ -7362,13 +7377,14 @@ function renderNewInstrument() {
         if (t > 40) {
             const descAlpha = Math.min(1, (t - 40) / 30);
             ctx.globalAlpha = descAlpha;
-            drawCenteredText("THE TOM DRUM JOINS THE MIX!", 135, "#efb775", 5);
+            drawCenteredText("THE RHYTHM IS GETTING RICHER.", 135, "#efb775", 5);
             ctx.globalAlpha = 1;
         }
         if (t > 55) {
             const desc2Alpha = Math.min(1, (t - 55) / 30);
             ctx.globalAlpha = desc2Alpha;
-            drawCenteredText("EVEN MORE BEATS TO MASTER!", 160, "#3c9f9c", 5);
+            drawCenteredText("THE UNDERGROUND IS WAKING UP.", 155, "#3c9f9c", 5);
+            drawCenteredText("EVEN MORE BEATS TO MASTER.", 170, "#3c9f9c", 5);
             ctx.globalAlpha = 1;
         }
 
