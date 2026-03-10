@@ -4477,8 +4477,7 @@ function renderTitleScreen() {
     drawRect(boothX + 4 + Math.cos(spin) * 2, boothY + 6, 8, 4, "#efd8a1");
     drawRect(boothX + 36 + Math.cos(spin + Math.PI) * 2, boothY + 6, 8, 4, "#efd8a1");
     for (let ml = 0; ml < 4; ml++) {
-        const mlOn = titleStep === ml * 4;
-        drawRect(boothX + 20 + ml * 2, boothY + 3, 1, 2, mlOn ? "#39FF14" : "#1f240a");
+        drawRect(boothX + 20 + ml * 2, boothY + 3, 1, 2, "#1f240a");
     }
 
     // DJ (player sprite behind booth)
@@ -5009,8 +5008,7 @@ function renderIntro() {
         drawRect(boothX + 36 + Math.cos(spin + Math.PI) * 2, boothY + 6, 8, 4, "#efd8a1");
         // Mixer lights
         for (let ml = 0; ml < 4; ml++) {
-            const mlOn = introBeatStep === ml * 4;
-            drawRect(boothX + 20 + ml * 2, boothY + 3, 1, 2, mlOn ? "#39FF14" : "#1f240a");
+            drawRect(boothX + 20 + ml * 2, boothY + 3, 1, 2, "#1f240a");
         }
 
         // DJ (player sprite behind booth)
