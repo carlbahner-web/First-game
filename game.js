@@ -1027,8 +1027,8 @@ const INTRO_SCENE_DURATIONS = [
     480,  // Scene 0: "STUDIOLAND" title card (8s at 60fps)
     420,  // Scene 1: The Good Times — DJ + dancers vibing (7s)
     360,  // Scene 2: The Groove — beat grid closeup (6s)
-    300,  // Scene 3: The Earthquake — rumble begins (5s)
-    360,  // Scene 4: Caves Open — walls crack (6s)
+    540,  // Scene 3: Earthquake + Caves — lights die, walls crack open (9s)
+    360,  // Scene 4: (skipped — merged into Scene 3)
     420,  // Scene 5: Goblin Attack — chaos (7s)
     360,  // Scene 6: The Aftermath — destruction (6s)
     300,  // Scene 7: Call to Action — DJ rises (5s)
@@ -4891,9 +4891,10 @@ function playGoblinCackle() {
 // Advance intro to the next scene, or finish intro if on the last scene
 function advanceIntroScene() {
     introScene++;
-    // Skip removed scenes (0: StudioLand, 2: The Groove)
+    // Skip removed scenes (0: StudioLand, 2: The Groove, 4: merged into 3)
     if (introScene === 0) introScene = 1;
     if (introScene === 2) introScene = 3;
+    if (introScene === 4) introScene = 5;
     introTimer = 0;
     if (introScene >= INTRO_SCENE_DURATIONS.length) {
         // Intro complete — go to tutorial
@@ -4907,7 +4908,6 @@ function advanceIntroScene() {
     }
     // Scene-specific triggers
     if (introScene === 3) playEarthquakeRumble();
-    if (introScene === 4) playEarthquakeRumble();
     if (introScene === 5) {
         playGoblinCackle();
         // Corrupt the drum pattern
@@ -5154,14 +5154,24 @@ function renderIntro() {
 
     // ==================== SCENE 3: THE EARTHQUAKE ====================
     else if (introScene === 3) {
-        // Same venue but shaking — lights flicker, everyone looks confused
-        const shakeAmt = Math.min(1, t / 60); // ramps up
+        // === COMBINED: Earthquake begins, lights die, caves open ===
+        // Phase 1 (t 0-180): Shake ramps up, lights flicker & fade out, dancers stumble
+        // Phase 2 (t 180-540): Cracks spread, caves open, eyes glow in darkness
+
+        // Shake ramps up over the first phase, stays strong in second
+        const shakeAmt = Math.min(1, t / 120);
         const shX = (Math.random() - 0.5) * shakeAmt * 6 * SCALE;
         const shY = (Math.random() - 0.5) * shakeAmt * 6 * SCALE;
         ctx.save();
         ctx.translate(shX, shY);
 
-        drawRect(0, 0, W, H, "#2C2C2A");
+        // Venue darkens as power fades — floor color dims over time
+        const powerFade = Math.min(1, t / 180); // 0→1 over first 3 seconds
+        const floorR = Math.round(0x2C * (1 - powerFade * 0.5));
+        const floorG = Math.round(0x2C * (1 - powerFade * 0.5));
+        const floorB = Math.round(0x2A * (1 - powerFade * 0.5));
+        drawRect(0, 0, W, H, `rgb(${floorR},${floorG},${floorB})`);
+
         // Walls
         for (let c = 0; c < COLS; c++) {
             drawRect(c * TILE, 0, TILE, TILE, c % 2 === 0 ? "#724113" : "#927e6a");
@@ -5172,19 +5182,46 @@ function renderIntro() {
             drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
         }
 
-        // Flickering string lights
+        // String lights — flicker like losing power, then go dark
+        // They stay on at first, start sputtering, then die one by one
         for (let c = 1; c < COLS - 1; c++) {
             const bulbX = c * TILE + TILE / 2;
             const bulbY = TILE + 6;
-            const flicker = Math.random() > 0.3 + shakeAmt * 0.4; // more off as shake increases
-            if (flicker) {
-                drawRect(bulbX - 2, bulbY, 4, 4, PAL.gridOn[c % 4]);
+            const lightCol = PAL.gridOn[c % 4];
+
+            // Each light has its own "die time" — outer lights die first, center last
+            const distFromCenter = Math.abs(c - COLS / 2) / (COLS / 2);
+            const dieFrame = 60 + distFromCenter * 120; // outer die at ~60f, center at ~180f
+            const flickerZone = dieFrame - 40; // starts sputtering 40 frames before dying
+
+            if (t < flickerZone) {
+                // Still on — normal happy chase from Scene 1
+                const chase = Math.sin(introGlobalTimer * 0.05 + c * 0.6) * 0.5 + 0.5;
+                ctx.globalAlpha = 0.5 + chase * 0.5;
+                drawRect(bulbX - 2, bulbY, 4, 4, lightCol);
+                ctx.fillStyle = lightCol;
+                ctx.globalAlpha = 0.15 + chase * 0.2;
+                ctx.fillRect((bulbX - 5) * SCALE, (bulbY - 3) * SCALE, 10 * SCALE, 10 * SCALE);
+            } else if (t < dieFrame) {
+                // Sputtering — irregular on/off, dimming
+                const sputter = (t - flickerZone) / (dieFrame - flickerZone); // 0→1
+                const dimming = 1 - sputter * 0.7;
+                // Irregular flicker using sin waves at different frequencies
+                const flick = Math.sin(t * 0.7 + c * 3.1) * Math.sin(t * 1.3 + c * 1.7) > -0.2;
+                if (flick) {
+                    ctx.globalAlpha = dimming;
+                    drawRect(bulbX - 2, bulbY, 4, 4, lightCol);
+                } else {
+                    drawRect(bulbX - 2, bulbY, 4, 4, "#392a1c");
+                }
             } else {
-                drawRect(bulbX - 2, bulbY, 4, 4, "#392a1c");
+                // Dead — dark bulb
+                drawRect(bulbX - 2, bulbY, 4, 4, "#1a1410");
             }
         }
+        ctx.globalAlpha = 1;
 
-        // DJ booth (same as scene 1 but shaking)
+        // DJ booth
         const boothX = W / 2 - 24;
         const boothY = GRID_Y * TILE - 8;
         drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
@@ -5192,12 +5229,40 @@ function renderIntro() {
         drawRect(boothX + 32, boothY + 4, 16, 8, "#392a1c");
         drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e");
 
-        // DJ looking around confused
-        const djLook = Math.floor(t / 15) % 4;
-        const djDir = djLook < 2 ? 2 : 3; // looking left/right
-        drawPlayerSprite(W / 2 - 8, boothY - 10, 0, djDir, {});
+        // Beat grid — fades out as power dies (not glitchy colors)
+        const gridFade = Math.max(0, 1 - t / 150); // grid visible for first ~2.5s then dark
+        if (gridFade > 0) {
+            const miniGridY = GRID_Y * TILE + 14;
+            const miniGridX = 3 * TILE;
+            const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
+            ctx.globalAlpha = gridFade;
+            for (let r = 0; r < 4; r++) {
+                for (let c = 0; c < 16; c++) {
+                    const gx = miniGridX + c * TILE;
+                    const gy = miniGridY + r * TILE;
+                    const on = patterns[r][c];
+                    drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
+                    drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, on ? PAL.gridOn[r] : PAL.gridOff);
+                }
+            }
+            // Playhead (slowing down as power dies)
+            const phX = miniGridX + introBeatStep * TILE;
+            ctx.fillStyle = "#efac28";
+            ctx.globalAlpha = 0.35 * gridFade;
+            ctx.fillRect(phX * SCALE, miniGridY * SCALE, TILE * SCALE, (4 * TILE) * SCALE);
+            ctx.globalAlpha = 1;
+        }
 
-        // Dancers stumbling (offset positions, confused)
+        // DJ — looks confused early, then ducks as caves open
+        if (t < 240) {
+            const djLook = Math.floor(t / 15) % 4;
+            const djDir = djLook < 2 ? 2 : 3;
+            drawPlayerSprite(W / 2 - 8, boothY - 10, 0, djDir, {});
+        } else {
+            drawPlayerSprite(W / 2 - 8, boothY - 6, 0, 0, {});
+        }
+
+        // Dancers stumbling
         const danceFloorY = (GRID_Y + 5) * TILE;
         const crowdPositions = [
             { x: 3 * TILE, pal: 0 }, { x: 5 * TILE, pal: 1 },
@@ -5211,144 +5276,90 @@ function renderIntro() {
             drawDancerSprite(dp.x + stumble, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: 0, armBlend: 0, footOffset: stumble * 0.5 });
         }
 
-        // Beat grid — glitching
-        const miniGridY = GRID_Y * TILE + 14;
-        const miniGridX = 3 * TILE;
-        const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
-        for (let r = 0; r < 4; r++) {
-            for (let c = 0; c < 16; c++) {
-                const gx = miniGridX + c * TILE;
-                const gy = miniGridY + r * TILE;
-                const on = patterns[r][c];
-                // Glitch: random cells flicker
-                const glitched = Math.random() < shakeAmt * 0.3;
-                drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
-                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, glitched ? (Math.random() > 0.5 ? "#ef3a0c" : "#39FF14") : (on ? PAL.gridOn[r] : PAL.gridOff));
+        // === Phase 2: Cracks and caves (starts around t=180) ===
+        if (t > 150) {
+            const caveT = t - 150; // local timer for cave phase
+            const crackProgress = Math.min(1, caveT / 180);
+            const caveLocations = CAVES;
+            for (let ci = 0; ci < caveLocations.length; ci++) {
+                const cave = caveLocations[ci];
+                const cx = cave.tileX * TILE;
+                const cy = cave.tileY * TILE;
+                const caveReveal = Math.min(1, Math.max(0, (caveT - 30 - ci * 60) / 120));
+
+                // Cracks radiating outward
+                if (crackProgress > ci * 0.2) {
+                    const cp = Math.min(1, (crackProgress - ci * 0.2) / 0.6);
+                    ctx.strokeStyle = "#1f240a";
+                    ctx.lineWidth = 2 * SCALE;
+                    ctx.globalAlpha = cp;
+                    for (let cr = 0; cr < 4; cr++) {
+                        const angle = (ci * 1.5 + cr * 1.2);
+                        const len = cp * 20;
+                        ctx.beginPath();
+                        ctx.moveTo((cx + 8) * SCALE, (cy + 8) * SCALE);
+                        ctx.lineTo((cx + 8 + Math.cos(angle) * len) * SCALE, (cy + 8 + Math.sin(angle) * len) * SCALE);
+                        ctx.stroke();
+                    }
+                    ctx.globalAlpha = 1;
+                }
+
+                // Cave opens
+                if (caveReveal > 0) {
+                    const holeSize = caveReveal * TILE;
+                    drawRect(cx + (TILE - holeSize) / 2, cy + (TILE - holeSize) / 2, holeSize, holeSize + 4, "#0a0a0a");
+                    if (caveReveal > 0.5) {
+                        drawRect(cx - 2, cy - 4, TILE + 4, 3, "#684c3c");
+                        drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");
+                    }
+                    // Falling rubble
+                    if (caveReveal < 0.8) {
+                        for (let ri = 0; ri < 5; ri++) {
+                            const rx = cx + (ri * 7 + t) % TILE;
+                            const ry = cy + TILE + (t * 0.5 + ri * 11) % 20;
+                            drawRect(rx, ry, 2, 2, "#684c3c");
+                        }
+                    }
+                    // Glowing eyes in darkness
+                    if (caveReveal > 0.7) {
+                        const eyeAlpha = (caveReveal - 0.7) / 0.3;
+                        ctx.globalAlpha = eyeAlpha * (0.5 + Math.sin(t * 0.1 + ci) * 0.5);
+                        drawRect(cx + 5, cy + 5, 2, 2, "#39FF14");
+                        drawRect(cx + 9, cy + 5, 2, 2, "#39FF14");
+                        ctx.globalAlpha = 1;
+                    }
+                }
+            }
+
+            // DJ booth sparks (only once caves are opening)
+            if (caveT > 60 && t % 12 < 3) {
+                const sparkX = boothX + 20 + Math.random() * 12;
+                const sparkY = boothY + Math.random() * 8;
+                drawRect(sparkX, sparkY, 2, 2, "#efac28");
+                drawRect(sparkX + 1, sparkY - 2, 1, 2, "#ffffff");
             }
         }
 
         ctx.restore();
 
-        // Red warning flashes
-        if (t > 120) {
-            const alertPulse = Math.sin(t * 0.15) * 0.5 + 0.5;
-            ctx.fillStyle = "#ef3a0c";
-            ctx.globalAlpha = alertPulse * 0.15 * shakeAmt;
-            ctx.fillRect(0, 0, W * SCALE, H * SCALE);
-            ctx.globalAlpha = 1;
-        }
-
-        // Caption
-        if (t > 90) {
-            const capAlpha = Math.min(1, (t - 90) / 30);
-            ctx.globalAlpha = capAlpha;
+        // Caption — changes as scene progresses
+        if (t > 60 && t < 300) {
+            const capAlpha = Math.min(1, (t - 60) / 30) * Math.max(0, 1 - (t - 240) / 60);
+            ctx.globalAlpha = Math.max(0, capAlpha);
             drawCentered("THEN THE GROUND BEGAN TO SHAKE...", H - 18, "#ef3a0c", 6);
             ctx.globalAlpha = 1;
         }
-    }
-
-    // ==================== SCENE 4: CAVES OPEN ====================
-    else if (introScene === 4) {
-        // Heavy shake, cracks appear in walls, cave openings crumble open
-        const shX = (Math.random() - 0.5) * 8 * SCALE;
-        const shY = (Math.random() - 0.5) * 8 * SCALE;
-        ctx.save();
-        ctx.translate(shX, shY);
-
-        drawRect(0, 0, W, H, "#2C2C2A");
-        // Walls
-        for (let c = 0; c < COLS; c++) {
-            drawRect(c * TILE, 0, TILE, TILE, c % 2 === 0 ? "#724113" : "#927e6a");
-            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#2e4a4e" : "#384f54");
-        }
-        for (let r = 0; r < ROWS; r++) {
-            drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
-            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
-        }
-
-        // Cracks spreading on walls before caves open
-        const crackProgress = Math.min(1, t / 180);
-        const caveLocations = CAVES;
-        for (let ci = 0; ci < caveLocations.length; ci++) {
-            const cave = caveLocations[ci];
-            const cx = cave.tileX * TILE;
-            const cy = cave.tileY * TILE;
-            const caveReveal = Math.min(1, Math.max(0, (t - 60 - ci * 60) / 120));
-
-            // Cracks radiating outward from future cave position
-            if (crackProgress > ci * 0.2) {
-                const cp = Math.min(1, (crackProgress - ci * 0.2) / 0.6);
-                ctx.strokeStyle = "#1f240a";
-                ctx.lineWidth = 2 * SCALE;
-                ctx.globalAlpha = cp;
-                // Crack lines
-                for (let cr = 0; cr < 4; cr++) {
-                    const angle = (ci * 1.5 + cr * 1.2);
-                    const len = cp * 20;
-                    ctx.beginPath();
-                    ctx.moveTo((cx + 8) * SCALE, (cy + 8) * SCALE);
-                    ctx.lineTo((cx + 8 + Math.cos(angle) * len) * SCALE, (cy + 8 + Math.sin(angle) * len) * SCALE);
-                    ctx.stroke();
-                }
-                ctx.globalAlpha = 1;
-            }
-
-            // Cave opens: dark hole appears with rubble falling
-            if (caveReveal > 0) {
-                // Dark cave hole expands
-                const holeSize = caveReveal * TILE;
-                drawRect(cx + (TILE - holeSize) / 2, cy + (TILE - holeSize) / 2, holeSize, holeSize + 4, "#0a0a0a");
-                // Rocky arch
-                if (caveReveal > 0.5) {
-                    drawRect(cx - 2, cy - 4, TILE + 4, 3, "#684c3c");
-                    drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");
-                }
-                // Falling rubble particles
-                if (caveReveal < 0.8) {
-                    for (let ri = 0; ri < 5; ri++) {
-                        const rx = cx + (ri * 7 + t) % TILE;
-                        const ry = cy + TILE + (t * 0.5 + ri * 11) % 20;
-                        drawRect(rx, ry, 2, 2, "#684c3c");
-                    }
-                }
-                // Glowing eyes appear in darkness
-                if (caveReveal > 0.7) {
-                    const eyeAlpha = (caveReveal - 0.7) / 0.3;
-                    ctx.globalAlpha = eyeAlpha * (0.5 + Math.sin(t * 0.1 + ci) * 0.5);
-                    drawRect(cx + 5, cy + 5, 2, 2, "#39FF14");
-                    drawRect(cx + 9, cy + 5, 2, 2, "#39FF14");
-                    ctx.globalAlpha = 1;
-                }
-            }
-        }
-
-        // DJ booth sparking
-        const boothX = W / 2 - 24;
-        const boothY = GRID_Y * TILE - 8;
-        drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
-        drawRect(boothX, boothY + 4, 16, 8, "#392a1c");
-        drawRect(boothX + 32, boothY + 4, 16, 8, "#392a1c");
-        drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e");
-        // Sparks
-        if (t % 12 < 3) {
-            const sparkX = boothX + 20 + Math.random() * 12;
-            const sparkY = boothY + Math.random() * 8;
-            drawRect(sparkX, sparkY, 2, 2, "#efac28");
-            drawRect(sparkX + 1, sparkY - 2, 1, 2, "#ffffff");
-        }
-
-        // DJ ducking
-        drawPlayerSprite(W / 2 - 8, boothY - 6, 0, 0, {}); // crouching down
-
-        ctx.restore();
-
-        // Caption
-        if (t > 120) {
-            const capAlpha = Math.min(1, (t - 120) / 30);
+        if (t > 300) {
+            const capAlpha = Math.min(1, (t - 300) / 30);
             ctx.globalAlpha = capAlpha;
             drawCentered("THE WALLS CRUMBLED OPEN!", H - 18, "#ef3a0c", 6);
             ctx.globalAlpha = 1;
         }
+    }
+
+    // ==================== SCENE 4: (skipped — merged into Scene 3) ====================
+    else if (introScene === 4) {
+        // This scene is now skipped via advanceIntroScene
     }
 
     // ==================== SCENE 5: GOBLIN ATTACK ====================
