@@ -4517,7 +4517,7 @@ function renderTitleScreen() {
     for (let di = 0; di < crowdPositions.length; di++) {
         const dp = crowdPositions[di];
         const step = (titleStep + dp.phase) % 16;
-        const stepProgress = (titleBlink % 8) / 8;
+        const stepProgress = titleStepTimer / TITLE_STEP_FRAMES;
         const easedProgress = Math.sin(stepProgress * Math.PI / 2);
         const smoothStep = step + stepProgress;
 
@@ -5073,7 +5073,7 @@ function renderIntro() {
             const dp = crowdPositions[di];
             // Gameplay-style smooth animation using beat phase
             const step = (introBeatStep + dp.phase) % 16;
-            const stepProgress = (introGlobalTimer % 8) / 8;
+            const stepProgress = introBeatTimer / INTRO_BEAT_FRAMES;
             const easedProgress = Math.sin(stepProgress * Math.PI / 2);
             const smoothStep = step + stepProgress;
 
@@ -5246,7 +5246,7 @@ function renderIntro() {
             if (fleeProgress <= 0) {
                 // Stumbling in place with gameplay-quality animation
                 const step = (introBeatStep + dp.phase) % 16;
-                const stepProgress = (introGlobalTimer % 8) / 8;
+                const stepProgress = introBeatTimer / INTRO_BEAT_FRAMES;
                 const easedProgress = Math.sin(stepProgress * Math.PI / 2);
                 const smoothStep = step + stepProgress;
 
