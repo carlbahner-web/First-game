@@ -1021,6 +1021,8 @@ let introKickPump = 0;      // 0-1 speaker pump intensity on kick hits
 let introGoblins = [];      // [{x, y, destX, destY, dir, frame, frameTimer, caveIdx, targetRow, targetCol, emerged, speed}]
 let introGridState = null;  // mutable copy of INTRO_BEAT patterns for goblin flipping
 let introGridFlash = null;  // flash timers per cell [row][col]
+let introCorruptOrder = [];  // pre-sorted cell coords for Scene 2 progressive corruption
+let introCorruptedSoFar = 0; // how many cells Scene 2 has flipped so far
 let introDrumGain = null;   // audio gain node for intro drums
 let introDrumStarted = false;
 let introDrumTimer = null;
@@ -3917,6 +3919,22 @@ function drawRuinedVenueBackdrop(t) {
         if (ctx.globalAlpha > 0) drawRect(smokeX, smokeY, 3, 3, "#888888");
     }
     ctx.globalAlpha = 1;
+    // Corrupted beat grid (carries over from intro scenes)
+    if (introGridState) {
+        const miniGridY = GRID_Y * TILE + 14;
+        const miniGridX = 3 * TILE;
+        ctx.globalAlpha = 0.35;
+        for (let r = 0; r < 4; r++) {
+            for (let c = 0; c < 16; c++) {
+                const gx = miniGridX + c * TILE;
+                const gy = miniGridY + r * TILE;
+                const cellOn = introGridState[r][c];
+                drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
+                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, cellOn ? PAL.gridOn[r] : PAL.gridOff);
+            }
+        }
+        ctx.globalAlpha = 1;
+    }
     // Dark vignette
     const W_v = W * SCALE;
     const H_v = H * SCALE;
@@ -4666,6 +4684,8 @@ function renderTitleScreen() {
             introGoblins = [];
             introGridState = null;
             introGridFlash = null;
+            introCorruptOrder = [];
+            introCorruptedSoFar = 0;
             introKickPump = 0;
             startIntroDrums();
             return;
@@ -5059,6 +5079,26 @@ function advanceIntroScene() {
         playGoblinCackle();
         // Corrupt the drum pattern
         if (introDrumGain) introDrumGain.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + 1);
+        // Ensure introGridState exists (fallback if Scene 1 was skipped)
+        if (!introGridState) {
+            introGridState = [
+                INTRO_BEAT.O.slice(),
+                INTRO_BEAT.H.slice(),
+                INTRO_BEAT.S.slice(),
+                INTRO_BEAT.K.slice(),
+            ];
+            introGridFlash = Array.from({ length: 4 }, () => new Array(16).fill(0));
+        }
+        // Pre-compute corruption order: sort all 64 cells by cellSeed so they flip deterministically
+        introCorruptOrder = [];
+        for (let r = 0; r < 4; r++) {
+            for (let c = 0; c < 16; c++) {
+                const cellSeed = (r * 100 + c * 37 + 7) % 16;
+                introCorruptOrder.push({ r, c, seed: cellSeed });
+            }
+        }
+        introCorruptOrder.sort((a, b) => a.seed - b.seed || a.r - b.r || a.c - b.c);
+        introCorruptedSoFar = 0;
     }
     if (introScene === 3) stopIntroDrums();
 }
@@ -5590,27 +5630,30 @@ function renderIntro() {
             drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");
         }
 
-        // Beat grid — being corrupted
+        // Beat grid — being corrupted (progressively flip introGridState cells)
         const miniGridY = GRID_Y * TILE + 14;
         const miniGridX = 3 * TILE;
         const corruptProgress = Math.min(1, t / 300);
-        const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
+        const targetCorrupted = Math.floor(corruptProgress * introCorruptOrder.length);
+        while (introCorruptedSoFar < targetCorrupted && introCorruptedSoFar < introCorruptOrder.length) {
+            const cell = introCorruptOrder[introCorruptedSoFar];
+            introGridState[cell.r][cell.c] = introGridState[cell.r][cell.c] ? 0 : 1;
+            introGridFlash[cell.r][cell.c] = 30;
+            introCorruptedSoFar++;
+        }
         for (let r = 0; r < 4; r++) {
             for (let c = 0; c < 16; c++) {
                 const gx = miniGridX + c * TILE;
                 const gy = miniGridY + r * TILE;
-                const on = patterns[r][c];
-                // Some cells get corrupted (randomized based on progress)
-                const cellSeed = (r * 100 + c * 37 + 7) % 16;
-                const corrupted = cellSeed < corruptProgress * 16;
-                const cellOn = corrupted ? !on : on;
+                const cellOn = introGridState[r][c];
                 drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
                 drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, cellOn ? PAL.gridOn[r] : PAL.gridOff);
-                // Green flash on corrupted cells
-                if (corrupted && Math.abs(cellSeed - corruptProgress * 16) < 2) {
-                    ctx.globalAlpha = 0.4;
+                // Green flash on recently corrupted cells
+                if (introGridFlash[r][c] > 0) {
+                    ctx.globalAlpha = 0.4 * (introGridFlash[r][c] / 30);
                     drawRect(gx, gy, TILE, TILE, "#39FF14");
                     ctx.globalAlpha = 1;
+                    introGridFlash[r][c]--;
                 }
             }
         }
@@ -5699,9 +5742,9 @@ function renderIntro() {
             for (let c = 0; c < 16; c++) {
                 const gx = miniGridX + c * TILE;
                 const gy = miniGridY + r * TILE;
-                const randomOn = ((r * 7 + c * 13 + 5) % 3) === 0;
+                const cellOn = introGridState ? introGridState[r][c] : ((r * 7 + c * 13 + 5) % 3) === 0;
                 drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
-                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, randomOn ? PAL.gridOn[r] : PAL.gridOff);
+                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, cellOn ? PAL.gridOn[r] : PAL.gridOff);
             }
         }
 
