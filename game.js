@@ -4156,9 +4156,17 @@ function drawDancerSprite(gx, gy, pal, options) {
     const bob = (opts.bob || 0) * SCALE;
     const armBlend = opts.armBlend || 0;
     const footOfs = (opts.footOffset || 0) * SCALE;
+    const scale = opts.scale || 1;
 
     const sx = gx * SCALE;
     const sy = gy * SCALE;
+
+    if (scale !== 1) {
+        ctx.save();
+        ctx.translate(sx + 18, sy + 18);
+        ctx.scale(scale, scale);
+        ctx.translate(-(sx + 18), -(sy + 18));
+    }
 
     function px(x, y, w, h, color) {
         drawPx(sx + x, sy + y - bob, w, h, color);
@@ -4217,6 +4225,10 @@ function drawDancerSprite(gx, gy, pal, options) {
     px(19 + footOfs, 33, 8, 6, pal.dark);   // Right shoe
     px(9 - footOfs, 37, 8, 2, pal.body);    // Left shoe accent
     px(19 + footOfs, 37, 8, 2, pal.body);   // Right shoe accent
+
+    if (scale !== 1) {
+        ctx.restore();
+    }
 }
 
 function drawDancer(d) {
@@ -5149,26 +5161,35 @@ function renderIntro() {
         // Dancers — stumble during phase 1, then flee once caves emerge
         const danceFloorY = (GRID_Y + 5) * TILE;
         const crowdPositions = [
-            { x: 3 * TILE, pal: 0, dir: -1 }, { x: 5 * TILE, pal: 1, dir: -1 },
-            { x: 7 * TILE, pal: 2, dir: -1 }, { x: 9 * TILE, pal: 3, dir: 1 },
-            { x: 11 * TILE, pal: 4, dir: 1 }, { x: 13 * TILE, pal: 5, dir: 1 },
-            { x: 15 * TILE, pal: 0, dir: 1 }, { x: 17 * TILE, pal: 1, dir: -1 },
+            { x: 3 * TILE, pal: 0, dx: -1, dy: 0 },    // flee left
+            { x: 5 * TILE, pal: 1, dx: -0.6, dy: 1 },   // flee down-left
+            { x: 7 * TILE, pal: 2, dx: -1, dy: -0.5 },  // flee up-left
+            { x: 9 * TILE, pal: 3, dx: 0.3, dy: 1 },    // flee mostly down
+            { x: 11 * TILE, pal: 4, dx: 0.5, dy: 1 },   // flee down-right
+            { x: 13 * TILE, pal: 5, dx: 1, dy: 0 },     // flee right
+            { x: 15 * TILE, pal: 0, dx: 1, dy: -0.4 },  // flee up-right
+            { x: 17 * TILE, pal: 1, dx: -0.4, dy: -1 }, // flee up-left
         ];
         const fleeStart = 210; // each dancer starts fleeing at fleeStart + stagger
         for (let di = 0; di < crowdPositions.length; di++) {
             const dp = crowdPositions[di];
             const dancerFleeStart = fleeStart + di * 15;
             const fleeProgress = t >= dancerFleeStart ? Math.min(1, (t - dancerFleeStart) / 180) : 0;
+            const baseY = danceFloorY + (di % 2) * 12;
             if (fleeProgress <= 0) {
                 // Still stumbling in place
                 const stumble = Math.sin(t * 0.2 + di * 2) * shakeAmt * 4;
-                drawDancerSprite(dp.x + stumble, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: 0, armBlend: 0, footOffset: stumble * 0.5 });
+                drawDancerSprite(dp.x + stumble, baseY, DANCER_PALETTES[dp.pal], { bob: 0, armBlend: 0, footOffset: stumble * 0.5 });
             } else {
-                // Fleeing off-screen from current position
-                const fleeX = dp.x + dp.dir * fleeProgress * W * 0.8;
-                if (Math.abs(fleeX - W / 2) < W) {
+                // Fleeing off-screen in varied directions
+                const fleeX = dp.x + dp.dx * fleeProgress * W * 0.8;
+                const fleeY = baseY + dp.dy * fleeProgress * H * 0.6;
+                const onScreen = Math.abs(fleeX - W / 2) < W && fleeY > -30 && fleeY < H + 30;
+                if (onScreen) {
                     const runFrame = Math.floor(introGlobalTimer / 5) % 4;
-                    drawDancerSprite(fleeX, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: runFrame % 2 * 2, armBlend: 0.5, footOffset: runFrame % 2 * 2 - 1 });
+                    // Shrink dancers fleeing into the distance (upward)
+                    const scale = dp.dy < 0 ? Math.max(0.4, 1 - fleeProgress * 0.6) : 1;
+                    drawDancerSprite(fleeX, fleeY, DANCER_PALETTES[dp.pal], { bob: runFrame % 2 * 2, armBlend: 0.5, footOffset: runFrame % 2 * 2 - 1, scale: scale });
                 }
             }
         }
