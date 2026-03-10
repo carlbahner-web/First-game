@@ -4520,13 +4520,12 @@ function renderTitleScreen() {
         const stepProgress = titleStepTimer / TITLE_STEP_FRAMES;
         const smoothStep = step + stepProgress;
 
-        // Continuous bob — bounces every step, bigger on beats
-        const bobWave = Math.sin(smoothStep * Math.PI);
-        const onBeat = (step % 4 === 0);
-        const bob = Math.abs(bobWave) * (onBeat ? 3 : 1.5);
+        // Continuous bob — bounces every beat (4 steps)
+        const bobWave = Math.sin(smoothStep * Math.PI / 2);
+        const bob = Math.abs(bobWave) * 3;
 
-        // Arms up on beats
-        const armBlend = onBeat ? Math.abs(bobWave) : 0;
+        // Arms up on peaks
+        const armBlend = Math.abs(bobWave);
         const footOffset = bobWave * 1.5;
 
         drawDancerSprite(dp.x, danceFloorY + dp.yOfs, DANCER_PALETTES[dp.pal], { bob, armBlend, footOffset });
@@ -5054,13 +5053,12 @@ function renderIntro() {
             const stepProgress = introBeatTimer / INTRO_BEAT_FRAMES;
             const smoothStep = step + stepProgress;
 
-            // Continuous bob — bounces every step, bigger on beats
-            const bobWave = Math.sin(smoothStep * Math.PI);
-            const onBeat = (step % 4 === 0);
-            const bob = Math.abs(bobWave) * (onBeat ? 3 : 1.5);
+            // Continuous bob — bounces every beat (4 steps)
+            const bobWave = Math.sin(smoothStep * Math.PI / 2);
+            const bob = Math.abs(bobWave) * 3;
 
-            // Arms up on beats
-            const armBlend = onBeat ? Math.abs(bobWave) : 0;
+            // Arms up on peaks
+            const armBlend = Math.abs(bobWave);
             const footOffset = bobWave * 1.5;
 
             drawDancerSprite(dp.x, danceFloorY + dp.yOfs, DANCER_PALETTES[dp.pal], { bob, armBlend, footOffset });
@@ -5223,12 +5221,11 @@ function renderIntro() {
                 const stepProgress = introBeatTimer / INTRO_BEAT_FRAMES;
                 const smoothStep = step + stepProgress;
 
-                const bobWave = Math.sin(smoothStep * Math.PI);
-                const onBeat = (step % 4 === 0);
-                const bob = Math.abs(bobWave) * (onBeat ? 3 : 1.5);
+                const bobWave = Math.sin(smoothStep * Math.PI / 2);
+                const bob = Math.abs(bobWave) * 3;
 
                 const stumble = Math.sin(t * 0.2 + di * 2) * shakeAmt * 4;
-                const armBlend = onBeat ? Math.abs(bobWave) : 0;
+                const armBlend = Math.abs(bobWave);
                 const footOffset = bobWave * 1.5 + stumble * 0.3;
 
                 drawDancerSprite(dp.x + stumble, baseY, DANCER_PALETTES[dp.pal], { bob, armBlend, footOffset });
