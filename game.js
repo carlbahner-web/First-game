@@ -4536,13 +4536,7 @@ function renderTitleScreen() {
         drawDancerSprite(dp.x, danceFloorY + dp.yOfs, DANCER_PALETTES[dp.pal], { bob, armBlend, footOffset });
     }
 
-    // Beat pulse background
-    if (beatOn && titleStepTimer < 3) {
-        ctx.fillStyle = "#efac28";
-        ctx.globalAlpha = 0.06 * (1 - titleStepTimer / 3);
-        ctx.fillRect(0, 0, W * SCALE, H * SCALE);
-        ctx.globalAlpha = 1.0;
-    }
+    // Beat pulse background — removed for accessibility
 
     // === TITLE TEXT (in the dance floor empty space) ===
     titleEntrancePhase++;
@@ -4632,13 +4626,7 @@ function renderTitleScreen() {
         }
     }
     ctx.globalAlpha = 1.0;
-    // Impact flash when GROOVE lands
-    if (titleEntrancePhase >= 35 && titleEntrancePhase < 42) {
-        ctx.fillStyle = "#efac28";
-        ctx.globalAlpha = (42 - titleEntrancePhase) / 7 * 0.25;
-        ctx.fillRect(0, 0, W * SCALE, H * SCALE);
-        ctx.globalAlpha = 1.0;
-    }
+    // Impact flash when GROOVE lands — removed
 
     // "GOBLINS" — slams in from the right
     const goblinsText = "GOBLINS";
@@ -4664,13 +4652,7 @@ function renderTitleScreen() {
         drawText(goblinsText[i], charX, gobY + bounce, col, bigFontSize);
     }
     ctx.globalAlpha = 1.0;
-    // Impact flash when GOBLINS lands
-    if (titleEntrancePhase >= 50 && titleEntrancePhase < 57) {
-        ctx.fillStyle = "#39FF14";
-        ctx.globalAlpha = (57 - titleEntrancePhase) / 7 * 0.2;
-        ctx.fillRect(0, 0, W * SCALE, H * SCALE);
-        ctx.globalAlpha = 1.0;
-    }
+    // Impact flash when GOBLINS lands — removed
 
     // === "PRESS ENTER" below the title ===
     const pressY = titleBaseY + 56;
