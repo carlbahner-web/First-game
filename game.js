@@ -4896,6 +4896,9 @@ function playGoblinCackle() {
 // Advance intro to the next scene, or finish intro if on the last scene
 function advanceIntroScene() {
     introScene++;
+    // Skip removed scenes (0: StudioLand, 2: The Groove)
+    if (introScene === 0) introScene = 1;
+    if (introScene === 2) introScene = 3;
     introTimer = 0;
     if (introScene >= INTRO_SCENE_DURATIONS.length) {
         // Intro complete — go to tutorial
