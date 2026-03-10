@@ -6140,20 +6140,18 @@ function renderIntro() {
         if (t < 150) {
             const capAlpha = Math.min(1, Math.max(0, (t - 30) / 30));
             ctx.globalAlpha = capAlpha;
-            drawCentered("EACH BEAT HAD A PATTERN. A SHAPE THAT NEEDED", 24, "#efd8a1", 5);
-            drawCentered("TO BE MADE WHOLE. OUTLINES MARKED WHAT WAS MISSING.", 34, "#efd8a1", 5);
+            drawCentered("EACH BEAT HAD A PATTERN TO COMPLETE.", 26, "#efd8a1", 5);
             ctx.globalAlpha = 1;
         } else {
             const capAlpha2 = Math.min(1, (t - 150) / 30);
             ctx.globalAlpha = capAlpha2;
-            drawCentered("AND IN THE SHADOWS, SMALL EYES WATCHED.", 24, "#ef3a0c", 5);
-            drawCentered("THEY WOULD BE BACK.", 34, "#ef3a0c", 5);
+            drawCentered("IN THE SHADOWS, SMALL EYES WATCHED.", 26, "#ef3a0c", 5);
             ctx.globalAlpha = 1;
         }
 
         // --- TOP LEFT: Pulsing outlines (beats to ADD) ---
         const gx = W / 2 - 4 * TILE;
-        const gy = 46;
+        const gy = 36;
         const patCols = 4;
         const addColor = "#efac28";
         const addTarget = [true, false, true, false];
