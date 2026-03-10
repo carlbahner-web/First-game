@@ -3211,11 +3211,6 @@ function render() {
             drawRect(bx, by, TILE, TILE, PAL.gridBorder);
             drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, on ? PAL.gridOn[r] : PAL.gridOff);
 
-            // Beat markers (every 4th column)
-            if (!on && c % 4 === 0) {
-                drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, "#3a6068");
-            }
-
             // 3D highlight for on-blocks
             if (on) {
                 ctx.fillStyle = "rgba(255,255,255,0.2)";
