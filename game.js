@@ -3018,9 +3018,9 @@ function renderHUD() {
     const fx = lvlX + 2, fy = kcY + 3;
     drawHudRect(fx, fy, p, 5 * p, "#efd8a1");
     drawHudRect(fx + p, fy + 4 * p, 2 * p, p, "#efd8a1");
-    // Level digits
-    const lvlNumX = lvlX + iconW;
-    drawHudPixelDigits(lvlStr, lvlNumX + (lvlStr.length * digitW) / 2, numY, "#efd8a1", p);
+    // Level digits (centered in remaining panel space after icon)
+    const lvlDigitArea = lvlPanelW - iconW;
+    drawHudPixelDigits(lvlStr, lvlX + iconW + lvlDigitArea / 2, numY, "#efd8a1", p);
 
     // --- Timer counter (right-aligned) ---
     const timerSec = Math.max(0, Math.ceil(levelTimer / 90));
@@ -3040,10 +3040,10 @@ function renderHUD() {
     const tx2 = timerX + 2, ty2 = kcY + 3;
     drawHudRect(tx2, ty2, 3 * p, p, blinkOn ? timerColor : timerBgColor);
     drawHudRect(tx2 + p, ty2 + p, p, 4 * p, blinkOn ? timerColor : timerBgColor);
-    // Timer digits
+    // Timer digits (centered in remaining panel space after icon)
     if (blinkOn) {
-        const tNumX = timerX + iconW;
-        drawHudPixelDigits(timerStr, tNumX + (timerStr.length * digitW) / 2, numY, timerColor, p);
+        const timerDigitArea = timerPanelW - iconW;
+        drawHudPixelDigits(timerStr, timerX + iconW + timerDigitArea / 2, numY, timerColor, p);
     }
 
     // --- Score counter (centered) ---
@@ -3064,9 +3064,9 @@ function renderHUD() {
     drawHudRect(sx + 3 * p, sy + p, p, p, skullBg);
     drawHudRect(sx + 2 * p, sy + 2 * p, p, p, skullBg);
     drawHudRect(sx + 2 * p, sy + 4 * p, p, p, skullBg);
-    // Score digits
-    const killNumX = kcX + skullW;
-    drawHudPixelDigits(scoreStr, killNumX + (scoreStr.length * digitW) / 2, numY, "#efd8a1", p);
+    // Score digits (centered in remaining panel space after skull)
+    const scoreDigitArea = killPanelW - skullW;
+    drawHudPixelDigits(scoreStr, kcX + skullW + scoreDigitArea / 2, numY, "#efd8a1", p);
 
     // Tick sound during last 10 seconds (once per second)
     if (isCritical && timerSec > 0 && levelTimer % 90 === 0 && audioCtx) {
