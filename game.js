@@ -5150,18 +5150,32 @@ function renderIntro() {
             drawPlayerSprite(W / 2 - 8, boothY - 6, 0, 0, {});
         }
 
-        // Dancers stumbling
+        // Dancers — stumble during phase 1, then flee once caves emerge
         const danceFloorY = (GRID_Y + 5) * TILE;
         const crowdPositions = [
-            { x: 3 * TILE, pal: 0 }, { x: 5 * TILE, pal: 1 },
-            { x: 7 * TILE, pal: 2 }, { x: 9 * TILE, pal: 3 },
-            { x: 11 * TILE, pal: 4 }, { x: 13 * TILE, pal: 5 },
-            { x: 15 * TILE, pal: 0 }, { x: 17 * TILE, pal: 1 },
+            { x: 3 * TILE, pal: 0, dir: -1 }, { x: 5 * TILE, pal: 1, dir: -1 },
+            { x: 7 * TILE, pal: 2, dir: -1 }, { x: 9 * TILE, pal: 3, dir: 1 },
+            { x: 11 * TILE, pal: 4, dir: 1 }, { x: 13 * TILE, pal: 5, dir: 1 },
+            { x: 15 * TILE, pal: 0, dir: 1 }, { x: 17 * TILE, pal: 1, dir: -1 },
         ];
+        const fleeStart = 210; // start fleeing shortly after caves begin opening
         for (let di = 0; di < crowdPositions.length; di++) {
             const dp = crowdPositions[di];
-            const stumble = Math.sin(t * 0.2 + di * 2) * shakeAmt * 4;
-            drawDancerSprite(dp.x + stumble, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: 0, armBlend: 0, footOffset: stumble * 0.5 });
+            if (t < fleeStart) {
+                // Phase 1: stumbling in place
+                const stumble = Math.sin(t * 0.2 + di * 2) * shakeAmt * 4;
+                drawDancerSprite(dp.x + stumble, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: 0, armBlend: 0, footOffset: stumble * 0.5 });
+            } else {
+                // Phase 2: fleeing off-screen
+                const fleeProgress = Math.min(1, (t - fleeStart - di * 15) / 180);
+                if (fleeProgress > 0) {
+                    const fleeX = dp.x + dp.dir * fleeProgress * W * 0.8;
+                    if (Math.abs(fleeX - W / 2) < W) {
+                        const runFrame = Math.floor(introGlobalTimer / 5) % 4;
+                        drawDancerSprite(fleeX, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: runFrame % 2 * 2, armBlend: 0.5, footOffset: runFrame % 2 * 2 - 1 });
+                    }
+                }
+            }
         }
 
         // === Phase 2: Cracks and caves (starts around t=180) ===
@@ -5401,24 +5415,6 @@ function renderIntro() {
             if (ctx.globalAlpha > 0) drawRect(smokeX, smokeY, 3, 3, "#888888");
         }
         ctx.globalAlpha = 1;
-
-        // Dancers running away (moving off screen)
-        const fleeProgress = Math.min(1, t / 240);
-        const crowdPositions = [
-            { x: 3 * TILE, pal: 0, dir: -1 }, { x: 5 * TILE, pal: 1, dir: -1 },
-            { x: 7 * TILE, pal: 2, dir: -1 }, { x: 9 * TILE, pal: 3, dir: 1 },
-            { x: 11 * TILE, pal: 4, dir: 1 }, { x: 13 * TILE, pal: 5, dir: 1 },
-            { x: 15 * TILE, pal: 0, dir: 1 }, { x: 17 * TILE, pal: 1, dir: 1 },
-        ];
-        const danceFloorY = (GRID_Y + 5) * TILE;
-        for (let di = 0; di < crowdPositions.length; di++) {
-            const dp = crowdPositions[di];
-            const fleeX = dp.x + dp.dir * fleeProgress * W * 0.8;
-            if (Math.abs(fleeX - W / 2) < W) {
-                const runFrame = Math.floor(introGlobalTimer / 5) % 4;
-                drawDancerSprite(fleeX, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: runFrame % 2 * 2, armBlend: 0.5, footOffset: runFrame % 2 * 2 - 1 });
-            }
-        }
 
         // Goblins celebrating on the grid
         const gobFrame = Math.floor(introGlobalTimer / 10) % 4;
