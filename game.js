@@ -3703,7 +3703,7 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
 
     if (dir === 1) {
         // Facing UP — show back of bald head, no eyes, no beard
-        pxLean(12, -18, 24, 6, "#a58c27");
+        pxLean(12, -18, 24, 6, "#e0a860");
         pxLean(15, -3, 18, 6, "#efb775");
     } else {
         // Facing DOWN, LEFT, or RIGHT — show beard and eyes
