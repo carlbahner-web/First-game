@@ -1238,11 +1238,12 @@ window.addEventListener("keydown", (e) => {
             ensureAudio();
             stopTitleDrums();
             gameState = "intro";
-            introScene = 0;
+            introScene = 1; // skip StudioLand card, go straight to Good Times
             introTimer = 0;
             introGlobalTimer = 0;
             introBeatStep = 0;
             introBeatTimer = 0;
+            startIntroDrums(); // start drums immediately (was in Scene 0)
             sceneTransition = { active: true, from: "title", to: "intro", progress: 0, duration: 18 };
             return;
         }
