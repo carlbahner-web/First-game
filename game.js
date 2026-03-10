@@ -5117,29 +5117,25 @@ function renderIntro() {
         drawRect(boothX + 32, boothY + 4, 16, 8, "#392a1c");
         drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e");
 
-        // Beat grid — fades out as power dies (not glitchy colors)
-        const gridFade = Math.max(0, 1 - t / 150); // grid visible for first ~2.5s then dark
-        if (gridFade > 0) {
-            const miniGridY = GRID_Y * TILE + 14;
-            const miniGridX = 3 * TILE;
-            const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
-            ctx.globalAlpha = gridFade;
-            for (let r = 0; r < 4; r++) {
-                for (let c = 0; c < 16; c++) {
-                    const gx = miniGridX + c * TILE;
-                    const gy = miniGridY + r * TILE;
-                    const on = patterns[r][c];
-                    drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
-                    drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, on ? PAL.gridOn[r] : PAL.gridOff);
-                }
+        // Beat grid — keeps playing through the earthquake
+        const miniGridY = GRID_Y * TILE + 14;
+        const miniGridX = 3 * TILE;
+        const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
+        for (let r = 0; r < 4; r++) {
+            for (let c = 0; c < 16; c++) {
+                const gx = miniGridX + c * TILE;
+                const gy = miniGridY + r * TILE;
+                const on = patterns[r][c];
+                drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
+                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, on ? PAL.gridOn[r] : PAL.gridOff);
             }
-            // Playhead (slowing down as power dies)
-            const phX = miniGridX + introBeatStep * TILE;
-            ctx.fillStyle = "#efac28";
-            ctx.globalAlpha = 0.35 * gridFade;
-            ctx.fillRect(phX * SCALE, miniGridY * SCALE, TILE * SCALE, (4 * TILE) * SCALE);
-            ctx.globalAlpha = 1;
         }
+        // Playhead
+        const phX = miniGridX + introBeatStep * TILE;
+        ctx.fillStyle = "#efac28";
+        ctx.globalAlpha = 0.35;
+        ctx.fillRect(phX * SCALE, miniGridY * SCALE, TILE * SCALE, (4 * TILE) * SCALE);
+        ctx.globalAlpha = 1;
 
         // DJ — looks confused early, then ducks as caves open
         if (t < 240) {
