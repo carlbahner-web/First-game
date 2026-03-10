@@ -5154,22 +5154,21 @@ function renderIntro() {
             { x: 11 * TILE, pal: 4, dir: 1 }, { x: 13 * TILE, pal: 5, dir: 1 },
             { x: 15 * TILE, pal: 0, dir: 1 }, { x: 17 * TILE, pal: 1, dir: -1 },
         ];
-        const fleeStart = 210; // start fleeing shortly after caves begin opening
+        const fleeStart = 210; // each dancer starts fleeing at fleeStart + stagger
         for (let di = 0; di < crowdPositions.length; di++) {
             const dp = crowdPositions[di];
-            if (t < fleeStart) {
-                // Phase 1: stumbling in place
+            const dancerFleeStart = fleeStart + di * 15;
+            const fleeProgress = t >= dancerFleeStart ? Math.min(1, (t - dancerFleeStart) / 180) : 0;
+            if (fleeProgress <= 0) {
+                // Still stumbling in place
                 const stumble = Math.sin(t * 0.2 + di * 2) * shakeAmt * 4;
                 drawDancerSprite(dp.x + stumble, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: 0, armBlend: 0, footOffset: stumble * 0.5 });
             } else {
-                // Phase 2: fleeing off-screen
-                const fleeProgress = Math.min(1, (t - fleeStart - di * 15) / 180);
-                if (fleeProgress > 0) {
-                    const fleeX = dp.x + dp.dir * fleeProgress * W * 0.8;
-                    if (Math.abs(fleeX - W / 2) < W) {
-                        const runFrame = Math.floor(introGlobalTimer / 5) % 4;
-                        drawDancerSprite(fleeX, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: runFrame % 2 * 2, armBlend: 0.5, footOffset: runFrame % 2 * 2 - 1 });
-                    }
+                // Fleeing off-screen from current position
+                const fleeX = dp.x + dp.dir * fleeProgress * W * 0.8;
+                if (Math.abs(fleeX - W / 2) < W) {
+                    const runFrame = Math.floor(introGlobalTimer / 5) % 4;
+                    drawDancerSprite(fleeX, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: runFrame % 2 * 2, armBlend: 0.5, footOffset: runFrame % 2 * 2 - 1 });
                 }
             }
         }
