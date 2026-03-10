@@ -5948,24 +5948,24 @@ function renderIntro() {
             drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
         }
 
-        // Story captions
+        // Story captions (in safe zone: below dancers, above bottom wall)
         if (t < 120) {
             const capAlpha = Math.min(1, Math.max(0, (t - 30) / 30));
             ctx.globalAlpha = capAlpha;
-            drawCentered("A SINGLE PUNCH. A SINGLE NOTE.", 24, "#efd8a1", 5);
-            drawCentered("THE SOUND RANG OUT THROUGH THE RUINS LIKE A BELL.", 34, "#efd8a1", 5);
+            drawCentered("A SINGLE PUNCH. A SINGLE NOTE.", H - 54, "#efd8a1", 5);
+            drawCentered("THE SOUND RANG OUT THROUGH THE RUINS LIKE A BELL.", H - 44, "#efd8a1", 5);
             ctx.globalAlpha = 1;
         } else {
             const capAlpha = Math.min(1, (t - 120) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("THE BEAT WASN'T DEAD. IT WAS WAITING.", 28, "#efac28", 6);
+            drawCentered("THE BEAT WASN'T DEAD. IT WAS WAITING.", H - 48, "#efac28", 6);
             ctx.globalAlpha = 1;
         }
 
         // Animated demo grid — player walks to blocks and hits them (scaled up)
         const DT = Math.floor(TILE * 1.4);
         const gridStartX = W / 2 - 4 * DT / 2;
-        const gridStartY = 50;
+        const gridStartY = 150;
         const miniRows = 2;
         const rowColors = ["#efac28", "#efb775"];
         const demoTarget = [[true, false, true, false], [false, true, false, true]];
@@ -6210,22 +6210,22 @@ function renderIntro() {
             drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
         }
 
-        // Story captions
+        // Story captions (in safe zone)
         if (t < 150) {
             const capAlpha = Math.min(1, Math.max(0, (t - 30) / 30));
             ctx.globalAlpha = capAlpha;
-            drawCentered("EACH BEAT HAD A PATTERN TO COMPLETE.", 26, "#efd8a1", 5);
+            drawCentered("EACH BEAT HAD A PATTERN TO COMPLETE.", H - 48, "#efd8a1", 5);
             ctx.globalAlpha = 1;
         } else {
             const capAlpha2 = Math.min(1, (t - 150) / 30);
             ctx.globalAlpha = capAlpha2;
-            drawCentered("IN THE SHADOWS, SMALL EYES WATCHED.", 26, "#ef3a0c", 5);
+            drawCentered("IN THE SHADOWS, SMALL EYES WATCHED.", H - 48, "#ef3a0c", 5);
             ctx.globalAlpha = 1;
         }
 
-        // --- TOP LEFT: Pulsing outlines (beats to ADD) ---
+        // --- LEFT: Pulsing outlines (beats to ADD) ---
         const gx = W / 2 - 4 * TILE;
-        const gy = 36;
+        const gy = 150;
         const patCols = 4;
         const addColor = "#efac28";
         const addTarget = [true, false, true, false];
@@ -6327,11 +6327,11 @@ function renderIntro() {
         }
         drawText("X MARKS = REMOVE", xgx, gy + TILE + 10, "#efb775", 4);
 
-        // --- Lurking goblins at the edges ---
+        // --- Lurking goblins at the edges (in safe zone) ---
         const gobFrame = Math.floor(t / 20) % 4;
         ctx.globalAlpha = 0.7;
-        drawGoblinSprite("normal", TILE + 4, GRID_Y * TILE + TILE, gobFrame, { dir: 3, showShadow: false });
-        drawGoblinSprite("normal", (COLS - 2) * TILE - 4, GRID_Y * TILE + TILE, (gobFrame + 2) % 4, { dir: 2, showShadow: false });
+        drawGoblinSprite("normal", TILE + 4, gy, gobFrame, { dir: 3, showShadow: false });
+        drawGoblinSprite("normal", (COLS - 2) * TILE - 4, gy, (gobFrame + 2) % 4, { dir: 2, showShadow: false });
         ctx.globalAlpha = 1;
     }
 
@@ -6356,17 +6356,17 @@ function renderIntro() {
         const HIT_FRAME = 160;
         const CAPTION2_START = 185;
 
-        // Positions
+        // Positions (in safe zone, below beat grid)
         const djX = W / 2 + TILE;
-        const djY = GRID_Y * TILE - 4;
+        const djY = 155;
         const gobStartX = TILE * 2;
         const gobEndX = W / 2 - TILE * 2;
 
-        // --- Caption 1 ---
+        // --- Caption 1 (in safe zone) ---
         if (t > CAPTION1_START) {
             const fadeIn = Math.min(1, (t - CAPTION1_START) / 20);
             ctx.globalAlpha = fadeIn;
-            drawCentered("ONE OF THEM CREPT BACK. BOLD. STUPID.", 28, "#efd8a1", 6);
+            drawCentered("ONE OF THEM CREPT BACK. BOLD. STUPID.", H - 54, "#efd8a1", 6);
             ctx.globalAlpha = 1;
         }
 
@@ -6439,12 +6439,12 @@ function renderIntro() {
             }
         }
 
-        // --- Caption 2 ---
+        // --- Caption 2 (in safe zone) ---
         if (t > CAPTION2_START) {
             const fadeIn = Math.min(1, (t - CAPTION2_START) / 20);
             ctx.globalAlpha = fadeIn;
-            drawCentered("IT TURNS OUT FISTS THAT COULD FIX A BEAT", 42, "#efac28", 5);
-            drawCentered("COULD BREAK A GOBLIN JUST AS EASILY.", 52, "#efac28", 5);
+            drawCentered("IT TURNS OUT FISTS THAT COULD FIX A BEAT", H - 48, "#efac28", 5);
+            drawCentered("COULD BREAK A GOBLIN JUST AS EASILY.", H - 38, "#efac28", 5);
             ctx.globalAlpha = 1;
         }
     }
@@ -6456,13 +6456,6 @@ function renderIntro() {
         ctx.globalAlpha = pulse;
         drawText("ENTER: NEXT", W - 55, H - 6, "#efd8a1", 3);
         ctx.globalAlpha = 1;
-    } else if (introScene >= 5) {
-        // Tutorial scenes: blinking prompt
-        const promptDelay = introScene === 7 ? 250 : 20;
-        const promptText = introScene < 7 ? "PRESS ENTER" : "PRESS ENTER TO START";
-        if (t > promptDelay && t % 60 < 40) {
-            drawCentered(promptText, H - 10, "#efd8a1", 5);
-        }
     }
 }
 
