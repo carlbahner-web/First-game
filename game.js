@@ -3684,10 +3684,10 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
     pxLean(9, -18, 30, 3, "#efb775");       // Rounded top
     pxLean(12, -21, 24, 3, "#efb775");      // More rounding
     pxLean(15, -24, 18, 3, "#efb775");      // Top of dome
-    // Bald shine highlight
-    pxLean(15, -24, 18, 3, "#efd8a1");
-    pxLean(12, -21, 24, 3, "#efd8a1");
-    pxLean(15, -18, 18, 3, "#F0D8BA");
+    // Bald shine highlight (subtle sheen, not white)
+    pxLean(15, -24, 18, 3, "#f5c882");
+    pxLean(12, -21, 24, 3, "#f2c07a");
+    pxLean(15, -18, 18, 3, "#f0bc78");
     // Ears (flush with head edge — no protrusion)
     pxLean(6, -6, 3, 6, "#a58c27");
     pxLean(39, -6, 3, 6, "#a58c27");
