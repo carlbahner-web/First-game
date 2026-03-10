@@ -4619,14 +4619,6 @@ function renderTitleScreen() {
     // === "PRESS ENTER" below the title ===
     const pressY = titleBaseY + 56;
 
-    // Pulsing glow behind "PRESS ENTER"
-    const pulseAlpha = 0.15 + Math.sin(titleBlink * 0.08) * 0.1;
-    ctx.fillStyle = "#efac28";
-    ctx.globalAlpha = pulseAlpha;
-    const pressTextW = 180;
-    ctx.fillRect(((W * SCALE) / 2) - pressTextW, (pressY - 4) * SCALE, pressTextW * 2, 14 * SCALE);
-    ctx.globalAlpha = 1.0;
-
     // Blink the text with a faster, more urgent rhythm
     if (titleBlink % 45 < 32) {
         drawCentered("PRESS ENTER", pressY + 1, "#000000", 6);
