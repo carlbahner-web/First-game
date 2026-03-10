@@ -2966,6 +2966,28 @@ function renderHUD() {
     // Background fill
     drawHudRect(0, 0, COLS * TILE, HUD_H, "#2a1d0d");
 
+    // Teal border along top — connects visually to the venue's bottom wall
+    for (let c = 0; c < COLS; c++) {
+        drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+    }
+    // Highlight on border edge
+    hudCtx.fillStyle = "rgba(255,255,255,0.08)";
+    hudCtx.fillRect(0, 0, COLS * TILE * SCALE, 1 * SCALE);
+
+    // Subtle grain texture (matches venue floor grain)
+    for (let c = 0; c < COLS; c++) {
+        let seed = c * 37 + 7;
+        for (let i = 0; i < 4; i++) {
+            seed = (seed * 9301 + 49297) % 233280;
+            const gx = c * TILE + (seed % TILE);
+            seed = (seed * 9301 + 49297) % 233280;
+            const gy = 3 + (seed % (HUD_H - 4));
+            const bright = (seed % 2) === 0;
+            hudCtx.fillStyle = bright ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.08)";
+            hudCtx.fillRect(gx * SCALE, gy * SCALE, SCALE, SCALE);
+        }
+    }
+
     const pxSz = 3;
     const digitW = 3 * pxSz + pxSz;
     const panelH = 5 * pxSz + 6;
@@ -2974,13 +2996,19 @@ function renderHUD() {
     const kcY = Math.floor((HUD_H - panelH) / 2);
     const baseX = 1 * TILE;
 
+    // Panel drawing helper — adds border, fill, top highlight, and bottom shadow
+    function drawHudPanel(x, y, w, h, borderCol, bgCol, hiCol) {
+        drawHudRect(x - 2, y - 2, w + 4, h + 4, borderCol);
+        drawHudRect(x, y, w, h, bgCol);
+        drawHudRect(x, y, w, 1, hiCol);                    // top highlight
+        drawHudRect(x, y + h - 1, w, 1, "rgba(0,0,0,0.2)"); // bottom shadow
+    }
+
     // --- Level counter ---
     const iconW = 3 * pxSz + 2;
     const lvlStr = String(currentLevel + 1).padStart(2, "0");
     const lvlPanelW = iconW + 2 * digitW + 6;
-    drawHudRect(baseX - 2, kcY - 2, lvlPanelW + 4, panelH + 4, "#2a1d0d");
-    drawHudRect(baseX, kcY, lvlPanelW, panelH, "#392a1c");
-    drawHudRect(baseX, kcY, lvlPanelW, 1, "#684c3c");
+    drawHudPanel(baseX, kcY, lvlPanelW, panelH, "#2a1d0d", "#392a1c", "#684c3c");
     // "L" icon
     const fx = baseX + 2, fy = kcY + 3;
     drawHudRect(fx, fy, pxSz, 5 * pxSz, "#efd8a1");
@@ -2995,9 +3023,7 @@ function renderHUD() {
     const scoreStr = String(score).padStart(7, "0");
     const skullW = 5 * pxSz + 2;
     const killPanelW = skullW + 7 * digitW + 6;
-    drawHudRect(kcX - 2, kcY - 2, killPanelW + 4, panelH + 4, "#2a1d0d");
-    drawHudRect(kcX, kcY, killPanelW, panelH, "#392a1c");
-    drawHudRect(kcX, kcY, killPanelW, 1, "#684c3c");
+    drawHudPanel(kcX, kcY, killPanelW, panelH, "#2a1d0d", "#392a1c", "#684c3c");
     // Skull icon
     const sx = kcX + 2, sy = kcY + 3;
     const p = pxSz;
@@ -3028,9 +3054,7 @@ function renderHUD() {
     const timerBorderColor = isUrgent ? "#550f0a" : "#2a1d0d";
     const timerBgColor = isUrgent ? "#45230d" : "#392a1c";
     const timerHighlight = isUrgent ? "#9b1a0a" : "#684c3c";
-    drawHudRect(timerX - 2, kcY - 2, timerPanelW + 4, panelH + 4, timerBorderColor);
-    drawHudRect(timerX, kcY, timerPanelW, panelH, timerBgColor);
-    drawHudRect(timerX, kcY, timerPanelW, 1, timerHighlight);
+    drawHudPanel(timerX, kcY, timerPanelW, panelH, timerBorderColor, timerBgColor, timerHighlight);
     // "T" icon
     const tx2 = timerX + 2, ty2 = kcY + 3;
     drawHudRect(tx2, ty2, 3 * pxSz, pxSz, blinkOn ? timerColor : timerBgColor);
