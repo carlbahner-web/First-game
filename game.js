@@ -3664,17 +3664,17 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         drawPx(sx + x + leanX * SCALE, sy + y + leanY * SCALE - bob, w, h, ghost ? ghostTint(color) : color);
     }
 
-    // === BODY (dusty rose shirt — Studioland style) ===
+    // === BODY (foggy mint shirt — Studioland style) ===
     // Lower body stays planted (extended upward to fill gap when upper body leans)
-    px(9, 9, 30, 27, "#b56872");        // Lower torso (stays put)
-    px(9, 9, 6, 27, "#7d3a42");          // Lower left dark side
-    px(33, 9, 6, 27, "#7d3a42");         // Lower right dark side
-    px(12, 30, 24, 3, "#7d3a42");       // Shirt bottom hem
+    px(9, 9, 30, 27, "#7a9e96");        // Lower torso (stays put)
+    px(9, 9, 6, 27, "#4d6b63");          // Lower left dark side
+    px(33, 9, 6, 27, "#4d6b63");         // Lower right dark side
+    px(12, 30, 24, 3, "#4d6b63");       // Shirt bottom hem
     // Upper body leans into punch
-    pxLean(9, 6, 30, 18, "#b56872");    // Upper torso
-    pxLean(9, 6, 6, 18, "#7d3a42");     // Upper left dark side
-    pxLean(33, 6, 6, 18, "#7d3a42");    // Upper right dark side
-    pxLean(15, 9, 18, 3, "#d4868e");    // Shirt chest highlight
+    pxLean(9, 6, 30, 18, "#7a9e96");    // Upper torso
+    pxLean(9, 6, 6, 18, "#4d6b63");     // Upper left dark side
+    pxLean(33, 6, 6, 18, "#4d6b63");    // Upper right dark side
+    pxLean(15, 9, 18, 3, "#a0c4b8");    // Shirt chest highlight
     // Collar detail
     pxLean(15, 6, 18, 3, "#392a1c");
     pxLean(18, 3, 12, 3, "#392a1c");
