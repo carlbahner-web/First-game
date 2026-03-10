@@ -527,10 +527,10 @@ const PAL = {
     wallTop:   "#45230d",
     floor:     "#300f0a",
     floorAlt:  "#36170c",
-    gridOff:   "#45230d",
+    gridOff:   "#2a4a50",
     gridOn:    ["#efd8a1", "#efac28", "#ef692f", "#276468", "#ef3a0c", "#3c9f9c"], // per-row colors (O,H,S,K,B,T)
     gridX:     ["#ef3a0c", "#550f0a", "#efd8a1", "#efac28", "#efd8a1", "#ef3a0c"], // bright X indicators visible on colored blocks
-    gridBorder:"#684c3c",
+    gridBorder:"#3a5a60",
     playhead:  "#efac28",
     player:    "#efd8a1",
     playerDark:"#927e6a",
@@ -4479,8 +4479,8 @@ function renderTitleScreen() {
             const gx = miniGridX + c * TILE;
             const gy = miniGridY + r * TILE;
             const on = patterns[r][c];
-            drawRect(gx, gy, TILE, TILE, "#684c3c");
-            drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, on ? PAL.gridOn[r] : "#45230d");
+            drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
+            drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, on ? PAL.gridOn[r] : PAL.gridOff);
         }
     }
     // Playhead
@@ -5066,8 +5066,8 @@ function renderIntro() {
                 const gx = miniGridX + c * TILE;
                 const gy = miniGridY + r * TILE;
                 const on = patterns[r][c];
-                drawRect(gx, gy, TILE, TILE, "#684c3c");
-                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, on ? PAL.gridOn[r] : "#45230d");
+                drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
+                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, on ? PAL.gridOn[r] : PAL.gridOff);
             }
         }
         // Playhead
@@ -5112,8 +5112,8 @@ function renderIntro() {
                 const gx = lgX + c * BT;
                 const gy = lgY + r * BT;
                 const on = patterns[r][c];
-                drawRect(gx, gy, BT, BT, "#684c3c");
-                drawRect(gx + 1, gy + 1, BT - 2, BT - 2, on ? PAL.gridOn[r] : "#45230d");
+                drawRect(gx, gy, BT, BT, PAL.gridBorder);
+                drawRect(gx + 1, gy + 1, BT - 2, BT - 2, on ? PAL.gridOn[r] : PAL.gridOff);
                 // 3D highlight
                 if (on) {
                     ctx.fillStyle = "rgba(255,255,255,0.2)";
@@ -5227,8 +5227,8 @@ function renderIntro() {
                 const on = patterns[r][c];
                 // Glitch: random cells flicker
                 const glitched = Math.random() < shakeAmt * 0.3;
-                drawRect(gx, gy, TILE, TILE, "#684c3c");
-                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, glitched ? (Math.random() > 0.5 ? "#ef3a0c" : "#39FF14") : (on ? PAL.gridOn[r] : "#45230d"));
+                drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
+                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, glitched ? (Math.random() > 0.5 ? "#ef3a0c" : "#39FF14") : (on ? PAL.gridOn[r] : PAL.gridOff));
             }
         }
 
@@ -5397,8 +5397,8 @@ function renderIntro() {
                 const cellSeed = (r * 100 + c * 37 + 7) % 16;
                 const corrupted = cellSeed < corruptProgress * 16;
                 const cellOn = corrupted ? !on : on;
-                drawRect(gx, gy, TILE, TILE, "#684c3c");
-                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, cellOn ? PAL.gridOn[r] : "#45230d");
+                drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
+                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, cellOn ? PAL.gridOn[r] : PAL.gridOff);
                 // Green flash on corrupted cells
                 if (corrupted && Math.abs(cellSeed - corruptProgress * 16) < 2) {
                     ctx.globalAlpha = 0.4;
@@ -5493,8 +5493,8 @@ function renderIntro() {
                 const gx = miniGridX + c * TILE;
                 const gy = miniGridY + r * TILE;
                 const randomOn = ((r * 7 + c * 13 + 5) % 3) === 0;
-                drawRect(gx, gy, TILE, TILE, "#684c3c");
-                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, randomOn ? PAL.gridOn[r] : "#45230d");
+                drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
+                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, randomOn ? PAL.gridOn[r] : PAL.gridOff);
             }
         }
 
@@ -6957,9 +6957,9 @@ function renderNewInstrument() {
             const demoStep = Math.floor(t / 6) % 16;
             for (let c = 0; c < 16; c++) {
                 const cx_s = stripX + c * cellW;
-                drawRect(cx_s, stripY, cellW, cellW, "#684c3c");
+                drawRect(cx_s, stripY, cellW, cellW, PAL.gridBorder);
                 drawRect(cx_s + 1, stripY + 1, cellW - 2, cellW - 2,
-                    cowbellPattern[c] ? "#ef3a0c" : "#45230d");
+                    cowbellPattern[c] ? "#ef3a0c" : PAL.gridOff);
                 // Playhead
                 if (c === demoStep) {
                     ctx.fillStyle = "#efac28";
@@ -7042,9 +7042,9 @@ function renderNewInstrument() {
             const demoStep = Math.floor(t / 6) % 16;
             for (let c = 0; c < 16; c++) {
                 const cx_s = stripX + c * cellW;
-                drawRect(cx_s, stripY, cellW, cellW, "#684c3c");
+                drawRect(cx_s, stripY, cellW, cellW, PAL.gridBorder);
                 drawRect(cx_s + 1, stripY + 1, cellW - 2, cellW - 2,
-                    tomPattern[c] ? "#3c9f9c" : "#45230d");
+                    tomPattern[c] ? "#3c9f9c" : PAL.gridOff);
                 if (c === demoStep) {
                     ctx.fillStyle = "#efac28";
                     ctx.globalAlpha = stripAlpha * 0.4;
