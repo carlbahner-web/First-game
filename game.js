@@ -5036,22 +5036,6 @@ function renderIntro() {
         const djBob = beatOn ? 3 : 0;
         drawPlayerSprite(W / 2 - 8, boothY - 10 - djBob, djFrame, 0, {});
 
-        // Dancers (crowd of ~8 dancers on the dance floor)
-        const danceFloorY = (GRID_Y + 5) * TILE;
-        const crowdPositions = [
-            { x: 3 * TILE, pal: 0 }, { x: 5 * TILE, pal: 1 },
-            { x: 7 * TILE, pal: 2 }, { x: 9 * TILE, pal: 3 },
-            { x: 11 * TILE, pal: 4 }, { x: 13 * TILE, pal: 5 },
-            { x: 15 * TILE, pal: 0 }, { x: 17 * TILE, pal: 1 },
-        ];
-        for (let di = 0; di < crowdPositions.length; di++) {
-            const dp = crowdPositions[di];
-            const dBob2 = Math.floor((introGlobalTimer + di * 7) / 8) % 2 === 0 ? 0 : 3;
-            const armUp = Math.floor((introGlobalTimer + di * 7) / 8) % 2 === 0;
-            const dfo = armUp ? 1.5 : -1.5;
-            drawDancerSprite(dp.x, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: dBob2, armBlend: armUp ? 1 : 0, footOffset: dfo });
-        }
-
         // Beat grid (small, showing the beat is perfect)
         const miniGridY = GRID_Y * TILE + 14;
         const miniGridX = 3 * TILE;
@@ -5071,6 +5055,22 @@ function renderIntro() {
         ctx.globalAlpha = 0.35;
         ctx.fillRect(phX * SCALE, miniGridY * SCALE, TILE * SCALE, (4 * TILE) * SCALE);
         ctx.globalAlpha = 1;
+
+        // Dancers (crowd of ~8 dancers on the dance floor)
+        const danceFloorY = (GRID_Y + 5) * TILE;
+        const crowdPositions = [
+            { x: 3 * TILE, pal: 0 }, { x: 5 * TILE, pal: 1 },
+            { x: 7 * TILE, pal: 2 }, { x: 9 * TILE, pal: 3 },
+            { x: 11 * TILE, pal: 4 }, { x: 13 * TILE, pal: 5 },
+            { x: 15 * TILE, pal: 0 }, { x: 17 * TILE, pal: 1 },
+        ];
+        for (let di = 0; di < crowdPositions.length; di++) {
+            const dp = crowdPositions[di];
+            const dBob2 = Math.floor((introGlobalTimer + di * 7) / 8) % 2 === 0 ? 0 : 3;
+            const armUp = Math.floor((introGlobalTimer + di * 7) / 8) % 2 === 0;
+            const dfo = armUp ? 1.5 : -1.5;
+            drawDancerSprite(dp.x, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: dBob2, armBlend: armUp ? 1 : 0, footOffset: dfo });
+        }
 
         // Beat pulse background
         if (beatOn) {
@@ -7094,25 +7094,38 @@ function gameLoop(timestamp) {
                 update(dt);
                 render();
             }
-            // Scene transition overlay (iris wipe)
+            // Scene transition overlay
             if (sceneTransition.active) {
                 sceneTransition.progress += 1 / sceneTransition.duration;
                 if (sceneTransition.progress >= 1) {
                     sceneTransition.active = false;
                     sceneTransition.progress = 0;
                 } else {
-                    // Iris-in effect: circle expands from center revealing new scene
                     const W_t = COLS * TILE * SCALE;
                     const H_t = ROWS * TILE * SCALE;
-                    const maxRadius = Math.sqrt(W_t * W_t + H_t * H_t) / 2;
-                    const radius = sceneTransition.progress * maxRadius;
-                    ctx.save();
-                    ctx.fillStyle = "#000";
-                    ctx.beginPath();
-                    ctx.rect(0, 0, W_t, H_t);
-                    ctx.arc(W_t / 2, H_t / 2, radius, 0, Math.PI * 2, true);
-                    ctx.fill();
-                    ctx.restore();
+                    if (sceneTransition.from === "title" && sceneTransition.to === "intro") {
+                        // Quick fade for title→intro (same visual scene, iris wipe looks wrong)
+                        const fadeAlpha = sceneTransition.progress < 0.5
+                            ? sceneTransition.progress * 2   // fade to black
+                            : (1 - sceneTransition.progress) * 2; // fade from black
+                        ctx.save();
+                        ctx.fillStyle = "#000";
+                        ctx.globalAlpha = fadeAlpha;
+                        ctx.fillRect(0, 0, W_t, H_t);
+                        ctx.globalAlpha = 1;
+                        ctx.restore();
+                    } else {
+                        // Iris-in effect: circle expands from center revealing new scene
+                        const maxRadius = Math.sqrt(W_t * W_t + H_t * H_t) / 2;
+                        const radius = sceneTransition.progress * maxRadius;
+                        ctx.save();
+                        ctx.fillStyle = "#000";
+                        ctx.beginPath();
+                        ctx.rect(0, 0, W_t, H_t);
+                        ctx.arc(W_t / 2, H_t / 2, radius, 0, Math.PI * 2, true);
+                        ctx.fill();
+                        ctx.restore();
+                    }
                 }
             }
         } catch (e) {
