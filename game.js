@@ -1257,7 +1257,7 @@ window.addEventListener("keydown", (e) => {
         if (gameState === "tutorial") {
             tutorialPage++;
             tutorialTimer = 0;
-            if (tutorialPage > 1) {
+            if (tutorialPage > 2) {
                 stopStoryDrums();
                 gameState = "playing";
                 currentStep = 0;
@@ -6432,10 +6432,10 @@ function renderTutorialScreen() {
         ctx.textAlign = "start";
     }
 
-    // Page indicator dots (2 pages)
+    // Page indicator dots (3 pages)
     const dotY = H - 22;
-    for (let i = 0; i < 2; i++) {
-        const dx = W / 2 - 6 + i * 8;
+    for (let i = 0; i < 3; i++) {
+        const dx = W / 2 - 10 + i * 8;
         const active = i === tutorialPage;
         drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
     }
@@ -6837,9 +6837,118 @@ function renderTutorialScreen() {
         ctx.globalAlpha = 1;
     }
 
+    // ======== PAGE 2: THE STAND ========
+    else if (tutorialPage === 2) {
+        // Timeline constants
+        const CAPTION1_START = 30;
+        const GOB_START = 40;
+        const GOB_END = 140;
+        const PUNCH_START = 155;
+        const ATTACK_DUR = 12;
+        const HIT_FRAME = 160;
+        const CAPTION2_START = 185;
+        const PROMPT_START = 250;
+
+        // Positions
+        const djX = W / 2 + TILE;
+        const djY = GRID_Y * TILE - 4;
+        const gobStartX = TILE * 2;
+        const gobEndX = W / 2 - TILE * 2;
+
+        // --- Caption 1: "BUT THEN ONE CAME BACK..." ---
+        if (t > CAPTION1_START) {
+            const fadeIn = Math.min(1, (t - CAPTION1_START) / 20);
+            ctx.globalAlpha = fadeIn;
+            drawCenteredText("BUT THEN ONE CAME BACK...", 20, "#efd8a1", 6);
+            ctx.globalAlpha = 1;
+        }
+
+        // --- Goblin walk-in ---
+        const gobAlive = t < HIT_FRAME;
+        if (gobAlive) {
+            const gobProgress = Math.min(1, Math.max(0, (t - GOB_START) / (GOB_END - GOB_START)));
+            const eased = gobProgress * gobProgress * (3 - 2 * gobProgress);
+            const gobX = gobStartX + (gobEndX - gobStartX) * eased;
+            const gobFrame = t < GOB_END ? Math.floor(t / 10) % 4 : 0;
+            drawGoblinSprite("normal", gobX, djY, gobFrame, { dir: 3, showShadow: true });
+        }
+
+        // --- Death particles ---
+        if (t >= HIT_FRAME && t < HIT_FRAME + 30) {
+            const deathT = t - HIT_FRAME;
+            const particleColors = ["#39FF14", "#1a5c0a", "#efac28", "#39FF14", "#2d8a0e", "#efac28", "#39FF14", "#1a5c0a"];
+            for (let pi = 0; pi < 8; pi++) {
+                const angle = (pi / 8) * Math.PI * 2 + 0.3;
+                const speed = 1.5 + (pi % 3) * 0.5;
+                const px = gobEndX + 6 + Math.cos(angle) * speed * deathT;
+                const py = djY + 6 + Math.sin(angle) * speed * deathT + deathT * deathT * 0.04;
+                const life = 1 - deathT / 30;
+                if (life > 0) {
+                    ctx.globalAlpha = life;
+                    drawRect(px, py, 2, 2, particleColors[pi]);
+                }
+            }
+            ctx.globalAlpha = 1;
+            // Screen flash on impact
+            if (deathT < 3) {
+                ctx.globalAlpha = 0.3 * (1 - deathT / 3);
+                drawRect(0, 0, W, H, "#39FF14");
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        // --- DJ sprite ---
+        const djDir = 2; // facing left toward goblin
+        let punchThrust = 0;
+        let djFrame = 0;
+        if (t >= PUNCH_START && t < PUNCH_START + ATTACK_DUR) {
+            const punchProgress = (t - PUNCH_START) / ATTACK_DUR;
+            punchThrust = Math.sin(punchProgress * Math.PI);
+        }
+        drawPlayerSprite(djX, djY, djFrame, djDir, { punchThrust: punchThrust });
+
+        // Draw punch arm + fist (same style as Page 0)
+        if (punchThrust > 0) {
+            const thrust = punchThrust;
+            let ddx2 = -1, ddy2 = 0; // facing left
+            const pLeanX = ddx2 * thrust * 5;
+            const pLeanY = 0;
+            const pcx = djX + 8, pcy = djY + 6;
+            const shOX = -8, shOY = -2; // left-facing shoulder offset
+            const armLen = 3 + thrust * 6;
+            const shX = (pcx + pLeanX + shOX) * SCALE, shY = (pcy + pLeanY + shOY) * SCALE;
+            const fiX = (pcx + pLeanX + shOX + ddx2 * armLen) * SCALE, fiY = (pcy + pLeanY + shOY + ddy2 * armLen) * SCALE;
+            ctx.strokeStyle = "#efb775"; ctx.lineWidth = 4 * SCALE; ctx.lineCap = "round";
+            ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(fiX, fiY); ctx.stroke();
+            ctx.fillStyle = "#efb775"; ctx.beginPath(); ctx.arc(fiX, fiY, 3.5 * SCALE, 0, Math.PI * 2); ctx.fill();
+            // Impact burst
+            if (thrust > 0.5) {
+                for (let bi = 0; bi < 6; bi++) {
+                    const angle = (bi / 6) * Math.PI * 2 + (t - PUNCH_START) * 0.3;
+                    ctx.strokeStyle = "#efd8a1"; ctx.lineWidth = 2 * SCALE; ctx.globalAlpha = thrust * 0.8;
+                    ctx.beginPath();
+                    ctx.moveTo(fiX + Math.cos(angle) * 5 * SCALE, fiY + Math.sin(angle) * 5 * SCALE);
+                    ctx.lineTo(fiX + Math.cos(angle) * (8 + thrust * 4) * SCALE, fiY + Math.sin(angle) * (8 + thrust * 4) * SCALE);
+                    ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        // --- Caption 2: "THE FISTS WORKED ON GOBLINS TOO!" ---
+        if (t > CAPTION2_START) {
+            const fadeIn = Math.min(1, (t - CAPTION2_START) / 20);
+            ctx.globalAlpha = fadeIn;
+            drawCenteredText("THE FISTS WORKED ON GOBLINS TOO!", 38, "#efac28", 7);
+            ctx.globalAlpha = 1;
+        }
+    }
+
     // Blinking prompt
-    const promptText = tutorialPage < 1 ? "PRESS ENTER" : "PRESS ENTER TO START";
-    if (t > 20 && t % 60 < 40) {
+    // On Page 2, delay the prompt until the animation sequence finishes
+    const promptDelay = tutorialPage === 2 ? 250 : 20;
+    const promptText = tutorialPage < 2 ? "PRESS ENTER" : "PRESS ENTER TO START";
+    if (t > promptDelay && t % 60 < 40) {
         drawCenteredText(promptText, H - 10, "#efd8a1", 5);
     }
 }
