@@ -3875,6 +3875,58 @@ function drawPunch() {
     ctx.restore();
 }
 
+// Draw the ruined venue backdrop (used in tutorial scenes and Scene 3 style)
+// t: animation timer for smoke wisps
+function drawRuinedVenueBackdrop(t) {
+    const W = COLS * TILE;
+    const H = ROWS * TILE;
+    // Dark floor
+    drawRect(0, 0, W, H, "#1a1a18");
+    // Damaged walls (deterministic — no Math.random flickering)
+    for (let c = 0; c < COLS; c++) {
+        const damaged = ((c * 7 + 3) % 10) > 6; // ~30% damaged
+        drawRect(c * TILE, 0, TILE, TILE, damaged ? "#45230d" : (c % 2 === 0 ? "#724113" : "#927e6a"));
+        drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+    }
+    for (let r = 0; r < ROWS; r++) {
+        drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+        drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+    }
+    // Open caves
+    for (const cave of CAVES) {
+        const cx = cave.tileX * TILE, cy = cave.tileY * TILE;
+        drawRect(cx, cy - 2, TILE, TILE + 4, "#0a0a0a");
+        drawRect(cx - 2, cy - 4, TILE + 4, 3, "#684c3c");
+        drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");
+    }
+    // Dead string lights
+    for (let c = 1; c < COLS - 1; c++) {
+        drawRect(c * TILE + TILE / 2 - 2, TILE + 6, 4, 4, "#2a1d0d");
+    }
+    // Destroyed DJ booth
+    const boothX = W / 2 - 24;
+    const boothY = GRID_Y * TILE - 8;
+    drawRect(boothX - 8, boothY + 12, 64, 8, "#2a1d0d");
+    drawRect(boothX + 5, boothY + 6, 10, 6, "#1f240a");
+    drawRect(boothX + 35, boothY + 8, 8, 4, "#1f240a");
+    // Smoke wisps
+    for (let si = 0; si < 3; si++) {
+        const smokeX = boothX + 15 + si * 12;
+        const smokeY = boothY - (t * 0.3 + si * 20) % 30;
+        ctx.globalAlpha = 0.15 - (t * 0.3 + si * 20) % 30 / 200;
+        if (ctx.globalAlpha > 0) drawRect(smokeX, smokeY, 3, 3, "#888888");
+    }
+    ctx.globalAlpha = 1;
+    // Dark vignette
+    const W_v = W * SCALE;
+    const H_v = H * SCALE;
+    const vGrad = ctx.createRadialGradient(W_v / 2, H_v / 2, W_v * 0.2, W_v / 2, H_v / 2, W_v * 0.6);
+    vGrad.addColorStop(0, "rgba(0,0,0,0)");
+    vGrad.addColorStop(1, "rgba(0,0,0,0.6)");
+    ctx.fillStyle = vGrad;
+    ctx.fillRect(0, 0, W_v, H_v);
+}
+
 // Reusable goblin sprite for all screens (story, warnings, gameplay)
 // Draw a subwoofer speaker (replaces turntable)
 // sx, sy: top-left position (game coords), pump: 0-1 kick intensity, side: -1=left, 1=right
@@ -6326,19 +6378,8 @@ function renderTutorialScreen() {
     const H = ROWS * TILE;
     const t = tutorialTimer;
 
-    // Dark background
-    drawRect(0, 0, W, H, "#1f240a");
-
-    // Starfield
-    for (let i = 0; i < 60; i++) {
-        const sx = ((i * 137 + 50) % W);
-        const sy = ((i * 97 + 30) % H);
-        const twinkle = Math.sin(t * 0.05 + i) * 0.5 + 0.5;
-        ctx.globalAlpha = 0.3 + twinkle * 0.7;
-        const starSize = (i % 3 === 0) ? 2 : 1;
-        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#efac28" : "#efd8a1");
-    }
-    ctx.globalAlpha = 1;
+    // Ruined venue backdrop (story continuity from intro)
+    drawRuinedVenueBackdrop(t);
 
     function drawCenteredText(text, y, color, scale) {
         ctx.font = `${scale * SCALE}px monospace`;
@@ -6356,10 +6397,20 @@ function renderTutorialScreen() {
         drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
     }
 
-    // ======== PAGE 0: PUNCH BLOCKS ========
+    // ======== PAGE 0: THE DISCOVERY ========
     if (tutorialPage === 0) {
-        // Title
-        drawCenteredText("PUNCH BLOCKS TO TOGGLE BEATS", 25, "#efac28", 7);
+        // Story captions (replace instructional title)
+        if (t < 120) {
+            const capAlpha = Math.min(1, Math.max(0, (t - 30) / 30));
+            ctx.globalAlpha = capAlpha;
+            drawCenteredText("THEN THE DJ MADE A DISCOVERY...", 20, "#efd8a1", 6);
+            ctx.globalAlpha = 1;
+        } else {
+            const capAlpha = Math.min(1, (t - 120) / 30);
+            ctx.globalAlpha = capAlpha;
+            drawCenteredText("FISTS COULD RESTORE THE BEAT!", 20, "#efac28", 7);
+            ctx.globalAlpha = 1;
+        }
 
         // Animated demo grid — player walks to blocks and hits them (scaled up)
         const DT = Math.floor(TILE * 1.4); // larger demo tile size
@@ -6418,6 +6469,15 @@ function renderTutorialScreen() {
                         ctx.globalAlpha = demoAlpha;
                     }
                     if (isOn) {
+                        // Golden glow — the beat is bringing light back
+                        const glowR = DT * 1.2;
+                        const gcx = (bx + DT / 2) * SCALE, gcy = (by + DT / 2) * SCALE;
+                        const glow = ctx.createRadialGradient(gcx, gcy, 0, gcx, gcy, glowR * SCALE);
+                        glow.addColorStop(0, "rgba(239,172,40,0.12)");
+                        glow.addColorStop(1, "rgba(239,172,40,0)");
+                        ctx.fillStyle = glow;
+                        ctx.fillRect((bx - DT * 0.3) * SCALE, (by - DT * 0.3) * SCALE, DT * 1.6 * SCALE, DT * 1.6 * SCALE);
+                        // White flash on hit
                         for (const hf of hitFrames) {
                             if (toggleOrder[hf.toggleIdx][0] === r && toggleOrder[hf.toggleIdx][1] === c) {
                                 const flashAge = cycleT - hf.frame;
@@ -6507,7 +6567,8 @@ function renderTutorialScreen() {
             ctx.globalAlpha = 1;
         }
 
-        // Control instructions with key press highlights
+        // Control instructions with key press highlights (subtle HUD style)
+        ctx.globalAlpha = 0.7;
         {
             const ky = gridStartY + miniRows * DT + 18;
             const ks = 9; // key size
@@ -6600,11 +6661,23 @@ function renderTutorialScreen() {
             ctx.fillText("ATTACK", (spX + spW / 2) * SCALE, (ky + 2 * ks + 2 * kg + 8) * SCALE);
             ctx.textAlign = "start";
         }
+        ctx.globalAlpha = 1;
     }
 
-    // ======== PAGE 1: MATCH THE PATTERN + BEAT THE CLOCK ========
+    // ======== PAGE 1: THE THREAT ========
     else if (tutorialPage === 1) {
-        drawCenteredText("MATCH THE PATTERN", 15, "#efac28", 7);
+        // Story captions
+        if (t < 150) {
+            const capAlpha = Math.min(1, Math.max(0, (t - 30) / 30));
+            ctx.globalAlpha = capAlpha;
+            drawCenteredText("MATCH THE PATTERN TO RESTORE EACH BEAT...", 15, "#efd8a1", 5);
+            ctx.globalAlpha = 1;
+        } else {
+            const capAlpha2 = Math.min(1, (t - 150) / 30);
+            ctx.globalAlpha = capAlpha2;
+            drawCenteredText("...BEFORE THE GOBLINS RETURN!", 15, "#ef3a0c", 6);
+            ctx.globalAlpha = 1;
+        }
 
         // --- TOP LEFT: Pulsing outlines (beats to ADD) ---
         const gx = W / 2 - 4 * TILE;
@@ -6711,48 +6784,14 @@ function renderTutorialScreen() {
         }
         drawText("X MARKS = REMOVE", xgx, gy + TILE + 10, "#efb775", 4);
 
-        // --- BOTTOM: Timer countdown ---
-        const timerY = gy + TILE + 30;
-        const TIMER_CYCLE = 180;
-        const cT = Math.max(0, t - 30) % TIMER_CYCLE;
-        const timerVal = Math.max(5, 30 - Math.floor(cT / 6));
-        const isLow = timerVal <= 10;
-        const isUrgent = timerVal <= 20;
-        const timerColor = isUrgent ? "#ef3a0c" : "#efd8a1";
-        const borderCol = isUrgent ? "#550f0a" : "#2a1d0d";
-        const bgCol = isUrgent ? "#45230d" : "#392a1c";
-        const hlCol = isUrgent ? "#9b1a0a" : "#684c3c";
-        const blinkOn = !isUrgent || Math.floor(cT / (isLow ? 8 : 15)) % 2 === 0;
-
-        const pxSz = 4;
-        const digitW = 3 * pxSz + pxSz;
-        const timerStr = timerVal < 10 ? "0" + timerVal : String(timerVal);
-        const panelW = 16 + timerStr.length * digitW + 10;
-        const panelH = 5 * pxSz + 8;
-        const tpx = W / 2 - panelW / 2;
-        const tpy = timerY;
-
-        drawRect(tpx - 2, tpy - 2, panelW + 4, panelH + 4, borderCol);
-        drawRect(tpx, tpy, panelW, panelH, bgCol);
-        drawRect(tpx, tpy, panelW, 2, hlCol);
-
-        const tix = tpx + 3, tiy = tpy + 4;
-        drawRect(tix, tiy, 10, 2, blinkOn ? timerColor : bgCol);
-        drawRect(tix + 4, tiy + 2, 2, 10, blinkOn ? timerColor : bgCol);
-
-        if (blinkOn) {
-            const numX = tpx + 16;
-            const numY2 = tpy + 4;
-            drawPixelDigits(timerStr, numX + (timerStr.length * digitW) / 2, numY2, timerColor, pxSz);
-        }
-
-        if (isLow && !blinkOn) {
-            ctx.globalAlpha = 0.08;
-            drawRect(0, 0, W, H, "#ef3a0c");
-        }
+        // --- Lurking goblins at the edges (watching, waiting) ---
+        const gobFrame = Math.floor(t / 20) % 4; // slow idle animation
+        ctx.globalAlpha = 0.7;
+        // Left goblin — near left cave, facing right
+        drawGoblinSprite("normal", TILE + 4, GRID_Y * TILE + TILE, gobFrame, { dir: 3, showShadow: false });
+        // Right goblin — near right cave, facing left
+        drawGoblinSprite("normal", (COLS - 2) * TILE - 4, GRID_Y * TILE + TILE, (gobFrame + 2) % 4, { dir: 2, showShadow: false });
         ctx.globalAlpha = 1;
-
-        drawCenteredText("COMPLETE THE PATTERN BEFORE TIME RUNS OUT!", timerY + panelH + 12, "#efb775", 4);
     }
 
     // Blinking prompt
