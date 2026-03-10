@@ -1010,7 +1010,7 @@ let levelCelebrateDisplayScore = 0; // for count-up animation
 let titleBlink = 0; // blink timer for "PRESS ENTER"
 
 // ---- Animated Intro Cutscene State ----
-let introScene = 0;         // current scene index (0-7)
+let introScene = 0;         // current scene index (0-4)
 let introTimer = 0;         // frame counter within current scene
 let introGlobalTimer = 0;   // total frames since intro started
 let introBeatStep = 0;      // simulated sequencer step for the intro beat
@@ -1027,14 +1027,11 @@ const INTRO_BEAT = {
     O: [0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0],
 };
 const INTRO_SCENE_DURATIONS = [
-    480,  // Scene 0: "STUDIOLAND" title card (8s at 60fps)
-    420,  // Scene 1: The Good Times — DJ + dancers vibing (7s)
-    360,  // Scene 2: The Groove — beat grid closeup (6s)
-    540,  // Scene 3: Earthquake + Caves — lights die, walls crack open (9s)
-    360,  // Scene 4: (skipped — merged into Scene 3)
-    420,  // Scene 5: Goblin Attack — chaos (7s)
-    360,  // Scene 6: The Aftermath — destruction (6s)
-    300,  // Scene 7: Call to Action — DJ rises (5s)
+    420,  // Scene 0: The Good Times — DJ + dancers vibing (7s)
+    540,  // Scene 1: Earthquake + Caves — lights die, walls crack open (9s)
+    420,  // Scene 2: Goblin Attack — chaos (7s)
+    360,  // Scene 3: The Aftermath — destruction (6s)
+    300,  // Scene 4: Call to Action — DJ rises (5s)
 ];
 let tutorialTimer = 0; // animation frame counter for tutorial screen
 let tutorialPage = 0;  // current tutorial page (0-1)
@@ -4519,7 +4516,7 @@ function renderTitleScreen() {
             // Now switch to intro
             stopTitleDrums();
             gameState = "intro";
-            introScene = 1;
+            introScene = 0;
             introTimer = 0;
             introGlobalTimer = 0;
             introBeatStep = 0;
@@ -4888,10 +4885,6 @@ function playGoblinCackle() {
 // Advance intro to the next scene, or finish intro if on the last scene
 function advanceIntroScene() {
     introScene++;
-    // Skip removed scenes (0: StudioLand, 2: The Groove, 4: merged into 3)
-    if (introScene === 0) introScene = 1;
-    if (introScene === 2) introScene = 3;
-    if (introScene === 4) introScene = 5;
     introTimer = 0;
     if (introScene >= INTRO_SCENE_DURATIONS.length) {
         // Intro complete — go to tutorial
@@ -4904,13 +4897,13 @@ function advanceIntroScene() {
         return;
     }
     // Scene-specific triggers
-    if (introScene === 3) playEarthquakeRumble();
-    if (introScene === 5) {
+    if (introScene === 1) playEarthquakeRumble();
+    if (introScene === 2) {
         playGoblinCackle();
         // Corrupt the drum pattern
         if (introDrumGain) introDrumGain.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + 1);
     }
-    if (introScene === 6) stopIntroDrums();
+    if (introScene === 3) stopIntroDrums();
 }
 
 function renderIntro() {
@@ -4939,47 +4932,8 @@ function renderIntro() {
     const t = introTimer;
     const beatOn = introBeatStep % 4 === 0; // downbeat
 
-    // ==================== SCENE 0: STUDIOLAND TITLE CARD ====================
+    // ==================== SCENE 0: THE GOOD TIMES ====================
     if (introScene === 0) {
-        drawRect(0, 0, W, H, "#0a0a0a");
-        // Stars fade in
-        const starAlpha = Math.min(1, t / 60);
-        for (let i = 0; i < 40; i++) {
-            const sx = ((i * 137 + 50) % W);
-            const sy = ((i * 97 + 30) % H);
-            const twinkle = Math.sin(t * 0.03 + i * 1.7) * 0.5 + 0.5;
-            ctx.globalAlpha = starAlpha * (0.15 + twinkle * 0.35);
-            const starSize = (i % 5 === 0) ? 2 : 1;
-            drawRect(sx, sy, starSize, starSize, i % 3 === 0 ? "#efac28" : "#efd8a1");
-        }
-        ctx.globalAlpha = 1;
-
-        // "STUDIOLAND" fades in then pulses
-        const titleAlpha = Math.min(1, t / 90);
-        ctx.globalAlpha = titleAlpha;
-        const titleY = H / 2 - 20;
-        // Shadow
-        drawCentered("STUDIOLAND", titleY + 2, "#000000", 18);
-        // Main with color cycle
-        const col1 = "#efac28";
-        drawCentered("STUDIOLAND", titleY, col1, 18);
-
-        // Subtitle fades in later
-        if (t > 120) {
-            const subAlpha = Math.min(1, (t - 120) / 60);
-            ctx.globalAlpha = subAlpha;
-            drawCentered("WHERE THE BEATS NEVER STOP", titleY + 30, "#efb775", 6);
-        }
-        ctx.globalAlpha = 1;
-
-        // Start drums partway through
-        if (t === 180) startIntroDrums();
-
-        // Scene loops in place — no fade out
-    }
-
-    // ==================== SCENE 1: THE GOOD TIMES ====================
-    else if (introScene === 1) {
         // Full venue scene: floor, walls, DJ booth, dancers
         drawRect(0, 0, W, H, "#2C2C2A"); // floor
 
@@ -5086,71 +5040,8 @@ function renderIntro() {
         }
     }
 
-    // ==================== SCENE 2: THE GROOVE ====================
-    else if (introScene === 2) {
-        // Zoomed-in view of the beat grid, everything in sync
-        drawRect(0, 0, W, H, "#1f240a");
-
-        // Large beat grid (centered, bigger tiles)
-        const BT = 20; // bigger tiles
-        const lgX = W / 2 - 8 * BT;
-        const lgY = H / 2 - 2 * BT - 10;
-        const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
-        const rowLabels = ["O", "H", "S", "K"];
-        for (let r = 0; r < 4; r++) {
-            // Row label
-            drawText(rowLabels[r], lgX - 12, lgY + r * BT + BT - 4, PAL.gridOn[r], 7);
-            for (let c = 0; c < 16; c++) {
-                const gx = lgX + c * BT;
-                const gy = lgY + r * BT;
-                const on = patterns[r][c];
-                drawRect(gx, gy, BT, BT, PAL.gridBorder);
-                drawRect(gx + 1, gy + 1, BT - 2, BT - 2, on ? PAL.gridOn[r] : PAL.gridOff);
-                // 3D highlight
-                if (on) {
-                    ctx.fillStyle = "rgba(255,255,255,0.2)";
-                    ctx.fillRect((gx + 1) * SCALE, (gy + 1) * SCALE, (BT - 2) * SCALE, 2 * SCALE);
-                }
-                // Beat pulse on active column
-                if (c === introBeatStep && on) {
-                    ctx.fillStyle = "#ffffff";
-                    ctx.globalAlpha = 0.25;
-                    ctx.fillRect(gx * SCALE, gy * SCALE, BT * SCALE, BT * SCALE);
-                    ctx.globalAlpha = 1;
-                }
-            }
-        }
-        // Playhead
-        ctx.fillStyle = "#efac28";
-        ctx.globalAlpha = 0.35;
-        ctx.fillRect((lgX + introBeatStep * BT) * SCALE, lgY * SCALE, BT * SCALE, (4 * BT) * SCALE);
-        ctx.globalAlpha = 1;
-        // Top marker
-        drawRect(lgX + introBeatStep * BT + 2, lgY - 6, BT - 4, 4, "#efac28");
-
-        // Musical notes floating
-        for (let i = 0; i < 8; i++) {
-            const nx = ((i * 47 + introGlobalTimer * 0.3) % W);
-            const ny = 20 + Math.sin(introGlobalTimer * 0.04 + i * 1.3) * 8;
-            ctx.globalAlpha = 0.4 + Math.sin(introGlobalTimer * 0.06 + i) * 0.3;
-            const nc = PAL.gridOn[i % 4];
-            drawRect(nx, ny, 3, 2, nc);
-            drawRect(nx + 3, ny - 5, 1, 6, nc);
-            drawRect(nx + 3, ny - 5, 2, 1, nc);
-        }
-        ctx.globalAlpha = 1;
-
-        // Caption
-        if (t > 60) {
-            const capAlpha = Math.min(1, (t - 60) / 30);
-            ctx.globalAlpha = capAlpha;
-            drawCentered("EVERYONE WAS IN THE GROOVE.", H - 18, "#efac28", 6);
-            ctx.globalAlpha = 1;
-        }
-    }
-
-    // ==================== SCENE 3: THE EARTHQUAKE ====================
-    else if (introScene === 3) {
+    // ==================== SCENE 1: THE EARTHQUAKE ====================
+    else if (introScene === 1) {
         // === COMBINED: Earthquake begins, lights die, caves open ===
         // Phase 1 (t 0-180): Shake ramps up, lights flicker & fade out, dancers stumble
         // Phase 2 (t 180-540): Cracks spread, caves open, eyes glow in darkness
@@ -5354,13 +5245,8 @@ function renderIntro() {
         }
     }
 
-    // ==================== SCENE 4: (skipped — merged into Scene 3) ====================
-    else if (introScene === 4) {
-        // This scene is now skipped via advanceIntroScene
-    }
-
-    // ==================== SCENE 5: GOBLIN ATTACK ====================
-    else if (introScene === 5) {
+    // ==================== SCENE 2: GOBLIN ATTACK ====================
+    else if (introScene === 2) {
         // Goblins pouring out of caves, running across grid, corrupting beats
         const shAmt = Math.max(0, 1 - t / 120);
         const shX = (Math.random() - 0.5) * shAmt * 4 * SCALE;
@@ -5459,8 +5345,8 @@ function renderIntro() {
         }
     }
 
-    // ==================== SCENE 6: THE AFTERMATH ====================
-    else if (introScene === 6) {
+    // ==================== SCENE 3: THE AFTERMATH ====================
+    else if (introScene === 3) {
         // Dark, destroyed venue. Dancers fleeing. Beat grid scrambled.
         drawRect(0, 0, W, H, "#1a1a18");
 
@@ -5561,8 +5447,8 @@ function renderIntro() {
         }
     }
 
-    // ==================== SCENE 7: CALL TO ACTION ====================
-    else if (introScene === 7) {
+    // ==================== SCENE 4: CALL TO ACTION ====================
+    else if (introScene === 4) {
         // DJ picks themselves up, clenches fists
         drawRect(0, 0, W, H, "#0a0a0a");
 
