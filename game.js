@@ -1196,7 +1196,53 @@ function checkPendingFeatureScreens() {
 
 const keys = {};
 let spaceJustPressed = false;
+
+// Debug level skip: type "$levelNN" (e.g. "$level01") at any time
+let cheatBuffer = "";
+let cheatTimer = 0;
+function handleCheatCode(key) {
+    // Reset buffer if too much time passes between keystrokes
+    const now = performance.now();
+    if (now - cheatTimer > 2000) cheatBuffer = "";
+    cheatTimer = now;
+
+    cheatBuffer += key.toLowerCase();
+    // Keep buffer trimmed to max expected length ("$level" + 2 digits = 8)
+    if (cheatBuffer.length > 8) cheatBuffer = cheatBuffer.slice(-8);
+
+    const match = cheatBuffer.match(/\$level(\d{2})$/);
+    if (match) {
+        const targetLevel = parseInt(match[1], 10) - 1; // $level01 = index 0
+        if (targetLevel >= 0 && targetLevel < LEVELS.length) {
+            cheatBuffer = "";
+            // Reset game state cleanly then jump to target level
+            resetGame();
+            currentLevel = targetLevel;
+            // Load the correct starting pattern for this level
+            const startPat = targetLevel === 0 ? LEVELS[0].startPattern
+                : LEVELS[targetLevel - 1].pattern;
+            if (startPat) {
+                for (let r = 0; r < GRID_ROWS; r++)
+                    for (let c = 0; c < GRID_COLS; c++)
+                        grid[r][c] = startPat[r][c];
+            }
+            levelTimer = LEVELS[currentLevel].timerSeconds * 90;
+            player.y = (gridBottomTileY() + 1) * TILE;
+            player.destY = player.y;
+            setLevelTempo(currentLevel);
+            ensureAudio();
+            gameState = "playing";
+            gamePaused = false;
+            lastStepTime = performance.now();
+            console.log("DEBUG: Jumped to level " + (targetLevel + 1));
+        }
+    }
+}
+
 window.addEventListener("keydown", (e) => {
+    // Feed single-char keys into cheat code buffer
+    if (e.key.length === 1) handleCheatCode(e.key);
+
     if (e.code === "Space") {
         e.preventDefault();
         if (gameState === "enemywarning" || gameState === "enemywarning-intro") return; // ignore Space on warning screen
