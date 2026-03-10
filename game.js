@@ -7032,9 +7032,10 @@ function gameLoop(timestamp) {
     const dt = timestamp - lastTime;
     lastTime = timestamp;
     frameAccum += dt;
-    if (frameAccum >= FRAME_MS) {
+    // Cap accumulated time to prevent spiral (max 3 catch-up frames)
+    if (frameAccum > FRAME_MS * 3) frameAccum = FRAME_MS * 3;
+    while (frameAccum >= FRAME_MS) {
         frameAccum -= FRAME_MS;
-        if (frameAccum > FRAME_MS) frameAccum = 0; // prevent spiral
         try {
             // Clear HUD canvas when not in gameplay
             if (gameState !== "playing") {
