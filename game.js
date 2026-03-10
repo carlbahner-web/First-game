@@ -2994,7 +2994,8 @@ function renderHUD() {
     const panelGap = 4;
 
     const kcY = Math.floor((HUD_H - panelH) / 2);
-    const baseX = 1 * TILE;
+    const W = COLS * TILE;
+    const margin = TILE; // 1-tile margin from edges
 
     // Panel drawing helper — adds border, fill, top highlight, and bottom shadow
     function drawHudPanel(x, y, w, h, borderCol, bgCol, hiCol) {
@@ -3004,29 +3005,55 @@ function renderHUD() {
         drawHudRect(x, y + h - 1, w, 1, "rgba(0,0,0,0.2)"); // bottom shadow
     }
 
-    // --- Level counter ---
     const iconW = 3 * pxSz + 2;
+    const numY = kcY + 3;
+    const p = pxSz;
+
+    // --- Level counter (left-aligned) ---
     const lvlStr = String(currentLevel + 1).padStart(2, "0");
     const lvlPanelW = iconW + 2 * digitW + 6;
-    drawHudPanel(baseX, kcY, lvlPanelW, panelH, "#2a1d0d", "#392a1c", "#684c3c");
+    const lvlX = margin;
+    drawHudPanel(lvlX, kcY, lvlPanelW, panelH, "#2a1d0d", "#392a1c", "#684c3c");
     // "L" icon
-    const fx = baseX + 2, fy = kcY + 3;
-    drawHudRect(fx, fy, pxSz, 5 * pxSz, "#efd8a1");
-    drawHudRect(fx + pxSz, fy + 4 * pxSz, 2 * pxSz, pxSz, "#efd8a1");
+    const fx = lvlX + 2, fy = kcY + 3;
+    drawHudRect(fx, fy, p, 5 * p, "#efd8a1");
+    drawHudRect(fx + p, fy + 4 * p, 2 * p, p, "#efd8a1");
     // Level digits
-    const lvlNumX = baseX + iconW;
-    const numY = kcY + 3;
-    drawHudPixelDigits(lvlStr, lvlNumX + (lvlStr.length * digitW) / 2, numY, "#efd8a1", pxSz);
+    const lvlNumX = lvlX + iconW;
+    drawHudPixelDigits(lvlStr, lvlNumX + (lvlStr.length * digitW) / 2, numY, "#efd8a1", p);
 
-    // --- Score counter ---
-    const kcX = baseX + lvlPanelW + panelGap;
-    const scoreStr = String(score).padStart(7, "0");
-    const skullW = 5 * pxSz + 2;
-    const killPanelW = skullW + 7 * digitW + 6;
+    // --- Timer counter (right-aligned) ---
+    const timerSec = Math.max(0, Math.ceil(levelTimer / 90));
+    const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
+    const timerPanelW = iconW + timerStr.length * digitW + 6;
+    const timerX = W - margin - timerPanelW;
+    const isUrgent = timerSec <= 30;
+    const isCritical = timerSec <= 10;
+    const blinkRate = isCritical ? 15 : 30;
+    const blinkOn = !isUrgent || Math.floor(levelTimer / blinkRate) % 2 === 0;
+    const timerColor = isUrgent ? "#ef3a0c" : "#efd8a1";
+    const timerBorderColor = isUrgent ? "#550f0a" : "#2a1d0d";
+    const timerBgColor = isUrgent ? "#45230d" : "#392a1c";
+    const timerHighlight = isUrgent ? "#9b1a0a" : "#684c3c";
+    drawHudPanel(timerX, kcY, timerPanelW, panelH, timerBorderColor, timerBgColor, timerHighlight);
+    // "T" icon
+    const tx2 = timerX + 2, ty2 = kcY + 3;
+    drawHudRect(tx2, ty2, 3 * p, p, blinkOn ? timerColor : timerBgColor);
+    drawHudRect(tx2 + p, ty2 + p, p, 4 * p, blinkOn ? timerColor : timerBgColor);
+    // Timer digits
+    if (blinkOn) {
+        const tNumX = timerX + iconW;
+        drawHudPixelDigits(timerStr, tNumX + (timerStr.length * digitW) / 2, numY, timerColor, p);
+    }
+
+    // --- Score counter (centered) ---
+    const scoreStr = String(score).padStart(5, "0");
+    const skullW = 5 * p + 2;
+    const killPanelW = skullW + 5 * digitW + 6;
+    const kcX = Math.floor((W - killPanelW) / 2);
     drawHudPanel(kcX, kcY, killPanelW, panelH, "#2a1d0d", "#392a1c", "#684c3c");
     // Skull icon
     const sx = kcX + 2, sy = kcY + 3;
-    const p = pxSz;
     const skullBg = "#392a1c";
     drawHudRect(sx + p, sy, 3 * p, p, "#efd8a1");
     drawHudRect(sx, sy + p, 5 * p, 2 * p, "#efd8a1");
@@ -3039,31 +3066,7 @@ function renderHUD() {
     drawHudRect(sx + 2 * p, sy + 4 * p, p, p, skullBg);
     // Score digits
     const killNumX = kcX + skullW;
-    drawHudPixelDigits(scoreStr, killNumX + (scoreStr.length * digitW) / 2, numY, "#efd8a1", pxSz);
-
-    // --- Timer counter ---
-    const timerSec = Math.max(0, Math.ceil(levelTimer / 90));
-    const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
-    const timerX = kcX + killPanelW + panelGap;
-    const timerPanelW = iconW + timerStr.length * digitW + 6;
-    const isUrgent = timerSec <= 30;
-    const isCritical = timerSec <= 10;
-    const blinkRate = isCritical ? 15 : 30;
-    const blinkOn = !isUrgent || Math.floor(levelTimer / blinkRate) % 2 === 0;
-    const timerColor = isUrgent ? "#ef3a0c" : "#efd8a1";
-    const timerBorderColor = isUrgent ? "#550f0a" : "#2a1d0d";
-    const timerBgColor = isUrgent ? "#45230d" : "#392a1c";
-    const timerHighlight = isUrgent ? "#9b1a0a" : "#684c3c";
-    drawHudPanel(timerX, kcY, timerPanelW, panelH, timerBorderColor, timerBgColor, timerHighlight);
-    // "T" icon
-    const tx2 = timerX + 2, ty2 = kcY + 3;
-    drawHudRect(tx2, ty2, 3 * pxSz, pxSz, blinkOn ? timerColor : timerBgColor);
-    drawHudRect(tx2 + pxSz, ty2 + pxSz, pxSz, 4 * pxSz, blinkOn ? timerColor : timerBgColor);
-    // Timer digits
-    if (blinkOn) {
-        const tNumX = timerX + iconW;
-        drawHudPixelDigits(timerStr, tNumX + (timerStr.length * digitW) / 2, numY, timerColor, pxSz);
-    }
+    drawHudPixelDigits(scoreStr, killNumX + (scoreStr.length * digitW) / 2, numY, "#efd8a1", p);
 
     // Tick sound during last 10 seconds (once per second)
     if (isCritical && timerSec > 0 && levelTimer % 90 === 0 && audioCtx) {
