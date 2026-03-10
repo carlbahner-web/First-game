@@ -5074,13 +5074,13 @@ function renderIntro() {
             drawDancerSprite(dp.x, danceFloorY + dp.yOfs, DANCER_PALETTES[dp.pal], { bob, armBlend, footOffset });
         }
 
-        // Beat pulse background
-        if (beatOn) {
-            ctx.fillStyle = "#efac28";
-            ctx.globalAlpha = 0.04;
-            ctx.fillRect(0, 0, W * SCALE, H * SCALE);
-            ctx.globalAlpha = 1;
-        }
+        // Beat pulse background — smooth sine wave, peaks every 4 steps
+        const beatPhase = ((introBeatStep % 4) + introBeatTimer / INTRO_BEAT_FRAMES) / 4;
+        const pulse = Math.cos(beatPhase * Math.PI * 2) * 0.5 + 0.5;
+        ctx.fillStyle = "#efac28";
+        ctx.globalAlpha = pulse * 0.04;
+        ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+        ctx.globalAlpha = 1;
 
         // Caption
         if (t > 60) {
