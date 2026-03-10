@@ -1016,6 +1016,7 @@ let introGlobalTimer = 0;   // total frames since intro started
 let introBeatStep = 0;      // simulated sequencer step for the intro beat
 let introBeatTimer = 0;     // frame counter for beat stepping
 let introSkipHeld = 0;      // frames Enter is held for skip
+let introKickPump = 0;      // 0-1 speaker pump intensity on kick hits
 // Intro earthquake goblins — emerge from caves and flip grid cells
 let introGoblins = [];      // [{x, y, destX, destY, dir, frame, frameTimer, caveIdx, targetRow, targetCol, emerged, speed}]
 let introGridState = null;  // mutable copy of INTRO_BEAT patterns for goblin flipping
@@ -3875,6 +3876,44 @@ function drawPunch() {
 }
 
 // Reusable goblin sprite for all screens (story, warnings, gameplay)
+// Draw a subwoofer speaker (replaces turntable)
+// sx, sy: top-left position (game coords), pump: 0-1 kick intensity, side: -1=left, 1=right
+function drawSubwoofer(sx, sy, pump, side) {
+    const pw = pump * 2; // extra pixels when pumping
+    const bx = sx - pw * 0.5;
+    const by = sy - pw * 0.5;
+    const bw = 16 + pw;
+    const bh = 12 + pw;
+    // Cabinet
+    drawRect(bx, by, bw, bh, "#45230d");
+    drawRect(bx + 1, by + 1, bw - 2, bh - 2, "#392a1c");
+    // Speaker cone (center circle approximation with rects)
+    const cx = bx + bw / 2;
+    const cy = by + bh / 2;
+    // Surround ring
+    drawRect(cx - 5, cy - 4, 10, 8, "#2e4a4e");
+    // Cone
+    const coneCol = pump > 0.3 ? "#504030" : "#3a3020";
+    drawRect(cx - 3, cy - 3, 6, 6, coneCol);
+    // Dust cap (center)
+    drawRect(cx - 1, cy - 1, 2, 2, "#1a1410");
+    // Sound lines emanating outward
+    if (pump > 0.05) {
+        ctx.globalAlpha = pump * 0.6;
+        ctx.strokeStyle = "#efd8a1";
+        ctx.lineWidth = 1 * SCALE;
+        for (let i = 0; i < 3; i++) {
+            const dist = (4 + i * 5 + (1 - pump) * 6);
+            const lineX = cx + side * dist;
+            ctx.beginPath();
+            ctx.moveTo(lineX * SCALE, (cy - 3 + i) * SCALE);
+            ctx.lineTo(lineX * SCALE, (cy + 3 - i) * SCALE);
+            ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+    }
+}
+
 // type: "normal", "elite", "catapult"
 // gx, gy: top-left position (game coords)
 // frame: animation frame (0-3)
@@ -4424,6 +4463,7 @@ function stopTitleDrums() {
 // ---- Title Screen (page 1: live gameplay scene) ----
 let titleStep = 0;        // simulated sequencer step (0-15)
 let titleStepTimer = 0;   // frame counter for step advance
+let titleKickPump = 0;    // 0-1 speaker pump intensity on kick hits
 titleEntrancePhase = 0;   // reset entrance animation
 const TITLE_STEP_FRAMES = 8.2; // frames per sixteenth note at 110bpm @ 60fps
 
@@ -4440,7 +4480,9 @@ function renderTitleScreen() {
     if (titleStepTimer >= TITLE_STEP_FRAMES) {
         titleStepTimer -= TITLE_STEP_FRAMES;
         titleStep = (titleStep + 1) % 16;
+        if (INTRO_BEAT.K[titleStep]) titleKickPump = 1;
     }
+    titleKickPump = Math.max(0, titleKickPump - 0.08);
 
     const beatOn = titleStep % 4 === 0;
 
@@ -4477,12 +4519,11 @@ function renderTitleScreen() {
     const boothY = GRID_Y * TILE - 8;
     drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
     drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
-    drawRect(boothX, boothY + 4, 16, 8, "#392a1c");
-    drawRect(boothX + 32, boothY + 4, 16, 8, "#392a1c");
+    // Subwoofer speakers (left and right of mixer)
+    drawSubwoofer(boothX - 12, boothY - 2, titleKickPump, -1);
+    drawSubwoofer(boothX + 44, boothY - 2, titleKickPump, 1);
+    // Mixer (center)
     drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e");
-    const spin = titleBlink * 0.1;
-    drawRect(boothX + 4 + Math.cos(spin) * 2, boothY + 6, 8, 4, "#efd8a1");
-    drawRect(boothX + 36 + Math.cos(spin + Math.PI) * 2, boothY + 6, 8, 4, "#efd8a1");
     for (let ml = 0; ml < 4; ml++) {
         drawRect(boothX + 20 + ml * 2, boothY + 3, 1, 2, "#1f240a");
     }
@@ -4573,6 +4614,7 @@ function renderTitleScreen() {
             introGoblins = [];
             introGridState = null;
             introGridFlash = null;
+            introKickPump = 0;
             startIntroDrums();
             return;
         }
@@ -4981,7 +5023,9 @@ function renderIntro() {
     if (introBeatTimer >= INTRO_BEAT_FRAMES) {
         introBeatTimer -= INTRO_BEAT_FRAMES;
         introBeatStep = (introBeatStep + 1) % 16;
+        if (INTRO_BEAT.K[introBeatStep]) introKickPump = 1;
     }
+    introKickPump = Math.max(0, introKickPump - 0.08);
 
     // Helper
     function drawCentered(text, y, color, scale) {
@@ -5031,14 +5075,11 @@ function renderIntro() {
         // Booth platform
         drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
         drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
-        // Equipment on booth
-        drawRect(boothX, boothY + 4, 16, 8, "#392a1c"); // left turntable
-        drawRect(boothX + 32, boothY + 4, 16, 8, "#392a1c"); // right turntable
-        drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e"); // mixer
-        // Spinning platters
-        const spin = introGlobalTimer * 0.1;
-        drawRect(boothX + 4 + Math.cos(spin) * 2, boothY + 6, 8, 4, "#efd8a1");
-        drawRect(boothX + 36 + Math.cos(spin + Math.PI) * 2, boothY + 6, 8, 4, "#efd8a1");
+        // Subwoofer speakers (left and right of mixer)
+        drawSubwoofer(boothX - 12, boothY - 2, introKickPump, -1);
+        drawSubwoofer(boothX + 44, boothY - 2, introKickPump, 1);
+        // Mixer
+        drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e");
         // Mixer lights
         for (let ml = 0; ml < 4; ml++) {
             drawRect(boothX + 20 + ml * 2, boothY + 3, 1, 2, "#1f240a");
@@ -5199,8 +5240,10 @@ function renderIntro() {
         const boothX = W / 2 - 24;
         const boothY = GRID_Y * TILE - 8;
         drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
-        drawRect(boothX, boothY + 4, 16, 8, "#392a1c");
-        drawRect(boothX + 32, boothY + 4, 16, 8, "#392a1c");
+        // Subwoofer speakers (left and right of mixer)
+        drawSubwoofer(boothX - 12, boothY - 2, introKickPump, -1);
+        drawSubwoofer(boothX + 44, boothY - 2, introKickPump, 1);
+        // Mixer
         drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e");
 
         // Beat grid — uses mutable state so goblins can flip cells
