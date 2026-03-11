@@ -7456,6 +7456,28 @@ function renderIntro() {
             drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
         }
 
+        // DJ sprite standing before demo begins — narrative bridge from Scene 3
+        if (t < 60) {
+            const djBridgeX = W / 2 - 8;
+            const djBridgeY = H / 2 - 10;
+            const djAlpha = Math.min(1, t / 20);
+            ctx.globalAlpha = djAlpha;
+            drawPlayerSprite(djBridgeX, djBridgeY, 0, 0, {});
+            // Determination sparkles carry over from Scene 3
+            if (t < 40) {
+                for (let si = 0; si < 4; si++) {
+                    const angle = (si / 4) * Math.PI * 2 + t * 0.05;
+                    const dist = 12 + Math.sin(t * 0.1 + si) * 4;
+                    const sx = (djBridgeX + 8 + Math.cos(angle) * dist) * SCALE;
+                    const sy = (djBridgeY - 2 + Math.sin(angle) * dist) * SCALE;
+                    ctx.fillStyle = si % 2 === 0 ? "#efac28" : "#efd8a1";
+                    ctx.globalAlpha = djAlpha * (0.4 - t * 0.01);
+                    ctx.fillRect(sx - SCALE, sy - SCALE, 2 * SCALE, 2 * SCALE);
+                }
+            }
+            ctx.globalAlpha = 1;
+        }
+
         // Story captions (in safe zone: below dancers, above bottom wall)
         if (t < 120) {
             const capAlpha = Math.min(1, Math.max(0, (t - 30) / 30));
@@ -7718,16 +7740,18 @@ function renderIntro() {
             drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
         }
 
-        // Story captions (in safe zone)
-        if (t < 150) {
-            const capAlpha = Math.min(1, Math.max(0, (t - 30) / 30));
+        // Story captions — lead with the threat, then the mechanic
+        if (t < 120) {
+            const capAlpha = Math.min(1, Math.max(0, (t - 20) / 25));
             ctx.globalAlpha = capAlpha;
-            drawCentered("EACH BEAT HAD A PATTERN TO COMPLETE.", H - 48, "#efd8a1", 5);
+            drawCentered("BUT THE GOBLINS WEREN'T DONE.", H - 54, "#ef3a0c", 6);
+            drawCentered("IN THE SHADOWS, SMALL EYES WATCHED.", H - 44, "#ef3a0c", 5);
             ctx.globalAlpha = 1;
         } else {
-            const capAlpha2 = Math.min(1, (t - 150) / 30);
+            const capAlpha2 = Math.min(1, (t - 120) / 30);
             ctx.globalAlpha = capAlpha2;
-            drawCentered("IN THE SHADOWS, SMALL EYES WATCHED.", H - 48, "#ef3a0c", 5);
+            drawCentered("EACH BEAT HAD A PATTERN TO COMPLETE.", H - 54, "#efd8a1", 5);
+            drawCentered("FINISH BEFORE THEY CLOSE IN.", H - 44, "#efac28", 5);
             ctx.globalAlpha = 1;
         }
 
@@ -7835,11 +7859,35 @@ function renderIntro() {
         }
         drawText("X MARKS = REMOVE", xgx, gy + TILE + 10, "#efb775", 4);
 
-        // --- Lurking goblins at the edges (in safe zone) ---
-        const gobFrame = Math.floor(t / 20) % 4;
-        ctx.globalAlpha = 0.7;
-        drawGoblinSprite("normal", TILE + 4, gy, gobFrame, { dir: 3, showShadow: false });
-        drawGoblinSprite("normal", (COLS - 2) * TILE - 4, gy, (gobFrame + 2) % 4, { dir: 2, showShadow: false });
+        // --- Lurking goblins creep inward from the edges ---
+        const gobFrame = Math.floor(t / 12) % 4;
+        const gobCreep = Math.min(1, t / 400);  // slowly advance over time
+        const gobCreepDist = gobCreep * TILE * 2.5;
+        const gobPulse = 0.85 + Math.sin(t * 0.04) * 0.15;
+        // Left goblin
+        ctx.globalAlpha = gobPulse;
+        drawGoblinSprite("normal", TILE + 4 + gobCreepDist, gy - 4, gobFrame, { dir: 3, showShadow: true });
+        // Right goblin
+        drawGoblinSprite("normal", (COLS - 2) * TILE - 4 - gobCreepDist, gy - 4, (gobFrame + 2) % 4, { dir: 2, showShadow: true });
+        // Additional goblins appearing behind
+        if (t > 80) {
+            const backAlpha = Math.min(gobPulse * 0.7, (t - 80) / 60);
+            ctx.globalAlpha = backAlpha;
+            drawGoblinSprite("normal", TILE - 6 + gobCreepDist * 0.4, gy + TILE + 8, (gobFrame + 1) % 4, { dir: 3, showShadow: true });
+            drawGoblinSprite("normal", (COLS - 1) * TILE - gobCreepDist * 0.4, gy + TILE + 8, (gobFrame + 3) % 4, { dir: 2, showShadow: true });
+        }
+        // Glowing eyes in the dark edges
+        if (t > 40) {
+            const eyeAlpha = 0.4 + Math.sin(t * 0.08) * 0.3;
+            ctx.globalAlpha = eyeAlpha;
+            for (let ei = 0; ei < 3; ei++) {
+                const ey = gy - 10 + ei * 20;
+                drawRect(4 + ei * 3, ey, 2, 2, "#FF00FF");
+                drawRect(8 + ei * 3, ey, 2, 2, "#FF00FF");
+                drawRect(W - 8 - ei * 3, ey + 5, 2, 2, "#FF00FF");
+                drawRect(W - 4 - ei * 3, ey + 5, 2, 2, "#FF00FF");
+            }
+        }
         ctx.globalAlpha = 1;
     }
 
@@ -7864,28 +7912,31 @@ function renderIntro() {
         const HIT_FRAME = 160;
         const CAPTION2_START = 185;
 
-        // Positions (in safe zone, below beat grid)
-        const djX = W / 2 + TILE;
+        // Positions — DJ left of center facing away, goblin sneaks from behind (right)
+        const djX = W / 2 - TILE * 2;
         const djY = 155;
-        const gobStartX = TILE * 2;
-        const gobEndX = W / 2 - TILE * 2;
+        const gobStartX = W - TILE * 2;   // enters from far right
+        const gobEndX = W / 2 + TILE;     // stops just behind DJ
+
+        // DJ turn timing — DJ reacts when goblin gets close
+        const TURN_FRAME = GOB_END - 10;  // DJ notices just before goblin stops
 
         // --- Caption 1 (in safe zone) ---
         if (t > CAPTION1_START) {
             const fadeIn = Math.min(1, (t - CAPTION1_START) / 20);
             ctx.globalAlpha = fadeIn;
-            drawCentered("ONE OF THEM CREPT BACK. BOLD. STUPID.", H - 54, "#efd8a1", 6);
+            drawCentered("ONE OF THEM CREPT UP FROM BEHIND. BOLD. STUPID.", H - 54, "#efd8a1", 6);
             ctx.globalAlpha = 1;
         }
 
-        // --- Goblin walk-in ---
+        // --- Goblin sneaks in from the right ---
         const gobAlive = t < HIT_FRAME;
         if (gobAlive) {
             const gobProgress = Math.min(1, Math.max(0, (t - GOB_START) / (GOB_END - GOB_START)));
             const eased = gobProgress * gobProgress * (3 - 2 * gobProgress);
             const gobX = gobStartX + (gobEndX - gobStartX) * eased;
             const gobFrame = t < GOB_END ? Math.floor(t / 10) % 4 : 0;
-            drawGoblinSprite("normal", gobX, djY, gobFrame, { dir: 3, showShadow: true });
+            drawGoblinSprite("normal", gobX, djY, gobFrame, { dir: 2, showShadow: true });
         }
 
         // --- Death particles ---
@@ -7911,8 +7962,9 @@ function renderIntro() {
             }
         }
 
-        // --- DJ sprite ---
-        const djDir = 2;
+        // --- DJ sprite — starts facing left, turns right when goblin approaches ---
+        let djDir = 2;  // facing left initially (surveying ruins)
+        if (t >= TURN_FRAME) djDir = 3;  // snaps right — reacting to the threat
         let punchThrust = 0;
         let djFrame = 0;
         if (t >= PUNCH_START && t < PUNCH_START + ATTACK_DUR_7) {
@@ -7923,11 +7975,11 @@ function renderIntro() {
 
         if (punchThrust > 0) {
             const thrust = punchThrust;
-            let ddx2 = -1, ddy2 = 0;
+            let ddx2 = 1, ddy2 = 0;  // punching RIGHT (toward goblin)
             const pLeanX = ddx2 * thrust * 5;
             const pLeanY = 0;
             const pcx = djX + 8, pcy = djY + 6;
-            const shOX = -8, shOY = -2;
+            const shOX = 8, shOY = -2;  // right-side shoulder offset
             const armLen = 3 + thrust * 6;
             const shX = (pcx + pLeanX + shOX) * SCALE, shY = (pcy + pLeanY + shOY) * SCALE;
             const fiX = (pcx + pLeanX + shOX + ddx2 * armLen) * SCALE, fiY = (pcy + pLeanY + shOY + ddy2 * armLen) * SCALE;
