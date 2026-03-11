@@ -1034,7 +1034,7 @@ const INTRO_SCENE_DURATIONS = [
     360,  // Scene 4: (skipped — merged into Scene 3)
     420,  // Scene 5: Goblin Attack — chaos (7s)
     360,  // Scene 6: The Aftermath — destruction (6s)
-    300,  // Scene 7: Call to Action — DJ rises (5s)
+    420,  // Scene 7: Call to Action — DJ crawls to center + rises (7s)
 ];
 let tutorialTimer = 0; // animation frame counter for tutorial screen
 let tutorialPage = 0;  // current tutorial page (0-1)
@@ -5581,28 +5581,66 @@ function renderIntro() {
 
     // ==================== SCENE 7: CALL TO ACTION ====================
     else if (introScene === 7) {
-        // DJ picks themselves up, clenches fists
+        // DJ crawls from collapsed position to center, then rises and clenches fists
+        // Crawl phase (0-120): axis-aligned L-path from Scene 6 position to center
+        // Rise phase (120+): existing stand-up and fist-clench sequence
+        const CRAWL_FRAMES = 120;
+        const crawlStartX = W / 2 + 15;  // Scene 6 collapsed X (183)
+        const crawlStartY = GRID_Y * TILE - 8 + 4; // Scene 6 collapsed Y (boothY + 4 = 60)
+        const crawlEndX = W / 2 - 8;     // Center X (168)
+        const crawlEndY = H / 2 + 10;    // Center Y (154)
+
+        // L-shaped crawl: horizontal first (left), then vertical (down)
+        const adx = Math.abs(crawlEndX - crawlStartX); // 15
+        const ady = Math.abs(crawlEndY - crawlStartY);  // 94
+        const hRatio = adx / (adx + ady); // ~0.14
+        const crawlT = Math.min(1, t / CRAWL_FRAMES);
+
+        let djX, djY, djDir, djFrame;
+        if (t < CRAWL_FRAMES) {
+            // Crawl phase
+            if (crawlT <= hRatio) {
+                // Horizontal phase (moving left)
+                const hProgress = hRatio > 0 ? crawlT / hRatio : 1;
+                djX = crawlStartX + (crawlEndX - crawlStartX) * hProgress;
+                djY = crawlStartY;
+                djDir = 2; // facing left
+            } else {
+                // Vertical phase (moving down)
+                const vProgress = (crawlT - hRatio) / (1 - hRatio);
+                djX = crawlEndX;
+                djY = crawlStartY + (crawlEndY - crawlStartY) * vProgress;
+                djDir = 0; // facing down
+            }
+            djFrame = Math.floor(t / 10) % 4; // slow crawl animation
+        } else {
+            // Rise phase (same as original, offset by CRAWL_FRAMES)
+            const rt = t - CRAWL_FRAMES;
+            const riseProgress = Math.min(1, rt / 90);
+            djX = crawlEndX;
+            djY = crawlEndY - riseProgress * 20;
+            djDir = 0;
+            djFrame = riseProgress < 0.5 ? 0 : Math.floor((rt - 45) / 8) % 4;
+        }
+
         drawRect(0, 0, W, H, "#0a0a0a");
 
-        // Spotlight on DJ
+        // Spotlight follows DJ position
         const spotW = W * SCALE;
         const spotH = H * SCALE;
-        const spotGrad = ctx.createRadialGradient(spotW / 2, spotH * 0.55, 10, spotW / 2, spotH * 0.55, spotW * 0.3);
+        const spotCX = (djX + 8) * SCALE; // center on DJ
+        const spotCY = (djY + 8) * SCALE;
+        const spotGrad = ctx.createRadialGradient(spotCX, spotCY, 10, spotCX, spotCY, spotW * 0.3);
         spotGrad.addColorStop(0, "#2a1d0d");
         spotGrad.addColorStop(1, "#0a0a0a");
         ctx.fillStyle = spotGrad;
         ctx.fillRect(0, 0, spotW, spotH);
 
-        // DJ stands up animation
-        const riseProgress = Math.min(1, t / 90);
-        const djY = H / 2 + 10 - riseProgress * 20;
-        const djX = W / 2 - 8;
-        const riseFrame = riseProgress < 0.5 ? 0 : Math.floor((t - 45) / 8) % 4;
-        drawPlayerSprite(djX, djY, riseFrame, 0, {});
+        drawPlayerSprite(djX, djY, djFrame, djDir, {});
 
-        // Fist clench punch animation after standing
-        if (t > 120) {
-            const punchT = Math.min(1, (t - 120) / 30);
+        // Fist clench punch animation after standing (shifted by CRAWL_FRAMES)
+        if (t > CRAWL_FRAMES + 120) {
+            const punchT = Math.min(1, (t - CRAWL_FRAMES - 120) / 30);
             // Draw raised fists
             const fistY = (djY - 4) * SCALE;
             const fistSize = (3 + punchT * 2) * SCALE;
@@ -5631,14 +5669,14 @@ function renderIntro() {
             }
         }
 
-        // Text builds up
-        if (t > 60) {
-            const txtAlpha = Math.min(1, (t - 60) / 30);
+        // Text builds up (shifted by CRAWL_FRAMES)
+        if (t > CRAWL_FRAMES + 60) {
+            const txtAlpha = Math.min(1, (t - CRAWL_FRAMES - 60) / 30);
             ctx.globalAlpha = txtAlpha;
             drawCentered("BUT THE DJ HAD FISTS OF FURY.", 30, "#efac28", 7);
         }
-        if (t > 150) {
-            const txtAlpha2 = Math.min(1, (t - 150) / 30);
+        if (t > CRAWL_FRAMES + 150) {
+            const txtAlpha2 = Math.min(1, (t - CRAWL_FRAMES - 150) / 30);
             ctx.globalAlpha = txtAlpha2;
             drawCentered("IT'S TIME TO GET PUNCHIN'!", H - 30, "#ef3a0c", 8);
         }
