@@ -13,7 +13,7 @@ const ROWS = 18;           // room height in tiles
 const GRID_COLS = 16;      // sequencer steps
 const GRID_ROWS = 6;       // max drum channels (O, H, S, K, B, T)
 const GRID_X = 3;          // grid start tile-x
-const GRID_Y = 4;          // grid start tile-y
+const GRID_Y = 5;          // grid start tile-y
 // (gap row after kick removed)
 // Tempo is set per level using frames-per-16th-note at 60fps
 // Gradual curve across 30 levels:
@@ -976,7 +976,8 @@ let tomatoes = []; // { x, y, targetX, targetY, speed, life }
 let tomatoSplats = []; // { x, y, timer }
 
 let gamePaused = false;
-let gameState = "title"; // "title", "intro", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim"
+let gameState = "title"; // "title", "intro", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim", "minigame"
+let gameMode = "thrill"; // "thrill" = full game with goblins, "chill" = no goblins during gameplay
 
 // --- Visual Improvement State ---
 // Block toggle animation (pop/glow when punched)
@@ -993,8 +994,6 @@ const TITLE_FADE_DURATION = 20; // frames for title text to fade out
 // Firework system for level complete
 let fireworks = []; // { x, y, vx, vy, life, maxLife, color, exploded, particles: [] }
 // Screen crack effect for game over
-let screenCracks = []; // { x1, y1, x2, y2, branches: [...] }
-let screenCrackTimer = 0;
 // Enemy warning zoom state
 let enemyWarningZoom = 0; // 0→1 zoom-in progress
 let enemyWarningType = null;   // "elite" or "catapult"
@@ -1062,6 +1061,75 @@ let initialsEntry = ["A", "A", "A"];
 let initialsPos = 0;       // which letter slot is active (0-2)
 let initialsBlink = 0;     // blink timer for active letter
 let finalScore = 0;        // killCount captured at game over
+
+// ---- Minigame (Cave Beat 'Em Up) State ----
+const MINIGAME_LEVELS = [4, 9, 14, 19, 24, 29]; // trigger after levels 5,10,15,20,25,30 (0-indexed)
+const MINIGAME_BASE_TIME = 20 * 60; // 20 seconds at 60fps
+const CAVE_COLS = 22; // same as world
+const CAVE_ROWS = 18;
+const CAVE_TILE = TILE;
+
+// DJ Setup pieces earned from minigames (6 total)
+const DJ_SETUP_PIECES = [
+    "left speaker",
+    "right speaker",
+    "turntable",
+    "mixer",
+    "light rig",
+    "disco ball",
+];
+let djSetupEarned = []; // pieces earned so far
+
+// Minigame state
+let minigameActive = false;
+let minigameTimer = 0; // countdown in frames
+let minigameState = "none"; // "none", "kidnap", "playing", "rescue", "reward"
+let minigameKidnapTimer = 0;
+let minigameKidnapPhase = 0; // 0=goblins appear, 1=flank DJ, 2=escort to cave
+let minigameRescueTimer = 0;
+let minigameRescuePhase = 0; // 0=wall bursts, 1=dancers enter, 2=celebration
+let minigameRewardTimer = 0;
+let minigamePendingAfterLevel = -1; // which level triggered the minigame
+
+// Cave arena entities
+let caveGoblins = []; // goblins in the cave arena
+let caveBoulders = []; // active boulders from catapult goblins
+let caveCatapult = null; // catapult goblin in cave
+let caveClockPickups = []; // +5s clock pickups dropped by elite kills
+let caveDeathParticles = [];
+let caveDeathText = null;
+let caveScreenShake = 0;
+let caveShakeIntensity = 0;
+let caveHitFreeze = 0;
+let cavePendingShake = false;
+let caveScreenFlash = 0;
+let caveKillCount = 0;
+let caveCatapultKillCount = 0; // kills toward next catapult spawn
+
+// Cave player state (reuses main player object but with cave-specific position)
+let cavePlayerDead = false;
+
+// Rescue wall state
+let rescueWallCracks = []; // generated crack lines
+let rescueWallDust = []; // dust particles near the wall
+let rescueWallProgress = 0; // 0→1 based on timer progress
+
+// Kidnap cutscene positions
+let kidnapGoblin1 = { x: 0, y: 0, dir: 0, frame: 0, frameTimer: 0 };
+let kidnapGoblin2 = { x: 0, y: 0, dir: 0, frame: 0, frameTimer: 0 };
+let kidnapDJPos = { x: 0, y: 0 };
+let kidnapTargetY = 0; // y position of the cave entrance
+
+// Rescue dancers with torches
+let rescueDancers = [];
+
+// Track which minigames have been completed (prevent re-triggering)
+let minigamesCompleted = [];
+
+// Minigame music state
+let minigameMusicGain = null;
+let minigameMusicOscs = [];
+let minigameMusicInterval = null;
 
 function loadHighScores() {
     try {
@@ -1159,7 +1227,8 @@ function checkPendingFeatureScreens() {
         return true;
     }
 
-    // Enemy warning screens
+    // Enemy warning screens (skip in chill mode — no goblins)
+    if (gameMode === "chill") return false; // new instruments already handled above
     if (nextLevel === 2 && !enemyWarningShown.normal) {
         enemyWarningType = "normal";
         enemyWarningShown.normal = true;
@@ -1248,6 +1317,7 @@ window.addEventListener("keydown", (e) => {
         if (gameState === "enemywarning" || gameState === "enemywarning-intro") return; // ignore Space on warning screen
         if (gameState === "newinstrument") return; // ignore Space on instrument screen
         if (gameState === "sabotage-anim") return; // ignore input during sabotage animation
+        if (minigameState === "kidnap" || minigameState === "rescue" || minigameState === "reward") return; // ignore during minigame cutscenes
         if (!keys[e.code]) spaceJustPressed = true; // only on initial press
     }
     keys[e.code] = true;
@@ -1271,9 +1341,23 @@ window.addEventListener("keydown", (e) => {
         return;
     }
 
+    // Toggle game mode on title screen with left/right arrows
+    if (gameState === "title" && !titleFadingOut) {
+        if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
+            gameMode = gameMode === "thrill" ? "chill" : "thrill";
+        }
+    }
+
     if (e.code === "Enter") {
         e.preventDefault();
         if (gameState === "sabotage-anim") return; // ignore input during sabotage animation
+        if (minigameState === "kidnap") return; // no skipping kidnap cutscene
+        if (minigameState === "reward" && minigameRewardTimer > 120) {
+            // Player dismisses reward screen — continue to next level
+            endMinigame();
+            return;
+        }
+        if (minigameState === "reward") return; // let reward play
         if (gameState === "enemywarning") {
             // Check if there's another warning or instrument screen queued
             sceneTransition = { active: true, from: "enemywarning", to: "playing", progress: 0, duration: 18 };
@@ -1302,6 +1386,11 @@ window.addEventListener("keydown", (e) => {
             return;
         }
         if (gameState === "levelcomplete" && levelCelebrateTimer > 120) {
+            // Check if this is a minigame milestone level (not already completed)
+            if (MINIGAME_LEVELS.includes(currentLevel) && !minigamesCompleted.includes(currentLevel)) {
+                startMinigameKidnap();
+                return;
+            }
             // Show all feature screens (instruments + enemy warnings) before advancing
             if (checkPendingFeatureScreens()) return;
             advanceLevel();
@@ -1320,6 +1409,7 @@ window.addEventListener("keydown", (e) => {
             return;
         }
         if (gameState === "gameover") return; // let the cinematic play
+        if (gameState === "minigame") return; // don't pause during minigame
         ensureAudio();
         gamePaused = !gamePaused;
         // Reset sequencer timing so it doesn't fast-forward on unpause
@@ -1938,9 +2028,10 @@ function update(dt) {
         }
 
     if (gob.dead) {
-        // No goblins on practice levels (1-2)
-        if (currentLevel < 2) {
+        // No goblins in chill mode or on practice levels (1-2)
+        if (gameMode === "chill" || currentLevel < 2) {
             gob.respawnTimer = 300;
+            continue;
         }
         // Don't respawn if pattern is already matched
         else if (patternMatched) {
@@ -2359,38 +2450,6 @@ function triggerGameOver() {
     sadSongStarted = false;
     finalScore = score;
 
-    // Generate screen cracks radiating from player position
-    screenCracks = [];
-    screenCrackTimer = 30; // display for 30 frames
-    const crackOriginX = player.x + player.w / 2;
-    const crackOriginY = player.y + player.h / 2;
-    const numCracks = 8 + Math.floor(Math.random() * 5);
-    for (let i = 0; i < numCracks; i++) {
-        const angle = (i / numCracks) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
-        const len = 30 + Math.random() * 60;
-        const crack = {
-            x1: crackOriginX, y1: crackOriginY,
-            x2: crackOriginX + Math.cos(angle) * len,
-            y2: crackOriginY + Math.sin(angle) * len,
-            branches: [],
-        };
-        // Add 1-2 branches per crack
-        const numBranches = 1 + Math.floor(Math.random() * 2);
-        for (let b = 0; b < numBranches; b++) {
-            const branchT = 0.3 + Math.random() * 0.5;
-            const bx = crack.x1 + (crack.x2 - crack.x1) * branchT;
-            const by = crack.y1 + (crack.y2 - crack.y1) * branchT;
-            const bAngle = angle + (Math.random() - 0.5) * 1.2;
-            const bLen = 10 + Math.random() * 25;
-            crack.branches.push({
-                x1: bx, y1: by,
-                x2: bx + Math.cos(bAngle) * bLen,
-                y2: by + Math.sin(bAngle) * bLen,
-            });
-        }
-        screenCracks.push(crack);
-    }
-
     // Start player death animation
     playerDeathAnim.active = true;
     playerDeathAnim.collapseProgress = 0;
@@ -2560,8 +2619,6 @@ function resetGame() {
     hitFreeze = 0;
     titleEntrancePhase = 0;
     fireworks = [];
-    screenCracks = [];
-    screenCrackTimer = 0;
     playerDeathAnim.active = false;
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
@@ -2579,6 +2636,20 @@ function resetGame() {
     patternMatched = false;
     levelCelebrateTimer = 0;
     levelCelebrateDisplayScore = 0;
+
+    // Reset minigame state
+    minigameState = "none";
+    minigameActive = false;
+    minigameTimer = 0;
+    caveGoblins = [];
+    caveBoulders = [];
+    caveCatapult = null;
+    caveClockPickups = [];
+    caveDeathParticles = [];
+    cavePlayerDead = false;
+    djSetupEarned = [];
+    minigamesCompleted = [];
+    stopMinigameMusic();
 
     // Set tempo for level 0
     setLevelTempo(0);
@@ -2665,6 +2736,1337 @@ function triggerLevelComplete() {
     screenFlash = 20;
     // Play fanfare instead of drums
     playLevelFanfare();
+}
+
+// ============================================================
+// MINIGAME: Cave Beat 'Em Up
+// Triggers after levels 5, 10, 15, 20, 25, 30.
+// DJ gets kidnapped by goblins, fights in cave arena for 20s,
+// dancers rescue by breaking through wall with torches.
+// ============================================================
+
+function startMinigameKidnap() {
+    gameState = "minigame";
+    minigameState = "kidnap";
+    minigameKidnapTimer = 0;
+    minigameKidnapPhase = 0;
+    minigamePendingAfterLevel = currentLevel;
+
+    // Stop any ongoing drums
+    stopStoryDrums();
+
+    // Position kidnap goblins off-screen on left and right
+    const playerCenterX = player.x;
+    const playerCenterY = player.y;
+    kidnapGoblin1 = { x: -TILE * 2, y: playerCenterY, dir: 3, frame: 0, frameTimer: 0 }; // from left
+    kidnapGoblin2 = { x: (COLS + 1) * TILE, y: playerCenterY, dir: 2, frame: 0, frameTimer: 0 }; // from right
+    kidnapDJPos = { x: playerCenterX, y: playerCenterY };
+    kidnapTargetY = -TILE * 2; // escort off top of screen
+
+    // Play ominous kidnap sound
+    ensureAudio();
+    if (audioCtx) {
+        const now = audioCtx.currentTime;
+        // Descending dread tone
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(200, now);
+        osc.frequency.exponentialRampToValueAtTime(60, now + 1.5);
+        g.gain.setValueAtTime(0.12, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+        osc.connect(g); g.connect(audioCtx.destination);
+        osc.start(now); osc.stop(now + 1.5);
+    }
+}
+
+function updateMinigameKidnap() {
+    minigameKidnapTimer++;
+    const p = kidnapDJPos;
+
+    // Animate goblin walk frames
+    kidnapGoblin1.frameTimer++;
+    kidnapGoblin2.frameTimer++;
+    if (kidnapGoblin1.frameTimer > 8) { kidnapGoblin1.frame = (kidnapGoblin1.frame + 1) % 4; kidnapGoblin1.frameTimer = 0; }
+    if (kidnapGoblin2.frameTimer > 8) { kidnapGoblin2.frame = (kidnapGoblin2.frame + 1) % 4; kidnapGoblin2.frameTimer = 0; }
+
+    if (minigameKidnapPhase === 0) {
+        // Phase 0: Goblins approach DJ from sides (0-90 frames)
+        const targetX1 = p.x - TILE * 1.5;
+        const targetX2 = p.x + TILE * 1.5;
+        kidnapGoblin1.x += Math.min(2, targetX1 - kidnapGoblin1.x) * 0.08;
+        kidnapGoblin2.x += Math.min(2, -(kidnapGoblin2.x - targetX2)) * 0.08;
+        if (kidnapGoblin1.x > targetX1 - 2) kidnapGoblin1.x = targetX1;
+        if (kidnapGoblin2.x < targetX2 + 2) kidnapGoblin2.x = targetX2;
+
+        if (minigameKidnapTimer > 90) {
+            minigameKidnapPhase = 1;
+            minigameKidnapTimer = 0;
+            // Play grab sound
+            if (audioCtx) {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc.type = "square";
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.2);
+                g.gain.setValueAtTime(0.15, now);
+                g.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                osc.connect(g); g.connect(audioCtx.destination);
+                osc.start(now); osc.stop(now + 0.2);
+            }
+        }
+    } else if (minigameKidnapPhase === 1) {
+        // Phase 1: All three move up toward top of screen (escort to cave)
+        const speed = 1.5;
+        kidnapGoblin1.y -= speed;
+        kidnapGoblin2.y -= speed;
+        kidnapDJPos.y -= speed;
+        kidnapGoblin1.dir = 1; // face up
+        kidnapGoblin2.dir = 1;
+        kidnapGoblin1.x = kidnapDJPos.x - TILE * 1.5;
+        kidnapGoblin2.x = kidnapDJPos.x + TILE * 1.5;
+
+        if (kidnapDJPos.y < kidnapTargetY) {
+            // Transition to cave arena
+            startMinigameArena();
+        }
+    }
+}
+
+function renderMinigameKidnap() {
+    const W = COLS * TILE;
+    const H = ROWS * TILE;
+
+    // Render the game map underneath with increasing darkness
+    render();
+    const darkAlpha = Math.min(0.7, minigameKidnapTimer * 0.005 + minigameKidnapPhase * 0.3);
+    ctx.globalAlpha = darkAlpha;
+    drawRect(0, 0, W, H, "#000");
+    ctx.globalAlpha = 1;
+
+    // Draw kidnap goblins
+    drawGoblinSprite("normal", kidnapGoblin1.x, kidnapGoblin1.y,
+        kidnapGoblin1.frame, { dir: kidnapGoblin1.dir });
+    drawGoblinSprite("normal", kidnapGoblin2.x, kidnapGoblin2.y,
+        kidnapGoblin2.frame, { dir: kidnapGoblin2.dir });
+
+    // Draw DJ being escorted (struggling animation)
+    const struggle = minigameKidnapPhase === 1 ? Math.sin(minigameKidnapTimer * 0.3) * 2 : 0;
+    drawPlayerSprite(kidnapDJPos.x + struggle, kidnapDJPos.y,
+        (minigameKidnapTimer >> 3) % 4, 1, {});
+
+    // "KIDNAPPED!" text
+    if (minigameKidnapPhase === 1 && minigameKidnapTimer > 20) {
+        ctx.textAlign = "center";
+        ctx.font = `${14 * SCALE}px monospace`;
+        const blink = Math.sin(minigameKidnapTimer * 0.15) > 0;
+        if (blink) {
+            ctx.fillStyle = "#FF0044";
+            ctx.fillText("KIDNAPPED!", (W * SCALE) / 2, (H / 3) * SCALE);
+        }
+    }
+}
+
+function startMinigameArena() {
+    minigameState = "playing";
+    minigameActive = true;
+    minigameTimer = MINIGAME_BASE_TIME;
+    cavePlayerDead = false;
+    caveKillCount = 0;
+    caveCatapultKillCount = 0;
+
+    // Reset player to center of cave arena
+    player.x = (CAVE_COLS / 2) * CAVE_TILE;
+    player.y = (CAVE_ROWS / 2 + 2) * CAVE_TILE;
+    player.destX = player.x;
+    player.destY = player.y;
+    player.dir = 0;
+    player.attacking = false;
+    player.attackTimer = 0;
+    player.punchHit = false;
+
+    // Spawn initial cave goblins
+    caveGoblins = [];
+    caveBoulders = [];
+    caveCatapult = null;
+    caveClockPickups = [];
+    caveDeathParticles = [];
+    caveDeathText = null;
+    caveScreenShake = 0;
+    caveHitFreeze = 0;
+    caveScreenFlash = 0;
+    rescueDancers = [];
+
+    // Generate initial rescue wall cracks (subtle)
+    rescueWallCracks = [];
+    for (let i = 0; i < 5; i++) {
+        const y = 3 * CAVE_TILE + Math.random() * (CAVE_ROWS - 6) * CAVE_TILE;
+        rescueWallCracks.push({
+            x1: 0, y1: y,
+            x2: 2 + Math.random() * 4, y2: y + (Math.random() - 0.5) * 20,
+            width: 1,
+            alpha: 0.2,
+        });
+    }
+    rescueWallDust = [];
+    rescueWallProgress = 0;
+
+    // Spawn first wave of goblins from cave edges
+    for (let i = 0; i < 3; i++) {
+        spawnCaveGoblin(false);
+    }
+
+    // Start stressful music
+    startMinigameMusic();
+
+    gameState = "minigame";
+}
+
+function spawnCaveGoblin(elite) {
+    // Spawn from random edge (top, right, bottom — not left, that's the rescue wall)
+    const edges = [
+        { x: CAVE_TILE + Math.random() * (CAVE_COLS - 4) * CAVE_TILE, y: CAVE_TILE }, // top
+        { x: (CAVE_COLS - 2) * CAVE_TILE, y: CAVE_TILE * 2 + Math.random() * (CAVE_ROWS - 5) * CAVE_TILE }, // right
+        { x: CAVE_TILE * 2 + Math.random() * (CAVE_COLS - 5) * CAVE_TILE, y: (CAVE_ROWS - 2) * CAVE_TILE }, // bottom
+    ];
+    const spawn = edges[Math.floor(Math.random() * edges.length)];
+    caveGoblins.push({
+        x: spawn.x, y: spawn.y,
+        destX: spawn.x, destY: spawn.y,
+        w: CAVE_TILE, h: CAVE_TILE,
+        dir: 0, frame: 0, frameTimer: 0,
+        speed: 0.8 + Math.random() * 0.4,
+        dead: false,
+        elite: elite,
+        hp: elite ? 3 : 1,
+        hurtTimer: 0,
+        deathAnimTimer: 0,
+        deathAnimActive: false,
+        deathAnimElite: elite,
+        chaseTimer: 0,
+    });
+}
+
+function spawnCaveCatapult() {
+    // Spawn catapult goblin from top-right
+    caveCatapult = {
+        x: (CAVE_COLS - 3) * CAVE_TILE,
+        y: CAVE_TILE,
+        dir: 2, frame: 0, frameTimer: 0,
+        speed: 0.5,
+        phase: "positioning", // positioning → aiming → launching → retreating
+        phaseTimer: 0,
+        targetX: 0, targetY: 0,
+        boulder: null,
+    };
+}
+
+function updateMinigameArena() {
+    if (caveHitFreeze > 0) {
+        caveHitFreeze--;
+        if (caveHitFreeze === 0 && cavePendingShake) {
+            caveScreenShake = 6;
+            caveShakeIntensity = 2;
+            cavePendingShake = false;
+        }
+        return;
+    }
+    if (caveScreenShake > 0) caveScreenShake--;
+    if (caveScreenFlash > 0) caveScreenFlash--;
+
+    // Timer countdown
+    minigameTimer--;
+    rescueWallProgress = 1 - (minigameTimer / MINIGAME_BASE_TIME);
+
+    if (minigameTimer <= 0) {
+        // Rescue time!
+        startMinigameRescue();
+        return;
+    }
+
+    if (cavePlayerDead) return; // player hit by boulder, waiting for rescue
+
+    const p = player;
+
+    // Player attack
+    if (spaceJustPressed && !p.attacking) {
+        p.attacking = true;
+        p.attackTimer = p.attackDuration;
+        p.punchHit = false;
+        // Punch sound
+        if (audioCtx) {
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.exponentialRampToValueAtTime(60, now + 0.1);
+            g.gain.setValueAtTime(0.15, now);
+            g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+            osc.connect(g); g.connect(audioCtx.destination);
+            osc.start(now); osc.stop(now + 0.1);
+        }
+
+        // Check goblin hits
+        const punchBox = getPunchBox();
+        for (const cg of caveGoblins) {
+            if (cg.dead || cg.deathAnimActive) continue;
+            const gobBox = { x: cg.x, y: cg.y, w: cg.w, h: cg.h };
+            if (aabb(punchBox, gobBox)) {
+                p.punchHit = true;
+                cg.hp--;
+                if (cg.hp > 0) {
+                    cg.hurtTimer = 12;
+                    caveHitFreeze = 2;
+                    cavePendingShake = true;
+                    // Knockback
+                    const dx = Math.sign(cg.x - p.x);
+                    const dy = Math.sign(cg.y - p.y);
+                    cg.destX = Math.max(CAVE_TILE, Math.min((CAVE_COLS - 2) * CAVE_TILE, cg.x + dx * CAVE_TILE));
+                    cg.destY = Math.max(CAVE_TILE * 2, Math.min((CAVE_ROWS - 2) * CAVE_TILE, cg.y + dy * CAVE_TILE));
+                    // Hurt particles
+                    for (let i = 0; i < 6; i++) {
+                        caveDeathParticles.push({
+                            x: cg.x + cg.w / 2, y: cg.y + cg.h / 2,
+                            vx: (Math.random() - 0.5) * 2, vy: (Math.random() - 0.5) * 2 - 0.5,
+                            life: 15 + Math.random() * 10, color: cg.elite ? "#FF69B4" : "#39FF14", size: 2,
+                        });
+                    }
+                } else {
+                    // Kill
+                    cg.deathAnimActive = true;
+                    cg.deathAnimTimer = 24;
+                    cg.dead = true;
+                    caveKillCount++;
+                    caveCatapultKillCount++;
+
+                    caveHitFreeze = cg.deathAnimElite ? 5 : 3;
+                    cavePendingShake = true;
+                    if (cg.deathAnimElite) caveScreenFlash = 10;
+
+                    // Elite drops clock pickup
+                    if (cg.elite) {
+                        caveClockPickups.push({
+                            x: cg.x + cg.w / 2 - 4,
+                            y: cg.y,
+                            timer: 300, // disappears after 5 seconds
+                            bobPhase: 0,
+                        });
+                    }
+
+                    // Death particles
+                    const col = cg.elite ? "#FF69B4" : "#39FF14";
+                    for (let i = 0; i < 12; i++) {
+                        caveDeathParticles.push({
+                            x: cg.x + cg.w / 2, y: cg.y + cg.h / 2,
+                            vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3 - 1,
+                            life: 20 + Math.random() * 20, color: col, size: 2 + Math.random() * 2,
+                        });
+                    }
+
+                    // Death text
+                    const texts = ["BONK!", "POW!", "WHAM!", "CRUNCH!", "SPLAT!"];
+                    caveDeathText = {
+                        x: cg.x - 10, y: cg.y - 12,
+                        timer: 40, text: texts[Math.floor(Math.random() * texts.length)],
+                        color: cg.elite ? "#FF69B4" : "#FF4444", scale: 5,
+                    };
+
+                    // Kill sound
+                    if (audioCtx) {
+                        const now = audioCtx.currentTime;
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        osc.type = cg.elite ? "triangle" : "square";
+                        osc.frequency.setValueAtTime(cg.elite ? 800 : 500, now);
+                        osc.frequency.exponentialRampToValueAtTime(100, now + 0.2);
+                        gain.gain.setValueAtTime(0.15, now);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                        osc.connect(gain); gain.connect(audioCtx.destination);
+                        osc.start(now); osc.stop(now + 0.2);
+                    }
+                }
+                break; // one punch hits one goblin
+            }
+        }
+    }
+
+    // Player movement (reuse main movement controls in cave bounds)
+    if (!p.attacking || p.attackTimer < p.attackDuration - 4) {
+        const atDest = Math.abs(p.x - p.destX) < 1 && Math.abs(p.y - p.destY) < 1;
+        if (atDest) {
+            p.x = p.destX;
+            p.y = p.destY;
+            let dx = 0, dy = 0;
+            if (keys["ArrowLeft"] || keys["KeyA"]) { dx = -1; p.dir = 2; }
+            else if (keys["ArrowRight"] || keys["KeyD"]) { dx = 1; p.dir = 3; }
+            else if (keys["ArrowUp"] || keys["KeyW"]) { dy = -1; p.dir = 1; }
+            else if (keys["ArrowDown"] || keys["KeyS"]) { dy = 1; p.dir = 0; }
+            if (dx !== 0 || dy !== 0) {
+                const newX = p.x + dx * CAVE_TILE;
+                const newY = p.y + dy * CAVE_TILE;
+                // Bound to cave walls (leave left wall for rescue)
+                if (newX >= CAVE_TILE * 2 && newX <= (CAVE_COLS - 2) * CAVE_TILE &&
+                    newY >= CAVE_TILE * 2 && newY <= (CAVE_ROWS - 2) * CAVE_TILE) {
+                    p.destX = newX;
+                    p.destY = newY;
+                }
+            }
+        } else {
+            // Smooth movement toward destination
+            const speed = p.speed;
+            if (p.x < p.destX) p.x = Math.min(p.x + speed, p.destX);
+            else if (p.x > p.destX) p.x = Math.max(p.x - speed, p.destX);
+            if (p.y < p.destY) p.y = Math.min(p.y + speed, p.destY);
+            else if (p.y > p.destY) p.y = Math.max(p.y - speed, p.destY);
+            // Walk animation
+            p.frameTimer++;
+            if (p.frameTimer > 6) { p.frame = (p.frame + 1) % 4; p.frameTimer = 0; }
+        }
+    }
+
+    // Attack timer
+    if (p.attacking) {
+        p.attackTimer--;
+        if (p.attackTimer <= 0) {
+            p.attacking = false;
+        }
+    }
+
+    // Update cave goblins AI — chase the player
+    for (const cg of caveGoblins) {
+        if (cg.dead) {
+            if (cg.deathAnimActive) {
+                cg.deathAnimTimer--;
+                if (cg.deathAnimTimer <= 0) cg.deathAnimActive = false;
+            }
+            continue;
+        }
+        if (cg.hurtTimer > 0) {
+            cg.hurtTimer--;
+            // Move toward knockback destination
+            if (cg.x < cg.destX) cg.x = Math.min(cg.x + 2, cg.destX);
+            else if (cg.x > cg.destX) cg.x = Math.max(cg.x - 2, cg.destX);
+            if (cg.y < cg.destY) cg.y = Math.min(cg.y + 2, cg.destY);
+            else if (cg.y > cg.destY) cg.y = Math.max(cg.y - 2, cg.destY);
+            continue;
+        }
+
+        // Chase player
+        const dx = p.x - cg.x;
+        const dy = p.y - cg.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 2) {
+            cg.x += (dx / dist) * cg.speed;
+            cg.y += (dy / dist) * cg.speed;
+            cg.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 3 : 2) : (dy > 0 ? 0 : 1);
+        }
+        cg.frameTimer++;
+        if (cg.frameTimer > 8) { cg.frame = (cg.frame + 1) % 4; cg.frameTimer = 0; }
+
+        // Collision with player (damage — goblins touching player)
+        // In cave minigame, goblins touching player just push them back, no kill
+    }
+
+    // Spawn more goblins over time
+    const aliveCount = caveGoblins.filter(g => !g.dead).length;
+    const maxCaveGobs = Math.min(6, 3 + Math.floor(caveKillCount / 3));
+    if (aliveCount < maxCaveGobs && Math.random() < 0.01) {
+        // 20% chance for elite after 4 kills
+        const shouldElite = caveKillCount >= 4 && Math.random() < 0.2 &&
+            !caveGoblins.some(g => !g.dead && g.elite);
+        spawnCaveGoblin(shouldElite);
+    }
+
+    // Spawn catapult goblin after every 6 kills
+    if (caveCatapultKillCount >= 6 && !caveCatapult) {
+        spawnCaveCatapult();
+        caveCatapultKillCount = 0;
+    }
+
+    // Update catapult goblin
+    if (caveCatapult) {
+        updateCaveCatapult();
+    }
+
+    // Update boulders
+    for (let i = caveBoulders.length - 1; i >= 0; i--) {
+        const b = caveBoulders[i];
+        b.progress += 0.02;
+        if (b.progress >= 1) {
+            // Boulder impacts
+            const impactX = b.targetX;
+            const impactY = b.targetY;
+            const blastRadius = CAVE_TILE * 2;
+
+            // Check player hit
+            const pdx = p.x + p.w / 2 - impactX;
+            const pdy = p.y + p.h / 2 - impactY;
+            if (Math.sqrt(pdx * pdx + pdy * pdy) < blastRadius) {
+                // Player dies from boulder!
+                cavePlayerDead = true;
+                caveScreenShake = 15;
+                caveShakeIntensity = 5;
+                caveScreenFlash = 15;
+                caveDeathText = {
+                    x: p.x - 20, y: p.y - 15,
+                    timer: 60, text: "CRUSHED!", color: "#FF0044", scale: 6,
+                };
+                if (audioCtx) {
+                    const now = audioCtx.currentTime;
+                    const osc = audioCtx.createOscillator();
+                    const g = audioCtx.createGain();
+                    osc.type = "sine";
+                    osc.frequency.setValueAtTime(80, now);
+                    osc.frequency.exponentialRampToValueAtTime(20, now + 0.5);
+                    g.gain.setValueAtTime(0.4, now);
+                    g.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+                    osc.connect(g); g.connect(audioCtx.destination);
+                    osc.start(now); osc.stop(now + 0.5);
+                }
+            }
+
+            // Check goblin kills in blast radius
+            for (const cg of caveGoblins) {
+                if (cg.dead) continue;
+                const gdx = cg.x + cg.w / 2 - impactX;
+                const gdy = cg.y + cg.h / 2 - impactY;
+                if (Math.sqrt(gdx * gdx + gdy * gdy) < blastRadius) {
+                    cg.dead = true;
+                    cg.deathAnimActive = true;
+                    cg.deathAnimTimer = 24;
+                    caveKillCount++;
+                    // Impact particles
+                    for (let j = 0; j < 8; j++) {
+                        caveDeathParticles.push({
+                            x: cg.x + cg.w / 2, y: cg.y + cg.h / 2,
+                            vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4 - 1,
+                            life: 20 + Math.random() * 15, color: "#8B4513", size: 3,
+                        });
+                    }
+                }
+            }
+
+            // Impact particles (rock debris)
+            for (let j = 0; j < 15; j++) {
+                caveDeathParticles.push({
+                    x: impactX, y: impactY,
+                    vx: (Math.random() - 0.5) * 5, vy: (Math.random() - 0.5) * 5 - 2,
+                    life: 25 + Math.random() * 20, color: j % 2 ? "#8B4513" : "#A0522D", size: 2 + Math.random() * 3,
+                });
+            }
+
+            caveScreenShake = 8;
+            caveShakeIntensity = 3;
+            caveBoulders.splice(i, 1);
+
+            // Impact sound
+            if (audioCtx) {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc.type = "sine";
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.exponentialRampToValueAtTime(30, now + 0.3);
+                g.gain.setValueAtTime(0.3, now);
+                g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                osc.connect(g); g.connect(audioCtx.destination);
+                osc.start(now); osc.stop(now + 0.3);
+            }
+        }
+    }
+
+    // Update clock pickups
+    for (let i = caveClockPickups.length - 1; i >= 0; i--) {
+        const ck = caveClockPickups[i];
+        ck.timer--;
+        ck.bobPhase += 0.1;
+        if (ck.timer <= 0) {
+            caveClockPickups.splice(i, 1);
+            continue;
+        }
+        // Check player pickup
+        const pdx = p.x + p.w / 2 - (ck.x + 4);
+        const pdy = p.y + p.h / 2 - ck.y;
+        if (Math.abs(pdx) < CAVE_TILE && Math.abs(pdy) < CAVE_TILE) {
+            minigameTimer += 5 * 60; // +5 seconds
+            caveClockPickups.splice(i, 1);
+            // Fanfare sound
+            if (audioCtx) {
+                const now = audioCtx.currentTime;
+                [523, 659, 784].forEach((freq, fi) => {
+                    const osc = audioCtx.createOscillator();
+                    const g = audioCtx.createGain();
+                    osc.type = "triangle";
+                    osc.frequency.setValueAtTime(freq, now + fi * 0.08);
+                    g.gain.setValueAtTime(0.12, now + fi * 0.08);
+                    g.gain.exponentialRampToValueAtTime(0.001, now + fi * 0.08 + 0.3);
+                    osc.connect(g); g.connect(audioCtx.destination);
+                    osc.start(now + fi * 0.08); osc.stop(now + fi * 0.08 + 0.3);
+                });
+            }
+            // +5 text
+            caveDeathText = {
+                x: ck.x - 10, y: ck.y - 15,
+                timer: 60, text: "+5 SECONDS!", color: "#00FF88", scale: 5,
+            };
+            caveScreenFlash = 5;
+        }
+    }
+
+    // Update death particles
+    for (let i = caveDeathParticles.length - 1; i >= 0; i--) {
+        const dp = caveDeathParticles[i];
+        dp.x += dp.vx;
+        dp.y += dp.vy;
+        dp.vy += 0.1; // gravity
+        dp.life--;
+        if (dp.life <= 0) caveDeathParticles.splice(i, 1);
+    }
+
+    // Update death text
+    if (caveDeathText) {
+        caveDeathText.timer--;
+        caveDeathText.y -= 0.5;
+        if (caveDeathText.timer <= 0) caveDeathText = null;
+    }
+
+    // Update rescue wall dust particles
+    updateRescueWallDust();
+}
+
+function updateCaveCatapult() {
+    const cat = caveCatapult;
+    cat.phaseTimer++;
+    cat.frameTimer++;
+    if (cat.frameTimer > 10) { cat.frame = (cat.frame + 1) % 4; cat.frameTimer = 0; }
+
+    if (cat.phase === "positioning") {
+        // Move to a position along the top
+        const targetX = CAVE_TILE * 3 + Math.random() * (CAVE_COLS - 8) * CAVE_TILE;
+        if (cat.phaseTimer > 60) {
+            cat.phase = "aiming";
+            cat.phaseTimer = 0;
+            cat.targetX = player.x + player.w / 2;
+            cat.targetY = player.y + player.h / 2;
+        }
+    } else if (cat.phase === "aiming") {
+        // Brief aim pause
+        if (cat.phaseTimer > 40) {
+            cat.phase = "launching";
+            cat.phaseTimer = 0;
+            // Fire boulder
+            caveBoulders.push({
+                startX: cat.x + CAVE_TILE / 2,
+                startY: cat.y + CAVE_TILE / 2,
+                targetX: cat.targetX,
+                targetY: cat.targetY,
+                progress: 0,
+            });
+            // Launch sound
+            if (audioCtx) {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc.type = "sawtooth";
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.exponentialRampToValueAtTime(300, now + 0.3);
+                g.gain.setValueAtTime(0.12, now);
+                g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                osc.connect(g); g.connect(audioCtx.destination);
+                osc.start(now); osc.stop(now + 0.3);
+            }
+        }
+    } else if (cat.phase === "launching") {
+        if (cat.phaseTimer > 30) {
+            cat.phase = "retreating";
+            cat.phaseTimer = 0;
+        }
+    } else if (cat.phase === "retreating") {
+        cat.y -= 1;
+        if (cat.y < -CAVE_TILE * 2) {
+            caveCatapult = null; // gone
+        }
+    }
+}
+
+function updateRescueWallDust() {
+    // Spawn dust based on rescue wall progress
+    const intensity = rescueWallProgress;
+    if (Math.random() < intensity * 0.3) {
+        rescueWallDust.push({
+            x: Math.random() * CAVE_TILE * 2,
+            y: CAVE_TILE * 2 + Math.random() * (CAVE_ROWS - 4) * CAVE_TILE,
+            vx: 0.3 + Math.random() * 0.5,
+            vy: (Math.random() - 0.5) * 0.3,
+            life: 30 + Math.random() * 30,
+            size: 1 + Math.random() * (1 + intensity * 3),
+            alpha: 0.3 + intensity * 0.5,
+        });
+    }
+    for (let i = rescueWallDust.length - 1; i >= 0; i--) {
+        const d = rescueWallDust[i];
+        d.x += d.vx;
+        d.y += d.vy;
+        d.life--;
+        d.alpha *= 0.98;
+        if (d.life <= 0) rescueWallDust.splice(i, 1);
+    }
+}
+
+function renderMinigameArena() {
+    const W = CAVE_COLS * CAVE_TILE;
+    const H = CAVE_ROWS * CAVE_TILE;
+
+    // Screen shake
+    if (caveScreenShake > 0) {
+        const sx = (Math.random() - 0.5) * 2 * caveShakeIntensity * SCALE;
+        const sy = (Math.random() - 0.5) * 2 * caveShakeIntensity * SCALE;
+        ctx.save();
+        ctx.translate(sx, sy);
+    }
+
+    // Dark cave background
+    drawRect(0, 0, W, H, "#1a0e08");
+
+    // Stone floor texture
+    for (let r = 2; r < CAVE_ROWS - 1; r++) {
+        for (let c = 2; c < CAVE_COLS - 1; c++) {
+            let seed = r * 997 + c * 31;
+            seed = (seed * 9301 + 49297) % 233280;
+            const bright = (seed / 233280) > 0.6;
+            const floorCol = bright ? "#251a0f" : "#1f1209";
+            drawRect(c * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, floorCol);
+            // Subtle stone grain
+            for (let i = 0; i < 4; i++) {
+                seed = (seed * 9301 + 49297) % 233280;
+                const gx = seed % CAVE_TILE;
+                seed = (seed * 9301 + 49297) % 233280;
+                const gy = seed % CAVE_TILE;
+                drawRect(c * CAVE_TILE + gx, r * CAVE_TILE + gy, 1, 1, "rgba(255,255,255,0.03)");
+            }
+        }
+    }
+
+    // Cave walls — dark stone
+    // Top wall
+    for (let c = 0; c < CAVE_COLS; c++) {
+        for (let r = 0; r < 2; r++) {
+            const shade = (c + r) % 2 === 0 ? "#3d2b1f" : "#2e1f14";
+            drawRect(c * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, shade);
+        }
+        // Stalactites hanging from ceiling
+        if (c % 3 === 1) {
+            const stalH = 4 + (c * 7) % 6;
+            drawRect(c * CAVE_TILE + 5, 2 * CAVE_TILE, 3, stalH, "#4a3628");
+            drawRect(c * CAVE_TILE + 6, 2 * CAVE_TILE, 1, stalH + 2, "#5a4638");
+        }
+    }
+    // Bottom wall
+    for (let c = 0; c < CAVE_COLS; c++) {
+        const shade = c % 2 === 0 ? "#3d2b1f" : "#2e1f14";
+        drawRect(c * CAVE_TILE, (CAVE_ROWS - 1) * CAVE_TILE, CAVE_TILE, CAVE_TILE, shade);
+        // Stalagmites
+        if (c % 4 === 2) {
+            const stalH = 3 + (c * 5) % 5;
+            drawRect(c * CAVE_TILE + 6, (CAVE_ROWS - 1) * CAVE_TILE - stalH, 3, stalH, "#4a3628");
+        }
+    }
+    // Right wall
+    for (let r = 0; r < CAVE_ROWS; r++) {
+        const shade = r % 2 === 0 ? "#3d2b1f" : "#2e1f14";
+        drawRect((CAVE_COLS - 1) * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, shade);
+    }
+
+    // LEFT WALL — Rescue wall with progressive cracking
+    for (let r = 0; r < CAVE_ROWS; r++) {
+        for (let c = 0; c < 2; c++) {
+            const shade = r % 2 === 0 ? "#4a3628" : "#3d2b1f";
+            drawRect(c * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, shade);
+        }
+    }
+
+    // Rescue wall cracks — intensity scales with progress
+    const crackAlpha = Math.min(1, rescueWallProgress * 1.5);
+    if (crackAlpha > 0) {
+        ctx.save();
+        ctx.globalAlpha = crackAlpha;
+        // Draw cracks on left wall
+        const numCracks = Math.floor(3 + rescueWallProgress * 12);
+        for (let i = 0; i < numCracks; i++) {
+            let seed = i * 7919 + 42;
+            seed = (seed * 9301 + 49297) % 233280;
+            const startY = (seed / 233280) * (CAVE_ROWS - 4) * CAVE_TILE + 2 * CAVE_TILE;
+            seed = (seed * 9301 + 49297) % 233280;
+            const len = 3 + (seed / 233280) * (8 + rescueWallProgress * 15);
+            seed = (seed * 9301 + 49297) % 233280;
+            const angle = (seed / 233280 - 0.5) * 0.8;
+            const crackWidth = 1 + Math.floor(rescueWallProgress * 2);
+            const sx = CAVE_TILE;
+            for (let j = 0; j < len; j++) {
+                const cx = sx + j * Math.cos(angle);
+                const cy = startY + j * Math.sin(angle) * 3;
+                drawRect(cx, cy, crackWidth, 1, "#000");
+                if (rescueWallProgress > 0.5) {
+                    drawRect(cx + crackWidth, cy, 1, 1, "#5a4638"); // crack edge highlight
+                }
+            }
+        }
+        // Large crack chunks falling off at high progress
+        if (rescueWallProgress > 0.7) {
+            for (let i = 0; i < 3; i++) {
+                const chunkY = (CAVE_ROWS / 3 + i * CAVE_ROWS / 4) * CAVE_TILE;
+                const chunkOff = (rescueWallProgress - 0.7) * 10;
+                drawRect(CAVE_TILE + chunkOff, chunkY, 4, 6, "#4a3628");
+                drawRect(CAVE_TILE + chunkOff + 1, chunkY + 1, 2, 4, "#2e1f14");
+            }
+        }
+        ctx.globalAlpha = 1;
+        ctx.restore();
+    }
+
+    // Rescue wall dust particles
+    for (const d of rescueWallDust) {
+        ctx.globalAlpha = d.alpha;
+        drawRect(d.x, d.y, d.size, d.size, "#C4A882");
+        ctx.globalAlpha = 1;
+    }
+
+    // Torches on walls (right and top walls)
+    const torchPositions = [
+        { x: (CAVE_COLS - 2) * CAVE_TILE, y: 3 * CAVE_TILE },
+        { x: (CAVE_COLS - 2) * CAVE_TILE, y: 8 * CAVE_TILE },
+        { x: (CAVE_COLS - 2) * CAVE_TILE, y: 13 * CAVE_TILE },
+        { x: 5 * CAVE_TILE, y: 2 * CAVE_TILE },
+        { x: 11 * CAVE_TILE, y: 2 * CAVE_TILE },
+        { x: 17 * CAVE_TILE, y: 2 * CAVE_TILE },
+    ];
+    for (const t of torchPositions) {
+        drawCaveTorch(t.x, t.y);
+    }
+
+    // Draw clock pickups
+    for (const ck of caveClockPickups) {
+        const bobY = Math.sin(ck.bobPhase) * 3;
+        const blinkOn = ck.timer < 90 ? (ck.timer % 10 < 5) : true;
+        if (blinkOn) {
+            // Clock icon (yellow circle with hands)
+            drawRect(ck.x, ck.y + bobY, 8, 8, "#FFD700");
+            drawRect(ck.x + 1, ck.y + bobY + 1, 6, 6, "#1a0e08");
+            drawRect(ck.x + 3, ck.y + bobY + 2, 1, 3, "#FFD700"); // minute hand
+            drawRect(ck.x + 3, ck.y + bobY + 3, 2, 1, "#FFD700"); // hour hand
+            // "+5" text above
+            ctx.textAlign = "center";
+            ctx.font = `${6 * SCALE}px monospace`;
+            ctx.fillStyle = "#00FF88";
+            ctx.fillText("+5", (ck.x + 4) * SCALE, (ck.y + bobY - 3) * SCALE);
+        }
+    }
+
+    // Draw boulders in flight
+    for (const b of caveBoulders) {
+        const t = b.progress;
+        const bx = b.startX + (b.targetX - b.startX) * t;
+        const by = b.startY + (b.targetY - b.startY) * t - Math.sin(t * Math.PI) * 60; // arc
+        const bSize = 6 + t * 4;
+        // Shadow
+        drawRect(bx - bSize / 2, b.targetY - 2, bSize, 3, "rgba(0,0,0,0.3)");
+        // Boulder
+        drawRect(bx - bSize / 2, by - bSize / 2, bSize, bSize, "#8B6914");
+        drawRect(bx - bSize / 2 + 1, by - bSize / 2 + 1, bSize - 2, bSize - 2, "#A0522D");
+        // Highlight
+        drawRect(bx - bSize / 2 + 1, by - bSize / 2 + 1, 2, 2, "#C4A882");
+    }
+
+    // Draw catapult goblin
+    if (caveCatapult) {
+        drawGoblinSprite("catapult",
+            caveCatapult.x, caveCatapult.y,
+            caveCatapult.frame, { dir: caveCatapult.dir });
+        // Aim indicator when aiming
+        if (caveCatapult.phase === "aiming") {
+            const blink = caveCatapult.phaseTimer % 8 < 4;
+            if (blink) {
+                drawRect(caveCatapult.targetX - 4, caveCatapult.targetY - 4, 8, 8, "rgba(255,0,0,0.4)");
+                drawRect(caveCatapult.targetX - 2, caveCatapult.targetY - 1, 4, 2, "rgba(255,0,0,0.6)");
+                drawRect(caveCatapult.targetX - 1, caveCatapult.targetY - 2, 2, 4, "rgba(255,0,0,0.6)");
+            }
+        }
+    }
+
+    // Draw cave goblins
+    for (const cg of caveGoblins) {
+        if (cg.dead && !cg.deathAnimActive) continue;
+        if (cg.deathAnimActive) {
+            // Poof animation
+            const progress = 1 - cg.deathAnimTimer / 24;
+            ctx.globalAlpha = 1 - progress;
+            const puffSize = 8 + progress * 16;
+            drawRect(cg.x + cg.w / 2 - puffSize / 2, cg.y + cg.h / 2 - puffSize / 2,
+                puffSize, puffSize, cg.deathAnimElite ? "#FF69B4" : "#39FF14");
+            ctx.globalAlpha = 1;
+            continue;
+        }
+        const hurtFlash = cg.hurtTimer > 0 && cg.hurtTimer % 4 < 2;
+        const type = cg.elite ? "elite" : "normal";
+        if (hurtFlash) ctx.globalAlpha = 0.5;
+        drawGoblinSprite(type, cg.x, cg.y, cg.frame, { dir: cg.dir });
+        if (hurtFlash) ctx.globalAlpha = 1;
+    }
+
+    // Draw player (unless dead)
+    if (!cavePlayerDead) {
+        const punchProgress = player.attacking ? 1 - (player.attackTimer / player.attackDuration) : 0;
+        const punchThrust = player.attacking ? Math.sin(punchProgress * Math.PI) : 0;
+        drawPlayerSprite(player.x, player.y,
+            player.frame, player.dir, { punchThrust: punchThrust });
+        // Punch effect
+        if (player.attacking && player.attackTimer > 4) {
+            const pb = getPunchBox();
+            ctx.globalAlpha = 0.5;
+            drawRect(pb.x, pb.y, pb.w, pb.h, "#efac28");
+            ctx.globalAlpha = 1;
+        }
+    } else {
+        // Dead player — flat on ground
+        ctx.globalAlpha = 0.6;
+        drawRect(player.x, player.y + 8, TILE, 4, "#efb775");
+        ctx.globalAlpha = 1;
+    }
+
+    // Death particles
+    for (const dp of caveDeathParticles) {
+        ctx.globalAlpha = dp.life / 30;
+        drawRect(dp.x, dp.y, dp.size, dp.size, dp.color);
+        ctx.globalAlpha = 1;
+    }
+
+    // Death text
+    if (caveDeathText) {
+        ctx.textAlign = "center";
+        ctx.font = `${caveDeathText.scale * SCALE}px monospace`;
+        ctx.globalAlpha = Math.min(1, caveDeathText.timer / 20);
+        ctx.fillStyle = "#000";
+        ctx.fillText(caveDeathText.text, (caveDeathText.x + 20) * SCALE + SCALE, caveDeathText.y * SCALE + SCALE);
+        ctx.fillStyle = caveDeathText.color;
+        ctx.fillText(caveDeathText.text, (caveDeathText.x + 20) * SCALE, caveDeathText.y * SCALE);
+        ctx.globalAlpha = 1;
+    }
+
+    // Screen flash
+    if (caveScreenFlash > 0) {
+        ctx.globalAlpha = caveScreenFlash / 15;
+        drawRect(0, 0, W, H, "#FFF");
+        ctx.globalAlpha = 1;
+    }
+
+    // HUD: Timer display
+    const timerSecs = Math.ceil(minigameTimer / 60);
+    const timerColor = timerSecs <= 5 ? "#FF0044" : timerSecs <= 10 ? "#efac28" : "#00FF88";
+    const timerPulse = timerSecs <= 5 ? Math.sin(minigameTimer * 0.2) * 2 : 0;
+
+    ctx.textAlign = "center";
+    ctx.font = `${(12 + timerPulse) * SCALE}px monospace`;
+    ctx.fillStyle = "#000";
+    ctx.fillText(String(timerSecs), (W / 2) * SCALE + SCALE, (12 + timerPulse / 2) * SCALE + SCALE);
+    ctx.fillStyle = timerColor;
+    ctx.fillText(String(timerSecs), (W / 2) * SCALE, (12 + timerPulse / 2) * SCALE);
+
+    // "SURVIVE!" text at top
+    ctx.font = `${6 * SCALE}px monospace`;
+    ctx.fillStyle = "#C4A882";
+    ctx.fillText("SURVIVE!", (W / 2) * SCALE, 4 * SCALE);
+
+    // Rescue wall progress hint
+    if (rescueWallProgress > 0.3) {
+        const hintAlpha = Math.sin(minigameTimer * 0.05) * 0.3 + 0.5;
+        ctx.globalAlpha = hintAlpha;
+        ctx.font = `${4 * SCALE}px monospace`;
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#FFD700";
+        ctx.fillText("HELP IS COMING...", 3 * SCALE, (CAVE_ROWS / 2 * CAVE_TILE) * SCALE);
+        ctx.globalAlpha = 1;
+    }
+
+    if (caveScreenShake > 0) {
+        ctx.restore();
+    }
+}
+
+function drawCaveTorch(x, y) {
+    // Torch handle
+    drawRect(x + 6, y + 4, 3, 10, "#8B4513");
+    drawRect(x + 7, y + 4, 1, 10, "#A0522D");
+    // Flame (animated)
+    const flicker = Math.sin(performance.now() * 0.01 + x) * 2;
+    const flicker2 = Math.cos(performance.now() * 0.013 + y) * 1.5;
+    // Outer flame (orange)
+    drawRect(x + 5 + flicker2, y - 1, 5, 6, "#FF6600");
+    // Inner flame (yellow)
+    drawRect(x + 6 + flicker, y, 3, 4, "#FFD700");
+    // Core (white-hot)
+    drawRect(x + 7, y + 1, 1, 2, "#FFFACD");
+    // Glow effect
+    ctx.globalAlpha = 0.08 + Math.sin(performance.now() * 0.008 + x) * 0.03;
+    const glowR = 20 + flicker * 2;
+    for (let r = glowR; r > 0; r -= 4) {
+        drawRect(x + 7 - r, y + 2 - r, r * 2, r * 2, "#FF8C00");
+    }
+    ctx.globalAlpha = 1;
+}
+
+function startMinigameRescue() {
+    minigameState = "rescue";
+    minigameRescueTimer = 0;
+    minigameRescuePhase = 0;
+    stopMinigameMusic();
+
+    // Set up rescue dancers
+    rescueDancers = [];
+    for (let i = 0; i < 4; i++) {
+        rescueDancers.push({
+            x: -CAVE_TILE * (2 + i),
+            y: CAVE_TILE * (4 + i * 3),
+            palette: i % DANCER_PALETTES.length,
+            frame: 0,
+            hasTorch: true,
+        });
+    }
+
+    // Play dramatic breakthrough sound
+    if (audioCtx) {
+        const now = audioCtx.currentTime;
+        // Deep rumble
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(40, now);
+        osc.frequency.exponentialRampToValueAtTime(25, now + 1.0);
+        g.gain.setValueAtTime(0.3, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+        osc.connect(g); g.connect(audioCtx.destination);
+        osc.start(now); osc.stop(now + 1.0);
+        // Crash
+        const bufLen = audioCtx.sampleRate * 0.5;
+        const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < bufLen; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufLen);
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buf;
+        const ng = audioCtx.createGain();
+        ng.gain.setValueAtTime(0.2, now + 0.1);
+        ng.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+        noise.connect(ng); ng.connect(audioCtx.destination);
+        noise.start(now + 0.1);
+    }
+
+    caveScreenShake = 20;
+    caveShakeIntensity = 6;
+    caveScreenFlash = 15;
+}
+
+function updateMinigameRescue() {
+    minigameRescueTimer++;
+
+    if (minigameRescuePhase === 0) {
+        // Wall burst — rubble flies, shake dies down
+        if (caveScreenShake > 0) caveScreenShake--;
+
+        // Spawn rubble particles from left wall
+        if (minigameRescueTimer < 30) {
+            for (let i = 0; i < 5; i++) {
+                caveDeathParticles.push({
+                    x: CAVE_TILE + Math.random() * CAVE_TILE,
+                    y: CAVE_TILE * 2 + Math.random() * (CAVE_ROWS - 4) * CAVE_TILE,
+                    vx: 2 + Math.random() * 4,
+                    vy: (Math.random() - 0.5) * 4 - 1,
+                    life: 30 + Math.random() * 30,
+                    color: i % 2 ? "#8B4513" : "#A0522D",
+                    size: 3 + Math.random() * 4,
+                });
+            }
+        }
+
+        if (minigameRescueTimer > 60) {
+            minigameRescuePhase = 1;
+            minigameRescueTimer = 0;
+        }
+    } else if (minigameRescuePhase === 1) {
+        // Dancers rush in through broken wall with torches
+        let allIn = true;
+        for (let i = 0; i < rescueDancers.length; i++) {
+            const d = rescueDancers[i];
+            const targetX = CAVE_TILE * 3 + i * CAVE_TILE * 2;
+            if (d.x < targetX) {
+                d.x += 2;
+                allIn = false;
+            }
+        }
+
+        // Kill remaining goblins as dancers enter
+        if (minigameRescueTimer === 30) {
+            for (const cg of caveGoblins) {
+                if (!cg.dead) {
+                    cg.dead = true;
+                    cg.deathAnimActive = true;
+                    cg.deathAnimTimer = 24;
+                }
+            }
+            if (caveCatapult) caveCatapult = null;
+        }
+
+        // Revive player if dead
+        if (cavePlayerDead && minigameRescueTimer > 20) {
+            cavePlayerDead = false;
+        }
+
+        if (allIn && minigameRescueTimer > 90) {
+            minigameRescuePhase = 2;
+            minigameRescueTimer = 0;
+            // Play victory fanfare
+            playLevelFanfare();
+        }
+    } else if (minigameRescuePhase === 2) {
+        // Celebration — transition to reward
+        if (minigameRescueTimer > 120) {
+            startMinigameReward();
+        }
+    }
+
+    // Update particles
+    for (let i = caveDeathParticles.length - 1; i >= 0; i--) {
+        const dp = caveDeathParticles[i];
+        dp.x += dp.vx;
+        dp.y += dp.vy;
+        dp.vy += 0.1;
+        dp.life--;
+        if (dp.life <= 0) caveDeathParticles.splice(i, 1);
+    }
+}
+
+function renderMinigameRescue() {
+    // Render cave arena underneath
+    renderMinigameArena();
+
+    const W = CAVE_COLS * CAVE_TILE;
+    const H = CAVE_ROWS * CAVE_TILE;
+
+    // Broken left wall
+    if (minigameRescuePhase >= 1) {
+        // Gap in left wall
+        drawRect(0, CAVE_TILE * 3, CAVE_TILE * 2, (CAVE_ROWS - 6) * CAVE_TILE, "#1a0e08");
+        // Rubble edges
+        for (let i = 0; i < 6; i++) {
+            const rx = Math.random() * CAVE_TILE;
+            const ry = CAVE_TILE * 3 + i * CAVE_TILE * 2;
+            drawRect(rx, ry, 4, 3, "#4a3628");
+        }
+    }
+
+    // Draw rescue dancers with torches
+    for (const d of rescueDancers) {
+        if (d.x > 0) {
+            drawDancerSprite(d.x, d.y, DANCER_PALETTES[d.palette],
+                { armBlend: 1 });
+            // Torch in raised hand
+            if (d.hasTorch) {
+                drawCaveTorch(d.x + 6, d.y - 12);
+            }
+        }
+    }
+
+    // "RESCUED!" text during phase 2
+    if (minigameRescuePhase === 2) {
+        const alpha = Math.min(1, minigameRescueTimer / 30);
+        ctx.globalAlpha = alpha;
+        ctx.textAlign = "center";
+        ctx.font = `${14 * SCALE}px monospace`;
+        const bounce = Math.sin(minigameRescueTimer * 0.05) * 3;
+        ctx.fillStyle = "#000";
+        ctx.fillText("RESCUED!", (W / 2) * SCALE + SCALE, (H / 3 + bounce + 1) * SCALE);
+        ctx.fillStyle = "#00FF88";
+        ctx.fillText("RESCUED!", (W / 2) * SCALE, (H / 3 + bounce) * SCALE);
+        ctx.globalAlpha = 1;
+    }
+}
+
+function startMinigameReward() {
+    minigameState = "reward";
+    minigameRewardTimer = 0;
+
+    // Award next DJ setup piece
+    const pieceIndex = djSetupEarned.length;
+    if (pieceIndex < DJ_SETUP_PIECES.length) {
+        djSetupEarned.push(DJ_SETUP_PIECES[pieceIndex]);
+    }
+}
+
+function updateMinigameReward() {
+    minigameRewardTimer++;
+}
+
+function renderMinigameReward() {
+    const W = CAVE_COLS * CAVE_TILE;
+    const H = CAVE_ROWS * CAVE_TILE;
+
+    // Dark background
+    drawRect(0, 0, W, H, "#1a0e08");
+
+    // "DJ SETUP RESTORED!" header
+    const headerAlpha = Math.min(1, minigameRewardTimer / 40);
+    ctx.globalAlpha = headerAlpha;
+    ctx.textAlign = "center";
+    ctx.font = `${10 * SCALE}px monospace`;
+    ctx.fillStyle = "#000";
+    ctx.fillText("DJ SETUP PIECE!", (W / 2) * SCALE + SCALE, (H / 4 + 1) * SCALE);
+    ctx.fillStyle = "#efac28";
+    ctx.fillText("DJ SETUP PIECE!", (W / 2) * SCALE, (H / 4) * SCALE);
+
+    // Show the piece earned
+    if (minigameRewardTimer > 40) {
+        const pieceAlpha = Math.min(1, (minigameRewardTimer - 40) / 30);
+        ctx.globalAlpha = pieceAlpha;
+
+        const pieceName = djSetupEarned[djSetupEarned.length - 1] || "???";
+        const bounce = Math.sin(minigameRewardTimer * 0.03) * 2;
+
+        ctx.font = `${8 * SCALE}px monospace`;
+        ctx.fillStyle = "#FFD700";
+        ctx.fillText(pieceName.toUpperCase(), (W / 2) * SCALE, (H / 2 + bounce) * SCALE);
+
+        // Draw setup progress (which pieces earned)
+        ctx.font = `${5 * SCALE}px monospace`;
+        const startY = H / 2 + 25;
+        for (let i = 0; i < DJ_SETUP_PIECES.length; i++) {
+            const earned = i < djSetupEarned.length;
+            ctx.fillStyle = earned ? "#00FF88" : "#444";
+            const mark = earned ? "✓ " : "○ ";
+            ctx.fillText(mark + DJ_SETUP_PIECES[i].toUpperCase(), (W / 2) * SCALE, (startY + i * 10) * SCALE);
+        }
+    }
+
+    // "PRESS ENTER" prompt
+    if (minigameRewardTimer > 120) {
+        const blink = Math.sin(minigameRewardTimer * 0.08) > 0;
+        if (blink) {
+            ctx.font = `${6 * SCALE}px monospace`;
+            ctx.fillStyle = "#efd8a1";
+            ctx.fillText("PRESS ENTER", (W / 2) * SCALE, (H - 20) * SCALE);
+        }
+    }
+
+    ctx.globalAlpha = 1;
+}
+
+function endMinigame() {
+    minigamesCompleted.push(minigamePendingAfterLevel);
+    minigameState = "none";
+    minigameActive = false;
+    stopMinigameMusic();
+
+    // Return to normal game flow — advance to next level
+    gameState = "levelcomplete"; // temporarily restore for feature screen checks
+    if (checkPendingFeatureScreens()) return;
+    advanceLevel();
+}
+
+// ---- Minigame Music ----
+function startMinigameMusic() {
+    if (!audioCtx) return;
+    stopMinigameMusic();
+
+    // Create a stressful, fast, dissonant loop using oscillators
+    const masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.08;
+    masterGain.connect(audioCtx.destination);
+    minigameMusicGain = masterGain;
+
+    // Pulsing bass drone (minor second interval = maximum tension)
+    const bass1 = audioCtx.createOscillator();
+    bass1.type = "sawtooth";
+    bass1.frequency.value = 55; // A1
+    const bassGain1 = audioCtx.createGain();
+    bassGain1.gain.value = 0.6;
+    bass1.connect(bassGain1);
+    bassGain1.connect(masterGain);
+    bass1.start();
+
+    const bass2 = audioCtx.createOscillator();
+    bass2.type = "sawtooth";
+    bass2.frequency.value = 58.27; // Bb1 — minor second
+    const bassGain2 = audioCtx.createGain();
+    bassGain2.gain.value = 0.4;
+    bass2.connect(bassGain2);
+    bassGain2.connect(masterGain);
+    bass2.start();
+
+    minigameMusicOscs = [bass1, bass2];
+
+    // Rapid pulsing rhythm (fast 16th note feel)
+    let beatCount = 0;
+    minigameMusicInterval = setInterval(() => {
+        if (!audioCtx || audioCtx.state !== "running") return;
+        const now = audioCtx.currentTime;
+        beatCount++;
+
+        // Hi-hat pattern every beat
+        const hatBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.03, audioCtx.sampleRate);
+        const hatData = hatBuf.getChannelData(0);
+        for (let i = 0; i < hatData.length; i++) hatData[i] = (Math.random() * 2 - 1) * (1 - i / hatData.length);
+        const hat = audioCtx.createBufferSource();
+        hat.buffer = hatBuf;
+        const hatGain = audioCtx.createGain();
+        hatGain.gain.setValueAtTime(0.3, now);
+        hatGain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+        hat.connect(hatGain);
+        hatGain.connect(masterGain);
+        hat.start(now);
+
+        // Kick on every 4th beat
+        if (beatCount % 4 === 0) {
+            const kick = audioCtx.createOscillator();
+            const kg = audioCtx.createGain();
+            kick.type = "sine";
+            kick.frequency.setValueAtTime(120, now);
+            kick.frequency.exponentialRampToValueAtTime(30, now + 0.15);
+            kg.gain.setValueAtTime(0.5, now);
+            kg.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+            kick.connect(kg);
+            kg.connect(masterGain);
+            kick.start(now);
+            kick.stop(now + 0.15);
+        }
+
+        // Dissonant stab every 8th beat
+        if (beatCount % 8 === 0) {
+            const stab = audioCtx.createOscillator();
+            const sg = audioCtx.createGain();
+            stab.type = "square";
+            stab.frequency.setValueAtTime(233, now); // Bb3 — tritone of E
+            sg.gain.setValueAtTime(0.15, now);
+            sg.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+            stab.connect(sg);
+            sg.connect(masterGain);
+            stab.start(now);
+            stab.stop(now + 0.1);
+        }
+    }, 125); // ~120 BPM 16th notes
+}
+
+function stopMinigameMusic() {
+    if (minigameMusicInterval) {
+        clearInterval(minigameMusicInterval);
+        minigameMusicInterval = null;
+    }
+    for (const osc of minigameMusicOscs) {
+        try { osc.stop(); } catch (e) {}
+    }
+    minigameMusicOscs = [];
+    if (minigameMusicGain) {
+        try { minigameMusicGain.disconnect(); } catch (e) {}
+        minigameMusicGain = null;
+    }
 }
 
 function advanceLevel() {
@@ -3126,6 +4528,16 @@ function renderHUD() {
         tg.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
         tick.connect(tg); tg.connect(audioCtx.destination);
         tick.start(now); tick.stop(now + 0.08);
+    }
+
+    // Chill mode indicator
+    if (gameMode === "chill") {
+        const cmX = (COLS - 2) * TILE - 2;
+        hudCtx.font = `${3 * SCALE}px monospace`;
+        hudCtx.fillStyle = "#3c9f9c";
+        hudCtx.textAlign = "right";
+        hudCtx.fillText("CHILL", cmX * SCALE, (kcY + panelH - 2) * SCALE);
+        hudCtx.textAlign = "start";
     }
 }
 
@@ -4666,7 +6078,7 @@ function renderTitleScreen() {
     drawPlayerSprite(W / 2 - 8, boothY - 10 - djBob, djFrame, 0, {});
 
     // Beat grid (small, showing the beat)
-    const miniGridY = GRID_Y * TILE + 14;
+    const miniGridY = GRID_Y * TILE;
     const miniGridX = 3 * TILE;
     const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
     for (let r = 0; r < 4; r++) {
@@ -4848,8 +6260,21 @@ function renderTitleScreen() {
     ctx.globalAlpha = 1.0;
     // Impact flash when GOBLINS lands — removed
 
+    // === Mode selector above "PRESS ENTER" ===
+    if (!titleFadingOut) {
+        const modeY = titleBaseY + 50;
+        const modeLabel = gameMode === "thrill" ? "THRILL MODE" : "CHILL MODE";
+        const modeCol = gameMode === "thrill" ? "#ef3a0c" : "#3c9f9c";
+        const arrowPulse = 0.4 + Math.sin(titleBlink * 0.08) * 0.3;
+        ctx.globalAlpha = titleTextAlpha * 0.6;
+        drawCentered("<              >", modeY, "#efd8a1", 5);
+        ctx.globalAlpha = titleTextAlpha;
+        drawCentered(modeLabel, modeY, modeCol, 5);
+        ctx.globalAlpha = 1.0;
+    }
+
     // === "PRESS ENTER" below the title ===
-    const pressY = titleBaseY + 56;
+    const pressY = titleBaseY + 64;
 
     // Blink the text with a faster, more urgent rhythm
     if (titleBlink % 45 < 32 && !titleFadingOut) {
@@ -5250,7 +6675,7 @@ function renderIntro() {
         drawPlayerSprite(W / 2 - 8, boothY - 10 - djBob, djFrame, 0, {});
 
         // Beat grid (small, showing the beat is perfect)
-        const miniGridY = GRID_Y * TILE + 14;
+        const miniGridY = GRID_Y * TILE;
         const miniGridX = 3 * TILE;
         const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
         for (let r = 0; r < 4; r++) {
@@ -5684,7 +7109,7 @@ function renderIntro() {
         ctx.save();
         ctx.translate(shX, shY);
 
-        drawRect(0, 0, W, H, "#2C2C2A");
+        drawRect(0, 0, W, H, "#222220");
         // Walls with caves now open
         for (let c = 0; c < COLS; c++) {
             drawRect(c * TILE, 0, TILE, TILE, c % 2 === 0 ? "#724113" : "#927e6a");
@@ -5700,6 +7125,11 @@ function renderIntro() {
             drawRect(cx, cy - 2, TILE, TILE + 4, "#0a0a0a");
             drawRect(cx - 2, cy - 4, TILE + 4, 3, "#684c3c");
             drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");
+        }
+
+        // Dead string lights (all off — power died in earthquake)
+        for (let c = 1; c < COLS - 1; c++) {
+            drawRect(c * TILE + TILE / 2 - 2, TILE + 6, 4, 4, "#2a1d0d");
         }
 
         // Beat grid — being corrupted (progressively flip introGridState cells)
@@ -5857,7 +7287,7 @@ function renderIntro() {
         }
 
         // Scrambled beat grid
-        const miniGridY = GRID_Y * TILE + 14;
+        const miniGridY = GRID_Y * TILE;
         const miniGridX = 3 * TILE;
         for (let r = 0; r < 4; r++) {
             for (let c = 0; c < 16; c++) {
@@ -6886,34 +8316,9 @@ function renderGameOverScreen() {
         // During freeze, just render the frozen game world + shake
         render();
 
-        // Screen crack effect during freeze
-        if (screenCrackTimer > 0) {
-            const crackAlpha = screenCrackTimer / 30;
-            ctx.strokeStyle = "#ffffff";
-            ctx.lineWidth = 2 * SCALE;
-            ctx.globalAlpha = crackAlpha * 0.9;
-            for (const crack of screenCracks) {
-                ctx.beginPath();
-                ctx.moveTo(crack.x1 * SCALE, crack.y1 * SCALE);
-                ctx.lineTo(crack.x2 * SCALE, crack.y2 * SCALE);
-                ctx.stroke();
-                for (const b of crack.branches) {
-                    ctx.lineWidth = 1 * SCALE;
-                    ctx.beginPath();
-                    ctx.moveTo(b.x1 * SCALE, b.y1 * SCALE);
-                    ctx.lineTo(b.x2 * SCALE, b.y2 * SCALE);
-                    ctx.stroke();
-                    ctx.lineWidth = 2 * SCALE;
-                }
-            }
-            ctx.globalAlpha = 1.0;
-        }
-
         if (screenShake > 0) screenShake--;
         return;
     }
-    // Continue fading screen cracks into the game over
-    if (screenCrackTimer > 0) screenCrackTimer--;
 
     gameOverTimer++;
 
@@ -6928,29 +8333,6 @@ function renderGameOverScreen() {
     // Phase 1: Render frozen game world + fade to black around player
     if (gameOverTimer <= 150) {
         render(); // draw the frozen world
-    }
-
-    // Render fading screen cracks over the game world
-    if (screenCrackTimer > 0 && gameOverTimer < 60) {
-        const crackAlpha = screenCrackTimer / 30 * (1 - gameOverTimer / 60);
-        ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = 2 * SCALE;
-        ctx.globalAlpha = crackAlpha * 0.7;
-        for (const crack of screenCracks) {
-            ctx.beginPath();
-            ctx.moveTo(crack.x1 * SCALE, crack.y1 * SCALE);
-            ctx.lineTo(crack.x2 * SCALE, crack.y2 * SCALE);
-            ctx.stroke();
-            for (const b of crack.branches) {
-                ctx.lineWidth = 1 * SCALE;
-                ctx.beginPath();
-                ctx.moveTo(b.x1 * SCALE, b.y1 * SCALE);
-                ctx.lineTo(b.x2 * SCALE, b.y2 * SCALE);
-                ctx.stroke();
-                ctx.lineWidth = 2 * SCALE;
-            }
-        }
-        ctx.globalAlpha = 1.0;
     }
 
     // Fade overlay — everything goes black except a spotlight on the player
@@ -7600,6 +8982,21 @@ function gameLoop(timestamp) {
                 renderSabotageAnim();
             } else if (gameState === "levelcomplete") {
                 renderLevelComplete();
+            } else if (gameState === "minigame") {
+                if (minigameState === "kidnap") {
+                    updateMinigameKidnap();
+                    renderMinigameKidnap();
+                } else if (minigameState === "playing") {
+                    updateMinigameArena();
+                    renderMinigameArena();
+                    spaceJustPressed = false;
+                } else if (minigameState === "rescue") {
+                    updateMinigameRescue();
+                    renderMinigameRescue();
+                } else if (minigameState === "reward") {
+                    updateMinigameReward();
+                    renderMinigameReward();
+                }
             } else if (gameState === "gameover") {
                 renderGameOverScreen();
             } else if (gameState === "highscore") {
