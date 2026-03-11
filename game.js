@@ -2625,6 +2625,11 @@ function triggerLevelComplete() {
     playLevelFanfare();
 }
 
+// TODO [MINIGAME IDEA]: Bonus minigame after levels 5, 10, 15, 20, 25, and 30.
+// Each time the player wins the minigame, they gradually rebuild the DJ setup
+// (speakers, turntables, lights, etc.) that was destroyed in the intro.
+// Design and mechanics TBD — ask about this when ready to implement.
+
 function advanceLevel() {
     currentLevel++;
     if (currentLevel >= LEVELS.length) {
