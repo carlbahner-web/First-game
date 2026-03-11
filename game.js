@@ -977,7 +977,7 @@ let tomatoSplats = []; // { x, y, timer }
 
 let gamePaused = false;
 let gameState = "title"; // "title", "intro", "story", "tutorial", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim"
-let gameMode = "normal"; // "normal" = full game with goblins, "chill" = no goblins, time-based scoring
+let gameMode = "goblinpuncher"; // "goblinpuncher" = full game with goblins, "beatmaker" = no goblins during gameplay
 
 // --- Visual Improvement State ---
 // Block toggle animation (pop/glow when punched)
@@ -1155,8 +1155,8 @@ function checkPendingFeatureScreens() {
         return true;
     }
 
-    // Enemy warning screens (skip in chill mode — no goblins)
-    if (gameMode === "chill") return false; // new instruments already handled above
+    // Enemy warning screens (skip in beatmaker mode — no goblins)
+    if (gameMode === "beatmaker") return false; // new instruments already handled above
     if (nextLevel === 2 && !enemyWarningShown.normal) {
         enemyWarningType = "normal";
         enemyWarningShown.normal = true;
@@ -1225,7 +1225,7 @@ window.addEventListener("keydown", (e) => {
     // Toggle game mode on title screen with left/right arrows
     if (gameState === "title" && !titleFadingOut) {
         if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
-            gameMode = gameMode === "normal" ? "chill" : "normal";
+            gameMode = gameMode === "goblinpuncher" ? "beatmaker" : "goblinpuncher";
         }
     }
 
@@ -1905,8 +1905,8 @@ function update(dt) {
         }
 
     if (gob.dead) {
-        // No goblins in chill mode or on practice levels (1-2)
-        if (gameMode === "chill" || currentLevel < 2) {
+        // No goblins in beatmaker mode or on practice levels (1-2)
+        if (gameMode === "beatmaker" || currentLevel < 2) {
             gob.respawnTimer = 300;
             continue;
         }
@@ -2728,12 +2728,6 @@ function advanceLevel() {
     // Stop marching drums before sabotage begins
     stopStoryDrums();
 
-    // In chill mode, skip sabotage animation and go straight to playing
-    if (gameMode === "chill") {
-        gameState = "playing";
-        return;
-    }
-
     // Start sabotage animation (goblin zigzags across grid scrambling cells)
     sabotageAnimTimer = 0;
     sabotageFlipIndex = 0;
@@ -3081,12 +3075,12 @@ function renderHUD() {
     }
 
     // Chill mode indicator
-    if (gameMode === "chill") {
+    if (gameMode === "beatmaker") {
         const cmX = (COLS - 2) * TILE - 2;
         hudCtx.font = `${3 * SCALE}px monospace`;
         hudCtx.fillStyle = "#3c9f9c";
         hudCtx.textAlign = "right";
-        hudCtx.fillText("CHILL", cmX * SCALE, (kcY + panelH - 2) * SCALE);
+        hudCtx.fillText("BEATMAKER", cmX * SCALE, (kcY + panelH - 2) * SCALE);
         hudCtx.textAlign = "start";
     }
 }
@@ -4669,8 +4663,8 @@ function renderTitleScreen() {
     // === Mode selector above "PRESS ENTER" ===
     if (!titleFadingOut) {
         const modeY = titleBaseY + 50;
-        const modeLabel = gameMode === "normal" ? "GOBLINS MODE" : "CHILL MODE";
-        const modeCol = gameMode === "normal" ? "#ef3a0c" : "#3c9f9c";
+        const modeLabel = gameMode === "goblinpuncher" ? "GOBLIN-PUNCHER MODE" : "BEATMAKER MODE";
+        const modeCol = gameMode === "goblinpuncher" ? "#ef3a0c" : "#3c9f9c";
         const arrowPulse = 0.4 + Math.sin(titleBlink * 0.08) * 0.3;
         ctx.globalAlpha = titleTextAlpha * 0.6;
         drawCentered("<              >", modeY, "#efd8a1", 5);
