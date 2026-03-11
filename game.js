@@ -6795,7 +6795,7 @@ function renderIntro() {
 
             // Each light has its own "die time" — outer lights die first, center last
             const distFromCenter = Math.abs(c - COLS / 2) / (COLS / 2);
-            const dieFrame = 60 + distFromCenter * 120; // outer die at ~60f, center at ~180f
+            const dieFrame = 60 + (1 - distFromCenter) * 120; // outer die at ~60f, center at ~180f
             const flickerZone = dieFrame - 40; // starts sputtering 40 frames before dying
 
             if (t < flickerZone) {
@@ -6876,7 +6876,7 @@ function renderIntro() {
             const djDir = djLook < 2 ? 2 : 3;
             drawPlayerSprite(W / 2 - 8, boothY - 10, 0, djDir, {});
         } else {
-            drawPlayerSprite(W / 2 - 8, boothY - 6, 0, 0, {});
+            drawPlayerSprite(W / 2 - 8, boothY - 2, 0, 0, {});
         }
 
         // Dancers — stumble during phase 1, then flee once caves emerge
@@ -7223,21 +7223,33 @@ function renderIntro() {
         }
 
         // DJ — ducking, then tackled by a goblin, collapses
-        const djStartX = W / 2 - 8, djStartY = boothY - 6;
+        const djStartX = W / 2 - 8, djStartY = boothY - 2;
         const djEndX = W / 2 + 15, djEndY = boothY + 4;
         const knockStart = 140, knockEnd = 180;
         const aftermathStart = 350; // goblins celebrate, smoke rises
 
-        // Tackling goblin — charges from right cave toward DJ
+        // Tackling goblin — charges from right cave, hits DJ, runs back
         const tackleGobStart = 80;
         const tackleGobX0 = (COLS - 2) * TILE; // right side cave area
         const tackleGobY0 = boothY;
         const tackleGobXEnd = djStartX + 10; // reaches the DJ
-        if (t >= tackleGobStart && t < knockEnd) {
-            const tackleT = Math.min(1, (t - tackleGobStart) / (knockStart - tackleGobStart));
-            const tgx = tackleGobX0 + (tackleGobXEnd - tackleGobX0) * tackleT;
-            const tgy = tackleGobY0;
-            drawGoblinSprite("elite", tgx, tgy, Math.floor(t / 6) % 4, { dir: 2, showShadow: false });
+        const tackleRetreatEnd = knockEnd + 60; // runs back over 60 frames
+        if (t >= tackleGobStart && t < tackleRetreatEnd) {
+            let tgx, tgy = tackleGobY0, tgDir = 2;
+            if (t < knockStart) {
+                // Charging toward DJ
+                const tackleT = Math.min(1, (t - tackleGobStart) / (knockStart - tackleGobStart));
+                tgx = tackleGobX0 + (tackleGobXEnd - tackleGobX0) * tackleT;
+            } else if (t < knockEnd) {
+                // At impact point
+                tgx = tackleGobXEnd;
+            } else {
+                // Retreating back to cave
+                const retreatT = (t - knockEnd) / 60;
+                tgx = tackleGobXEnd + (tackleGobX0 - tackleGobXEnd) * retreatT;
+                tgDir = 3; // facing right (running away)
+            }
+            drawGoblinSprite("elite", tgx, tgy, Math.floor(t / 6) % 4, { dir: tgDir, showShadow: false });
         }
 
         if (t < knockStart) {
@@ -7322,7 +7334,7 @@ function renderIntro() {
         // Rise phase (120+): existing stand-up and fist-clench sequence
         const CRAWL_FRAMES = 120;
         const crawlStartX = W / 2 + 15;  // Scene 2 collapsed X (183)
-        const crawlStartY = GRID_Y * TILE - 8 + 4; // Scene 2 collapsed Y (boothY + 4 = 60)
+        const crawlStartY = GRID_Y * TILE - 8 + 4; // Scene 2 collapsed Y (boothY + 4 = 76)
         const crawlEndX = W / 2 - 8;     // Center X (168)
         const crawlEndY = H / 2 + 10;    // Center Y (154)
 
@@ -7427,6 +7439,14 @@ function renderIntro() {
     // ==================== SCENE 4: THE DISCOVERY ====================
     else if (introScene === 4) {
         drawRuinedVenueBackdrop(t);
+
+        // Fade in from black (smooth transition from Scene 3's spotlight)
+        if (t < 30) {
+            ctx.fillStyle = "#000";
+            ctx.globalAlpha = 1 - t / 30;
+            ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+            ctx.globalAlpha = 1;
+        }
 
         // Page indicator dots (scenes 4-6)
         const dotY = H - 22;
@@ -7938,10 +7958,10 @@ function renderIntro() {
     }
 
     // HUD "PRESS ENTER" prompt — appears 60 frames after each scene's last story beat
-    const lastBeatFrame = [60, 300, 120, 90, 150, 120, 150, 185][introScene] || 60;
+    const lastBeatFrame = [60, 300, 120, 90, 150, 120, 185][introScene] || 60;
     const hudPromptDelay = lastBeatFrame + 60;
     if (t > hudPromptDelay) {
-        const promptText = introScene >= 7 ? "PRESS ENTER TO BEGIN" : "PRESS ENTER";
+        const promptText = introScene >= 6 ? "PRESS ENTER TO BEGIN" : "PRESS ENTER";
         // Draw HUD background (matches gameplay HUD style)
         drawHudRect(0, 0, COLS * TILE, HUD_H, "#2a1d0d");
         // Teal border along top
