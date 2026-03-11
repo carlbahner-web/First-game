@@ -1349,8 +1349,8 @@ window.addEventListener("keydown", (e) => {
             return;
         }
         if (gameState === "levelcomplete" && levelCelebrateTimer > 120) {
-            // Check if this is a minigame milestone level (not already completed, thrill mode only)
-            if (gameMode === "thrill" && MINIGAME_LEVELS.includes(currentLevel) && !minigamesCompleted.includes(currentLevel)) {
+            // Check if this is a minigame milestone level (not already completed)
+            if (MINIGAME_LEVELS.includes(currentLevel) && !minigamesCompleted.includes(currentLevel)) {
                 startMinigameKidnap();
                 return;
             }
