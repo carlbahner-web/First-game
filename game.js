@@ -5412,6 +5412,8 @@ function renderIntro() {
         }
 
         // Goblins running across — spawn from caves, run toward grid
+        // Movement uses axis-aligned L-shaped paths (horizontal then vertical)
+        // to match gameplay motion rules where goblins move one axis at a time
         const gobFrame = Math.floor(introGlobalTimer / 8) % 4;
         const gobCount = Math.min(6, Math.floor(t / 40));
         for (let gi = 0; gi < gobCount; gi++) {
@@ -5423,9 +5425,25 @@ function renderIntro() {
             const targetY = miniGridY + (gi % 4) * TILE;
             const gobT = Math.min(1, (t - gi * 40) / 120);
             if (gobT > 0) {
-                const gx = startX + (targetX - startX) * gobT;
-                const gy = startY + (targetY - startY) * gobT;
-                const gDir = gx > startX ? 3 : 2;
+                // L-shaped path: move horizontally first, then vertically (like gameplay)
+                const adx = Math.abs(targetX - startX);
+                const ady = Math.abs(targetY - startY);
+                const totalDist = adx + ady;
+                const hRatio = totalDist > 0 ? adx / totalDist : 0.5;
+                let gx, gy, gDir;
+                if (gobT <= hRatio) {
+                    // Horizontal phase
+                    const hProgress = hRatio > 0 ? gobT / hRatio : 1;
+                    gx = startX + (targetX - startX) * hProgress;
+                    gy = startY;
+                    gDir = targetX > startX ? 3 : 2;
+                } else {
+                    // Vertical phase
+                    const vProgress = hRatio < 1 ? (gobT - hRatio) / (1 - hRatio) : 1;
+                    gx = targetX;
+                    gy = startY + (targetY - startY) * vProgress;
+                    gDir = targetY > startY ? 0 : 1;
+                }
                 drawGoblinSprite(gi === 4 ? "elite" : "normal", gx, gy, gobFrame, { dir: gDir, showShadow: false });
             }
         }
