@@ -977,6 +977,7 @@ let tomatoSplats = []; // { x, y, timer }
 
 let gamePaused = false;
 let gameState = "title"; // "title", "intro", "story", "tutorial", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim"
+let gameMode = "normal"; // "normal" = full game with goblins, "chill" = no goblins, time-based scoring
 
 // --- Visual Improvement State ---
 // Block toggle animation (pop/glow when punched)
@@ -1154,7 +1155,8 @@ function checkPendingFeatureScreens() {
         return true;
     }
 
-    // Enemy warning screens
+    // Enemy warning screens (skip in chill mode — no goblins)
+    if (gameMode === "chill") return false; // new instruments already handled above
     if (nextLevel === 2 && !enemyWarningShown.normal) {
         enemyWarningType = "normal";
         enemyWarningShown.normal = true;
@@ -1218,6 +1220,13 @@ window.addEventListener("keydown", (e) => {
             }
         }
         return;
+    }
+
+    // Toggle game mode on title screen with left/right arrows
+    if (gameState === "title" && !titleFadingOut) {
+        if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
+            gameMode = gameMode === "normal" ? "chill" : "normal";
+        }
     }
 
     if (e.code === "Enter") {
@@ -1896,9 +1905,10 @@ function update(dt) {
         }
 
     if (gob.dead) {
-        // No goblins on practice levels (1-2)
-        if (currentLevel < 2) {
+        // No goblins in chill mode or on practice levels (1-2)
+        if (gameMode === "chill" || currentLevel < 2) {
             gob.respawnTimer = 300;
+            continue;
         }
         // Don't respawn if pattern is already matched
         else if (patternMatched) {
@@ -2718,6 +2728,12 @@ function advanceLevel() {
     // Stop marching drums before sabotage begins
     stopStoryDrums();
 
+    // In chill mode, skip sabotage animation and go straight to playing
+    if (gameMode === "chill") {
+        gameState = "playing";
+        return;
+    }
+
     // Start sabotage animation (goblin zigzags across grid scrambling cells)
     sabotageAnimTimer = 0;
     sabotageFlipIndex = 0;
@@ -3062,6 +3078,16 @@ function renderHUD() {
         tg.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
         tick.connect(tg); tg.connect(audioCtx.destination);
         tick.start(now); tick.stop(now + 0.08);
+    }
+
+    // Chill mode indicator
+    if (gameMode === "chill") {
+        const cmX = (COLS - 2) * TILE - 2;
+        hudCtx.font = `${3 * SCALE}px monospace`;
+        hudCtx.fillStyle = "#3c9f9c";
+        hudCtx.textAlign = "right";
+        hudCtx.fillText("CHILL", cmX * SCALE, (kcY + panelH - 2) * SCALE);
+        hudCtx.textAlign = "start";
     }
 }
 
@@ -4640,8 +4666,21 @@ function renderTitleScreen() {
         ctx.globalAlpha = 1.0;
     }
 
+    // === Mode selector above "PRESS ENTER" ===
+    if (!titleFadingOut) {
+        const modeY = titleBaseY + 50;
+        const modeLabel = gameMode === "normal" ? "GOBLINS MODE" : "CHILL MODE";
+        const modeCol = gameMode === "normal" ? "#ef3a0c" : "#3c9f9c";
+        const arrowPulse = 0.4 + Math.sin(titleBlink * 0.08) * 0.3;
+        ctx.globalAlpha = titleTextAlpha * 0.6;
+        drawCentered("<              >", modeY, "#efd8a1", 5);
+        ctx.globalAlpha = titleTextAlpha;
+        drawCentered(modeLabel, modeY, modeCol, 5);
+        ctx.globalAlpha = 1.0;
+    }
+
     // === "PRESS ENTER" below the title ===
-    const pressY = titleBaseY + 56;
+    const pressY = titleBaseY + 64;
 
     // Blink the text with a faster, more urgent rhythm
     if (titleBlink % 45 < 32 && !titleFadingOut) {
