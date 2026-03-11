@@ -13,7 +13,7 @@ const ROWS = 18;           // room height in tiles
 const GRID_COLS = 16;      // sequencer steps
 const GRID_ROWS = 6;       // max drum channels (O, H, S, K, B, T)
 const GRID_X = 3;          // grid start tile-x
-const GRID_Y = 4;          // grid start tile-y
+const GRID_Y = 5;          // grid start tile-y
 // (gap row after kick removed)
 // Tempo is set per level using frames-per-16th-note at 60fps
 // Gradual curve across 30 levels:
@@ -4444,7 +4444,7 @@ function renderTitleScreen() {
 
     // DJ Booth (center)
     const boothX = W / 2 - 24;
-    const boothY = GRID_Y * TILE - 22;
+    const boothY = GRID_Y * TILE - 8;
     drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
     drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
     drawRect(boothX, boothY + 4, 16, 8, "#392a1c");
@@ -5010,7 +5010,7 @@ function renderIntro() {
 
         // DJ Booth (center)
         const boothX = W / 2 - 24;
-        const boothY = GRID_Y * TILE - 22;
+        const boothY = GRID_Y * TILE - 8;
         // Booth platform
         drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
         drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
@@ -5220,7 +5220,7 @@ function renderIntro() {
 
         // DJ booth
         const boothX = W / 2 - 24;
-        const boothY = GRID_Y * TILE - 22;
+        const boothY = GRID_Y * TILE - 8;
         drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
         drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
         drawRect(boothX, boothY + 4, 16, 8, "#392a1c");
@@ -5438,7 +5438,7 @@ function renderIntro() {
 
         // DJ booth damaged — sparks flying
         const boothX = W / 2 - 24;
-        const boothY = GRID_Y * TILE - 22;
+        const boothY = GRID_Y * TILE - 8;
         drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
         // Damaged equipment
         drawRect(boothX, boothY + 4, 16, 8, "#2a1d0d");
@@ -5509,7 +5509,7 @@ function renderIntro() {
 
         // Destroyed DJ booth
         const boothX = W / 2 - 24;
-        const boothY = GRID_Y * TILE - 22;
+        const boothY = GRID_Y * TILE - 8;
         drawRect(boothX - 8, boothY + 12, 64, 8, "#2a1d0d");
         drawRect(boothX + 5, boothY + 6, 10, 6, "#1f240a"); // broken turntable
         drawRect(boothX + 35, boothY + 8, 8, 4, "#1f240a");
