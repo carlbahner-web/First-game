@@ -976,7 +976,7 @@ let tomatoes = []; // { x, y, targetX, targetY, speed, life }
 let tomatoSplats = []; // { x, y, timer }
 
 let gamePaused = false;
-let gameState = "title"; // "title", "intro", "story", "tutorial", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim"
+let gameState = "title"; // "title", "intro", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim"
 
 // --- Visual Improvement State ---
 // Block toggle animation (pop/glow when punched)
@@ -1016,6 +1016,13 @@ let introGlobalTimer = 0;   // total frames since intro started
 let introBeatStep = 0;      // simulated sequencer step for the intro beat
 let introBeatTimer = 0;     // frame counter for beat stepping
 let introSkipHeld = 0;      // frames Enter is held for skip
+let introKickPump = 0;      // 0-1 speaker pump intensity on kick hits
+// Intro earthquake goblins — emerge from caves and flip grid cells
+let introGoblins = [];      // [{x, y, destX, destY, dir, frame, frameTimer, caveIdx, targetRow, targetCol, emerged, speed}]
+let introGridState = null;  // mutable copy of INTRO_BEAT patterns for goblin flipping
+let introGridFlash = null;  // flash timers per cell [row][col]
+let introCorruptOrder = [];  // pre-sorted cell coords for Scene 2 progressive corruption
+let introCorruptedSoFar = 0; // how many cells Scene 2 has flipped so far
 let introDrumGain = null;   // audio gain node for intro drums
 let introDrumStarted = false;
 let introDrumTimer = null;
@@ -1027,15 +1034,15 @@ const INTRO_BEAT = {
     O: [0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0],
 };
 const INTRO_SCENE_DURATIONS = [
-    null, // Scene 0: Title Screen (separate system, not part of intro)
-    420,  // Scene 1: The Good Times — DJ + dancers vibing (7s)
-    540,  // Scene 2: Earthquake + Caves — lights die, walls crack open (9s)
-    420,  // Scene 3: Goblin Attack — chaos (7s)
-    360,  // Scene 4: The Aftermath — destruction (6s)
-    420,  // Scene 5: Call to Action — DJ crawls to center + rises (7s)
+    420,  // Scene 0: The Good Times (7s)
+    540,  // Scene 1: Earthquake + Caves (9s)
+    420,  // Scene 2: Goblin Attack (7s)
+    360,  // Scene 3: The Aftermath (6s)
+    420,  // Scene 4: Call to Action — DJ crawls to center + rises (7s)
+    Infinity, // Scene 5: The Discovery (wait for Enter)
+    Infinity, // Scene 6: The Threat (wait for Enter)
+    Infinity, // Scene 7: The Stand (wait for Enter)
 ];
-let tutorialTimer = 0; // animation frame counter for tutorial screen
-let tutorialPage = 0;  // current tutorial page (0-1)
 let newInstrumentType = null;   // "cowbell" or "tom"
 let newInstrumentTimer = 0;     // animation timer for new instrument popup
 let newInstrumentIntroTimer = 0; // transition timer before instrument popup
@@ -1189,7 +1196,53 @@ function checkPendingFeatureScreens() {
 
 const keys = {};
 let spaceJustPressed = false;
+
+// Debug level skip: type "$levelNN" (e.g. "$level01") at any time
+let cheatBuffer = "";
+let cheatTimer = 0;
+function handleCheatCode(key) {
+    // Reset buffer if too much time passes between keystrokes
+    const now = performance.now();
+    if (now - cheatTimer > 2000) cheatBuffer = "";
+    cheatTimer = now;
+
+    cheatBuffer += key.toLowerCase();
+    // Keep buffer trimmed to max expected length ("$level" + 2 digits = 8)
+    if (cheatBuffer.length > 8) cheatBuffer = cheatBuffer.slice(-8);
+
+    const match = cheatBuffer.match(/\$level(\d{2})$/);
+    if (match) {
+        const targetLevel = parseInt(match[1], 10) - 1; // $level01 = index 0
+        if (targetLevel >= 0 && targetLevel < LEVELS.length) {
+            cheatBuffer = "";
+            // Reset game state cleanly then jump to target level
+            resetGame();
+            currentLevel = targetLevel;
+            // Load the correct starting pattern for this level
+            const startPat = targetLevel === 0 ? LEVELS[0].startPattern
+                : LEVELS[targetLevel - 1].pattern;
+            if (startPat) {
+                for (let r = 0; r < GRID_ROWS; r++)
+                    for (let c = 0; c < GRID_COLS; c++)
+                        grid[r][c] = startPat[r][c];
+            }
+            levelTimer = LEVELS[currentLevel].timerSeconds * 90;
+            player.y = (gridBottomTileY() + 1) * TILE;
+            player.destY = player.y;
+            setLevelTempo(currentLevel);
+            ensureAudio();
+            gameState = "playing";
+            gamePaused = false;
+            lastStepTime = performance.now();
+            console.log("DEBUG: Jumped to level " + (targetLevel + 1));
+        }
+    }
+}
+
 window.addEventListener("keydown", (e) => {
+    // Feed single-char keys into cheat code buffer
+    if (e.key.length === 1) handleCheatCode(e.key);
+
     if (e.code === "Space") {
         e.preventDefault();
         if (gameState === "enemywarning" || gameState === "enemywarning-intro") return; // ignore Space on warning screen
@@ -1246,18 +1299,6 @@ window.addEventListener("keydown", (e) => {
         if (gameState === "intro") {
             // Advance to next scene (or finish intro if on last scene)
             advanceIntroScene();
-            return;
-        }
-        if (gameState === "tutorial") {
-            tutorialPage++;
-            tutorialTimer = 0;
-            if (tutorialPage > 1) {
-                stopStoryDrums();
-                gameState = "playing";
-                currentStep = 0;
-                lastStepTime = performance.now();
-                sceneTransition = { active: true, from: "tutorial", to: "playing", progress: 0, duration: 20 };
-            }
             return;
         }
         if (gameState === "levelcomplete" && levelCelebrateTimer > 120) {
@@ -1558,32 +1599,14 @@ function update(dt) {
         }
         const col = targetTileX - GRID_X;
         const row = tileYToRow(targetTileY);
-        if (row >= 0 && row < getActiveRows() && col >= 0 && col < GRID_COLS) {
-            grid[row][col] = !grid[row][col];
-            blockToggleAnim[row][col] = 12; // trigger pop animation
-            p.punchHit = true;
-            // play a toggle blip
-            if (audioCtx) {
-                const now = audioCtx.currentTime;
-                const osc = audioCtx.createOscillator();
-                const g = audioCtx.createGain();
-                osc.type = "square";
-                osc.frequency.value = grid[row][col] ? 880 : 440;
-                g.gain.setValueAtTime(0.1, now);
-                g.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
-                osc.connect(g); g.connect(audioCtx.destination);
-                osc.start(now); osc.stop(now + 0.06);
-            }
-            // Check if level pattern is now complete
-            tryCompleteLevelOrWait();
-        }
 
-
-        // Check goblin hit using punch hitbox vs goblin bounding box
+        // Check goblin hit first — if we hit a goblin, skip block toggle
         const punchBox = getPunchBox();
+        let hitAnyGoblin = false;
         for (const hitGob of goblins) {
             const gobBox = { x: hitGob.x, y: hitGob.y, w: hitGob.w, h: hitGob.h };
             if (!hitGob.dead && aabb(punchBox, gobBox)) {
+                hitAnyGoblin = true;
                 p.punchHit = true;
                 hitGob.hp--;
 
@@ -1797,6 +1820,27 @@ function update(dt) {
                 d.walkingIn = true;
                 break;
             }
+        }
+
+        // Toggle block only if no goblin was hit
+        if (!hitAnyGoblin && row >= 0 && row < getActiveRows() && col >= 0 && col < GRID_COLS) {
+            grid[row][col] = !grid[row][col];
+            blockToggleAnim[row][col] = 12; // trigger pop animation
+            p.punchHit = true;
+            // play a toggle blip
+            if (audioCtx) {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc.type = "square";
+                osc.frequency.value = grid[row][col] ? 880 : 440;
+                g.gain.setValueAtTime(0.1, now);
+                g.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+                osc.connect(g); g.connect(audioCtx.destination);
+                osc.start(now); osc.stop(now + 0.06);
+            }
+            // Check if level pattern is now complete
+            tryCompleteLevelOrWait();
         }
     }
     spaceJustPressed = false;
@@ -2968,41 +3012,94 @@ function renderHUD() {
     // Background fill
     drawHudRect(0, 0, COLS * TILE, HUD_H, "#2a1d0d");
 
+    // Teal border along top — connects visually to the venue's bottom wall
+    for (let c = 0; c < COLS; c++) {
+        drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+    }
+    // Highlight on border edge
+    hudCtx.fillStyle = "rgba(255,255,255,0.08)";
+    hudCtx.fillRect(0, 0, COLS * TILE * SCALE, 1 * SCALE);
+
+    // Subtle grain texture (matches venue floor grain)
+    for (let c = 0; c < COLS; c++) {
+        let seed = c * 37 + 7;
+        for (let i = 0; i < 4; i++) {
+            seed = (seed * 9301 + 49297) % 233280;
+            const gx = c * TILE + (seed % TILE);
+            seed = (seed * 9301 + 49297) % 233280;
+            const gy = 3 + (seed % (HUD_H - 4));
+            const bright = (seed % 2) === 0;
+            hudCtx.fillStyle = bright ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.08)";
+            hudCtx.fillRect(gx * SCALE, gy * SCALE, SCALE, SCALE);
+        }
+    }
+
     const pxSz = 3;
     const digitW = 3 * pxSz + pxSz;
     const panelH = 5 * pxSz + 6;
     const panelGap = 4;
 
     const kcY = Math.floor((HUD_H - panelH) / 2);
-    const baseX = 1 * TILE;
+    const W = COLS * TILE;
+    const margin = TILE; // 1-tile margin from edges
 
-    // --- Level counter ---
+    // Panel drawing helper — adds border, fill, top highlight, and bottom shadow
+    function drawHudPanel(x, y, w, h, borderCol, bgCol, hiCol) {
+        drawHudRect(x - 2, y - 2, w + 4, h + 4, borderCol);
+        drawHudRect(x, y, w, h, bgCol);
+        drawHudRect(x, y, w, 1, hiCol);                    // top highlight
+        drawHudRect(x, y + h - 1, w, 1, "rgba(0,0,0,0.2)"); // bottom shadow
+    }
+
     const iconW = 3 * pxSz + 2;
-    const lvlStr = String(currentLevel + 1);
-    const lvlPanelW = iconW + lvlStr.length * digitW + 6;
-    drawHudRect(baseX - 2, kcY - 2, lvlPanelW + 4, panelH + 4, "#2a1d0d");
-    drawHudRect(baseX, kcY, lvlPanelW, panelH, "#392a1c");
-    drawHudRect(baseX, kcY, lvlPanelW, 1, "#684c3c");
-    // "L" icon
-    const fx = baseX + 2, fy = kcY + 3;
-    drawHudRect(fx, fy, pxSz, 5 * pxSz, "#efd8a1");
-    drawHudRect(fx + pxSz, fy + 4 * pxSz, 2 * pxSz, pxSz, "#efd8a1");
-    // Level digits
-    const lvlNumX = baseX + iconW;
     const numY = kcY + 3;
-    drawHudPixelDigits(lvlStr, lvlNumX + (lvlStr.length * digitW) / 2, numY, "#efd8a1", pxSz);
+    const p = pxSz;
 
-    // --- Score counter ---
-    const kcX = baseX + lvlPanelW + panelGap;
-    const scoreStr = String(score).padStart(7, "0");
-    const skullW = 5 * pxSz + 2;
-    const killPanelW = skullW + 7 * digitW + 6;
-    drawHudRect(kcX - 2, kcY - 2, killPanelW + 4, panelH + 4, "#2a1d0d");
-    drawHudRect(kcX, kcY, killPanelW, panelH, "#392a1c");
-    drawHudRect(kcX, kcY, killPanelW, 1, "#684c3c");
+    // --- Level counter (left-aligned) ---
+    const lvlStr = String(currentLevel + 1).padStart(2, "0");
+    const lvlPanelW = iconW + 2 * digitW + 6;
+    const lvlX = margin;
+    drawHudPanel(lvlX, kcY, lvlPanelW, panelH, "#2a1d0d", "#392a1c", "#684c3c");
+    // "L" icon
+    const fx = lvlX + 2, fy = kcY + 3;
+    drawHudRect(fx, fy, p, 5 * p, "#efd8a1");
+    drawHudRect(fx + p, fy + 4 * p, 2 * p, p, "#efd8a1");
+    // Level digits (centered in remaining panel space after icon)
+    const lvlDigitArea = lvlPanelW - iconW;
+    drawHudPixelDigits(lvlStr, lvlX + iconW + lvlDigitArea / 2, numY, "#efd8a1", p);
+
+    // --- Timer counter (right-aligned) ---
+    const timerSec = Math.max(0, Math.ceil(levelTimer / 90));
+    const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
+    const timerPanelW = iconW + timerStr.length * digitW + 6;
+    const timerX = W - margin - timerPanelW;
+    const isUrgent = timerSec <= 30;
+    const isCritical = timerSec <= 10;
+    const blinkRate = isCritical ? 15 : 30;
+    const blinkOn = !isUrgent || Math.floor(levelTimer / blinkRate) % 2 === 0;
+    const timerColor = isUrgent ? "#ef3a0c" : "#efd8a1";
+    const timerBorderColor = isUrgent ? "#550f0a" : "#2a1d0d";
+    const timerBgColor = isUrgent ? "#45230d" : "#392a1c";
+    const timerHighlight = isUrgent ? "#9b1a0a" : "#684c3c";
+    drawHudPanel(timerX, kcY, timerPanelW, panelH, timerBorderColor, timerBgColor, timerHighlight);
+    // "T" icon
+    const tx2 = timerX + 2, ty2 = kcY + 3;
+    drawHudRect(tx2, ty2, 3 * p, p, blinkOn ? timerColor : timerBgColor);
+    drawHudRect(tx2 + p, ty2 + p, p, 4 * p, blinkOn ? timerColor : timerBgColor);
+    // Timer digits (centered in remaining panel space after icon)
+    if (blinkOn) {
+        const timerDigitArea = timerPanelW - iconW;
+        drawHudPixelDigits(timerStr, timerX + iconW + timerDigitArea / 2, numY, timerColor, p);
+    }
+
+    // --- Score counter (centered) ---
+    const scoreStr = String(score).padStart(5, "0");
+    const skullW = 5 * p + 2;
+    const killPanelW = skullW + 5 * digitW + 6;
+    const kcX = Math.floor((W - killPanelW) / 2);
+    drawHudPanel(kcX, kcY, killPanelW, panelH, "#2a1d0d", "#392a1c", "#684c3c");
     // Skull icon
     const sx = kcX + 2, sy = kcY + 3;
-    const p = pxSz;
     const skullBg = "#392a1c";
     drawHudRect(sx + p, sy, 3 * p, p, "#efd8a1");
     drawHudRect(sx, sy + p, 5 * p, 2 * p, "#efd8a1");
@@ -3013,35 +3110,9 @@ function renderHUD() {
     drawHudRect(sx + 3 * p, sy + p, p, p, skullBg);
     drawHudRect(sx + 2 * p, sy + 2 * p, p, p, skullBg);
     drawHudRect(sx + 2 * p, sy + 4 * p, p, p, skullBg);
-    // Score digits
-    const killNumX = kcX + skullW;
-    drawHudPixelDigits(scoreStr, killNumX + (scoreStr.length * digitW) / 2, numY, "#efd8a1", pxSz);
-
-    // --- Timer counter ---
-    const timerSec = Math.max(0, Math.ceil(levelTimer / 90));
-    const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
-    const timerX = kcX + killPanelW + panelGap;
-    const timerPanelW = iconW + timerStr.length * digitW + 6;
-    const isUrgent = timerSec <= 30;
-    const isCritical = timerSec <= 10;
-    const blinkRate = isCritical ? 15 : 30;
-    const blinkOn = !isUrgent || Math.floor(levelTimer / blinkRate) % 2 === 0;
-    const timerColor = isUrgent ? "#ef3a0c" : "#efd8a1";
-    const timerBorderColor = isUrgent ? "#550f0a" : "#2a1d0d";
-    const timerBgColor = isUrgent ? "#45230d" : "#392a1c";
-    const timerHighlight = isUrgent ? "#9b1a0a" : "#684c3c";
-    drawHudRect(timerX - 2, kcY - 2, timerPanelW + 4, panelH + 4, timerBorderColor);
-    drawHudRect(timerX, kcY, timerPanelW, panelH, timerBgColor);
-    drawHudRect(timerX, kcY, timerPanelW, 1, timerHighlight);
-    // "T" icon
-    const tx2 = timerX + 2, ty2 = kcY + 3;
-    drawHudRect(tx2, ty2, 3 * pxSz, pxSz, blinkOn ? timerColor : timerBgColor);
-    drawHudRect(tx2 + pxSz, ty2 + pxSz, pxSz, 4 * pxSz, blinkOn ? timerColor : timerBgColor);
-    // Timer digits
-    if (blinkOn) {
-        const tNumX = timerX + iconW;
-        drawHudPixelDigits(timerStr, tNumX + (timerStr.length * digitW) / 2, numY, timerColor, pxSz);
-    }
+    // Score digits (centered in remaining panel space after skull)
+    const scoreDigitArea = killPanelW - skullW;
+    drawHudPixelDigits(scoreStr, kcX + skullW + scoreDigitArea / 2, numY, "#efd8a1", p);
 
     // Tick sound during last 10 seconds (once per second)
     if (isCritical && timerSec > 0 && levelTimer % 90 === 0 && audioCtx) {
@@ -3639,17 +3710,17 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         drawPx(sx + x + leanX * SCALE, sy + y + leanY * SCALE - bob, w, h, ghost ? ghostTint(color) : color);
     }
 
-    // === BODY (teal shirt — Studioland style) ===
+    // === BODY (foggy mint shirt — Studioland style) ===
     // Lower body stays planted (extended upward to fill gap when upper body leans)
-    px(9, 9, 30, 27, "#724113");        // Lower torso (stays put)
-    px(9, 9, 6, 27, "#45230d");          // Lower left dark side
-    px(33, 9, 6, 27, "#45230d");         // Lower right dark side
-    px(12, 30, 24, 3, "#45230d");       // Shirt bottom hem
+    px(9, 9, 30, 27, "#82c48c");        // Lower torso (stays put)
+    px(9, 9, 6, 27, "#4a8454");          // Lower left dark side
+    px(33, 9, 6, 27, "#4a8454");         // Lower right dark side
+    px(12, 30, 24, 3, "#4a8454");       // Shirt bottom hem
     // Upper body leans into punch
-    pxLean(9, 6, 30, 18, "#724113");    // Upper torso
-    pxLean(9, 6, 6, 18, "#45230d");     // Upper left dark side
-    pxLean(33, 6, 6, 18, "#45230d");    // Upper right dark side
-    pxLean(15, 9, 18, 3, "#a56243");    // Shirt chest highlight
+    pxLean(9, 6, 30, 18, "#82c48c");    // Upper torso
+    pxLean(9, 6, 6, 18, "#4a8454");     // Upper left dark side
+    pxLean(33, 6, 6, 18, "#4a8454");    // Upper right dark side
+    pxLean(15, 9, 18, 3, "#a8e0ae");    // Shirt chest highlight
     // Collar detail
     pxLean(15, 6, 18, 3, "#392a1c");
     pxLean(18, 3, 12, 3, "#392a1c");
@@ -3659,10 +3730,10 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
     pxLean(9, -18, 30, 3, "#efb775");       // Rounded top
     pxLean(12, -21, 24, 3, "#efb775");      // More rounding
     pxLean(15, -24, 18, 3, "#efb775");      // Top of dome
-    // Bald shine highlight
-    pxLean(15, -24, 18, 3, "#efd8a1");
-    pxLean(12, -21, 24, 3, "#efd8a1");
-    pxLean(15, -18, 18, 3, "#F0D8BA");
+    // Bald shine highlight (subtle sheen, not white)
+    pxLean(15, -24, 18, 3, "#f5c882");
+    pxLean(12, -21, 24, 3, "#f2c07a");
+    pxLean(15, -18, 18, 3, "#f0bc78");
     // Ears (flush with head edge — no protrusion)
     pxLean(6, -6, 3, 6, "#a58c27");
     pxLean(39, -6, 3, 6, "#a58c27");
@@ -3678,7 +3749,7 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
 
     if (dir === 1) {
         // Facing UP — show back of bald head, no eyes, no beard
-        pxLean(12, -18, 24, 6, "#a58c27");
+        pxLean(12, -18, 24, 6, "#e0a860");
         pxLean(15, -3, 18, 6, "#efb775");
     } else {
         // Facing DOWN, LEFT, or RIGHT — show beard and eyes
@@ -3868,7 +3939,113 @@ function drawPunch() {
     ctx.restore();
 }
 
+// Draw the ruined venue backdrop (used in tutorial scenes and Scene 3 style)
+// t: animation timer for smoke wisps
+function drawRuinedVenueBackdrop(t) {
+    const W = COLS * TILE;
+    const H = ROWS * TILE;
+    // Dark floor
+    drawRect(0, 0, W, H, "#1a1a18");
+    // Damaged walls (deterministic — no Math.random flickering)
+    for (let c = 0; c < COLS; c++) {
+        const damaged = ((c * 7 + 3) % 10) > 6; // ~30% damaged
+        drawRect(c * TILE, 0, TILE, TILE, damaged ? "#45230d" : (c % 2 === 0 ? "#724113" : "#927e6a"));
+        drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+    }
+    for (let r = 0; r < ROWS; r++) {
+        drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+        drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+    }
+    // Open caves
+    for (const cave of CAVES) {
+        const cx = cave.tileX * TILE, cy = cave.tileY * TILE;
+        drawRect(cx, cy - 2, TILE, TILE + 4, "#0a0a0a");
+        drawRect(cx - 2, cy - 4, TILE + 4, 3, "#684c3c");
+        drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");
+    }
+    // Dead string lights
+    for (let c = 1; c < COLS - 1; c++) {
+        drawRect(c * TILE + TILE / 2 - 2, TILE + 6, 4, 4, "#2a1d0d");
+    }
+    // Destroyed DJ booth
+    const boothX = W / 2 - 24;
+    const boothY = GRID_Y * TILE - 8;
+    drawRect(boothX - 8, boothY + 12, 64, 8, "#2a1d0d");
+    drawRect(boothX + 5, boothY + 6, 10, 6, "#1f240a");
+    drawRect(boothX + 35, boothY + 8, 8, 4, "#1f240a");
+    // Smoke wisps
+    for (let si = 0; si < 3; si++) {
+        const smokeX = boothX + 15 + si * 12;
+        const smokeY = boothY - (t * 0.3 + si * 20) % 30;
+        ctx.globalAlpha = 0.15 - (t * 0.3 + si * 20) % 30 / 200;
+        if (ctx.globalAlpha > 0) drawRect(smokeX, smokeY, 3, 3, "#888888");
+    }
+    ctx.globalAlpha = 1;
+    // Corrupted beat grid (carries over from intro scenes)
+    if (introGridState) {
+        const miniGridY = GRID_Y * TILE + 14;
+        const miniGridX = 3 * TILE;
+        ctx.globalAlpha = 0.35;
+        for (let r = 0; r < 4; r++) {
+            for (let c = 0; c < 16; c++) {
+                const gx = miniGridX + c * TILE;
+                const gy = miniGridY + r * TILE;
+                const cellOn = introGridState[r][c];
+                drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
+                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, cellOn ? PAL.gridOn[r] : PAL.gridOff);
+            }
+        }
+        ctx.globalAlpha = 1;
+    }
+    // Dark vignette
+    const W_v = W * SCALE;
+    const H_v = H * SCALE;
+    const vGrad = ctx.createRadialGradient(W_v / 2, H_v / 2, W_v * 0.2, W_v / 2, H_v / 2, W_v * 0.6);
+    vGrad.addColorStop(0, "rgba(0,0,0,0)");
+    vGrad.addColorStop(1, "rgba(0,0,0,0.6)");
+    ctx.fillStyle = vGrad;
+    ctx.fillRect(0, 0, W_v, H_v);
+}
+
 // Reusable goblin sprite for all screens (story, warnings, gameplay)
+// Draw a subwoofer speaker (replaces turntable)
+// sx, sy: top-left position (game coords), pump: 0-1 kick intensity, side: -1=left, 1=right
+function drawSubwoofer(sx, sy, pump, side) {
+    const pw = pump * 2; // extra pixels when pumping
+    const bx = sx - pw * 0.5;
+    const by = sy - pw * 0.5;
+    const bw = 16 + pw;
+    const bh = 12 + pw;
+    // Cabinet
+    drawRect(bx, by, bw, bh, "#45230d");
+    drawRect(bx + 1, by + 1, bw - 2, bh - 2, "#392a1c");
+    // Speaker cone (center circle approximation with rects)
+    const cx = bx + bw / 2;
+    const cy = by + bh / 2;
+    // Surround ring
+    drawRect(cx - 5, cy - 4, 10, 8, "#2e4a4e");
+    // Cone
+    const coneCol = pump > 0.3 ? "#504030" : "#3a3020";
+    drawRect(cx - 3, cy - 3, 6, 6, coneCol);
+    // Dust cap (center)
+    drawRect(cx - 1, cy - 1, 2, 2, "#1a1410");
+    // Sound lines emanating outward
+    if (pump > 0.05) {
+        ctx.globalAlpha = pump * 0.6;
+        ctx.strokeStyle = "#efd8a1";
+        ctx.lineWidth = 1 * SCALE;
+        for (let i = 0; i < 3; i++) {
+            const dist = (4 + i * 5 + (1 - pump) * 6);
+            const lineX = cx + side * dist;
+            ctx.beginPath();
+            ctx.moveTo(lineX * SCALE, (cy - 3 + i) * SCALE);
+            ctx.lineTo(lineX * SCALE, (cy + 3 - i) * SCALE);
+            ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+    }
+}
+
 // type: "normal", "elite", "catapult"
 // gx, gy: top-left position (game coords)
 // frame: animation frame (0-3)
@@ -4157,9 +4334,17 @@ function drawDancerSprite(gx, gy, pal, options) {
     const bob = (opts.bob || 0) * SCALE;
     const armBlend = opts.armBlend || 0;
     const footOfs = (opts.footOffset || 0) * SCALE;
+    const scale = opts.scale || 1;
 
     const sx = gx * SCALE;
     const sy = gy * SCALE;
+
+    if (scale !== 1) {
+        ctx.save();
+        ctx.translate(sx + 18, sy + 18);
+        ctx.scale(scale, scale);
+        ctx.translate(-(sx + 18), -(sy + 18));
+    }
 
     function px(x, y, w, h, color) {
         drawPx(sx + x, sy + y - bob, w, h, color);
@@ -4218,6 +4403,10 @@ function drawDancerSprite(gx, gy, pal, options) {
     px(19 + footOfs, 33, 8, 6, pal.dark);   // Right shoe
     px(9 - footOfs, 37, 8, 2, pal.body);    // Left shoe accent
     px(19 + footOfs, 37, 8, 2, pal.body);   // Right shoe accent
+
+    if (scale !== 1) {
+        ctx.restore();
+    }
 }
 
 function drawDancer(d) {
@@ -4274,14 +4463,13 @@ function startTitleDrums() {
     titleDrumGain.gain.setValueAtTime(1, audioCtx.currentTime);
     titleDrumGain.connect(audioCtx.destination);
 
-    const bpm = 120;
+    const bpm = 110;
     const sixteenth = 60 / bpm / 4;
 
-    //         1 . . . 2 . . . 3 . . . 4 . . .
-    const K = [1,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0];
-    const S = [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0];
-    const H = [0,1,1,1,0,1,1,0,1,1,0,1,0,1,1,1];
-    // O is all rests
+    const K = INTRO_BEAT.K;
+    const S = INTRO_BEAT.S;
+    const H = INTRO_BEAT.H;
+    const O = INTRO_BEAT.O;
 
     const loopLen = 16 * sixteenth;
 
@@ -4362,6 +4550,27 @@ function startTitleDrums() {
                 noise.start(t);
                 noise.stop(t + 0.06);
             }
+
+            if (O[i]) {
+                // Open hi-hat
+                const bufSz2 = audioCtx.sampleRate * 0.15;
+                const buf2 = audioCtx.createBuffer(1, bufSz2, audioCtx.sampleRate);
+                const data2 = buf2.getChannelData(0);
+                for (let s = 0; s < bufSz2; s++) data2[s] = Math.random() * 2 - 1;
+                const noise2 = audioCtx.createBufferSource();
+                noise2.buffer = buf2;
+                const gain2 = audioCtx.createGain();
+                gain2.gain.setValueAtTime(0.15, t);
+                gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+                const filt2 = audioCtx.createBiquadFilter();
+                filt2.type = "highpass";
+                filt2.frequency.value = 4000;
+                noise2.connect(filt2);
+                filt2.connect(gain2);
+                gain2.connect(dest);
+                noise2.start(t);
+                noise2.stop(t + 0.15);
+            }
         }
 
         titleDrumTimer = setTimeout(scheduleLoop, loopLen * 1000);
@@ -4386,16 +4595,11 @@ function stopTitleDrums() {
 // ---- Title Screen (page 1: live gameplay scene) ----
 let titleStep = 0;        // simulated sequencer step (0-15)
 let titleStepTimer = 0;   // frame counter for step advance
+let titleKickPump = 0;    // 0-1 speaker pump intensity on kick hits
 titleEntrancePhase = 0;   // reset entrance animation
-const TITLE_STEP_FRAMES = 7.5; // frames per sixteenth note at 120bpm @ 60fps
+const TITLE_STEP_FRAMES = 8.2; // frames per sixteenth note at 110bpm @ 60fps
 
 // Title screen drum pattern (matches audio)
-const TITLE_PATTERN = {
-    K: [1,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0],
-    S: [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
-    H: [0,1,1,1,0,1,1,0,1,1,0,1,0,1,1,1],
-    O: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-};
 
 function renderTitleScreen() {
     const W = COLS * TILE;
@@ -4408,7 +4612,9 @@ function renderTitleScreen() {
     if (titleStepTimer >= TITLE_STEP_FRAMES) {
         titleStepTimer -= TITLE_STEP_FRAMES;
         titleStep = (titleStep + 1) % 16;
+        if (INTRO_BEAT.K[titleStep]) titleKickPump = 1;
     }
+    titleKickPump = Math.max(0, titleKickPump - 0.08);
 
     const beatOn = titleStep % 4 === 0;
 
@@ -4445,15 +4651,13 @@ function renderTitleScreen() {
     const boothY = GRID_Y * TILE - 8;
     drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
     drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
-    drawRect(boothX, boothY + 4, 16, 8, "#392a1c");
-    drawRect(boothX + 32, boothY + 4, 16, 8, "#392a1c");
+    // Subwoofer speakers (left and right of mixer)
+    drawSubwoofer(boothX - 12, boothY - 2, titleKickPump, -1);
+    drawSubwoofer(boothX + 44, boothY - 2, titleKickPump, 1);
+    // Mixer (center)
     drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e");
-    const spin = titleBlink * 0.1;
-    drawRect(boothX + 4 + Math.cos(spin) * 2, boothY + 6, 8, 4, "#efd8a1");
-    drawRect(boothX + 36 + Math.cos(spin + Math.PI) * 2, boothY + 6, 8, 4, "#efd8a1");
     for (let ml = 0; ml < 4; ml++) {
-        const mlOn = titleStep === ml * 4;
-        drawRect(boothX + 20 + ml * 2, boothY + 3, 1, 2, mlOn ? "#39FF14" : "#1f240a");
+        drawRect(boothX + 20 + ml * 2, boothY + 3, 1, 2, "#1f240a");
     }
 
     // DJ (player sprite behind booth)
@@ -4464,7 +4668,7 @@ function renderTitleScreen() {
     // Beat grid (small, showing the beat)
     const miniGridY = GRID_Y * TILE + 14;
     const miniGridX = 3 * TILE;
-    const patterns = [TITLE_PATTERN.O, TITLE_PATTERN.H, TITLE_PATTERN.S, TITLE_PATTERN.K];
+    const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
     for (let r = 0; r < 4; r++) {
         for (let c = 0; c < 16; c++) {
             const gx = miniGridX + c * TILE;
@@ -4481,29 +4685,46 @@ function renderTitleScreen() {
     ctx.fillRect(phX * SCALE, miniGridY * SCALE, TILE * SCALE, (4 * TILE) * SCALE);
     ctx.globalAlpha = 1;
 
-    // Dancers (crowd on the dance floor)
+    // Dancers (crowd on the dance floor — gameplay-quality animation)
     const danceFloorY = (GRID_Y + 5) * TILE;
     const crowdPositions = [
-        { x: 3 * TILE, pal: 0 }, { x: 5 * TILE, pal: 1 },
-        { x: 7 * TILE, pal: 2 }, { x: 9 * TILE, pal: 3 },
-        { x: 11 * TILE, pal: 4 }, { x: 13 * TILE, pal: 5 },
-        { x: 15 * TILE, pal: 0 }, { x: 17 * TILE, pal: 1 },
+        // Back row
+        { x: 2 * TILE, yOfs: 0, pal: 0, phase: 0 },
+        { x: 4 * TILE, yOfs: 4, pal: 1, phase: 3 },
+        { x: 6 * TILE, yOfs: 2, pal: 2, phase: 7 },
+        { x: 8 * TILE, yOfs: 0, pal: 3, phase: 11 },
+        { x: 10 * TILE, yOfs: 3, pal: 4, phase: 5 },
+        { x: 12 * TILE, yOfs: 1, pal: 5, phase: 9 },
+        { x: 14 * TILE, yOfs: 4, pal: 0, phase: 2 },
+        { x: 16 * TILE, yOfs: 0, pal: 3, phase: 13 },
+        { x: 18 * TILE, yOfs: 2, pal: 1, phase: 6 },
+        // Front row
+        { x: 3 * TILE, yOfs: 14, pal: 2, phase: 4 },
+        { x: 5 * TILE, yOfs: 16, pal: 5, phase: 8 },
+        { x: 7 * TILE, yOfs: 14, pal: 4, phase: 12 },
+        { x: 11 * TILE, yOfs: 15, pal: 1, phase: 1 },
+        { x: 13 * TILE, yOfs: 14, pal: 0, phase: 10 },
+        { x: 15 * TILE, yOfs: 16, pal: 3, phase: 14 },
+        { x: 17 * TILE, yOfs: 14, pal: 5, phase: 6 },
     ];
     for (let di = 0; di < crowdPositions.length; di++) {
         const dp = crowdPositions[di];
-        const dBob2 = Math.floor((titleBlink + di * 7) / 8) % 2 === 0 ? 0 : 3;
-        const armUp = Math.floor((titleBlink + di * 7) / 8) % 2 === 0;
-        const dfo = armUp ? 1.5 : -1.5;
-        drawDancerSprite(dp.x, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: dBob2, armBlend: armUp ? 1 : 0, footOffset: dfo });
+        const step = (titleStep + dp.phase) % 16;
+        const stepProgress = titleStepTimer / TITLE_STEP_FRAMES;
+        const smoothStep = step + stepProgress;
+
+        // Continuous bob — bounces every beat (4 steps)
+        const bobWave = Math.sin(smoothStep * Math.PI / 2);
+        const bob = Math.abs(bobWave) * 3;
+
+        // Arms up on peaks
+        const armBlend = Math.abs(bobWave);
+        const footOffset = bobWave * 1.5;
+
+        drawDancerSprite(dp.x, danceFloorY + dp.yOfs, DANCER_PALETTES[dp.pal], { bob, armBlend, footOffset });
     }
 
-    // Beat pulse background
-    if (beatOn && titleStepTimer < 3) {
-        ctx.fillStyle = "#efac28";
-        ctx.globalAlpha = 0.06 * (1 - titleStepTimer / 3);
-        ctx.fillRect(0, 0, W * SCALE, H * SCALE);
-        ctx.globalAlpha = 1.0;
-    }
+    // Beat pulse background — removed for accessibility
 
     // === TITLE TEXT (in the dance floor empty space) ===
     titleEntrancePhase++;
@@ -4517,11 +4738,17 @@ function renderTitleScreen() {
             // Now switch to intro
             stopTitleDrums();
             gameState = "intro";
-            introScene = 1;
+            introScene = 0;
             introTimer = 0;
             introGlobalTimer = 0;
             introBeatStep = 0;
             introBeatTimer = 0;
+            introGoblins = [];
+            introGridState = null;
+            introGridFlash = null;
+            introCorruptOrder = [];
+            introCorruptedSoFar = 0;
+            introKickPump = 0;
             startIntroDrums();
             return;
         }
@@ -4543,7 +4770,7 @@ function renderTitleScreen() {
     }
 
     // Dance floor title area — positioned below the dancers
-    const titleBaseY = (GRID_Y + 7) * TILE + 8; // in the open dance floor space
+    const titleBaseY = (GRID_Y + 7) * TILE + 12; // in the open dance floor space
 
     // "ATTACK OF THE" subtitle — fades in
     const subAlpha = Math.min(1, titleEntrancePhase / 30) * titleTextAlpha;
@@ -4593,13 +4820,7 @@ function renderTitleScreen() {
         }
     }
     ctx.globalAlpha = 1.0;
-    // Impact flash when GROOVE lands
-    if (titleEntrancePhase >= 35 && titleEntrancePhase < 42) {
-        ctx.fillStyle = "#efac28";
-        ctx.globalAlpha = (42 - titleEntrancePhase) / 7 * 0.25;
-        ctx.fillRect(0, 0, W * SCALE, H * SCALE);
-        ctx.globalAlpha = 1.0;
-    }
+    // Impact flash when GROOVE lands — removed
 
     // "GOBLINS" — slams in from the right
     const goblinsText = "GOBLINS";
@@ -4625,13 +4846,7 @@ function renderTitleScreen() {
         drawText(goblinsText[i], charX, gobY + bounce, col, bigFontSize);
     }
     ctx.globalAlpha = 1.0;
-    // Impact flash when GOBLINS lands
-    if (titleEntrancePhase >= 50 && titleEntrancePhase < 57) {
-        ctx.fillStyle = "#39FF14";
-        ctx.globalAlpha = (57 - titleEntrancePhase) / 7 * 0.2;
-        ctx.fillRect(0, 0, W * SCALE, H * SCALE);
-        ctx.globalAlpha = 1.0;
-    }
+    // Impact flash when GOBLINS lands — removed
 
     // === "PRESS ENTER" below the title ===
     const pressY = titleBaseY + 56;
@@ -4888,21 +5103,69 @@ function advanceIntroScene() {
     introScene++;
     introTimer = 0;
     if (introScene >= INTRO_SCENE_DURATIONS.length) {
-        // Intro complete — go to tutorial
-        stopIntroDrums();
-        startStoryDrums();
-        gameState = "tutorial";
-        tutorialTimer = 0;
-        tutorialPage = 0;
-        sceneTransition = { active: true, from: "intro", to: "tutorial", progress: 0, duration: 20 };
+        // All scenes complete — start gameplay
+        stopStoryDrums();
+        gameState = "playing";
+        currentStep = 0;
+        lastStepTime = performance.now();
+        sceneTransition = { active: true, from: "intro", to: "playing", progress: 0, duration: 20 };
         return;
     }
     // Scene-specific triggers
-    if (introScene === 2) playEarthquakeRumble();
-    if (introScene === 3) {
+    if (introScene === 1) {
+        playEarthquakeRumble();
+        // Initialize mutable grid for goblin flipping
+        introGridState = [
+            INTRO_BEAT.O.slice(),
+            INTRO_BEAT.H.slice(),
+            INTRO_BEAT.S.slice(),
+            INTRO_BEAT.K.slice(),
+        ];
+        introGridFlash = Array.from({ length: 4 }, () => new Array(16).fill(0));
+        // Spawn goblins at each cave
+        introGoblins = CAVES.map((cave, ci) => {
+            const spawnX = cave.tileX * TILE;
+            const spawnY = cave.tileY * TILE;
+            return {
+                x: spawnX, y: spawnY,
+                destX: spawnX, destY: spawnY,
+                dir: 0, frame: 0, frameTimer: 0,
+                caveIdx: ci, emerged: false, speed: 0.5,
+                targetRow: -1, targetCol: -1,
+                moveSteps: 0,
+            };
+        });
+    }
+    if (introScene === 2) {
         playGoblinCackle();
         // Corrupt the drum pattern
         if (introDrumGain) introDrumGain.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + 1);
+        // Ensure introGridState exists (fallback if Scene 1 was skipped)
+        if (!introGridState) {
+            introGridState = [
+                INTRO_BEAT.O.slice(),
+                INTRO_BEAT.H.slice(),
+                INTRO_BEAT.S.slice(),
+                INTRO_BEAT.K.slice(),
+            ];
+            introGridFlash = Array.from({ length: 4 }, () => new Array(16).fill(0));
+        }
+        // Pre-compute corruption order: sort all 64 cells by cellSeed so they flip deterministically
+        introCorruptOrder = [];
+        for (let r = 0; r < 4; r++) {
+            for (let c = 0; c < 16; c++) {
+                const cellSeed = (r * 100 + c * 37 + 7) % 16;
+                introCorruptOrder.push({ r, c, seed: cellSeed });
+            }
+        }
+        introCorruptOrder.sort((a, b) => a.seed - b.seed || a.r - b.r || a.c - b.c);
+        introCorruptedSoFar = 0;
+    }
+    if (introScene === 3) stopIntroDrums();
+    if (introScene === 5) {
+        // Transition from cinematic to tutorial scenes — switch audio
+        stopIntroDrums();
+        startStoryDrums();
     }
     if (introScene === 4) stopIntroDrums();
 }
@@ -4919,7 +5182,9 @@ function renderIntro() {
     if (introBeatTimer >= INTRO_BEAT_FRAMES) {
         introBeatTimer -= INTRO_BEAT_FRAMES;
         introBeatStep = (introBeatStep + 1) % 16;
+        if (INTRO_BEAT.K[introBeatStep]) introKickPump = 1;
     }
+    introKickPump = Math.max(0, introKickPump - 0.08);
 
     // Helper
     function drawCentered(text, y, color, scale) {
@@ -4933,8 +5198,8 @@ function renderIntro() {
     const t = introTimer;
     const beatOn = introBeatStep % 4 === 0; // downbeat
 
-    // ==================== SCENE 1: THE GOOD TIMES ====================
-    if (introScene === 1) {
+    // ==================== SCENE 0: THE GOOD TIMES ====================
+    if (introScene === 0) {
         // Full venue scene: floor, walls, DJ booth, dancers
         drawRect(0, 0, W, H, "#2C2C2A"); // floor
 
@@ -4969,18 +5234,14 @@ function renderIntro() {
         // Booth platform
         drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
         drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
-        // Equipment on booth
-        drawRect(boothX, boothY + 4, 16, 8, "#392a1c"); // left turntable
-        drawRect(boothX + 32, boothY + 4, 16, 8, "#392a1c"); // right turntable
-        drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e"); // mixer
-        // Spinning platters
-        const spin = introGlobalTimer * 0.1;
-        drawRect(boothX + 4 + Math.cos(spin) * 2, boothY + 6, 8, 4, "#efd8a1");
-        drawRect(boothX + 36 + Math.cos(spin + Math.PI) * 2, boothY + 6, 8, 4, "#efd8a1");
+        // Subwoofer speakers (left and right of mixer)
+        drawSubwoofer(boothX - 12, boothY - 2, introKickPump, -1);
+        drawSubwoofer(boothX + 44, boothY - 2, introKickPump, 1);
+        // Mixer
+        drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e");
         // Mixer lights
         for (let ml = 0; ml < 4; ml++) {
-            const mlOn = introBeatStep === ml * 4;
-            drawRect(boothX + 20 + ml * 2, boothY + 3, 1, 2, mlOn ? "#39FF14" : "#1f240a");
+            drawRect(boothX + 20 + ml * 2, boothY + 3, 1, 2, "#1f240a");
         }
 
         // DJ (player sprite behind booth)
@@ -5008,41 +5269,67 @@ function renderIntro() {
         ctx.fillRect(phX * SCALE, miniGridY * SCALE, TILE * SCALE, (4 * TILE) * SCALE);
         ctx.globalAlpha = 1;
 
-        // Dancers (crowd of ~8 dancers on the dance floor)
+        // Dancers (crowd on the dance floor — gameplay-quality animation)
         const danceFloorY = (GRID_Y + 5) * TILE;
         const crowdPositions = [
-            { x: 3 * TILE, pal: 0 }, { x: 5 * TILE, pal: 1 },
-            { x: 7 * TILE, pal: 2 }, { x: 9 * TILE, pal: 3 },
-            { x: 11 * TILE, pal: 4 }, { x: 13 * TILE, pal: 5 },
-            { x: 15 * TILE, pal: 0 }, { x: 17 * TILE, pal: 1 },
+            // Back row (higher up, slightly smaller feel from stagger)
+            { x: 2 * TILE, yOfs: 0, pal: 0, phase: 0 },
+            { x: 4 * TILE, yOfs: 4, pal: 1, phase: 3 },
+            { x: 6 * TILE, yOfs: 2, pal: 2, phase: 7 },
+            { x: 8 * TILE, yOfs: 0, pal: 3, phase: 11 },
+            { x: 10 * TILE, yOfs: 3, pal: 4, phase: 5 },
+            { x: 12 * TILE, yOfs: 1, pal: 5, phase: 9 },
+            { x: 14 * TILE, yOfs: 4, pal: 0, phase: 2 },
+            { x: 16 * TILE, yOfs: 0, pal: 3, phase: 13 },
+            { x: 18 * TILE, yOfs: 2, pal: 1, phase: 6 },
+            // Front row
+            { x: 3 * TILE, yOfs: 14, pal: 2, phase: 4 },
+            { x: 5 * TILE, yOfs: 16, pal: 5, phase: 8 },
+            { x: 7 * TILE, yOfs: 14, pal: 4, phase: 12 },
+            { x: 11 * TILE, yOfs: 15, pal: 1, phase: 1 },
+            { x: 13 * TILE, yOfs: 14, pal: 0, phase: 10 },
+            { x: 15 * TILE, yOfs: 16, pal: 3, phase: 14 },
+            { x: 17 * TILE, yOfs: 14, pal: 5, phase: 6 },
         ];
         for (let di = 0; di < crowdPositions.length; di++) {
             const dp = crowdPositions[di];
-            const dBob2 = Math.floor((introGlobalTimer + di * 7) / 8) % 2 === 0 ? 0 : 3;
-            const armUp = Math.floor((introGlobalTimer + di * 7) / 8) % 2 === 0;
-            const dfo = armUp ? 1.5 : -1.5;
-            drawDancerSprite(dp.x, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: dBob2, armBlend: armUp ? 1 : 0, footOffset: dfo });
+            // Smooth animation synced to beat
+            const step = (introBeatStep + dp.phase) % 16;
+            const stepProgress = introBeatTimer / INTRO_BEAT_FRAMES;
+            const smoothStep = step + stepProgress;
+
+            // Continuous bob — bounces every beat (4 steps)
+            const bobWave = Math.sin(smoothStep * Math.PI / 2);
+            const bob = Math.abs(bobWave) * 3;
+
+            // Arms up on peaks
+            const armBlend = Math.abs(bobWave);
+            const footOffset = bobWave * 1.5;
+
+            drawDancerSprite(dp.x, danceFloorY + dp.yOfs, DANCER_PALETTES[dp.pal], { bob, armBlend, footOffset });
         }
 
-        // Beat pulse background
-        if (beatOn) {
-            ctx.fillStyle = "#efac28";
-            ctx.globalAlpha = 0.04;
-            ctx.fillRect(0, 0, W * SCALE, H * SCALE);
-            ctx.globalAlpha = 1;
-        }
+        // Beat pulse background — smooth sine wave, peaks every 4 steps
+        const beatPhase = ((introBeatStep % 4) + introBeatTimer / INTRO_BEAT_FRAMES) / 4;
+        const pulse = Math.cos(beatPhase * Math.PI * 2) * 0.5 + 0.5;
+        ctx.fillStyle = "#efac28";
+        ctx.globalAlpha = pulse * 0.04;
+        ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+        ctx.globalAlpha = 1;
 
         // Caption
         if (t > 60) {
             const capAlpha = Math.min(1, (t - 60) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("THE BEATS WERE PERFECT.", H - 18, "#efac28", 6);
+            drawCentered("EVERY FRIDAY NIGHT, THE UNDERGROUND CAME ALIVE.", H - 60, "#efac28", 5);
+            drawCentered("THE DJ SPUN BEATS THAT MADE THE WALLS SHAKE", H - 50, "#efac28", 5);
+            drawCentered("AND THE FLOOR PULSE.", H - 40, "#efac28", 5);
             ctx.globalAlpha = 1;
         }
     }
 
-    // ==================== SCENE 2: THE EARTHQUAKE ====================
-    else if (introScene === 2) {
+    // ==================== SCENE 1: THE EARTHQUAKE ====================
+    else if (introScene === 1) {
         // === COMBINED: Earthquake begins, lights die, caves open ===
         // Phase 1 (t 0-180): Shake ramps up, lights flicker & fade out, dancers stumble
         // Phase 2 (t 180-540): Cracks spread, caves open, eyes glow in darkness
@@ -5114,33 +5401,40 @@ function renderIntro() {
         const boothX = W / 2 - 24;
         const boothY = GRID_Y * TILE - 8;
         drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
-        drawRect(boothX, boothY + 4, 16, 8, "#392a1c");
-        drawRect(boothX + 32, boothY + 4, 16, 8, "#392a1c");
+        drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
+        // Subwoofer speakers (left and right of mixer)
+        drawSubwoofer(boothX - 12, boothY - 2, introKickPump, -1);
+        drawSubwoofer(boothX + 44, boothY - 2, introKickPump, 1);
+        // Mixer
         drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e");
 
-        // Beat grid — fades out as power dies (not glitchy colors)
-        const gridFade = Math.max(0, 1 - t / 150); // grid visible for first ~2.5s then dark
-        if (gridFade > 0) {
-            const miniGridY = GRID_Y * TILE + 14;
-            const miniGridX = 3 * TILE;
-            const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
-            ctx.globalAlpha = gridFade;
-            for (let r = 0; r < 4; r++) {
-                for (let c = 0; c < 16; c++) {
-                    const gx = miniGridX + c * TILE;
-                    const gy = miniGridY + r * TILE;
-                    const on = patterns[r][c];
-                    drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
-                    drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, on ? PAL.gridOn[r] : PAL.gridOff);
+        // Beat grid — uses mutable state so goblins can flip cells
+        const miniGridY = GRID_Y * TILE + 14;
+        const miniGridX = 3 * TILE;
+        const patterns = introGridState || [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
+        for (let r = 0; r < 4; r++) {
+            for (let c = 0; c < 16; c++) {
+                const gx = miniGridX + c * TILE;
+                const gy = miniGridY + r * TILE;
+                const on = patterns[r][c];
+                drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
+                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, on ? PAL.gridOn[r] : PAL.gridOff);
+                // Goblin sabotage flash
+                if (introGridFlash && introGridFlash[r][c] > 0) {
+                    ctx.fillStyle = "#39FF14";
+                    ctx.globalAlpha = (introGridFlash[r][c] / 30) * 0.5;
+                    ctx.fillRect(gx * SCALE, gy * SCALE, TILE * SCALE, TILE * SCALE);
+                    ctx.globalAlpha = 1;
+                    introGridFlash[r][c]--;
                 }
             }
-            // Playhead (slowing down as power dies)
-            const phX = miniGridX + introBeatStep * TILE;
-            ctx.fillStyle = "#efac28";
-            ctx.globalAlpha = 0.35 * gridFade;
-            ctx.fillRect(phX * SCALE, miniGridY * SCALE, TILE * SCALE, (4 * TILE) * SCALE);
-            ctx.globalAlpha = 1;
         }
+        // Playhead
+        const phX = miniGridX + introBeatStep * TILE;
+        ctx.fillStyle = "#efac28";
+        ctx.globalAlpha = 0.35;
+        ctx.fillRect(phX * SCALE, miniGridY * SCALE, TILE * SCALE, (4 * TILE) * SCALE);
+        ctx.globalAlpha = 1;
 
         // DJ — looks confused early, then ducks as caves open
         if (t < 240) {
@@ -5151,18 +5445,59 @@ function renderIntro() {
             drawPlayerSprite(W / 2 - 8, boothY - 6, 0, 0, {});
         }
 
-        // Dancers stumbling
+        // Dancers — stumble during phase 1, then flee once caves emerge
         const danceFloorY = (GRID_Y + 5) * TILE;
         const crowdPositions = [
-            { x: 3 * TILE, pal: 0 }, { x: 5 * TILE, pal: 1 },
-            { x: 7 * TILE, pal: 2 }, { x: 9 * TILE, pal: 3 },
-            { x: 11 * TILE, pal: 4 }, { x: 13 * TILE, pal: 5 },
-            { x: 15 * TILE, pal: 0 }, { x: 17 * TILE, pal: 1 },
+            // Back row
+            { x: 2 * TILE, yOfs: 0, pal: 0, phase: 0, dx: -1, dy: 0 },
+            { x: 4 * TILE, yOfs: 4, pal: 1, phase: 3, dx: -0.7, dy: -0.7 },
+            { x: 6 * TILE, yOfs: 2, pal: 2, phase: 7, dx: -1, dy: 0.4 },
+            { x: 8 * TILE, yOfs: 0, pal: 3, phase: 11, dx: 0.2, dy: -1 },
+            { x: 10 * TILE, yOfs: 3, pal: 4, phase: 5, dx: -0.3, dy: 1 },
+            { x: 12 * TILE, yOfs: 1, pal: 5, phase: 9, dx: 0.8, dy: -0.6 },
+            { x: 14 * TILE, yOfs: 4, pal: 0, phase: 2, dx: 0.5, dy: 1 },
+            { x: 16 * TILE, yOfs: 0, pal: 3, phase: 13, dx: 1, dy: 0 },
+            { x: 18 * TILE, yOfs: 2, pal: 1, phase: 6, dx: 1, dy: -0.5 },
+            // Front row
+            { x: 3 * TILE, yOfs: 14, pal: 2, phase: 4, dx: -1, dy: 0.3 },
+            { x: 5 * TILE, yOfs: 16, pal: 5, phase: 8, dx: -0.6, dy: 1 },
+            { x: 7 * TILE, yOfs: 14, pal: 4, phase: 12, dx: 0.3, dy: 1 },
+            { x: 11 * TILE, yOfs: 15, pal: 1, phase: 1, dx: -0.4, dy: -0.8 },
+            { x: 13 * TILE, yOfs: 14, pal: 0, phase: 10, dx: 1, dy: 0.5 },
+            { x: 15 * TILE, yOfs: 16, pal: 3, phase: 14, dx: 0.7, dy: 1 },
+            { x: 17 * TILE, yOfs: 14, pal: 5, phase: 6, dx: 1, dy: -0.3 },
         ];
+        const fleeStart = 210;
         for (let di = 0; di < crowdPositions.length; di++) {
             const dp = crowdPositions[di];
-            const stumble = Math.sin(t * 0.2 + di * 2) * shakeAmt * 4;
-            drawDancerSprite(dp.x + stumble, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: 0, armBlend: 0, footOffset: stumble * 0.5 });
+            const dancerFleeStart = fleeStart + di * 8;
+            const fleeProgress = t >= dancerFleeStart ? Math.min(1, (t - dancerFleeStart) / 180) : 0;
+            const baseY = danceFloorY + dp.yOfs;
+            if (fleeProgress <= 0) {
+                // Stumbling in place with smooth animation
+                const step = (introBeatStep + dp.phase) % 16;
+                const stepProgress = introBeatTimer / INTRO_BEAT_FRAMES;
+                const smoothStep = step + stepProgress;
+
+                const bobWave = Math.sin(smoothStep * Math.PI / 2);
+                const bob = Math.abs(bobWave) * 3;
+
+                const stumble = Math.sin(t * 0.2 + di * 2) * shakeAmt * 4;
+                const armBlend = Math.abs(bobWave);
+                const footOffset = bobWave * 1.5 + stumble * 0.3;
+
+                drawDancerSprite(dp.x + stumble, baseY, DANCER_PALETTES[dp.pal], { bob, armBlend, footOffset });
+            } else {
+                // Fleeing off-screen in varied directions (normalize so all exit viewport)
+                const fleeSpeed = W * 1.2 / Math.max(Math.abs(dp.dx), Math.abs(dp.dy));
+                const fleeX = dp.x + dp.dx * fleeProgress * fleeSpeed;
+                const fleeY = baseY + dp.dy * fleeProgress * fleeSpeed;
+                const onScreen = fleeX > -TILE * 2 && fleeX < W + TILE * 2 && fleeY > -TILE * 2 && fleeY < H + TILE * 2;
+                if (onScreen) {
+                    const runFrame = Math.floor(introGlobalTimer / 5) % 4;
+                    drawDancerSprite(fleeX, fleeY, DANCER_PALETTES[dp.pal], { bob: runFrame % 2 * 2, armBlend: 0.5, footOffset: runFrame % 2 * 2 - 1 });
+                }
+            }
         }
 
         // === Phase 2: Cracks and caves (starts around t=180) ===
@@ -5209,8 +5544,9 @@ function renderIntro() {
                             drawRect(rx, ry, 2, 2, "#684c3c");
                         }
                     }
-                    // Glowing eyes in darkness
-                    if (caveReveal > 0.7) {
+                    // Glowing eyes in darkness (hide once goblin has emerged)
+                    const gobEmerged = introGoblins[ci] && introGoblins[ci].emerged;
+                    if (caveReveal > 0.7 && !gobEmerged) {
                         const eyeAlpha = (caveReveal - 0.7) / 0.3;
                         ctx.globalAlpha = eyeAlpha * (0.5 + Math.sin(t * 0.1 + ci) * 0.5);
                         drawRect(cx + 5, cy + 5, 2, 2, "#39FF14");
@@ -5227,6 +5563,97 @@ function renderIntro() {
                 drawRect(sparkX, sparkY, 2, 2, "#efac28");
                 drawRect(sparkX + 1, sparkY - 2, 1, 2, "#ffffff");
             }
+
+            // === Goblins emerge from caves and sabotage the grid ===
+            const goblinEmergeTime = 200; // when goblins start emerging (per cave stagger)
+            for (let gi = 0; gi < introGoblins.length; gi++) {
+                const gob = introGoblins[gi];
+                const cave = CAVES[gob.caveIdx];
+                const caveReady = caveT > goblinEmergeTime + gi * 40;
+                if (!caveReady) continue;
+
+                if (!gob.emerged) {
+                    // Set initial destination: walk from cave to a point on the grid
+                    gob.emerged = true;
+                    const gridCenterX = miniGridX + 8 * TILE;
+                    const gridCenterY = miniGridY + 2 * TILE;
+                    // Walk toward grid center from cave position
+                    if (cave.tileX === 0) {
+                        gob.destX = miniGridX;
+                        gob.destY = miniGridY + gi * TILE;
+                        gob.dir = 3; // right
+                    } else if (cave.tileX === COLS - 1) {
+                        gob.destX = miniGridX + 15 * TILE;
+                        gob.destY = miniGridY + gi * TILE;
+                        gob.dir = 2; // left
+                    } else {
+                        gob.destX = gridCenterX;
+                        gob.destY = miniGridY;
+                        gob.dir = 0; // down
+                    }
+                }
+
+                // Move toward destination (gameplay-style smooth movement)
+                const dx = gob.destX - gob.x;
+                const dy = gob.destY - gob.y;
+                const dist = Math.abs(dx) + Math.abs(dy);
+                if (dist > 1) {
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        gob.x += Math.sign(dx) * gob.speed;
+                        gob.dir = dx < 0 ? 2 : 3;
+                    } else {
+                        gob.y += Math.sign(dy) * gob.speed;
+                        gob.dir = dy < 0 ? 1 : 0;
+                    }
+                    gob.frameTimer++;
+                    if (gob.frameTimer >= 8) {
+                        gob.frameTimer = 0;
+                        gob.frame = (gob.frame + 1) % 4;
+                    }
+                } else {
+                    // Arrived at destination — check if we're on a grid cell
+                    gob.x = gob.destX;
+                    gob.y = gob.destY;
+                    const gc = Math.round((gob.x - miniGridX) / TILE);
+                    const gr = Math.round((gob.y - miniGridY) / TILE);
+                    if (gc === gob.targetCol && gr === gob.targetRow &&
+                        gr >= 0 && gr < 4 && gc >= 0 && gc < 16 && introGridState) {
+                        // Flip the cell!
+                        introGridState[gr][gc] = introGridState[gr][gc] ? 0 : 1;
+                        introGridFlash[gr][gc] = 30;
+                        if (audioCtx) playSabotageSound(audioCtx.currentTime);
+                        gob.targetRow = -1;
+                        gob.targetCol = -1;
+                    }
+
+                    // Pick a new target cell
+                    if (gob.targetRow < 0 || gob.moveSteps > 5) {
+                        gob.targetRow = Math.floor(Math.random() * 4);
+                        gob.targetCol = Math.floor(Math.random() * 16);
+                        gob.moveSteps = 0;
+                    }
+
+                    // Move toward target cell
+                    const goalX = miniGridX + gob.targetCol * TILE;
+                    const goalY = miniGridY + gob.targetRow * TILE;
+                    const gdx = goalX - gob.x;
+                    const gdy = goalY - gob.y;
+                    if (Math.abs(gdx) > Math.abs(gdy)) {
+                        gob.destX = gob.x + Math.sign(gdx) * TILE;
+                        gob.destY = gob.y;
+                    } else {
+                        gob.destX = gob.x;
+                        gob.destY = gob.y + Math.sign(gdy) * TILE;
+                    }
+                    // Clamp to grid area
+                    gob.destX = Math.max(miniGridX, Math.min(miniGridX + 15 * TILE, gob.destX));
+                    gob.destY = Math.max(miniGridY, Math.min(miniGridY + 3 * TILE, gob.destY));
+                    gob.moveSteps++;
+                }
+
+                // Draw goblin
+                drawGoblinSprite("normal", gob.x, gob.y, gob.frame, { dir: gob.dir, showShadow: false });
+            }
         }
 
         ctx.restore();
@@ -5235,19 +5662,21 @@ function renderIntro() {
         if (t > 60 && t < 300) {
             const capAlpha = Math.min(1, (t - 60) / 30) * Math.max(0, 1 - (t - 240) / 60);
             ctx.globalAlpha = Math.max(0, capAlpha);
-            drawCentered("THEN THE GROUND BEGAN TO SHAKE...", H - 18, "#ef3a0c", 6);
+            drawCentered("BUT DEEP BENEATH THE DANCE FLOOR,", H - 54, "#ef3a0c", 5);
+            drawCentered("SOMETHING HAD BEEN LISTENING.", H - 44, "#ef3a0c", 5);
             ctx.globalAlpha = 1;
         }
         if (t > 300) {
             const capAlpha = Math.min(1, (t - 300) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("THE WALLS CRUMBLED OPEN!", H - 18, "#ef3a0c", 6);
+            drawCentered("THE EARTH SPLIT OPEN.", H - 54, "#ef3a0c", 5);
+            drawCentered("CRACKS TORE THROUGH THE WALLS LIKE JAGGED TEETH.", H - 44, "#ef3a0c", 5);
             ctx.globalAlpha = 1;
         }
     }
 
-    // ==================== SCENE 3: GOBLIN ATTACK ====================
-    else if (introScene === 3) {
+    // ==================== SCENE 2: GOBLIN ATTACK ====================
+    else if (introScene === 2) {
         // Goblins pouring out of caves, running across grid, corrupting beats
         const shAmt = Math.max(0, 1 - t / 120);
         const shX = (Math.random() - 0.5) * shAmt * 4 * SCALE;
@@ -5273,27 +5702,30 @@ function renderIntro() {
             drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");
         }
 
-        // Beat grid — being corrupted
+        // Beat grid — being corrupted (progressively flip introGridState cells)
         const miniGridY = GRID_Y * TILE + 14;
         const miniGridX = 3 * TILE;
         const corruptProgress = Math.min(1, t / 300);
-        const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
+        const targetCorrupted = Math.floor(corruptProgress * introCorruptOrder.length);
+        while (introCorruptedSoFar < targetCorrupted && introCorruptedSoFar < introCorruptOrder.length) {
+            const cell = introCorruptOrder[introCorruptedSoFar];
+            introGridState[cell.r][cell.c] = introGridState[cell.r][cell.c] ? 0 : 1;
+            introGridFlash[cell.r][cell.c] = 30;
+            introCorruptedSoFar++;
+        }
         for (let r = 0; r < 4; r++) {
             for (let c = 0; c < 16; c++) {
                 const gx = miniGridX + c * TILE;
                 const gy = miniGridY + r * TILE;
-                const on = patterns[r][c];
-                // Some cells get corrupted (randomized based on progress)
-                const cellSeed = (r * 100 + c * 37 + 7) % 16;
-                const corrupted = cellSeed < corruptProgress * 16;
-                const cellOn = corrupted ? !on : on;
+                const cellOn = introGridState[r][c];
                 drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
                 drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, cellOn ? PAL.gridOn[r] : PAL.gridOff);
-                // Green flash on corrupted cells
-                if (corrupted && Math.abs(cellSeed - corruptProgress * 16) < 2) {
-                    ctx.globalAlpha = 0.4;
+                // Green flash on recently corrupted cells
+                if (introGridFlash[r][c] > 0) {
+                    ctx.globalAlpha = 0.4 * (introGridFlash[r][c] / 30);
                     drawRect(gx, gy, TILE, TILE, "#39FF14");
                     ctx.globalAlpha = 1;
+                    introGridFlash[r][c]--;
                 }
             }
         }
@@ -5388,13 +5820,15 @@ function renderIntro() {
         if (t > 120) {
             const capAlpha = Math.min(1, (t - 120) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("GOBLINS ATTACKED AND SABOTAGED THE BEATS!", H - 18, "#39FF14", 5);
+            drawCentered("THEY CAME POURING OUT. SMALL, VICIOUS, AND FAST.", H - 60, "#39FF14", 5);
+            drawCentered("THEY SWARMED THE BEAT GRID AND TORE IT APART,", H - 50, "#39FF14", 5);
+            drawCentered("NOTE BY NOTE. THE MUSIC TWISTED INTO NOISE.", H - 40, "#39FF14", 5);
             ctx.globalAlpha = 1;
         }
     }
 
-    // ==================== SCENE 4: THE AFTERMATH ====================
-    else if (introScene === 4) {
+    // ==================== SCENE 3: THE AFTERMATH ====================
+    else if (introScene === 3) {
         // Dark, destroyed venue. Dancers fleeing. Beat grid scrambled.
         drawRect(0, 0, W, H, "#1a1a18");
 
@@ -5429,9 +5863,9 @@ function renderIntro() {
             for (let c = 0; c < 16; c++) {
                 const gx = miniGridX + c * TILE;
                 const gy = miniGridY + r * TILE;
-                const randomOn = ((r * 7 + c * 13 + 5) % 3) === 0;
+                const cellOn = introGridState ? introGridState[r][c] : ((r * 7 + c * 13 + 5) % 3) === 0;
                 drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
-                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, randomOn ? PAL.gridOn[r] : PAL.gridOff);
+                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, cellOn ? PAL.gridOn[r] : PAL.gridOff);
             }
         }
 
@@ -5449,24 +5883,6 @@ function renderIntro() {
             if (ctx.globalAlpha > 0) drawRect(smokeX, smokeY, 3, 3, "#888888");
         }
         ctx.globalAlpha = 1;
-
-        // Dancers running away (moving off screen)
-        const fleeProgress = Math.min(1, t / 240);
-        const crowdPositions = [
-            { x: 3 * TILE, pal: 0, dir: -1 }, { x: 5 * TILE, pal: 1, dir: -1 },
-            { x: 7 * TILE, pal: 2, dir: -1 }, { x: 9 * TILE, pal: 3, dir: 1 },
-            { x: 11 * TILE, pal: 4, dir: 1 }, { x: 13 * TILE, pal: 5, dir: 1 },
-            { x: 15 * TILE, pal: 0, dir: 1 }, { x: 17 * TILE, pal: 1, dir: 1 },
-        ];
-        const danceFloorY = (GRID_Y + 5) * TILE;
-        for (let di = 0; di < crowdPositions.length; di++) {
-            const dp = crowdPositions[di];
-            const fleeX = dp.x + dp.dir * fleeProgress * W * 0.8;
-            if (Math.abs(fleeX - W / 2) < W) {
-                const runFrame = Math.floor(introGlobalTimer / 5) % 4;
-                drawDancerSprite(fleeX, danceFloorY + (di % 2) * 12, DANCER_PALETTES[dp.pal], { bob: runFrame % 2 * 2, armBlend: 0.5, footOffset: runFrame % 2 * 2 - 1 });
-            }
-        }
 
         // Goblins celebrating on the grid
         const gobFrame = Math.floor(introGlobalTimer / 10) % 4;
@@ -5490,19 +5906,21 @@ function renderIntro() {
         if (t > 90) {
             const capAlpha = Math.min(1, (t - 90) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("THE MUSIC DIED. THE CROWD FLED.", H - 18, "#efd8a1", 6);
+            drawCentered("THE CROWD SCATTERED. THE LIGHTS WENT DARK.", H - 60, "#efd8a1", 5);
+            drawCentered("AND FOR THE FIRST TIME ANYONE COULD REMEMBER,", H - 50, "#efd8a1", 5);
+            drawCentered("THE UNDERGROUND WAS SILENT.", H - 40, "#efd8a1", 5);
             ctx.globalAlpha = 1;
         }
     }
 
-    // ==================== SCENE 5: CALL TO ACTION ====================
-    else if (introScene === 5) {
+    // ==================== SCENE 4: CALL TO ACTION ====================
+    else if (introScene === 4) {
         // DJ crawls from collapsed position to center, then rises and clenches fists
-        // Crawl phase (0-120): axis-aligned L-path from Scene 4 position to center
+        // Crawl phase (0-120): axis-aligned L-path from Scene 3 position to center
         // Rise phase (120+): existing stand-up and fist-clench sequence
         const CRAWL_FRAMES = 120;
-        const crawlStartX = W / 2 + 15;  // Scene 4 collapsed X (183)
-        const crawlStartY = GRID_Y * TILE - 8 + 4; // Scene 4 collapsed Y (boothY + 4 = 60)
+        const crawlStartX = W / 2 + 15;  // Scene 3 collapsed X (183)
+        const crawlStartY = GRID_Y * TILE - 8 + 4; // Scene 3 collapsed Y (boothY + 4 = 60)
         const crawlEndX = W / 2 - 8;     // Center X (168)
         const crawlEndY = H / 2 + 10;    // Center Y (154)
 
@@ -5589,24 +6007,569 @@ function renderIntro() {
         if (t > CRAWL_FRAMES + 60) {
             const txtAlpha = Math.min(1, (t - CRAWL_FRAMES - 60) / 30);
             ctx.globalAlpha = txtAlpha;
-            drawCentered("BUT THE DJ HAD FISTS OF FURY.", 30, "#efac28", 7);
+            drawCentered("BUT THE DJ DIDN'T RUN.", 20, "#efac28", 5);
+            drawCentered("ALONE IN THE WRECKAGE, SOMETHING STIRRED.", 30, "#efac28", 5);
+            drawCentered("A RHYTHM, DEEP IN THE CHEST, THAT REFUSED TO DIE.", 40, "#efac28", 5);
         }
         if (t > CRAWL_FRAMES + 150) {
             const txtAlpha2 = Math.min(1, (t - CRAWL_FRAMES - 150) / 30);
             ctx.globalAlpha = txtAlpha2;
-            drawCentered("IT'S TIME TO GET PUNCHIN'!", H - 30, "#ef3a0c", 8);
+            drawCentered("TWO FISTS. ONE BEAT.", H - 36, "#ef3a0c", 8);
+            drawCentered("THAT'S ALL IT WOULD TAKE.", H - 24, "#ef3a0c", 6);
         }
         ctx.globalAlpha = 1;
 
         // Scene loops in place — no fade out
     }
 
-    // Skip prompt (bottom right, pulsating glow)
-    if (introGlobalTimer > 60) {
-        const pulse = Math.sin(introGlobalTimer * 0.08) * 0.4 + 0.6; // oscillates 0.2 — 1.0
-        ctx.globalAlpha = pulse;
-        drawText("ENTER: NEXT", W - 55, H - 6, "#efd8a1", 3);
+    // ==================== SCENE 5: THE DISCOVERY ====================
+    else if (introScene === 5) {
+        drawRuinedVenueBackdrop(t);
+
+        // Page indicator dots (scenes 5-7)
+        const dotY = H - 22;
+        for (let i = 0; i < 3; i++) {
+            const dx = W / 2 - 10 + i * 8;
+            const active = i === (introScene - 5);
+            drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
+        }
+
+        // Story captions (in safe zone: below dancers, above bottom wall)
+        if (t < 120) {
+            const capAlpha = Math.min(1, Math.max(0, (t - 30) / 30));
+            ctx.globalAlpha = capAlpha;
+            drawCentered("A SINGLE PUNCH. A SINGLE NOTE.", H - 54, "#efd8a1", 5);
+            drawCentered("THE SOUND RANG OUT THROUGH THE RUINS LIKE A BELL.", H - 44, "#efd8a1", 5);
+            ctx.globalAlpha = 1;
+        } else {
+            const capAlpha = Math.min(1, (t - 120) / 30);
+            ctx.globalAlpha = capAlpha;
+            drawCentered("THE BEAT WASN'T DEAD. IT WAS WAITING.", H - 48, "#efac28", 6);
+            ctx.globalAlpha = 1;
+        }
+
+        // Animated demo grid — player walks to blocks and hits them (scaled up)
+        const DT = Math.floor(TILE * 1.4);
+        const gridStartX = W / 2 - 4 * DT / 2;
+        const gridStartY = 150;
+        const miniRows = 2;
+        const rowColors = ["#efac28", "#efb775"];
+        const demoTarget = [[true, false, true, false], [false, true, false, true]];
+        const toggleOrder = [[0,0], [0,2], [1,1], [1,3]];
+        const WALK_FRAMES = 35, ATTACK_AT = 38, ATTACK_DUR_5 = 15, HIT_OFFSET = 45;
+        const ATTACK_STEP_LEN = 80, WALK_STEP_LEN = 40;
+        const demoSteps = [
+            { x: gridStartX - DT, y: gridStartY, attack: true, toggleIdx: 0, dur: ATTACK_STEP_LEN },
+            { x: gridStartX + DT, y: gridStartY, attack: true, toggleIdx: 1, dur: ATTACK_STEP_LEN },
+            { x: gridStartX + DT, y: gridStartY + DT, attack: false, toggleIdx: -1, dur: WALK_STEP_LEN },
+            { x: gridStartX, y: gridStartY + DT, attack: true, toggleIdx: 2, dur: ATTACK_STEP_LEN },
+            { x: gridStartX + 2 * DT, y: gridStartY + DT, attack: true, toggleIdx: 3, dur: ATTACK_STEP_LEN },
+        ];
+        const stepStart = [0];
+        for (let i = 1; i < demoSteps.length; i++) stepStart.push(stepStart[i - 1] + demoSteps[i - 1].dur);
+        const STEPS_TOTAL = stepStart[demoSteps.length - 1] + demoSteps[demoSteps.length - 1].dur;
+        const CYCLE = STEPS_TOTAL + 60;
+        const hitFrames = [];
+        for (let i = 0; i < demoSteps.length; i++) {
+            if (demoSteps[i].attack) hitFrames.push({ toggleIdx: demoSteps[i].toggleIdx, frame: stepStart[i] + HIT_OFFSET });
+        }
+
+        {
+            const demoAlpha = 1;
+            const demoT = t;
+            const cycleT = demoT % CYCLE;
+            const blockOn = [false, false, false, false];
+            for (const hf of hitFrames) {
+                if (cycleT >= hf.frame && cycleT < CYCLE - 30) blockOn[hf.toggleIdx] = true;
+            }
+
+            for (let r = 0; r < miniRows; r++) {
+                for (let c = 0; c < 4; c++) {
+                    const bx = gridStartX + c * DT;
+                    const by = gridStartY + r * DT;
+                    let isOn = false;
+                    for (let i = 0; i < toggleOrder.length; i++) {
+                        if (toggleOrder[i][0] === r && toggleOrder[i][1] === c && blockOn[i]) isOn = true;
+                    }
+                    drawRect(bx, by, DT, DT, PAL.gridBorder);
+                    drawRect(bx + 1, by + 1, DT - 2, DT - 2, isOn ? rowColors[r] : PAL.gridOff);
+                    if (demoTarget[r][c] && !isOn) {
+                        const pulse = 0.3 + Math.sin(t * 0.06) * 0.15;
+                        ctx.globalAlpha = pulse;
+                        drawRect(bx + 1, by + 1, DT - 2, 1, rowColors[r]);
+                        drawRect(bx + 1, by + DT - 2, DT - 2, 1, rowColors[r]);
+                        drawRect(bx + 1, by + 1, 1, DT - 2, rowColors[r]);
+                        drawRect(bx + DT - 2, by + 1, 1, DT - 2, rowColors[r]);
+                        drawRect(bx + DT / 2 - 2, by + DT / 2 - 2, 4, 4, rowColors[r]);
+                        ctx.globalAlpha = demoAlpha;
+                    }
+                    if (isOn) {
+                        const glowR = DT * 1.2;
+                        const gcx = (bx + DT / 2) * SCALE, gcy = (by + DT / 2) * SCALE;
+                        const glow = ctx.createRadialGradient(gcx, gcy, 0, gcx, gcy, glowR * SCALE);
+                        glow.addColorStop(0, "rgba(239,172,40,0.12)");
+                        glow.addColorStop(1, "rgba(239,172,40,0)");
+                        ctx.fillStyle = glow;
+                        ctx.fillRect((bx - DT * 0.3) * SCALE, (by - DT * 0.3) * SCALE, DT * 1.6 * SCALE, DT * 1.6 * SCALE);
+                        for (const hf of hitFrames) {
+                            if (toggleOrder[hf.toggleIdx][0] === r && toggleOrder[hf.toggleIdx][1] === c) {
+                                const flashAge = cycleT - hf.frame;
+                                if (flashAge >= 0 && flashAge < 10) {
+                                    ctx.globalAlpha = (1 - flashAge / 10) * 0.6;
+                                    drawRect(bx, by, DT, DT, "#ffffff");
+                                    ctx.globalAlpha = demoAlpha;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Animated player
+            {
+                const playerAlpha = 1;
+                let stepIdx = demoSteps.length - 1;
+                for (let i = 0; i < demoSteps.length; i++) {
+                    if (cycleT < stepStart[i] + demoSteps[i].dur) { stepIdx = i; break; }
+                }
+                const step = demoSteps[stepIdx];
+                const stepT = cycleT - stepStart[stepIdx];
+                const prevPos = stepIdx === 0 ? { x: gridStartX - 3 * DT, y: gridStartY } : demoSteps[stepIdx - 1];
+                const ddx = step.x - prevPos.x;
+                const ddy = step.y - prevPos.y;
+                let walkDir = Math.abs(ddx) >= Math.abs(ddy) ? (ddx >= 0 ? 3 : 2) : (ddy >= 0 ? 0 : 1);
+                let px, py, isWalking = false, isAttacking = false;
+                if (cycleT >= STEPS_TOTAL) {
+                    px = demoSteps[demoSteps.length - 1].x; py = demoSteps[demoSteps.length - 1].y; walkDir = 3;
+                } else if (stepT < WALK_FRAMES) {
+                    const prog = stepT / WALK_FRAMES; const eased = prog * prog * (3 - 2 * prog);
+                    px = prevPos.x + (step.x - prevPos.x) * eased; py = prevPos.y + (step.y - prevPos.y) * eased; isWalking = true;
+                } else if (step.attack && stepT >= ATTACK_AT && stepT < ATTACK_AT + ATTACK_DUR_5) {
+                    px = step.x; py = step.y; isAttacking = true;
+                } else { px = step.x; py = step.y; }
+                const walkFrame = isWalking ? Math.floor(t / 6) % 4 : 0;
+                const bob = walkFrame % 2 === 1 ? 1 : 0;
+                const faceDir = isAttacking ? 3 : (isWalking ? walkDir : 3);
+                const punchProg = isAttacking ? Math.sin(((stepT - ATTACK_AT) / ATTACK_DUR_5) * Math.PI) : 0;
+                drawPlayerSprite(px, py, walkFrame, faceDir, { punchThrust: punchProg });
+                if (isAttacking) {
+                    const thrust = punchProg;
+                    const pDir = faceDir;
+                    let ddx2 = 0, ddy2 = 0;
+                    switch (pDir) { case 0: ddy2 = 1; break; case 1: ddy2 = -1; break; case 2: ddx2 = -1; break; case 3: ddx2 = 1; break; }
+                    const pLeanX = ddx2 !== 0 ? ddx2 * thrust * 5 : 0;
+                    const pLeanY = ddy2 !== 0 ? ddy2 * thrust * 4 : 0;
+                    const pcx = px + 8, pcy = py + 6;
+                    let shOX, shOY;
+                    switch (pDir) { case 0: shOX = -5; shOY = 2; break; case 1: shOX = 5; shOY = -8; break; case 2: shOX = -8; shOY = -2; break; case 3: shOX = 8; shOY = -2; break; }
+                    const armLen = 3 + thrust * 6;
+                    const shX = (pcx + pLeanX + shOX) * SCALE, shY = (pcy + pLeanY + shOY) * SCALE;
+                    const fiX = (pcx + pLeanX + shOX + ddx2 * armLen) * SCALE, fiY = (pcy + pLeanY + shOY + ddy2 * armLen) * SCALE;
+                    ctx.strokeStyle = "#efb775"; ctx.lineWidth = 4 * SCALE; ctx.lineCap = "round";
+                    ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(fiX, fiY); ctx.stroke();
+                    ctx.fillStyle = "#efb775"; ctx.beginPath(); ctx.arc(fiX, fiY, 3.5 * SCALE, 0, Math.PI * 2); ctx.fill();
+                    if (thrust > 0.5) {
+                        const burstCount = 6;
+                        for (let bi = 0; bi < burstCount; bi++) {
+                            const angle = (bi / burstCount) * Math.PI * 2 + (stepT - ATTACK_AT) * 0.3;
+                            ctx.strokeStyle = "#efd8a1"; ctx.lineWidth = 2 * SCALE; ctx.globalAlpha = thrust * 0.8;
+                            ctx.beginPath();
+                            ctx.moveTo(fiX + Math.cos(angle) * 5 * SCALE, fiY + Math.sin(angle) * 5 * SCALE);
+                            ctx.lineTo(fiX + Math.cos(angle) * (8 + thrust * 4) * SCALE, fiY + Math.sin(angle) * (8 + thrust * 4) * SCALE);
+                            ctx.stroke();
+                        }
+                        ctx.globalAlpha = demoAlpha * playerAlpha;
+                    }
+                }
+                // Gold bracket indicator
+                if (!isAttacking && step.attack && step.toggleIdx >= 0 && cycleT < STEPS_TOTAL && !blockOn[step.toggleIdx]) {
+                    const btx = gridStartX + toggleOrder[step.toggleIdx][1] * DT;
+                    const bty = gridStartY + toggleOrder[step.toggleIdx][0] * DT;
+                    ctx.globalAlpha = demoAlpha * playerAlpha * (0.25 + Math.sin(t * 0.1) * 0.15);
+                    const bc = "#efac28";
+                    drawRect(btx, bty, 4, 1, bc); drawRect(btx, bty, 1, 4, bc);
+                    drawRect(btx + DT - 4, bty, 4, 1, bc); drawRect(btx + DT - 1, bty, 1, 4, bc);
+                    drawRect(btx, bty + DT - 1, 4, 1, bc); drawRect(btx, bty + DT - 4, 1, 4, bc);
+                    drawRect(btx + DT - 4, bty + DT - 1, 4, 1, bc); drawRect(btx + DT - 1, bty + DT - 4, 1, 4, bc);
+                }
+                ctx.globalAlpha = demoAlpha;
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        // Control instructions with key press highlights
+        ctx.globalAlpha = 0.7;
+        {
+            const ky = gridStartY + miniRows * DT + 18;
+            const ks = 9;
+            const kg = 2;
+            const keyCol = "#392a1c";
+            const keyHi = "#684c3c";
+            const labelCol = "#efd8a1";
+            const activeKeyCol = "#efac28";
+            const activeKeyBg = "#684c3c";
+            const arrowGroupW = 3 * ks + 2 * kg;
+            const spW = 28;
+            const gap = 14;
+            const totalW = arrowGroupW + gap + spW;
+            const kx = W / 2 - totalW / 2;
+
+            const cycleT_k = t % CYCLE;
+            let demoWalking_k = false, demoAttacking_k = false, demoDir_k = 0;
+            if (cycleT_k < STEPS_TOTAL) {
+                let stepIdx_k = 0;
+                for (let i = 0; i < demoSteps.length; i++) {
+                    if (cycleT_k < stepStart[i] + demoSteps[i].dur) { stepIdx_k = i; break; }
+                }
+                const step_k = demoSteps[stepIdx_k];
+                const stepT_k = cycleT_k - stepStart[stepIdx_k];
+                const prevPos_k = stepIdx_k === 0 ? { x: gridStartX - 3 * DT, y: gridStartY } : demoSteps[stepIdx_k - 1];
+                const ddx_k = step_k.x - prevPos_k.x;
+                const ddy_k = step_k.y - prevPos_k.y;
+                demoDir_k = Math.abs(ddx_k) >= Math.abs(ddy_k) ? (ddx_k >= 0 ? 3 : 2) : (ddy_k >= 0 ? 0 : 1);
+                demoWalking_k = stepT_k < WALK_FRAMES;
+                demoAttacking_k = step_k.attack && stepT_k >= ATTACK_AT && stepT_k < ATTACK_AT + ATTACK_DUR_5;
+            }
+
+            function drawKey(x, y, w, h, active) {
+                drawRect(x, y, w, h, active ? activeKeyCol : keyCol);
+                drawRect(x + 1, y + 1, w - 2, h - 2, active ? activeKeyCol : keyHi);
+                if (active) {
+                    ctx.fillStyle = activeKeyCol;
+                    ctx.globalAlpha = 0.3;
+                    ctx.fillRect((x - 1) * SCALE, (y - 1) * SCALE, (w + 2) * SCALE, (h + 2) * SCALE);
+                    ctx.globalAlpha = 1.0;
+                }
+            }
+
+            const upActive = demoWalking_k && demoDir_k === 1;
+            const downActive = demoWalking_k && demoDir_k === 0;
+            const leftActive = demoWalking_k && demoDir_k === 2;
+            const rightActive = demoWalking_k && demoDir_k === 3;
+            const spaceActive = demoAttacking_k;
+
+            drawKey(kx + ks + kg, ky, ks, ks, upActive);
+            drawRect(kx + ks + kg + 3, ky + 3, 3, 1, upActive ? "#000" : labelCol);
+            drawRect(kx + ks + kg + 4, ky + 2, 1, 1, upActive ? "#000" : labelCol);
+            drawKey(kx + ks + kg, ky + ks + kg, ks, ks, downActive);
+            drawRect(kx + ks + kg + 3, ky + ks + kg + 5, 3, 1, downActive ? "#000" : labelCol);
+            drawRect(kx + ks + kg + 4, ky + ks + kg + 6, 1, 1, downActive ? "#000" : labelCol);
+            drawKey(kx, ky + ks + kg, ks, ks, leftActive);
+            drawRect(kx + 3, ky + ks + kg + 4, 1, 1, leftActive ? "#000" : labelCol);
+            drawRect(kx + 4, ky + ks + kg + 3, 1, 3, leftActive ? "#000" : labelCol);
+            drawKey(kx + 2 * (ks + kg), ky + ks + kg, ks, ks, rightActive);
+            drawRect(kx + 2 * (ks + kg) + 5, ky + ks + kg + 4, 1, 1, rightActive ? "#000" : labelCol);
+            drawRect(kx + 2 * (ks + kg) + 4, ky + ks + kg + 3, 1, 3, rightActive ? "#000" : labelCol);
+
+            const spX = kx + arrowGroupW + gap;
+            drawKey(spX, ky + ks + kg, spW, ks, spaceActive);
+            if (spaceActive) {
+                ctx.fillStyle = "#ffffff";
+                ctx.globalAlpha = 0.4;
+                ctx.fillRect((spX - 3) * SCALE, (ky + ks + kg - 3) * SCALE, (spW + 6) * SCALE, (ks + 6) * SCALE);
+                ctx.globalAlpha = 1.0;
+            }
+            ctx.font = `${3 * SCALE}px monospace`;
+            ctx.fillStyle = spaceActive ? "#000" : labelCol;
+            ctx.textAlign = "center";
+            ctx.fillText("SPACE", (spX + spW / 2) * SCALE, (ky + ks + kg + 7) * SCALE);
+
+            ctx.font = `${5 * SCALE}px monospace`;
+            ctx.fillStyle = "#efb775";
+            const arrowCenterX = kx + ks + kg + ks / 2;
+            ctx.fillText("MOVE", arrowCenterX * SCALE, (ky + 2 * ks + 2 * kg + 8) * SCALE);
+            ctx.fillText("ATTACK", (spX + spW / 2) * SCALE, (ky + 2 * ks + 2 * kg + 8) * SCALE);
+            ctx.textAlign = "start";
+        }
         ctx.globalAlpha = 1;
+    }
+
+    // ==================== SCENE 6: THE THREAT ====================
+    else if (introScene === 6) {
+        drawRuinedVenueBackdrop(t);
+
+        // Page indicator dots (scenes 5-7)
+        const dotY = H - 22;
+        for (let i = 0; i < 3; i++) {
+            const dx = W / 2 - 10 + i * 8;
+            const active = i === (introScene - 5);
+            drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
+        }
+
+        // Story captions (in safe zone)
+        if (t < 150) {
+            const capAlpha = Math.min(1, Math.max(0, (t - 30) / 30));
+            ctx.globalAlpha = capAlpha;
+            drawCentered("EACH BEAT HAD A PATTERN TO COMPLETE.", H - 48, "#efd8a1", 5);
+            ctx.globalAlpha = 1;
+        } else {
+            const capAlpha2 = Math.min(1, (t - 150) / 30);
+            ctx.globalAlpha = capAlpha2;
+            drawCentered("IN THE SHADOWS, SMALL EYES WATCHED.", H - 48, "#ef3a0c", 5);
+            ctx.globalAlpha = 1;
+        }
+
+        // --- LEFT: Pulsing outlines (beats to ADD) ---
+        const gx = W / 2 - 4 * TILE;
+        const gy = 150;
+        const patCols = 4;
+        const addColor = "#efac28";
+        const addTarget = [true, false, true, false];
+        const addFillOrder = [0, 2];
+        const ADD_INTERVAL = 60;
+        const ADD_CYCLE = addFillOrder.length * ADD_INTERVAL + 80;
+        const addT = Math.max(0, t - 40) % ADD_CYCLE;
+        const addFilled = Math.min(addFillOrder.length, Math.floor(addT / ADD_INTERVAL));
+
+        for (let c = 0; c < patCols; c++) {
+            const bx = gx + c * TILE, by = gy;
+            let isOn = false;
+            for (let i = 0; i < addFilled; i++) {
+                if (addFillOrder[i] === c) isOn = true;
+            }
+            drawRect(bx, by, TILE, TILE, PAL.gridBorder);
+            drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? addColor : PAL.gridOff);
+            if (addTarget[c] && !isOn) {
+                ctx.globalAlpha = 0.3 + Math.sin(t * 0.06) * 0.15;
+                drawRect(bx + 1, by + 1, TILE - 2, 1, addColor);
+                drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, addColor);
+                drawRect(bx + 1, by + 1, 1, TILE - 2, addColor);
+                drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, addColor);
+                drawRect(bx + 6, by + 6, 4, 4, addColor);
+                ctx.globalAlpha = 1;
+            }
+            if (isOn) {
+                const fIdx = addFillOrder.indexOf(c);
+                if (fIdx >= 0) {
+                    const flashAge = addT - fIdx * ADD_INTERVAL;
+                    if (flashAge >= 0 && flashAge < 12) {
+                        ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
+                        drawRect(bx, by, TILE, TILE, "#ffffff");
+                        ctx.globalAlpha = 1;
+                    }
+                }
+            }
+        }
+        drawText("OUTLINES = ADD", gx - 2, gy + TILE + 10, "#efb775", 4);
+
+        // Vertical divider
+        const divX = W / 2;
+        const divTop = gy - 4;
+        const divBot = gy + TILE + 18;
+        ctx.strokeStyle = "#684c3c";
+        ctx.lineWidth = SCALE;
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(divX * SCALE, divTop * SCALE);
+        ctx.lineTo(divX * SCALE, divBot * SCALE);
+        ctx.stroke();
+        ctx.globalAlpha = 1.0;
+        const dMid = (divTop + divBot) / 2;
+        drawRect(divX - 1, dMid - 2, 3, 3, "#efac28");
+
+        // --- TOP RIGHT: X marks (beats to REMOVE) ---
+        const xgx = W / 2 + TILE;
+        const xColor = "#efb775";
+        const xIndicatorColor = "#9b1a0a";
+        const xStartOn = [true, true, false, true];
+        const xTarget = [true, false, false, true];
+        const xRemoveOrder = [1];
+        const X_INTERVAL = 80;
+        const X_CYCLE = xRemoveOrder.length * X_INTERVAL + 100;
+        const xT = Math.max(0, t - 60) % X_CYCLE;
+        const xRemoved = Math.min(xRemoveOrder.length, Math.floor(xT / X_INTERVAL));
+
+        for (let c = 0; c < patCols; c++) {
+            const bx = xgx + c * TILE, by = gy;
+            let isOn = xStartOn[c];
+            for (let i = 0; i < xRemoved; i++) {
+                if (xRemoveOrder[i] === c) isOn = false;
+            }
+            drawRect(bx, by, TILE, TILE, PAL.gridBorder);
+            drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? xColor : PAL.gridOff);
+            if (isOn && !xTarget[c]) {
+                ctx.globalAlpha = 0.6 + Math.sin(t * 0.04) * 0.15;
+                drawRect(bx + 3, by + 3, 2, 2, xIndicatorColor);
+                drawRect(bx + 5, by + 5, 2, 2, xIndicatorColor);
+                drawRect(bx + 7, by + 7, 2, 2, xIndicatorColor);
+                drawRect(bx + 9, by + 9, 2, 2, xIndicatorColor);
+                drawRect(bx + 9, by + 3, 2, 2, xIndicatorColor);
+                drawRect(bx + 7, by + 5, 2, 2, xIndicatorColor);
+                drawRect(bx + 5, by + 7, 2, 2, xIndicatorColor);
+                drawRect(bx + 3, by + 9, 2, 2, xIndicatorColor);
+                ctx.globalAlpha = 1;
+            }
+            if (!isOn && xStartOn[c]) {
+                const fIdx = xRemoveOrder.indexOf(c);
+                if (fIdx >= 0) {
+                    const flashAge = xT - fIdx * X_INTERVAL;
+                    if (flashAge >= 0 && flashAge < 12) {
+                        ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
+                        drawRect(bx, by, TILE, TILE, "#ffffff");
+                        ctx.globalAlpha = 1;
+                    }
+                }
+            }
+        }
+        drawText("X MARKS = REMOVE", xgx, gy + TILE + 10, "#efb775", 4);
+
+        // --- Lurking goblins at the edges (in safe zone) ---
+        const gobFrame = Math.floor(t / 20) % 4;
+        ctx.globalAlpha = 0.7;
+        drawGoblinSprite("normal", TILE + 4, gy, gobFrame, { dir: 3, showShadow: false });
+        drawGoblinSprite("normal", (COLS - 2) * TILE - 4, gy, (gobFrame + 2) % 4, { dir: 2, showShadow: false });
+        ctx.globalAlpha = 1;
+    }
+
+    // ==================== SCENE 7: THE STAND ====================
+    else if (introScene === 7) {
+        drawRuinedVenueBackdrop(t);
+
+        // Page indicator dots (scenes 5-7)
+        const dotY = H - 22;
+        for (let i = 0; i < 3; i++) {
+            const dx = W / 2 - 10 + i * 8;
+            const active = i === (introScene - 5);
+            drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
+        }
+
+        // Timeline constants
+        const CAPTION1_START = 30;
+        const GOB_START = 40;
+        const GOB_END = 140;
+        const PUNCH_START = 155;
+        const ATTACK_DUR_7 = 12;
+        const HIT_FRAME = 160;
+        const CAPTION2_START = 185;
+
+        // Positions (in safe zone, below beat grid)
+        const djX = W / 2 + TILE;
+        const djY = 155;
+        const gobStartX = TILE * 2;
+        const gobEndX = W / 2 - TILE * 2;
+
+        // --- Caption 1 (in safe zone) ---
+        if (t > CAPTION1_START) {
+            const fadeIn = Math.min(1, (t - CAPTION1_START) / 20);
+            ctx.globalAlpha = fadeIn;
+            drawCentered("ONE OF THEM CREPT BACK. BOLD. STUPID.", H - 54, "#efd8a1", 6);
+            ctx.globalAlpha = 1;
+        }
+
+        // --- Goblin walk-in ---
+        const gobAlive = t < HIT_FRAME;
+        if (gobAlive) {
+            const gobProgress = Math.min(1, Math.max(0, (t - GOB_START) / (GOB_END - GOB_START)));
+            const eased = gobProgress * gobProgress * (3 - 2 * gobProgress);
+            const gobX = gobStartX + (gobEndX - gobStartX) * eased;
+            const gobFrame = t < GOB_END ? Math.floor(t / 10) % 4 : 0;
+            drawGoblinSprite("normal", gobX, djY, gobFrame, { dir: 3, showShadow: true });
+        }
+
+        // --- Death particles ---
+        if (t >= HIT_FRAME && t < HIT_FRAME + 30) {
+            const deathT = t - HIT_FRAME;
+            const particleColors = ["#39FF14", "#1a5c0a", "#efac28", "#39FF14", "#2d8a0e", "#efac28", "#39FF14", "#1a5c0a"];
+            for (let pi = 0; pi < 8; pi++) {
+                const angle = (pi / 8) * Math.PI * 2 + 0.3;
+                const speed = 1.5 + (pi % 3) * 0.5;
+                const px = gobEndX + 6 + Math.cos(angle) * speed * deathT;
+                const py = djY + 6 + Math.sin(angle) * speed * deathT + deathT * deathT * 0.04;
+                const life = 1 - deathT / 30;
+                if (life > 0) {
+                    ctx.globalAlpha = life;
+                    drawRect(px, py, 2, 2, particleColors[pi]);
+                }
+            }
+            ctx.globalAlpha = 1;
+            if (deathT < 3) {
+                ctx.globalAlpha = 0.3 * (1 - deathT / 3);
+                drawRect(0, 0, W, H, "#39FF14");
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        // --- DJ sprite ---
+        const djDir = 2;
+        let punchThrust = 0;
+        let djFrame = 0;
+        if (t >= PUNCH_START && t < PUNCH_START + ATTACK_DUR_7) {
+            const punchProgress = (t - PUNCH_START) / ATTACK_DUR_7;
+            punchThrust = Math.sin(punchProgress * Math.PI);
+        }
+        drawPlayerSprite(djX, djY, djFrame, djDir, { punchThrust: punchThrust });
+
+        if (punchThrust > 0) {
+            const thrust = punchThrust;
+            let ddx2 = -1, ddy2 = 0;
+            const pLeanX = ddx2 * thrust * 5;
+            const pLeanY = 0;
+            const pcx = djX + 8, pcy = djY + 6;
+            const shOX = -8, shOY = -2;
+            const armLen = 3 + thrust * 6;
+            const shX = (pcx + pLeanX + shOX) * SCALE, shY = (pcy + pLeanY + shOY) * SCALE;
+            const fiX = (pcx + pLeanX + shOX + ddx2 * armLen) * SCALE, fiY = (pcy + pLeanY + shOY + ddy2 * armLen) * SCALE;
+            ctx.strokeStyle = "#efb775"; ctx.lineWidth = 4 * SCALE; ctx.lineCap = "round";
+            ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(fiX, fiY); ctx.stroke();
+            ctx.fillStyle = "#efb775"; ctx.beginPath(); ctx.arc(fiX, fiY, 3.5 * SCALE, 0, Math.PI * 2); ctx.fill();
+            if (thrust > 0.5) {
+                for (let bi = 0; bi < 6; bi++) {
+                    const angle = (bi / 6) * Math.PI * 2 + (t - PUNCH_START) * 0.3;
+                    ctx.strokeStyle = "#efd8a1"; ctx.lineWidth = 2 * SCALE; ctx.globalAlpha = thrust * 0.8;
+                    ctx.beginPath();
+                    ctx.moveTo(fiX + Math.cos(angle) * 5 * SCALE, fiY + Math.sin(angle) * 5 * SCALE);
+                    ctx.lineTo(fiX + Math.cos(angle) * (8 + thrust * 4) * SCALE, fiY + Math.sin(angle) * (8 + thrust * 4) * SCALE);
+                    ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        // --- Caption 2 (in safe zone) ---
+        if (t > CAPTION2_START) {
+            const fadeIn = Math.min(1, (t - CAPTION2_START) / 20);
+            ctx.globalAlpha = fadeIn;
+            drawCentered("IT TURNS OUT FISTS THAT COULD FIX A BEAT", H - 48, "#efac28", 5);
+            drawCentered("COULD BREAK A GOBLIN JUST AS EASILY.", H - 38, "#efac28", 5);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // HUD "PRESS ENTER" prompt — appears 60 frames after each scene's last story beat
+    const lastBeatFrame = [60, 300, 120, 90, 150, 120, 150, 185][introScene] || 60;
+    const hudPromptDelay = lastBeatFrame + 60;
+    if (t > hudPromptDelay) {
+        const promptText = introScene >= 7 ? "PRESS ENTER TO BEGIN" : "PRESS ENTER";
+        // Draw HUD background (matches gameplay HUD style)
+        drawHudRect(0, 0, COLS * TILE, HUD_H, "#2a1d0d");
+        // Teal border along top
+        for (let c = 0; c < COLS; c++) {
+            drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+        }
+        hudCtx.fillStyle = "rgba(255,255,255,0.08)";
+        hudCtx.fillRect(0, 0, COLS * TILE * SCALE, 1 * SCALE);
+        // Subtle grain texture
+        for (let c = 0; c < COLS; c++) {
+            let seed = c * 37 + 7;
+            for (let i = 0; i < 4; i++) {
+                seed = (seed * 9301 + 49297) % 233280;
+                const gx = c * TILE + (seed % TILE);
+                seed = (seed * 9301 + 49297) % 233280;
+                const gy = 3 + (seed % (HUD_H - 4));
+                const bright = (seed % 2) === 0;
+                hudCtx.fillStyle = bright ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.08)";
+                hudCtx.fillRect(gx * SCALE, gy * SCALE, SCALE, SCALE);
+            }
+        }
+        // Centered prompt text with gentle pulse
+        const promptPulse = Math.sin(t * 0.06) * 0.3 + 0.7;
+        hudCtx.globalAlpha = promptPulse;
+        hudCtx.font = `${5 * SCALE}px monospace`;
+        hudCtx.fillStyle = "#efd8a1";
+        hudCtx.textAlign = "center";
+        hudCtx.fillText(promptText, (COLS * TILE * SCALE) / 2, (HUD_H / 2 + 2) * SCALE);
+        hudCtx.textAlign = "start";
+        hudCtx.globalAlpha = 1;
     }
 }
 
@@ -5681,7 +6644,7 @@ function renderHighScoreEntry() {
         drawText("HIGH SCORES", scoreX, scoreStartY - 12, "#efac28", 3);
         for (let i = 0; i < highScores.length; i++) {
             const entry = highScores[i];
-            const rank = (i + 1) + "." + entry.name + " " + String(entry.score).padStart(7, "0");
+            const rank = (i + 1) + "." + entry.name + " " + String(entry.score).padStart(5, "0");
             const color = i === 0 ? "#efac28" : "#efb775";
             drawText(rank, scoreX, scoreStartY + i * 9, color, 3);
         }
@@ -6158,448 +7121,6 @@ function renderGameOverScreen() {
     }
 }
 
-function renderTutorialScreen() {
-    tutorialTimer++;
-    const W = COLS * TILE;
-    const H = ROWS * TILE;
-    const t = tutorialTimer;
-
-    // Dark background
-    drawRect(0, 0, W, H, "#1f240a");
-
-    // Starfield
-    for (let i = 0; i < 60; i++) {
-        const sx = ((i * 137 + 50) % W);
-        const sy = ((i * 97 + 30) % H);
-        const twinkle = Math.sin(t * 0.05 + i) * 0.5 + 0.5;
-        ctx.globalAlpha = 0.3 + twinkle * 0.7;
-        const starSize = (i % 3 === 0) ? 2 : 1;
-        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#efac28" : "#efd8a1");
-    }
-    ctx.globalAlpha = 1;
-
-    function drawCenteredText(text, y, color, scale) {
-        ctx.font = `${scale * SCALE}px monospace`;
-        ctx.fillStyle = color;
-        ctx.textAlign = "center";
-        ctx.fillText(text, (W * SCALE) / 2, y * SCALE);
-        ctx.textAlign = "start";
-    }
-
-    // Page indicator dots (2 pages)
-    const dotY = H - 22;
-    for (let i = 0; i < 2; i++) {
-        const dx = W / 2 - 6 + i * 8;
-        const active = i === tutorialPage;
-        drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
-    }
-
-    // ======== PAGE 0: PUNCH BLOCKS ========
-    if (tutorialPage === 0) {
-        // Title
-        drawCenteredText("PUNCH BLOCKS TO TOGGLE BEATS", 25, "#efac28", 7);
-
-        // Animated demo grid — player walks to blocks and hits them (scaled up)
-        const DT = Math.floor(TILE * 1.4); // larger demo tile size
-        const gridStartX = W / 2 - 4 * DT / 2;
-        const gridStartY = 50;
-        const miniRows = 2;
-        const rowColors = ["#efac28", "#efb775"];
-        const demoTarget = [[true, false, true, false], [false, true, false, true]];
-        const toggleOrder = [[0,0], [0,2], [1,1], [1,3]];
-        const WALK_FRAMES = 35, ATTACK_AT = 38, ATTACK_DUR = 15, HIT_OFFSET = 45;
-        const ATTACK_STEP_LEN = 80, WALK_STEP_LEN = 40;
-        const demoSteps = [
-            { x: gridStartX - DT, y: gridStartY, attack: true, toggleIdx: 0, dur: ATTACK_STEP_LEN },
-            { x: gridStartX + DT, y: gridStartY, attack: true, toggleIdx: 1, dur: ATTACK_STEP_LEN },
-            { x: gridStartX + DT, y: gridStartY + DT, attack: false, toggleIdx: -1, dur: WALK_STEP_LEN },
-            { x: gridStartX, y: gridStartY + DT, attack: true, toggleIdx: 2, dur: ATTACK_STEP_LEN },
-            { x: gridStartX + 2 * DT, y: gridStartY + DT, attack: true, toggleIdx: 3, dur: ATTACK_STEP_LEN },
-        ];
-        const stepStart = [0];
-        for (let i = 1; i < demoSteps.length; i++) stepStart.push(stepStart[i - 1] + demoSteps[i - 1].dur);
-        const STEPS_TOTAL = stepStart[demoSteps.length - 1] + demoSteps[demoSteps.length - 1].dur;
-        const CYCLE = STEPS_TOTAL + 60;
-        const hitFrames = [];
-        for (let i = 0; i < demoSteps.length; i++) {
-            if (demoSteps[i].attack) hitFrames.push({ toggleIdx: demoSteps[i].toggleIdx, frame: stepStart[i] + HIT_OFFSET });
-        }
-
-        {
-            const demoAlpha = 1;
-            const demoT = t;
-            const cycleT = demoT % CYCLE;
-            const blockOn = [false, false, false, false];
-            for (const hf of hitFrames) {
-                if (cycleT >= hf.frame && cycleT < CYCLE - 30) blockOn[hf.toggleIdx] = true;
-            }
-
-            // Draw grid cells (scaled up with DT)
-            for (let r = 0; r < miniRows; r++) {
-                for (let c = 0; c < 4; c++) {
-                    const bx = gridStartX + c * DT;
-                    const by = gridStartY + r * DT;
-                    let isOn = false;
-                    for (let i = 0; i < toggleOrder.length; i++) {
-                        if (toggleOrder[i][0] === r && toggleOrder[i][1] === c && blockOn[i]) isOn = true;
-                    }
-                    drawRect(bx, by, DT, DT, PAL.gridBorder);
-                    drawRect(bx + 1, by + 1, DT - 2, DT - 2, isOn ? rowColors[r] : PAL.gridOff);
-                    if (demoTarget[r][c] && !isOn) {
-                        const pulse = 0.3 + Math.sin(t * 0.06) * 0.15;
-                        ctx.globalAlpha = pulse;
-                        drawRect(bx + 1, by + 1, DT - 2, 1, rowColors[r]);
-                        drawRect(bx + 1, by + DT - 2, DT - 2, 1, rowColors[r]);
-                        drawRect(bx + 1, by + 1, 1, DT - 2, rowColors[r]);
-                        drawRect(bx + DT - 2, by + 1, 1, DT - 2, rowColors[r]);
-                        drawRect(bx + DT / 2 - 2, by + DT / 2 - 2, 4, 4, rowColors[r]);
-                        ctx.globalAlpha = demoAlpha;
-                    }
-                    if (isOn) {
-                        for (const hf of hitFrames) {
-                            if (toggleOrder[hf.toggleIdx][0] === r && toggleOrder[hf.toggleIdx][1] === c) {
-                                const flashAge = cycleT - hf.frame;
-                                if (flashAge >= 0 && flashAge < 10) {
-                                    ctx.globalAlpha = (1 - flashAge / 10) * 0.6;
-                                    drawRect(bx, by, DT, DT, "#ffffff");
-                                    ctx.globalAlpha = demoAlpha;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Animated player
-            {
-                const playerAlpha = 1;
-                let stepIdx = demoSteps.length - 1;
-                for (let i = 0; i < demoSteps.length; i++) {
-                    if (cycleT < stepStart[i] + demoSteps[i].dur) { stepIdx = i; break; }
-                }
-                const step = demoSteps[stepIdx];
-                const stepT = cycleT - stepStart[stepIdx];
-                const prevPos = stepIdx === 0 ? { x: gridStartX - 3 * DT, y: gridStartY } : demoSteps[stepIdx - 1];
-                const ddx = step.x - prevPos.x;
-                const ddy = step.y - prevPos.y;
-                let walkDir = Math.abs(ddx) >= Math.abs(ddy) ? (ddx >= 0 ? 3 : 2) : (ddy >= 0 ? 0 : 1);
-                let px, py, isWalking = false, isAttacking = false;
-                if (cycleT >= STEPS_TOTAL) {
-                    px = demoSteps[demoSteps.length - 1].x; py = demoSteps[demoSteps.length - 1].y; walkDir = 3;
-                } else if (stepT < WALK_FRAMES) {
-                    const prog = stepT / WALK_FRAMES; const eased = prog * prog * (3 - 2 * prog);
-                    px = prevPos.x + (step.x - prevPos.x) * eased; py = prevPos.y + (step.y - prevPos.y) * eased; isWalking = true;
-                } else if (step.attack && stepT >= ATTACK_AT && stepT < ATTACK_AT + ATTACK_DUR) {
-                    px = step.x; py = step.y; isAttacking = true;
-                } else { px = step.x; py = step.y; }
-                const walkFrame = isWalking ? Math.floor(t / 6) % 4 : 0;
-                const bob = walkFrame % 2 === 1 ? 1 : 0;
-                const faceDir = isAttacking ? 3 : (isWalking ? walkDir : 3);
-                const punchProg = isAttacking ? Math.sin(((stepT - ATTACK_AT) / ATTACK_DUR) * Math.PI) : 0;
-                drawPlayerSprite(px, py, walkFrame, faceDir, { punchThrust: punchProg });
-                if (isAttacking) {
-                    // Draw punch arm + fist (matching drawPunch style)
-                    const thrust = punchProg;
-                    const pDir = faceDir;
-                    let ddx2 = 0, ddy2 = 0;
-                    switch (pDir) { case 0: ddy2 = 1; break; case 1: ddy2 = -1; break; case 2: ddx2 = -1; break; case 3: ddx2 = 1; break; }
-                    const pLeanX = ddx2 !== 0 ? ddx2 * thrust * 5 : 0;
-                    const pLeanY = ddy2 !== 0 ? ddy2 * thrust * 4 : 0;
-                    const pcx = px + 8, pcy = py + 6;
-                    let shOX, shOY;
-                    switch (pDir) { case 0: shOX = -5; shOY = 2; break; case 1: shOX = 5; shOY = -8; break; case 2: shOX = -8; shOY = -2; break; case 3: shOX = 8; shOY = -2; break; }
-                    const armLen = 3 + thrust * 6;
-                    const shX = (pcx + pLeanX + shOX) * SCALE, shY = (pcy + pLeanY + shOY) * SCALE;
-                    const fiX = (pcx + pLeanX + shOX + ddx2 * armLen) * SCALE, fiY = (pcy + pLeanY + shOY + ddy2 * armLen) * SCALE;
-                    ctx.strokeStyle = "#efb775"; ctx.lineWidth = 4 * SCALE; ctx.lineCap = "round";
-                    ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(fiX, fiY); ctx.stroke();
-                    // Fist
-                    ctx.fillStyle = "#efb775"; ctx.beginPath(); ctx.arc(fiX, fiY, 3.5 * SCALE, 0, Math.PI * 2); ctx.fill();
-                    // Impact flash
-                    if (thrust > 0.5) {
-                        const burstCount = 6;
-                        for (let bi = 0; bi < burstCount; bi++) {
-                            const angle = (bi / burstCount) * Math.PI * 2 + (stepT - ATTACK_AT) * 0.3;
-                            ctx.strokeStyle = "#efd8a1"; ctx.lineWidth = 2 * SCALE; ctx.globalAlpha = thrust * 0.8;
-                            ctx.beginPath();
-                            ctx.moveTo(fiX + Math.cos(angle) * 5 * SCALE, fiY + Math.sin(angle) * 5 * SCALE);
-                            ctx.lineTo(fiX + Math.cos(angle) * (8 + thrust * 4) * SCALE, fiY + Math.sin(angle) * (8 + thrust * 4) * SCALE);
-                            ctx.stroke();
-                        }
-                        ctx.globalAlpha = demoAlpha * playerAlpha;
-                    }
-                }
-                // Gold bracket indicator
-                if (!isAttacking && step.attack && step.toggleIdx >= 0 && cycleT < STEPS_TOTAL && !blockOn[step.toggleIdx]) {
-                    const btx = gridStartX + toggleOrder[step.toggleIdx][1] * DT;
-                    const bty = gridStartY + toggleOrder[step.toggleIdx][0] * DT;
-                    ctx.globalAlpha = demoAlpha * playerAlpha * (0.25 + Math.sin(t * 0.1) * 0.15);
-                    const bc = "#efac28";
-                    drawRect(btx, bty, 4, 1, bc); drawRect(btx, bty, 1, 4, bc);
-                    drawRect(btx + DT - 4, bty, 4, 1, bc); drawRect(btx + DT - 1, bty, 1, 4, bc);
-                    drawRect(btx, bty + DT - 1, 4, 1, bc); drawRect(btx, bty + DT - 4, 1, 4, bc);
-                    drawRect(btx + DT - 4, bty + DT - 1, 4, 1, bc); drawRect(btx + DT - 1, bty + DT - 4, 1, 4, bc);
-                }
-                ctx.globalAlpha = demoAlpha;
-            }
-            ctx.globalAlpha = 1;
-        }
-
-        // Control instructions with key press highlights
-        {
-            const ky = gridStartY + miniRows * DT + 18;
-            const ks = 9; // key size
-            const kg = 2; // key gap
-            const keyCol = "#392a1c";
-            const keyHi = "#684c3c";
-            const labelCol = "#efd8a1";
-            const activeKeyCol = "#efac28"; // bright highlight for active keys
-            const activeKeyBg = "#684c3c";
-            const arrowGroupW = 3 * ks + 2 * kg; // width of arrow key cluster
-            const spW = 28; // space bar width
-            const gap = 14; // gap between arrow keys and space bar
-            const totalW = arrowGroupW + gap + spW;
-            const kx = W / 2 - totalW / 2; // left edge of arrow keys
-
-            // Determine which keys are "pressed" based on demo player state
-            const cycleT_k = t % CYCLE;
-            let demoWalking_k = false, demoAttacking_k = false, demoDir_k = 0;
-            if (cycleT_k < STEPS_TOTAL) {
-                let stepIdx_k = 0;
-                for (let i = 0; i < demoSteps.length; i++) {
-                    if (cycleT_k < stepStart[i] + demoSteps[i].dur) { stepIdx_k = i; break; }
-                }
-                const step_k = demoSteps[stepIdx_k];
-                const stepT_k = cycleT_k - stepStart[stepIdx_k];
-                const prevPos_k = stepIdx_k === 0 ? { x: gridStartX - 3 * DT, y: gridStartY } : demoSteps[stepIdx_k - 1];
-                const ddx_k = step_k.x - prevPos_k.x;
-                const ddy_k = step_k.y - prevPos_k.y;
-                demoDir_k = Math.abs(ddx_k) >= Math.abs(ddy_k) ? (ddx_k >= 0 ? 3 : 2) : (ddy_k >= 0 ? 0 : 1);
-                demoWalking_k = stepT_k < WALK_FRAMES;
-                demoAttacking_k = step_k.attack && stepT_k >= ATTACK_AT && stepT_k < ATTACK_AT + ATTACK_DUR;
-            }
-
-            // Helper to draw a key with optional active highlight
-            function drawKey(x, y, w, h, active) {
-                drawRect(x, y, w, h, active ? activeKeyCol : keyCol);
-                drawRect(x + 1, y + 1, w - 2, h - 2, active ? activeKeyCol : keyHi);
-                if (active) {
-                    // Glow effect
-                    ctx.fillStyle = activeKeyCol;
-                    ctx.globalAlpha = 0.3;
-                    ctx.fillRect((x - 1) * SCALE, (y - 1) * SCALE, (w + 2) * SCALE, (h + 2) * SCALE);
-                    ctx.globalAlpha = 1.0;
-                }
-            }
-
-            const upActive = demoWalking_k && demoDir_k === 1;
-            const downActive = demoWalking_k && demoDir_k === 0;
-            const leftActive = demoWalking_k && demoDir_k === 2;
-            const rightActive = demoWalking_k && demoDir_k === 3;
-            const spaceActive = demoAttacking_k;
-
-            // Up arrow
-            drawKey(kx + ks + kg, ky, ks, ks, upActive);
-            drawRect(kx + ks + kg + 3, ky + 3, 3, 1, upActive ? "#000" : labelCol);
-            drawRect(kx + ks + kg + 4, ky + 2, 1, 1, upActive ? "#000" : labelCol);
-            // Down arrow
-            drawKey(kx + ks + kg, ky + ks + kg, ks, ks, downActive);
-            drawRect(kx + ks + kg + 3, ky + ks + kg + 5, 3, 1, downActive ? "#000" : labelCol);
-            drawRect(kx + ks + kg + 4, ky + ks + kg + 6, 1, 1, downActive ? "#000" : labelCol);
-            // Left arrow
-            drawKey(kx, ky + ks + kg, ks, ks, leftActive);
-            drawRect(kx + 3, ky + ks + kg + 4, 1, 1, leftActive ? "#000" : labelCol);
-            drawRect(kx + 4, ky + ks + kg + 3, 1, 3, leftActive ? "#000" : labelCol);
-            // Right arrow
-            drawKey(kx + 2 * (ks + kg), ky + ks + kg, ks, ks, rightActive);
-            drawRect(kx + 2 * (ks + kg) + 5, ky + ks + kg + 4, 1, 1, rightActive ? "#000" : labelCol);
-            drawRect(kx + 2 * (ks + kg) + 4, ky + ks + kg + 3, 1, 3, rightActive ? "#000" : labelCol);
-
-            // Space bar icon (to the right of arrow keys)
-            const spX = kx + arrowGroupW + gap;
-            drawKey(spX, ky + ks + kg, spW, ks, spaceActive);
-            // Impact flash when SPACE is pressed
-            if (spaceActive) {
-                ctx.fillStyle = "#ffffff";
-                ctx.globalAlpha = 0.4;
-                ctx.fillRect((spX - 3) * SCALE, (ky + ks + kg - 3) * SCALE, (spW + 6) * SCALE, (ks + 6) * SCALE);
-                ctx.globalAlpha = 1.0;
-            }
-            ctx.font = `${3 * SCALE}px monospace`;
-            ctx.fillStyle = spaceActive ? "#000" : labelCol;
-            ctx.textAlign = "center";
-            ctx.fillText("SPACE", (spX + spW / 2) * SCALE, (ky + ks + kg + 7) * SCALE);
-
-            // Labels below each group
-            ctx.font = `${5 * SCALE}px monospace`;
-            ctx.fillStyle = "#efb775";
-            const arrowCenterX = kx + ks + kg + ks / 2;
-            ctx.fillText("MOVE", arrowCenterX * SCALE, (ky + 2 * ks + 2 * kg + 8) * SCALE);
-            ctx.fillText("ATTACK", (spX + spW / 2) * SCALE, (ky + 2 * ks + 2 * kg + 8) * SCALE);
-            ctx.textAlign = "start";
-        }
-    }
-
-    // ======== PAGE 1: MATCH THE PATTERN + BEAT THE CLOCK ========
-    else if (tutorialPage === 1) {
-        drawCenteredText("MATCH THE PATTERN", 15, "#efac28", 7);
-
-        // --- TOP LEFT: Pulsing outlines (beats to ADD) ---
-        const gx = W / 2 - 4 * TILE;
-        const gy = 36;
-        const patCols = 4;
-        const addColor = "#efac28";
-        const addTarget = [true, false, true, false];
-        const addFillOrder = [0, 2];
-        const ADD_INTERVAL = 60;
-        const ADD_CYCLE = addFillOrder.length * ADD_INTERVAL + 80;
-        const addT = Math.max(0, t - 40) % ADD_CYCLE;
-        const addFilled = Math.min(addFillOrder.length, Math.floor(addT / ADD_INTERVAL));
-
-        for (let c = 0; c < patCols; c++) {
-            const bx = gx + c * TILE, by = gy;
-            let isOn = false;
-            for (let i = 0; i < addFilled; i++) {
-                if (addFillOrder[i] === c) isOn = true;
-            }
-            drawRect(bx, by, TILE, TILE, PAL.gridBorder);
-            drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? addColor : PAL.gridOff);
-            if (addTarget[c] && !isOn) {
-                ctx.globalAlpha = 0.3 + Math.sin(t * 0.06) * 0.15;
-                drawRect(bx + 1, by + 1, TILE - 2, 1, addColor);
-                drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, addColor);
-                drawRect(bx + 1, by + 1, 1, TILE - 2, addColor);
-                drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, addColor);
-                drawRect(bx + 6, by + 6, 4, 4, addColor);
-                ctx.globalAlpha = 1;
-            }
-            if (isOn) {
-                const fIdx = addFillOrder.indexOf(c);
-                if (fIdx >= 0) {
-                    const flashAge = addT - fIdx * ADD_INTERVAL;
-                    if (flashAge >= 0 && flashAge < 12) {
-                        ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
-                        drawRect(bx, by, TILE, TILE, "#ffffff");
-                        ctx.globalAlpha = 1;
-                    }
-                }
-            }
-        }
-        drawText("OUTLINES = ADD", gx - 2, gy + TILE + 10, "#efb775", 4);
-
-        // Vertical divider between ADD and REMOVE sections
-        const divX = W / 2;
-        const divTop = gy - 4;
-        const divBot = gy + TILE + 18;
-        ctx.strokeStyle = "#684c3c";
-        ctx.lineWidth = SCALE;
-        ctx.globalAlpha = 0.5;
-        ctx.beginPath();
-        ctx.moveTo(divX * SCALE, divTop * SCALE);
-        ctx.lineTo(divX * SCALE, divBot * SCALE);
-        ctx.stroke();
-        ctx.globalAlpha = 1.0;
-        // Diamond accent at center of divider
-        const dMid = (divTop + divBot) / 2;
-        drawRect(divX - 1, dMid - 2, 3, 3, "#efac28");
-
-        // --- TOP RIGHT: X marks (beats to REMOVE) ---
-        const xgx = W / 2 + TILE;
-        const xColor = "#efb775";
-        const xIndicatorColor = "#9b1a0a";
-        const xStartOn = [true, true, false, true];
-        const xTarget = [true, false, false, true];
-        const xRemoveOrder = [1];
-        const X_INTERVAL = 80;
-        const X_CYCLE = xRemoveOrder.length * X_INTERVAL + 100;
-        const xT = Math.max(0, t - 60) % X_CYCLE;
-        const xRemoved = Math.min(xRemoveOrder.length, Math.floor(xT / X_INTERVAL));
-
-        for (let c = 0; c < patCols; c++) {
-            const bx = xgx + c * TILE, by = gy;
-            let isOn = xStartOn[c];
-            for (let i = 0; i < xRemoved; i++) {
-                if (xRemoveOrder[i] === c) isOn = false;
-            }
-            drawRect(bx, by, TILE, TILE, PAL.gridBorder);
-            drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? xColor : PAL.gridOff);
-            if (isOn && !xTarget[c]) {
-                ctx.globalAlpha = 0.6 + Math.sin(t * 0.04) * 0.15;
-                drawRect(bx + 3, by + 3, 2, 2, xIndicatorColor);
-                drawRect(bx + 5, by + 5, 2, 2, xIndicatorColor);
-                drawRect(bx + 7, by + 7, 2, 2, xIndicatorColor);
-                drawRect(bx + 9, by + 9, 2, 2, xIndicatorColor);
-                drawRect(bx + 9, by + 3, 2, 2, xIndicatorColor);
-                drawRect(bx + 7, by + 5, 2, 2, xIndicatorColor);
-                drawRect(bx + 5, by + 7, 2, 2, xIndicatorColor);
-                drawRect(bx + 3, by + 9, 2, 2, xIndicatorColor);
-                ctx.globalAlpha = 1;
-            }
-            if (!isOn && xStartOn[c]) {
-                const fIdx = xRemoveOrder.indexOf(c);
-                if (fIdx >= 0) {
-                    const flashAge = xT - fIdx * X_INTERVAL;
-                    if (flashAge >= 0 && flashAge < 12) {
-                        ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
-                        drawRect(bx, by, TILE, TILE, "#ffffff");
-                        ctx.globalAlpha = 1;
-                    }
-                }
-            }
-        }
-        drawText("X MARKS = REMOVE", xgx, gy + TILE + 10, "#efb775", 4);
-
-        // --- BOTTOM: Timer countdown ---
-        const timerY = gy + TILE + 30;
-        const TIMER_CYCLE = 180;
-        const cT = Math.max(0, t - 30) % TIMER_CYCLE;
-        const timerVal = Math.max(5, 30 - Math.floor(cT / 6));
-        const isLow = timerVal <= 10;
-        const isUrgent = timerVal <= 20;
-        const timerColor = isUrgent ? "#ef3a0c" : "#efd8a1";
-        const borderCol = isUrgent ? "#550f0a" : "#2a1d0d";
-        const bgCol = isUrgent ? "#45230d" : "#392a1c";
-        const hlCol = isUrgent ? "#9b1a0a" : "#684c3c";
-        const blinkOn = !isUrgent || Math.floor(cT / (isLow ? 8 : 15)) % 2 === 0;
-
-        const pxSz = 4;
-        const digitW = 3 * pxSz + pxSz;
-        const timerStr = timerVal < 10 ? "0" + timerVal : String(timerVal);
-        const panelW = 16 + timerStr.length * digitW + 10;
-        const panelH = 5 * pxSz + 8;
-        const tpx = W / 2 - panelW / 2;
-        const tpy = timerY;
-
-        drawRect(tpx - 2, tpy - 2, panelW + 4, panelH + 4, borderCol);
-        drawRect(tpx, tpy, panelW, panelH, bgCol);
-        drawRect(tpx, tpy, panelW, 2, hlCol);
-
-        const tix = tpx + 3, tiy = tpy + 4;
-        drawRect(tix, tiy, 10, 2, blinkOn ? timerColor : bgCol);
-        drawRect(tix + 4, tiy + 2, 2, 10, blinkOn ? timerColor : bgCol);
-
-        if (blinkOn) {
-            const numX = tpx + 16;
-            const numY2 = tpy + 4;
-            drawPixelDigits(timerStr, numX + (timerStr.length * digitW) / 2, numY2, timerColor, pxSz);
-        }
-
-        if (isLow && !blinkOn) {
-            ctx.globalAlpha = 0.08;
-            drawRect(0, 0, W, H, "#ef3a0c");
-        }
-        ctx.globalAlpha = 1;
-
-        drawCenteredText("COMPLETE THE PATTERN BEFORE TIME RUNS OUT!", timerY + panelH + 12, "#efb775", 4);
-    }
-
-    // Blinking prompt
-    const promptText = tutorialPage < 1 ? "PRESS ENTER" : "PRESS ENTER TO START";
-    if (t > 20 && t % 60 < 40) {
-        drawCenteredText(promptText, H - 10, "#efd8a1", 5);
-    }
-}
-
 function renderSabotageAnim() {
     // Keep the drum sequencer playing during the scramble
     tickSequencer();
@@ -6801,8 +7322,8 @@ function renderEnemyWarning() {
         ctx.translate(-cx_w, -cy_w);
         drawGoblinSprite("normal", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
         ctx.restore();
-        drawCenteredText("THEY SABOTAGE YOUR BEATS!", 115, "#efb775", 5);
-        drawCenteredText("PUNCH THEM TO DEFEAT THEM!", 132, "#efac28", 5);
+        drawCenteredText("THEY'LL SCRAMBLE YOUR BEATS THE MOMENT", 115, "#efb775", 5);
+        drawCenteredText("YOUR BACK IS TURNED. DON'T LET THEM.", 132, "#efac28", 5);
 
     } else if (enemyWarningType === "elite") {
         drawCenteredText("WARNING!", 30, "#FF00FF", 8);
@@ -6815,9 +7336,9 @@ function renderEnemyWarning() {
         ctx.translate(-cx_w, -cy_w);
         drawGoblinSprite("elite", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
         ctx.restore();
-        drawCenteredText("THIS GOBLIN IS EXTRA STRONG!", 115, "#efb775", 5);
-        drawCenteredText("IT TAKES 3 HITS TO DEFEAT!", 132, "#FF44FF", 5);
-        drawCenteredText("IT ALSO MOVES FASTER THAN NORMAL GOBLINS.", 155, "#efb775", 4);
+        drawCenteredText("BIGGER. MEANER. THIS ONE DOESN'T GO DOWN EASY.", 115, "#efb775", 5);
+        drawCenteredText("THREE SOLID HITS TO PUT IT ON THE FLOOR.", 132, "#FF44FF", 5);
+        drawCenteredText("AND IT'S FAST.", 149, "#efb775", 5);
 
     } else if (enemyWarningType === "catapult") {
         drawCenteredText("WARNING!", 30, "#FF00FF", 8);
@@ -6830,9 +7351,9 @@ function renderEnemyWarning() {
         ctx.translate(-cx_w, -cy_w);
         drawGoblinSprite("catapult", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
         ctx.restore();
-        drawCenteredText("THIS GOBLIN THROWS BOULDERS!", 115, "#efb775", 5);
-        drawCenteredText("IT HURLS ROCKS AT YOUR BEAT GRID FROM A DISTANCE.", 138, "#efb775", 4);
-        drawCenteredText("IT CAN'T BE KILLED, BUT IT CAN KILL YOU!", 172, "#FF00FF", 4);
+        drawCenteredText("THIS ONE FIGHTS DIRTY, HURLING BOULDERS", 115, "#efb775", 5);
+        drawCenteredText("AT YOUR GRID FROM ACROSS THE ROOM.", 132, "#efb775", 5);
+        drawCenteredText("YOU CAN'T KILL IT. BUT IT CAN SURE KILL YOU.", 149, "#FF00FF", 5);
     }
 
     // Blinking "PRESS ENTER TO CONTINUE"
@@ -6923,14 +7444,14 @@ function renderNewInstrument() {
         if (t > 40) {
             const descAlpha = Math.min(1, (t - 40) / 30);
             ctx.globalAlpha = descAlpha;
-            drawCenteredText("A NEW ROW APPEARS BELOW THE KICK!", 135, "#efb775", 5);
+            drawCenteredText("A NEW VOICE JOINS THE MIX.", 135, "#efb775", 5);
             ctx.globalAlpha = 1;
         }
         if (t > 55) {
             const desc2Alpha = Math.min(1, (t - 55) / 30);
             ctx.globalAlpha = desc2Alpha;
-            drawCenteredText("FILL IN THE COWBELL BEATS", 160, "#ef3a0c", 5);
-            drawCenteredText("TO COMPLETE THE PATTERN!", 178, "#ef3a0c", 5);
+            drawCenteredText("THE GROOVE GROWS DEEPER.", 155, "#ef3a0c", 5);
+            drawCenteredText("FILL IN THE COWBELL PATTERN TO MAKE IT SING.", 170, "#ef3a0c", 5);
             ctx.globalAlpha = 1;
         }
 
@@ -7009,13 +7530,14 @@ function renderNewInstrument() {
         if (t > 40) {
             const descAlpha = Math.min(1, (t - 40) / 30);
             ctx.globalAlpha = descAlpha;
-            drawCenteredText("THE TOM DRUM JOINS THE MIX!", 135, "#efb775", 5);
+            drawCenteredText("THE RHYTHM IS GETTING RICHER.", 135, "#efb775", 5);
             ctx.globalAlpha = 1;
         }
         if (t > 55) {
             const desc2Alpha = Math.min(1, (t - 55) / 30);
             ctx.globalAlpha = desc2Alpha;
-            drawCenteredText("EVEN MORE BEATS TO MASTER!", 160, "#3c9f9c", 5);
+            drawCenteredText("THE UNDERGROUND IS WAKING UP.", 155, "#3c9f9c", 5);
+            drawCenteredText("EVEN MORE BEATS TO MASTER.", 170, "#3c9f9c", 5);
             ctx.globalAlpha = 1;
         }
 
@@ -7055,9 +7577,10 @@ function gameLoop(timestamp) {
     const dt = timestamp - lastTime;
     lastTime = timestamp;
     frameAccum += dt;
-    if (frameAccum >= FRAME_MS) {
+    // Cap accumulated time to prevent spiral (max 3 catch-up frames)
+    if (frameAccum > FRAME_MS * 3) frameAccum = FRAME_MS * 3;
+    while (frameAccum >= FRAME_MS) {
         frameAccum -= FRAME_MS;
-        if (frameAccum > FRAME_MS) frameAccum = 0; // prevent spiral
         try {
             // Clear HUD canvas when not in gameplay
             if (gameState !== "playing") {
@@ -7067,8 +7590,6 @@ function gameLoop(timestamp) {
                 renderTitleScreen();
             } else if (gameState === "intro") {
                 renderIntro();
-            } else if (gameState === "tutorial") {
-                renderTutorialScreen();
             } else if (gameState === "enemywarning-intro") {
                 renderEnemyWarningIntro();
             } else if (gameState === "enemywarning") {
