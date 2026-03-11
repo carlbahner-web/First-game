@@ -994,8 +994,6 @@ const TITLE_FADE_DURATION = 20; // frames for title text to fade out
 // Firework system for level complete
 let fireworks = []; // { x, y, vx, vy, life, maxLife, color, exploded, particles: [] }
 // Screen crack effect for game over
-let screenCracks = []; // { x1, y1, x2, y2, branches: [...] }
-let screenCrackTimer = 0;
 // Enemy warning zoom state
 let enemyWarningZoom = 0; // 0→1 zoom-in progress
 let enemyWarningType = null;   // "elite" or "catapult"
@@ -2410,38 +2408,6 @@ function triggerGameOver() {
     sadSongStarted = false;
     finalScore = score;
 
-    // Generate screen cracks radiating from player position
-    screenCracks = [];
-    screenCrackTimer = 30; // display for 30 frames
-    const crackOriginX = player.x + player.w / 2;
-    const crackOriginY = player.y + player.h / 2;
-    const numCracks = 8 + Math.floor(Math.random() * 5);
-    for (let i = 0; i < numCracks; i++) {
-        const angle = (i / numCracks) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
-        const len = 30 + Math.random() * 60;
-        const crack = {
-            x1: crackOriginX, y1: crackOriginY,
-            x2: crackOriginX + Math.cos(angle) * len,
-            y2: crackOriginY + Math.sin(angle) * len,
-            branches: [],
-        };
-        // Add 1-2 branches per crack
-        const numBranches = 1 + Math.floor(Math.random() * 2);
-        for (let b = 0; b < numBranches; b++) {
-            const branchT = 0.3 + Math.random() * 0.5;
-            const bx = crack.x1 + (crack.x2 - crack.x1) * branchT;
-            const by = crack.y1 + (crack.y2 - crack.y1) * branchT;
-            const bAngle = angle + (Math.random() - 0.5) * 1.2;
-            const bLen = 10 + Math.random() * 25;
-            crack.branches.push({
-                x1: bx, y1: by,
-                x2: bx + Math.cos(bAngle) * bLen,
-                y2: by + Math.sin(bAngle) * bLen,
-            });
-        }
-        screenCracks.push(crack);
-    }
-
     // Start player death animation
     playerDeathAnim.active = true;
     playerDeathAnim.collapseProgress = 0;
@@ -2611,8 +2577,6 @@ function resetGame() {
     hitFreeze = 0;
     titleEntrancePhase = 0;
     fireworks = [];
-    screenCracks = [];
-    screenCrackTimer = 0;
     playerDeathAnim.active = false;
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
@@ -7418,34 +7382,9 @@ function renderGameOverScreen() {
         // During freeze, just render the frozen game world + shake
         render();
 
-        // Screen crack effect during freeze
-        if (screenCrackTimer > 0) {
-            const crackAlpha = screenCrackTimer / 30;
-            ctx.strokeStyle = "#ffffff";
-            ctx.lineWidth = 2 * SCALE;
-            ctx.globalAlpha = crackAlpha * 0.9;
-            for (const crack of screenCracks) {
-                ctx.beginPath();
-                ctx.moveTo(crack.x1 * SCALE, crack.y1 * SCALE);
-                ctx.lineTo(crack.x2 * SCALE, crack.y2 * SCALE);
-                ctx.stroke();
-                for (const b of crack.branches) {
-                    ctx.lineWidth = 1 * SCALE;
-                    ctx.beginPath();
-                    ctx.moveTo(b.x1 * SCALE, b.y1 * SCALE);
-                    ctx.lineTo(b.x2 * SCALE, b.y2 * SCALE);
-                    ctx.stroke();
-                    ctx.lineWidth = 2 * SCALE;
-                }
-            }
-            ctx.globalAlpha = 1.0;
-        }
-
         if (screenShake > 0) screenShake--;
         return;
     }
-    // Continue fading screen cracks into the game over
-    if (screenCrackTimer > 0) screenCrackTimer--;
 
     gameOverTimer++;
 
@@ -7460,29 +7399,6 @@ function renderGameOverScreen() {
     // Phase 1: Render frozen game world + fade to black around player
     if (gameOverTimer <= 150) {
         render(); // draw the frozen world
-    }
-
-    // Render fading screen cracks over the game world
-    if (screenCrackTimer > 0 && gameOverTimer < 60) {
-        const crackAlpha = screenCrackTimer / 30 * (1 - gameOverTimer / 60);
-        ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = 2 * SCALE;
-        ctx.globalAlpha = crackAlpha * 0.7;
-        for (const crack of screenCracks) {
-            ctx.beginPath();
-            ctx.moveTo(crack.x1 * SCALE, crack.y1 * SCALE);
-            ctx.lineTo(crack.x2 * SCALE, crack.y2 * SCALE);
-            ctx.stroke();
-            for (const b of crack.branches) {
-                ctx.lineWidth = 1 * SCALE;
-                ctx.beginPath();
-                ctx.moveTo(b.x1 * SCALE, b.y1 * SCALE);
-                ctx.lineTo(b.x2 * SCALE, b.y2 * SCALE);
-                ctx.stroke();
-                ctx.lineWidth = 2 * SCALE;
-            }
-        }
-        ctx.globalAlpha = 1.0;
     }
 
     // Fade overlay — everything goes black except a spotlight on the player
