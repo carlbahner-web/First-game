@@ -5347,6 +5347,35 @@ function renderIntro() {
             drawRect(boothX + 10 + Math.random() * 30, boothY + Math.random() * 10, 2, 3, "#efac28");
         }
 
+        // DJ — ducking, then knocked off stage by goblins
+        const djStartX = W / 2 - 8, djStartY = boothY - 6;
+        const djEndX = W / 2 + 15, djEndY = boothY + 4;
+        const knockStart = 100, knockEnd = 160;
+        if (t < knockStart) {
+            // Ducking behind booth, looking around nervously
+            const djLook = Math.floor(t / 15) % 4;
+            const djDir = djLook < 2 ? 2 : 3;
+            drawPlayerSprite(djStartX, djStartY, 0, djDir, {});
+        } else if (t < knockEnd) {
+            // Knocked off stage — dramatic arc
+            const knockT = (t - knockStart) / (knockEnd - knockStart);
+            const djX = djStartX + (djEndX - djStartX) * knockT;
+            const arcHeight = -18 * Math.sin(knockT * Math.PI); // parabolic arc upward
+            const djY = djStartY + (djEndY - djStartY) * knockT + arcHeight;
+            const djFrame = Math.floor(t / 4) % 4; // fast flailing
+            const djDir = 3; // facing right (knocked direction)
+            // Impact flash on first frame
+            if (t === knockStart) {
+                ctx.globalAlpha = 0.6;
+                drawRect(djStartX - 4, djStartY - 4, 24, 24, "#FFFFFF");
+                ctx.globalAlpha = 1;
+            }
+            drawPlayerSprite(djX, djY, djFrame, djDir, {});
+        } else {
+            // Collapsed — matches Scene 4 starting position
+            drawPlayerSprite(djEndX, djEndY, 0, 0, {});
+        }
+
         ctx.restore();
 
         // Green tint overlay
