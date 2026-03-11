@@ -6078,7 +6078,7 @@ function renderTitleScreen() {
     drawPlayerSprite(W / 2 - 8, boothY - 10 - djBob, djFrame, 0, {});
 
     // Beat grid (small, showing the beat)
-    const miniGridY = GRID_Y * TILE;
+    const miniGridY = GRID_Y * TILE + 14;
     const miniGridX = 3 * TILE;
     const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
     for (let r = 0; r < 4; r++) {
@@ -6675,7 +6675,7 @@ function renderIntro() {
         drawPlayerSprite(W / 2 - 8, boothY - 10 - djBob, djFrame, 0, {});
 
         // Beat grid (small, showing the beat is perfect)
-        const miniGridY = GRID_Y * TILE;
+        const miniGridY = GRID_Y * TILE + 14;
         const miniGridX = 3 * TILE;
         const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
         for (let r = 0; r < 4; r++) {
@@ -6773,14 +6773,19 @@ function renderIntro() {
         const floorB = Math.round(0x2A * (1 - powerFade * 0.5));
         drawRect(0, 0, W, H, `rgb(${floorR},${floorG},${floorB})`);
 
-        // Walls
+        // Walls (dim with power like the floor)
         for (let c = 0; c < COLS; c++) {
-            drawRect(c * TILE, 0, TILE, TILE, c % 2 === 0 ? "#724113" : "#927e6a");
-            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+            const topR = c % 2 === 0 ? 0x72 : 0x92, topG = c % 2 === 0 ? 0x41 : 0x7e, topB = c % 2 === 0 ? 0x13 : 0x6a;
+            const botR = c % 2 === 0 ? 0x2e : 0x38, botG = c % 2 === 0 ? 0x4a : 0x4f, botB = c % 2 === 0 ? 0x4e : 0x54;
+            const dim = 1 - powerFade * 0.5;
+            drawRect(c * TILE, 0, TILE, TILE, `rgb(${Math.round(topR*dim)},${Math.round(topG*dim)},${Math.round(topB*dim)})`);
+            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, `rgb(${Math.round(botR*dim)},${Math.round(botG*dim)},${Math.round(botB*dim)})`);
         }
         for (let r = 0; r < ROWS; r++) {
-            drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
-            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+            const sR = r % 2 === 0 ? 0x2e : 0x38, sG = r % 2 === 0 ? 0x4a : 0x4f, sB = r % 2 === 0 ? 0x4e : 0x54;
+            const dim = 1 - powerFade * 0.5;
+            drawRect(0, r * TILE, TILE, TILE, `rgb(${Math.round(sR*dim)},${Math.round(sG*dim)},${Math.round(sB*dim)})`);
+            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, `rgb(${Math.round(sR*dim)},${Math.round(sG*dim)},${Math.round(sB*dim)})`);
         }
 
         // String lights — flicker like losing power, then go dark
@@ -6816,8 +6821,8 @@ function renderIntro() {
                     drawRect(bulbX - 2, bulbY, 4, 4, "#392a1c");
                 }
             } else {
-                // Dead — dark bulb
-                drawRect(bulbX - 2, bulbY, 4, 4, "#1a1410");
+                // Dead — dark bulb (matches Scene 2+ dead lights)
+                drawRect(bulbX - 2, bulbY, 4, 4, "#2a1d0d");
             }
         }
         ctx.globalAlpha = 1;
@@ -6832,6 +6837,12 @@ function renderIntro() {
         drawSubwoofer(boothX + 44, boothY - 2, introKickPump, 1);
         // Mixer
         drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e");
+        // Mixer lights (dim with power)
+        ctx.globalAlpha = 1 - powerFade;
+        for (let ml = 0; ml < 4; ml++) {
+            drawRect(boothX + 20 + ml * 2, boothY + 3, 1, 2, "#1f240a");
+        }
+        ctx.globalAlpha = 1;
 
         // Beat grid — uses mutable state so goblins can flip cells
         const miniGridY = GRID_Y * TILE + 14;
@@ -7109,15 +7120,15 @@ function renderIntro() {
         ctx.save();
         ctx.translate(shX, shY);
 
-        drawRect(0, 0, W, H, "#222220");
-        // Walls with caves now open
+        drawRect(0, 0, W, H, "#161615");
+        // Walls with caves now open (dimmed — power died in Scene 1)
         for (let c = 0; c < COLS; c++) {
-            drawRect(c * TILE, 0, TILE, TILE, c % 2 === 0 ? "#724113" : "#927e6a");
-            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+            drawRect(c * TILE, 0, TILE, TILE, c % 2 === 0 ? "#39200a" : "#493f35");
+            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#172527" : "#1c282a");
         }
         for (let r = 0; r < ROWS; r++) {
-            drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
-            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+            drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#172527" : "#1c282a");
+            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#172527" : "#1c282a");
         }
         // Open caves
         for (const cave of CAVES) {
@@ -7201,10 +7212,14 @@ function renderIntro() {
         const boothX = W / 2 - 24;
         const boothY = GRID_Y * TILE - 8;
         drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
-        // Damaged equipment
-        drawRect(boothX, boothY + 4, 16, 8, "#2a1d0d");
-        drawRect(boothX + 32, boothY + 4, 16, 8, "#2a1d0d");
-        drawRect(boothX + 18, boothY + 2, 12, 10, "#1f240a");
+        drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c"); // platform trim
+        // Damaged subwoofers (still present but silent — no pump)
+        drawSubwoofer(boothX - 12, boothY - 2, 0, -1);
+        drawSubwoofer(boothX + 44, boothY - 2, 0, 1);
+        // Damaged equipment (positions match Scene 3 destroyed state)
+        drawRect(boothX + 5, boothY + 6, 10, 6, "#1f240a");
+        drawRect(boothX + 35, boothY + 8, 8, 4, "#1f240a");
+        drawRect(boothX + 18, boothY + 2, 12, 10, "#1f240a"); // darkened mixer
         if (t % 8 < 2) {
             drawRect(boothX + 10 + Math.random() * 30, boothY + Math.random() * 10, 2, 3, "#efac28");
         }
