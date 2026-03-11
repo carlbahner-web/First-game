@@ -4444,7 +4444,7 @@ function renderTitleScreen() {
 
     // DJ Booth (center)
     const boothX = W / 2 - 24;
-    const boothY = GRID_Y * TILE - 8;
+    const boothY = GRID_Y * TILE - 22;
     drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
     drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
     drawRect(boothX, boothY + 4, 16, 8, "#392a1c");
@@ -4464,7 +4464,7 @@ function renderTitleScreen() {
     drawPlayerSprite(W / 2 - 8, boothY - 10 - djBob, djFrame, 0, {});
 
     // Beat grid (small, showing the beat)
-    const miniGridY = GRID_Y * TILE + 14;
+    const miniGridY = GRID_Y * TILE;
     const miniGridX = 3 * TILE;
     const patterns = [TITLE_PATTERN.O, TITLE_PATTERN.H, TITLE_PATTERN.S, TITLE_PATTERN.K];
     for (let r = 0; r < 4; r++) {
@@ -5010,7 +5010,7 @@ function renderIntro() {
 
         // DJ Booth (center)
         const boothX = W / 2 - 24;
-        const boothY = GRID_Y * TILE - 8;
+        const boothY = GRID_Y * TILE - 22;
         // Booth platform
         drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
         drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
@@ -5034,7 +5034,7 @@ function renderIntro() {
         drawPlayerSprite(W / 2 - 8, boothY - 10 - djBob, djFrame, 0, {});
 
         // Beat grid (small, showing the beat is perfect)
-        const miniGridY = GRID_Y * TILE + 14;
+        const miniGridY = GRID_Y * TILE;
         const miniGridX = 3 * TILE;
         const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
         for (let r = 0; r < 4; r++) {
@@ -5220,7 +5220,7 @@ function renderIntro() {
 
         // DJ booth
         const boothX = W / 2 - 24;
-        const boothY = GRID_Y * TILE - 8;
+        const boothY = GRID_Y * TILE - 22;
         drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
         drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
         drawRect(boothX, boothY + 4, 16, 8, "#392a1c");
@@ -5230,7 +5230,7 @@ function renderIntro() {
         // Beat grid — fades out as power dies (not glitchy colors)
         const gridFade = Math.max(0, 1 - t / 150); // grid visible for first ~2.5s then dark
         if (gridFade > 0) {
-            const miniGridY = GRID_Y * TILE + 14;
+            const miniGridY = GRID_Y * TILE;
             const miniGridX = 3 * TILE;
             const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
             ctx.globalAlpha = gridFade;
@@ -5393,7 +5393,7 @@ function renderIntro() {
         }
 
         // Beat grid — being corrupted
-        const miniGridY = GRID_Y * TILE + 14;
+        const miniGridY = GRID_Y * TILE;
         const miniGridX = 3 * TILE;
         const corruptProgress = Math.min(1, t / 300);
         const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
@@ -5438,7 +5438,7 @@ function renderIntro() {
 
         // DJ booth damaged — sparks flying
         const boothX = W / 2 - 24;
-        const boothY = GRID_Y * TILE - 8;
+        const boothY = GRID_Y * TILE - 22;
         drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
         // Damaged equipment
         drawRect(boothX, boothY + 4, 16, 8, "#2a1d0d");
@@ -5495,7 +5495,7 @@ function renderIntro() {
         }
 
         // Scrambled beat grid
-        const miniGridY = GRID_Y * TILE + 14;
+        const miniGridY = GRID_Y * TILE;
         const miniGridX = 3 * TILE;
         for (let r = 0; r < 4; r++) {
             for (let c = 0; c < 16; c++) {
@@ -5509,7 +5509,7 @@ function renderIntro() {
 
         // Destroyed DJ booth
         const boothX = W / 2 - 24;
-        const boothY = GRID_Y * TILE - 8;
+        const boothY = GRID_Y * TILE - 22;
         drawRect(boothX - 8, boothY + 12, 64, 8, "#2a1d0d");
         drawRect(boothX + 5, boothY + 6, 10, 6, "#1f240a"); // broken turntable
         drawRect(boothX + 35, boothY + 8, 8, 4, "#1f240a");
