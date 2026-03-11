@@ -543,7 +543,7 @@ const PAL = {
     titleText: "#efd8a1",
 };
 
-const DRUM_LABELS = ["OPEN-HH", "HI-HAT", "SNARE", "KICK"];
+const DRUM_LABELS = ["OPEN-HH", "HI-HAT", "SNARE", "KICK", "COWBELL", "TOM"];
 
 // ---- Audio Engine (Web Audio API with synthesized drums) ----
 let audioCtx = null;
