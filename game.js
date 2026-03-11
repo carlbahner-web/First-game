@@ -4610,7 +4610,7 @@ function render() {
         drawRect(cx + 11, cy + TILE - 1, 2, 3, "#724113");
         // Eye gleam inside cave (if any goblin is about to respawn from this cave)
         for (const g of goblins) {
-            if (g.dead && g.respawnTimer < 90 && g.respawnTimer < 60 && ci === g.spawnCave) {
+            if (g.dead && g.respawnTimer < 60 && ci === g.spawnCave) {
                 const caveEyeCol = g.elite ? "#00FFFF" : "#FF00FF";
                 drawRect(cx + 5, cy + 5, 2, 2, caveEyeCol);
                 drawRect(cx + 9, cy + 5, 2, 2, caveEyeCol);
@@ -7264,7 +7264,7 @@ function renderIntro() {
 
         // Damaged walls
         for (let c = 0; c < COLS; c++) {
-            const damaged = Math.random() > 0.7;
+            const damaged = ((c * 7 + 3) % 10) > 6;
             drawRect(c * TILE, 0, TILE, TILE, damaged ? "#45230d" : (c % 2 === 0 ? "#724113" : "#927e6a"));
             drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#2e4a4e" : "#384f54");
         }
@@ -7287,7 +7287,7 @@ function renderIntro() {
         }
 
         // Scrambled beat grid
-        const miniGridY = GRID_Y * TILE;
+        const miniGridY = GRID_Y * TILE + 14;
         const miniGridX = 3 * TILE;
         for (let r = 0; r < 4; r++) {
             for (let c = 0; c < 16; c++) {
