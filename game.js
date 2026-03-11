@@ -1010,7 +1010,7 @@ let levelCelebrateDisplayScore = 0; // for count-up animation
 let titleBlink = 0; // blink timer for "PRESS ENTER"
 
 // ---- Animated Intro Cutscene State ----
-let introScene = 0;         // current scene index (0-4)
+let introScene = 1;         // current scene index (1-5; 0 is the title screen)
 let introTimer = 0;         // frame counter within current scene
 let introGlobalTimer = 0;   // total frames since intro started
 let introBeatStep = 0;      // simulated sequencer step for the intro beat
@@ -1027,11 +1027,12 @@ const INTRO_BEAT = {
     O: [0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0],
 };
 const INTRO_SCENE_DURATIONS = [
-    420,  // Scene 0: The Good Times — DJ + dancers vibing (7s)
-    540,  // Scene 1: Earthquake + Caves — lights die, walls crack open (9s)
-    420,  // Scene 2: Goblin Attack — chaos (7s)
-    360,  // Scene 3: The Aftermath — destruction (6s)
-    420,  // Scene 4: Call to Action — DJ crawls to center + rises (7s)
+    null, // Scene 0: Title Screen (separate system, not part of intro)
+    420,  // Scene 1: The Good Times — DJ + dancers vibing (7s)
+    540,  // Scene 2: Earthquake + Caves — lights die, walls crack open (9s)
+    420,  // Scene 3: Goblin Attack — chaos (7s)
+    360,  // Scene 4: The Aftermath — destruction (6s)
+    420,  // Scene 5: Call to Action — DJ crawls to center + rises (7s)
 ];
 let tutorialTimer = 0; // animation frame counter for tutorial screen
 let tutorialPage = 0;  // current tutorial page (0-1)
@@ -4411,7 +4412,7 @@ function renderTitleScreen() {
 
     const beatOn = titleStep % 4 === 0;
 
-    // === CLUB SCENE BACKGROUND (from Scene 0: The Good Times) ===
+    // === CLUB SCENE BACKGROUND (from Scene 1: The Good Times) ===
     drawRect(0, 0, W, H, "#2C2C2A"); // floor
 
     // Walls
@@ -4516,7 +4517,7 @@ function renderTitleScreen() {
             // Now switch to intro
             stopTitleDrums();
             gameState = "intro";
-            introScene = 0;
+            introScene = 1;
             introTimer = 0;
             introGlobalTimer = 0;
             introBeatStep = 0;
@@ -4897,13 +4898,13 @@ function advanceIntroScene() {
         return;
     }
     // Scene-specific triggers
-    if (introScene === 1) playEarthquakeRumble();
-    if (introScene === 2) {
+    if (introScene === 2) playEarthquakeRumble();
+    if (introScene === 3) {
         playGoblinCackle();
         // Corrupt the drum pattern
         if (introDrumGain) introDrumGain.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + 1);
     }
-    if (introScene === 3) stopIntroDrums();
+    if (introScene === 4) stopIntroDrums();
 }
 
 function renderIntro() {
@@ -4932,8 +4933,8 @@ function renderIntro() {
     const t = introTimer;
     const beatOn = introBeatStep % 4 === 0; // downbeat
 
-    // ==================== SCENE 0: THE GOOD TIMES ====================
-    if (introScene === 0) {
+    // ==================== SCENE 1: THE GOOD TIMES ====================
+    if (introScene === 1) {
         // Full venue scene: floor, walls, DJ booth, dancers
         drawRect(0, 0, W, H, "#2C2C2A"); // floor
 
@@ -5040,8 +5041,8 @@ function renderIntro() {
         }
     }
 
-    // ==================== SCENE 1: THE EARTHQUAKE ====================
-    else if (introScene === 1) {
+    // ==================== SCENE 2: THE EARTHQUAKE ====================
+    else if (introScene === 2) {
         // === COMBINED: Earthquake begins, lights die, caves open ===
         // Phase 1 (t 0-180): Shake ramps up, lights flicker & fade out, dancers stumble
         // Phase 2 (t 180-540): Cracks spread, caves open, eyes glow in darkness
@@ -5083,7 +5084,7 @@ function renderIntro() {
             const flickerZone = dieFrame - 40; // starts sputtering 40 frames before dying
 
             if (t < flickerZone) {
-                // Still on — normal happy chase from Scene 0
+                // Still on — normal happy chase from Scene 1
                 const chase = Math.sin(introGlobalTimer * 0.05 + c * 0.6) * 0.5 + 0.5;
                 ctx.globalAlpha = 0.5 + chase * 0.5;
                 drawRect(bulbX - 2, bulbY, 4, 4, lightCol);
@@ -5245,8 +5246,8 @@ function renderIntro() {
         }
     }
 
-    // ==================== SCENE 2: GOBLIN ATTACK ====================
-    else if (introScene === 2) {
+    // ==================== SCENE 3: GOBLIN ATTACK ====================
+    else if (introScene === 3) {
         // Goblins pouring out of caves, running across grid, corrupting beats
         const shAmt = Math.max(0, 1 - t / 120);
         const shX = (Math.random() - 0.5) * shAmt * 4 * SCALE;
@@ -5363,8 +5364,8 @@ function renderIntro() {
         }
     }
 
-    // ==================== SCENE 3: THE AFTERMATH ====================
-    else if (introScene === 3) {
+    // ==================== SCENE 4: THE AFTERMATH ====================
+    else if (introScene === 4) {
         // Dark, destroyed venue. Dancers fleeing. Beat grid scrambled.
         drawRect(0, 0, W, H, "#1a1a18");
 
@@ -5465,14 +5466,14 @@ function renderIntro() {
         }
     }
 
-    // ==================== SCENE 4: CALL TO ACTION ====================
-    else if (introScene === 4) {
+    // ==================== SCENE 5: CALL TO ACTION ====================
+    else if (introScene === 5) {
         // DJ crawls from collapsed position to center, then rises and clenches fists
-        // Crawl phase (0-120): axis-aligned L-path from Scene 3 position to center
+        // Crawl phase (0-120): axis-aligned L-path from Scene 4 position to center
         // Rise phase (120+): existing stand-up and fist-clench sequence
         const CRAWL_FRAMES = 120;
-        const crawlStartX = W / 2 + 15;  // Scene 3 collapsed X (183)
-        const crawlStartY = GRID_Y * TILE - 8 + 4; // Scene 3 collapsed Y (boothY + 4 = 60)
+        const crawlStartX = W / 2 + 15;  // Scene 4 collapsed X (183)
+        const crawlStartY = GRID_Y * TILE - 8 + 4; // Scene 4 collapsed Y (boothY + 4 = 60)
         const crawlEndX = W / 2 - 8;     // Center X (168)
         const crawlEndY = H / 2 + 10;    // Center Y (154)
 
