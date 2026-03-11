@@ -1009,7 +1009,7 @@ let levelCelebrateDisplayScore = 0; // for count-up animation
 let titleBlink = 0; // blink timer for "PRESS ENTER"
 
 // ---- Animated Intro Cutscene State ----
-let introScene = 1;         // current scene index (1-5; 0 is the title screen)
+let introScene = 1;         // current scene index (0-6)
 let introTimer = 0;         // frame counter within current scene
 let introGlobalTimer = 0;   // total frames since intro started
 let introBeatStep = 0;      // simulated sequencer step for the intro beat
@@ -1035,12 +1035,11 @@ const INTRO_BEAT = {
 const INTRO_SCENE_DURATIONS = [
     420,  // Scene 0: The Good Times (7s)
     540,  // Scene 1: Earthquake + Caves (9s)
-    420,  // Scene 2: Goblin Attack (7s)
-    360,  // Scene 3: The Aftermath (6s)
-    420,  // Scene 4: Call to Action — DJ crawls to center + rises (7s)
-    Infinity, // Scene 5: The Discovery (wait for Enter)
-    Infinity, // Scene 6: The Threat (wait for Enter)
-    Infinity, // Scene 7: The Stand (wait for Enter)
+    600,  // Scene 2: Goblin Attack + Aftermath (10s)
+    420,  // Scene 3: Call to Action — DJ crawls to center + rises (7s)
+    Infinity, // Scene 4: The Discovery (wait for Enter)
+    Infinity, // Scene 5: The Threat (wait for Enter)
+    Infinity, // Scene 6: The Stand (wait for Enter)
 ];
 let newInstrumentType = null;   // "cowbell" or "tom"
 let newInstrumentTimer = 0;     // animation timer for new instrument popup
@@ -5351,7 +5350,7 @@ function drawPunch() {
     ctx.restore();
 }
 
-// Draw the ruined venue backdrop (used in tutorial scenes and Scene 3 style)
+// Draw the ruined venue backdrop (used in tutorial scenes)
 // t: animation timer for smoke wisps
 function drawRuinedVenueBackdrop(t) {
     const W = COLS * TILE;
@@ -6587,12 +6586,11 @@ function advanceIntroScene() {
         introCorruptedSoFar = 0;
     }
     if (introScene === 3) stopIntroDrums();
-    if (introScene === 5) {
+    if (introScene === 4) {
         // Transition from cinematic to tutorial scenes — switch audio
         stopIntroDrums();
         startStoryDrums();
     }
-    if (introScene === 4) stopIntroDrums();
 }
 
 function renderIntro() {
@@ -7216,7 +7214,7 @@ function renderIntro() {
         // Damaged subwoofers (still present but silent — no pump)
         drawSubwoofer(boothX - 12, boothY - 2, 0, -1);
         drawSubwoofer(boothX + 44, boothY - 2, 0, 1);
-        // Damaged equipment (positions match Scene 3 destroyed state)
+        // Damaged equipment
         drawRect(boothX + 5, boothY + 6, 10, 6, "#1f240a");
         drawRect(boothX + 35, boothY + 8, 8, 4, "#1f240a");
         drawRect(boothX + 18, boothY + 2, 12, 10, "#1f240a"); // darkened mixer
@@ -7224,36 +7222,81 @@ function renderIntro() {
             drawRect(boothX + 10 + Math.random() * 30, boothY + Math.random() * 10, 2, 3, "#efac28");
         }
 
-        // DJ — ducking, then knocked off stage by goblins
+        // DJ — ducking, then tackled by a goblin, collapses
         const djStartX = W / 2 - 8, djStartY = boothY - 6;
         const djEndX = W / 2 + 15, djEndY = boothY + 4;
-        const knockStart = 100, knockEnd = 160;
+        const knockStart = 140, knockEnd = 180;
+        const aftermathStart = 350; // goblins celebrate, smoke rises
+
+        // Tackling goblin — charges from right cave toward DJ
+        const tackleGobStart = 80;
+        const tackleGobX0 = (COLS - 2) * TILE; // right side cave area
+        const tackleGobY0 = boothY;
+        const tackleGobXEnd = djStartX + 10; // reaches the DJ
+        if (t >= tackleGobStart && t < knockEnd) {
+            const tackleT = Math.min(1, (t - tackleGobStart) / (knockStart - tackleGobStart));
+            const tgx = tackleGobX0 + (tackleGobXEnd - tackleGobX0) * tackleT;
+            const tgy = tackleGobY0;
+            drawGoblinSprite("elite", tgx, tgy, Math.floor(t / 6) % 4, { dir: 2, showShadow: false });
+        }
+
         if (t < knockStart) {
             // Ducking behind booth, looking around nervously
             const djLook = Math.floor(t / 15) % 4;
             const djDir = djLook < 2 ? 2 : 3;
             drawPlayerSprite(djStartX, djStartY, 0, djDir, {});
         } else if (t < knockEnd) {
-            // Knocked off stage — dramatic arc
+            // Tackled off stage — fast asymmetric arc (hard launch, heavy landing)
             const knockT = (t - knockStart) / (knockEnd - knockStart);
             const djX = djStartX + (djEndX - djStartX) * knockT;
-            const arcHeight = -18 * Math.sin(knockT * Math.PI); // parabolic arc upward
-            const djY = djStartY + (djEndY - djStartY) * knockT + arcHeight;
-            const djFrame = Math.floor(t / 4) % 4; // fast flailing
-            const djDir = 3; // facing right (knocked direction)
+            // Asymmetric arc: peaks early (at 30% of travel), crashes down hard
+            const arcHeight = -22 * Math.sin(knockT * Math.PI * 0.7);
+            const djY = djStartY + (djEndY - djStartY) * knockT * knockT + arcHeight;
+            // Tumble: alternate directions rapidly to show spinning/tumbling
+            const tumbleDir = [3, 0, 2, 1][Math.floor(t / 3) % 4];
+            const djFrame = Math.floor(t / 3) % 4;
             // Impact flash on first frame
             if (t === knockStart) {
                 ctx.globalAlpha = 0.6;
                 drawRect(djStartX - 4, djStartY - 4, 24, 24, "#FFFFFF");
                 ctx.globalAlpha = 1;
             }
-            drawPlayerSprite(djX, djY, djFrame, djDir, {});
+            drawPlayerSprite(djX, djY, djFrame, tumbleDir, {});
         } else {
-            // Collapsed — matches Scene 4 starting position
+            // Collapsed — matches Scene 3 starting position
             drawPlayerSprite(djEndX, djEndY, 0, 0, {});
         }
 
+        // After knockout: goblins celebrate on the grid, smoke rises, venue settles
+        if (t >= aftermathStart) {
+            const celebFrame = Math.floor(introGlobalTimer / 10) % 4;
+            drawGoblinSprite("normal", miniGridX + 4 * TILE, miniGridY, celebFrame, { dir: 3, showShadow: false });
+            drawGoblinSprite("normal", miniGridX + 10 * TILE, miniGridY + TILE, celebFrame, { dir: 2, showShadow: false });
+            drawGoblinSprite("elite", miniGridX + 7 * TILE, miniGridY + 2 * TILE, (celebFrame + 2) % 4, { dir: 0, showShadow: false });
+            // Smoke wisps from destroyed booth
+            for (let si = 0; si < 3; si++) {
+                const smokeX = boothX + 15 + si * 12;
+                const smokeAnim = ((t - aftermathStart) * 0.3 + si * 20) % 30;
+                const smokeY = boothY - smokeAnim;
+                ctx.globalAlpha = Math.max(0, 0.15 - smokeAnim / 200);
+                if (ctx.globalAlpha > 0) drawRect(smokeX, smokeY, 3, 3, "#888888");
+            }
+            ctx.globalAlpha = 1;
+        }
+
         ctx.restore();
+
+        // Dark vignette (fades in during aftermath)
+        if (t >= aftermathStart) {
+            const vigAlpha = Math.min(0.6, (t - aftermathStart) / 180);
+            const W_v = W * SCALE;
+            const H_v = H * SCALE;
+            const vGrad = ctx.createRadialGradient(W_v / 2, H_v / 2, W_v * 0.2, W_v / 2, H_v / 2, W_v * 0.6);
+            vGrad.addColorStop(0, "rgba(0,0,0,0)");
+            vGrad.addColorStop(1, `rgba(0,0,0,${vigAlpha})`);
+            ctx.fillStyle = vGrad;
+            ctx.fillRect(0, 0, W_v, H_v);
+        }
 
         // Green tint overlay
         ctx.fillStyle = "#39FF14";
@@ -7272,100 +7315,14 @@ function renderIntro() {
         }
     }
 
-    // ==================== SCENE 3: THE AFTERMATH ====================
+    // ==================== SCENE 3: CALL TO ACTION ====================
     else if (introScene === 3) {
-        // Dark, destroyed venue. Dancers fleeing. Beat grid scrambled.
-        drawRect(0, 0, W, H, "#1a1a18");
-
-        // Damaged walls
-        for (let c = 0; c < COLS; c++) {
-            const damaged = ((c * 7 + 3) % 10) > 6;
-            drawRect(c * TILE, 0, TILE, TILE, damaged ? "#45230d" : (c % 2 === 0 ? "#724113" : "#927e6a"));
-            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#2e4a4e" : "#384f54");
-        }
-        for (let r = 0; r < ROWS; r++) {
-            drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
-            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
-        }
-
-        // Caves (open and menacing)
-        for (const cave of CAVES) {
-            const cx = cave.tileX * TILE, cy = cave.tileY * TILE;
-            drawRect(cx, cy - 2, TILE, TILE + 4, "#0a0a0a");
-            drawRect(cx - 2, cy - 4, TILE + 4, 3, "#684c3c");
-            drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");
-        }
-
-        // Dead string lights (all off)
-        for (let c = 1; c < COLS - 1; c++) {
-            drawRect(c * TILE + TILE / 2 - 2, TILE + 6, 4, 4, "#2a1d0d");
-        }
-
-        // Scrambled beat grid
-        const miniGridY = GRID_Y * TILE + 14;
-        const miniGridX = 3 * TILE;
-        for (let r = 0; r < 4; r++) {
-            for (let c = 0; c < 16; c++) {
-                const gx = miniGridX + c * TILE;
-                const gy = miniGridY + r * TILE;
-                const cellOn = introGridState ? introGridState[r][c] : ((r * 7 + c * 13 + 5) % 3) === 0;
-                drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
-                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, cellOn ? PAL.gridOn[r] : PAL.gridOff);
-            }
-        }
-
-        // Destroyed DJ booth
-        const boothX = W / 2 - 24;
-        const boothY = GRID_Y * TILE - 8;
-        drawRect(boothX - 8, boothY + 12, 64, 8, "#2a1d0d");
-        drawRect(boothX + 5, boothY + 6, 10, 6, "#1f240a"); // broken turntable
-        drawRect(boothX + 35, boothY + 8, 8, 4, "#1f240a");
-        // Smoke wisps
-        for (let si = 0; si < 3; si++) {
-            const smokeX = boothX + 15 + si * 12;
-            const smokeY = boothY - (t * 0.3 + si * 20) % 30;
-            ctx.globalAlpha = 0.15 - (t * 0.3 + si * 20) % 30 / 200;
-            if (ctx.globalAlpha > 0) drawRect(smokeX, smokeY, 3, 3, "#888888");
-        }
-        ctx.globalAlpha = 1;
-
-        // Goblins celebrating on the grid
-        const gobFrame = Math.floor(introGlobalTimer / 10) % 4;
-        drawGoblinSprite("normal", miniGridX + 4 * TILE, miniGridY, gobFrame, { dir: 3, showShadow: false });
-        drawGoblinSprite("normal", miniGridX + 10 * TILE, miniGridY + TILE, gobFrame, { dir: 2, showShadow: false });
-        drawGoblinSprite("elite", miniGridX + 7 * TILE, miniGridY + 2 * TILE, (gobFrame + 2) % 4, { dir: 0, showShadow: false });
-
-        // DJ collapsed by the booth
-        drawPlayerSprite(W / 2 + 15, boothY + 4, 0, 0, {});
-
-        // Dark vignette
-        const W_v = W * SCALE;
-        const H_v = H * SCALE;
-        const vGrad = ctx.createRadialGradient(W_v / 2, H_v / 2, W_v * 0.2, W_v / 2, H_v / 2, W_v * 0.6);
-        vGrad.addColorStop(0, "rgba(0,0,0,0)");
-        vGrad.addColorStop(1, "rgba(0,0,0,0.6)");
-        ctx.fillStyle = vGrad;
-        ctx.fillRect(0, 0, W_v, H_v);
-
-        // Caption
-        if (t > 90) {
-            const capAlpha = Math.min(1, (t - 90) / 30);
-            ctx.globalAlpha = capAlpha;
-            drawCentered("THE CROWD SCATTERED. THE LIGHTS WENT DARK.", H - 60, "#efd8a1", 5);
-            drawCentered("AND FOR THE FIRST TIME ANYONE COULD REMEMBER,", H - 50, "#efd8a1", 5);
-            drawCentered("THE UNDERGROUND WAS SILENT.", H - 40, "#efd8a1", 5);
-            ctx.globalAlpha = 1;
-        }
-    }
-
-    // ==================== SCENE 4: CALL TO ACTION ====================
-    else if (introScene === 4) {
         // DJ crawls from collapsed position to center, then rises and clenches fists
-        // Crawl phase (0-120): axis-aligned L-path from Scene 3 position to center
+        // Crawl phase (0-120): axis-aligned L-path from Scene 2 collapsed position to center
         // Rise phase (120+): existing stand-up and fist-clench sequence
         const CRAWL_FRAMES = 120;
-        const crawlStartX = W / 2 + 15;  // Scene 3 collapsed X (183)
-        const crawlStartY = GRID_Y * TILE - 8 + 4; // Scene 3 collapsed Y (boothY + 4 = 60)
+        const crawlStartX = W / 2 + 15;  // Scene 2 collapsed X (183)
+        const crawlStartY = GRID_Y * TILE - 8 + 4; // Scene 2 collapsed Y (boothY + 4 = 60)
         const crawlEndX = W / 2 - 8;     // Center X (168)
         const crawlEndY = H / 2 + 10;    // Center Y (154)
 
@@ -7467,15 +7424,15 @@ function renderIntro() {
         // Scene loops in place — no fade out
     }
 
-    // ==================== SCENE 5: THE DISCOVERY ====================
-    else if (introScene === 5) {
+    // ==================== SCENE 4: THE DISCOVERY ====================
+    else if (introScene === 4) {
         drawRuinedVenueBackdrop(t);
 
-        // Page indicator dots (scenes 5-7)
+        // Page indicator dots (scenes 4-6)
         const dotY = H - 22;
         for (let i = 0; i < 3; i++) {
             const dx = W / 2 - 10 + i * 8;
-            const active = i === (introScene - 5);
+            const active = i === (introScene - 4);
             drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
         }
 
@@ -7729,15 +7686,15 @@ function renderIntro() {
         ctx.globalAlpha = 1;
     }
 
-    // ==================== SCENE 6: THE THREAT ====================
-    else if (introScene === 6) {
+    // ==================== SCENE 5: THE THREAT ====================
+    else if (introScene === 5) {
         drawRuinedVenueBackdrop(t);
 
-        // Page indicator dots (scenes 5-7)
+        // Page indicator dots (scenes 4-6)
         const dotY = H - 22;
         for (let i = 0; i < 3; i++) {
             const dx = W / 2 - 10 + i * 8;
-            const active = i === (introScene - 5);
+            const active = i === (introScene - 4);
             drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
         }
 
@@ -7866,15 +7823,15 @@ function renderIntro() {
         ctx.globalAlpha = 1;
     }
 
-    // ==================== SCENE 7: THE STAND ====================
-    else if (introScene === 7) {
+    // ==================== SCENE 6: THE STAND ====================
+    else if (introScene === 6) {
         drawRuinedVenueBackdrop(t);
 
-        // Page indicator dots (scenes 5-7)
+        // Page indicator dots (scenes 4-6)
         const dotY = H - 22;
         for (let i = 0; i < 3; i++) {
             const dx = W / 2 - 10 + i * 8;
-            const active = i === (introScene - 5);
+            const active = i === (introScene - 4);
             drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
         }
 
