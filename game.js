@@ -977,7 +977,7 @@ let tomatoSplats = []; // { x, y, timer }
 
 let gamePaused = false;
 let gameState = "title"; // "title", "intro", "story", "tutorial", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim"
-let gameMode = "goblinpuncher"; // "goblinpuncher" = full game with goblins, "beatmaker" = no goblins during gameplay
+let gameMode = "thrill"; // "thrill" = full game with goblins, "chill" = no goblins during gameplay
 
 // --- Visual Improvement State ---
 // Block toggle animation (pop/glow when punched)
@@ -1155,8 +1155,8 @@ function checkPendingFeatureScreens() {
         return true;
     }
 
-    // Enemy warning screens (skip in beatmaker mode — no goblins)
-    if (gameMode === "beatmaker") return false; // new instruments already handled above
+    // Enemy warning screens (skip in chill mode — no goblins)
+    if (gameMode === "chill") return false; // new instruments already handled above
     if (nextLevel === 2 && !enemyWarningShown.normal) {
         enemyWarningType = "normal";
         enemyWarningShown.normal = true;
@@ -1225,7 +1225,7 @@ window.addEventListener("keydown", (e) => {
     // Toggle game mode on title screen with left/right arrows
     if (gameState === "title" && !titleFadingOut) {
         if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
-            gameMode = gameMode === "goblinpuncher" ? "beatmaker" : "goblinpuncher";
+            gameMode = gameMode === "thrill" ? "chill" : "thrill";
         }
     }
 
@@ -1905,8 +1905,8 @@ function update(dt) {
         }
 
     if (gob.dead) {
-        // No goblins in beatmaker mode or on practice levels (1-2)
-        if (gameMode === "beatmaker" || currentLevel < 2) {
+        // No goblins in chill mode or on practice levels (1-2)
+        if (gameMode === "chill" || currentLevel < 2) {
             gob.respawnTimer = 300;
             continue;
         }
@@ -3075,12 +3075,12 @@ function renderHUD() {
     }
 
     // Chill mode indicator
-    if (gameMode === "beatmaker") {
+    if (gameMode === "chill") {
         const cmX = (COLS - 2) * TILE - 2;
         hudCtx.font = `${3 * SCALE}px monospace`;
         hudCtx.fillStyle = "#3c9f9c";
         hudCtx.textAlign = "right";
-        hudCtx.fillText("BEATMAKER", cmX * SCALE, (kcY + panelH - 2) * SCALE);
+        hudCtx.fillText("CHILL", cmX * SCALE, (kcY + panelH - 2) * SCALE);
         hudCtx.textAlign = "start";
     }
 }
@@ -4663,8 +4663,8 @@ function renderTitleScreen() {
     // === Mode selector above "PRESS ENTER" ===
     if (!titleFadingOut) {
         const modeY = titleBaseY + 50;
-        const modeLabel = gameMode === "goblinpuncher" ? "GOBLIN-PUNCHER MODE" : "BEATMAKER MODE";
-        const modeCol = gameMode === "goblinpuncher" ? "#ef3a0c" : "#3c9f9c";
+        const modeLabel = gameMode === "thrill" ? "THRILL MODE" : "CHILL MODE";
+        const modeCol = gameMode === "thrill" ? "#ef3a0c" : "#3c9f9c";
         const arrowPulse = 0.4 + Math.sin(titleBlink * 0.08) * 0.3;
         ctx.globalAlpha = titleTextAlpha * 0.6;
         drawCentered("<              >", modeY, "#efd8a1", 5);
