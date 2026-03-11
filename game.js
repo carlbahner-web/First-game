@@ -5222,6 +5222,7 @@ function renderIntro() {
         const boothX = W / 2 - 24;
         const boothY = GRID_Y * TILE - 8;
         drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
+        drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
         drawRect(boothX, boothY + 4, 16, 8, "#392a1c");
         drawRect(boothX + 32, boothY + 4, 16, 8, "#392a1c");
         drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e");
@@ -5368,7 +5369,7 @@ function renderIntro() {
         ctx.save();
         ctx.translate(shX, shY);
 
-        drawRect(0, 0, W, H, "#2C2C2A");
+        drawRect(0, 0, W, H, "#222220");
         // Walls with caves now open
         for (let c = 0; c < COLS; c++) {
             drawRect(c * TILE, 0, TILE, TILE, c % 2 === 0 ? "#724113" : "#927e6a");
@@ -5384,6 +5385,11 @@ function renderIntro() {
             drawRect(cx, cy - 2, TILE, TILE + 4, "#0a0a0a");
             drawRect(cx - 2, cy - 4, TILE + 4, 3, "#684c3c");
             drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");
+        }
+
+        // Dead string lights (all off — power died in Scene 3)
+        for (let c = 1; c < COLS - 1; c++) {
+            drawRect(c * TILE + TILE / 2 - 2, TILE + 6, 4, 4, "#2a1d0d");
         }
 
         // Beat grid — being corrupted
