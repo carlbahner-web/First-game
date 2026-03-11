@@ -8939,6 +8939,26 @@ function gameLoop(timestamp) {
             // Clear HUD canvas when not in gameplay
             if (gameState !== "playing") {
                 hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+                // DEV: Show scene label in HUD during intro (remove before launch)
+                if (gameState === "intro" || gameState === "title") {
+                    const sceneLabels = [
+                        "Scene 0: The Good Times",
+                        "Scene 1: Earthquake + Caves",
+                        "Scene 2: Goblin Attack",
+                        "Scene 3: Call to Action",
+                        "Scene 4: The Discovery",
+                        "Scene 5: The Threat",
+                        "Scene 6: The Stand",
+                    ];
+                    const label = gameState === "title"
+                        ? "Title Screen"
+                        : (sceneLabels[introScene] || "Scene " + introScene);
+                    hudCtx.font = `${3 * SCALE}px monospace`;
+                    hudCtx.fillStyle = "#efac28";
+                    hudCtx.textAlign = "center";
+                    hudCtx.fillText(label, hudCanvas.width / 2, 10 * SCALE);
+                    hudCtx.textAlign = "start";
+                }
             }
             if (gameState === "title") {
                 renderTitleScreen();
