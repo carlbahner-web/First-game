@@ -2992,12 +2992,15 @@ function spawnCaveGoblin(elite) {
         { x: CAVE_TILE * 2 + Math.random() * (CAVE_COLS - 5) * CAVE_TILE, y: (CAVE_ROWS - 2) * CAVE_TILE }, // bottom
     ];
     const spawn = edges[Math.floor(Math.random() * edges.length)];
+    // Snap spawn to tile grid
+    const snapX = Math.round(spawn.x / CAVE_TILE) * CAVE_TILE;
+    const snapY = Math.round(spawn.y / CAVE_TILE) * CAVE_TILE;
     caveGoblins.push({
-        x: spawn.x, y: spawn.y,
-        destX: spawn.x, destY: spawn.y,
+        x: snapX, y: snapY,
+        destX: snapX, destY: snapY,
         w: CAVE_TILE, h: CAVE_TILE,
         dir: 0, frame: 0, frameTimer: 0,
-        speed: 0.8 + Math.random() * 0.4,
+        speed: 0.55 + Math.random() * 0.25,
         dead: false,
         elite: elite,
         hp: elite ? 3 : 1,
@@ -3005,21 +3008,46 @@ function spawnCaveGoblin(elite) {
         deathAnimTimer: 0,
         deathAnimActive: false,
         deathAnimElite: elite,
-        chaseTimer: 0,
+        moveSteps: 0,
+        targetTileX: -1,
+        targetTileY: -1,
+        stuckCount: 0,
     });
 }
 
 function spawnCaveCatapult() {
-    // Spawn catapult goblin from top-right
+    // Pick random edge: top(0), right(1), bottom(2) — not left (rescue wall)
+    const edge = Math.floor(Math.random() * 3);
+    let spawnX, spawnY, destX, destY, dir;
+    if (edge === 0) { // top
+        spawnX = (3 + Math.floor(Math.random() * (CAVE_COLS - 6))) * CAVE_TILE;
+        spawnY = 0;
+        destX = spawnX;
+        destY = (3 + Math.floor(Math.random() * 2)) * CAVE_TILE;
+        dir = 0;
+    } else if (edge === 1) { // right
+        spawnX = (CAVE_COLS - 1) * CAVE_TILE;
+        spawnY = (3 + Math.floor(Math.random() * (CAVE_ROWS - 6))) * CAVE_TILE;
+        destX = (CAVE_COLS - 4 - Math.floor(Math.random() * 2)) * CAVE_TILE;
+        destY = spawnY;
+        dir = 2;
+    } else { // bottom
+        spawnX = (3 + Math.floor(Math.random() * (CAVE_COLS - 6))) * CAVE_TILE;
+        spawnY = (CAVE_ROWS - 1) * CAVE_TILE;
+        destX = spawnX;
+        destY = (CAVE_ROWS - 4 - Math.floor(Math.random() * 2)) * CAVE_TILE;
+        dir = 1;
+    }
     caveCatapult = {
-        x: (CAVE_COLS - 3) * CAVE_TILE,
-        y: CAVE_TILE,
-        dir: 2, frame: 0, frameTimer: 0,
-        speed: 0.5,
-        phase: "positioning", // positioning → aiming → launching → retreating
+        x: spawnX, y: spawnY,
+        destX: destX, destY: destY,
+        w: CAVE_TILE, h: CAVE_TILE,
+        dir: dir, frame: 0, frameTimer: 0,
+        speed: 0.6,
+        phase: "entering",
         phaseTimer: 0,
         targetX: 0, targetY: 0,
-        boulder: null,
+        spawnX: spawnX, spawnY: spawnY,
     };
 }
 
@@ -3101,6 +3129,7 @@ function updateMinigameArena() {
                     cg.dead = true;
                     caveKillCount++;
                     caveCatapultKillCount++;
+                    score += cg.elite ? 150 : 50;
 
                     caveHitFreeze = cg.deathAnimElite ? 5 : 3;
                     cavePendingShake = true;
@@ -3151,6 +3180,50 @@ function updateMinigameArena() {
                 break; // one punch hits one goblin
             }
         }
+
+        // Check cave catapult goblin hit — invincible! Clang + knockback (matching overworld)
+        if (caveCatapult && !p.punchHit) {
+            const catBox = { x: caveCatapult.x, y: caveCatapult.y, w: caveCatapult.w, h: caveCatapult.h };
+            if (aabb(punchBox, catBox)) {
+                p.punchHit = true;
+                ensureAudio();
+                if (audioCtx) playClang(audioCtx.currentTime);
+                // Spark particles
+                for (let i = 0; i < 8; i++) {
+                    caveDeathParticles.push({
+                        x: caveCatapult.x + caveCatapult.w / 2,
+                        y: caveCatapult.y + caveCatapult.h / 2,
+                        vx: (Math.random() - 0.5) * 4,
+                        vy: (Math.random() - 0.5) * 4 - 1,
+                        life: 10 + Math.random() * 10,
+                        color: Math.random() > 0.5 ? "#00FFFF" : "#ffffff",
+                        size: 1 + Math.random() * 2,
+                    });
+                }
+                // Knockback player 2 tiles away from catapult
+                const kbDx = p.x - caveCatapult.x;
+                const kbDy = p.y - caveCatapult.y;
+                const kbDirX = Math.abs(kbDx) >= Math.abs(kbDy) ? Math.sign(kbDx) : 0;
+                const kbDirY = Math.abs(kbDx) >= Math.abs(kbDy) ? 0 : Math.sign(kbDy);
+                for (let d = 2; d >= 1; d--) {
+                    let tryX = p.x + kbDirX * d * CAVE_TILE;
+                    let tryY = p.y + kbDirY * d * CAVE_TILE;
+                    tryX = Math.max(CAVE_TILE * 2, Math.min((CAVE_COLS - 2) * CAVE_TILE, tryX));
+                    tryY = Math.max(CAVE_TILE * 2, Math.min((CAVE_ROWS - 2) * CAVE_TILE, tryY));
+                    if (!isCaveTileBlocked(tryX, tryY, null)) {
+                        p.destX = tryX;
+                        p.destY = tryY;
+                        break;
+                    }
+                }
+                caveScreenShake = 8;
+                caveShakeIntensity = 3;
+                caveDeathText = {
+                    x: p.x - 16, y: p.y - 14,
+                    timer: 50, text: "WHAT THE...?", color: "#FFFFFF", scale: 3,
+                };
+            }
+        }
     }
 
     // Player movement (reuse main movement controls in cave bounds)
@@ -3170,8 +3243,23 @@ function updateMinigameArena() {
                 // Bound to cave walls (leave left wall for rescue)
                 if (newX >= CAVE_TILE * 2 && newX <= (CAVE_COLS - 2) * CAVE_TILE &&
                     newY >= CAVE_TILE * 2 && newY <= (CAVE_ROWS - 2) * CAVE_TILE) {
-                    p.destX = newX;
-                    p.destY = newY;
+                    // Collision check: can't walk into goblins or catapult (matches overworld)
+                    const ntx = Math.round(newX / CAVE_TILE) * CAVE_TILE;
+                    const nty = Math.round(newY / CAVE_TILE) * CAVE_TILE;
+                    let tileBlocked = false;
+                    for (const cg of caveGoblins) {
+                        if (cg.dead) continue;
+                        if (Math.round(cg.destX / CAVE_TILE) * CAVE_TILE === ntx &&
+                            Math.round(cg.destY / CAVE_TILE) * CAVE_TILE === nty) { tileBlocked = true; break; }
+                    }
+                    if (caveCatapult) {
+                        if (Math.round(caveCatapult.x / CAVE_TILE) * CAVE_TILE === ntx &&
+                            Math.round(caveCatapult.y / CAVE_TILE) * CAVE_TILE === nty) tileBlocked = true;
+                    }
+                    if (!tileBlocked) {
+                        p.destX = newX;
+                        p.destY = newY;
+                    }
                 }
             }
         } else {
@@ -3195,7 +3283,27 @@ function updateMinigameArena() {
         }
     }
 
-    // Update cave goblins AI — chase the player
+    // Tile-blocked check for cave goblins (mirrors overworld isGobTileBlocked)
+    function isCaveTileBlocked(tx, ty, excludeGob) {
+        const ttx = Math.round(tx / CAVE_TILE) * CAVE_TILE;
+        const tty = Math.round(ty / CAVE_TILE) * CAVE_TILE;
+        const ptx = Math.round(p.x / CAVE_TILE) * CAVE_TILE;
+        const pty = Math.round(p.y / CAVE_TILE) * CAVE_TILE;
+        if (ttx === ptx && tty === pty) return true;
+        if (caveCatapult) {
+            const ctx2 = Math.round(caveCatapult.x / CAVE_TILE) * CAVE_TILE;
+            const cty = Math.round(caveCatapult.y / CAVE_TILE) * CAVE_TILE;
+            if (ttx === ctx2 && tty === cty) return true;
+        }
+        for (const og of caveGoblins) {
+            if (og === excludeGob || og.dead) continue;
+            if (Math.round(og.destX / CAVE_TILE) * CAVE_TILE === ttx &&
+                Math.round(og.destY / CAVE_TILE) * CAVE_TILE === tty) return true;
+        }
+        return false;
+    }
+
+    // Update cave goblins AI — grid-aligned L-path movement (matches overworld)
     for (const cg of caveGoblins) {
         if (cg.dead) {
             if (cg.deathAnimActive) {
@@ -3214,20 +3322,93 @@ function updateMinigameArena() {
             continue;
         }
 
-        // Chase player
-        const dx = p.x - cg.x;
-        const dy = p.y - cg.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist > 2) {
-            cg.x += (dx / dist) * cg.speed;
-            cg.y += (dy / dist) * cg.speed;
-            cg.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 3 : 2) : (dy > 0 ? 0 : 1);
-        }
-        cg.frameTimer++;
-        if (cg.frameTimer > 8) { cg.frame = (cg.frame + 1) % 4; cg.frameTimer = 0; }
+        const dx = cg.destX - cg.x;
+        const dy = cg.destY - cg.y;
+        const atDest = Math.abs(dx) < 1 && Math.abs(dy) < 1;
 
-        // Collision with player (damage — goblins touching player)
-        // In cave minigame, goblins touching player just push them back, no kill
+        if (atDest) {
+            // Snap to tile grid
+            cg.x = cg.destX;
+            cg.y = cg.destY;
+
+            // Pick next tile destination (L-path: one axis at a time)
+            cg.moveSteps = (cg.moveSteps || 0) + 1;
+            const maxSteps = cg.elite ? 3 : 5;
+
+            // Elite: chase player. Normal: wander to random tile.
+            if (cg.elite || cg.targetTileX < 0 || cg.moveSteps > maxSteps) {
+                if (cg.elite) {
+                    // Target player's current tile
+                    cg.targetTileX = Math.round(p.x / CAVE_TILE) * CAVE_TILE;
+                    cg.targetTileY = Math.round(p.y / CAVE_TILE) * CAVE_TILE;
+                } else {
+                    // Wander: pick random tile in arena
+                    cg.targetTileX = (2 + Math.floor(Math.random() * (CAVE_COLS - 4))) * CAVE_TILE;
+                    cg.targetTileY = (2 + Math.floor(Math.random() * (CAVE_ROWS - 4))) * CAVE_TILE;
+                }
+                cg.moveSteps = 0;
+            }
+
+            const gdx = cg.targetTileX - cg.x;
+            const gdy = cg.targetTileY - cg.y;
+            let nx = cg.x, ny = cg.y;
+
+            // Move one tile on the axis with greater distance (L-path behavior)
+            if (Math.abs(gdx) > Math.abs(gdy)) {
+                nx += Math.sign(gdx) * CAVE_TILE;
+                cg.dir = gdx > 0 ? 3 : 2;
+            } else if (gdy !== 0) {
+                ny += Math.sign(gdy) * CAVE_TILE;
+                cg.dir = gdy > 0 ? 0 : 1;
+            }
+
+            // Clamp to cave bounds
+            nx = Math.max(CAVE_TILE * 2, Math.min((CAVE_COLS - 2) * CAVE_TILE, nx));
+            ny = Math.max(CAVE_TILE * 2, Math.min((CAVE_ROWS - 2) * CAVE_TILE, ny));
+
+            // Collision check — try perpendicular if blocked
+            if (!isCaveTileBlocked(nx, ny, cg)) {
+                cg.destX = nx;
+                cg.destY = ny;
+                cg.stuckCount = 0;
+            } else {
+                // Try perpendicular axis
+                let ax = cg.x, ay = cg.y;
+                if (nx !== cg.x) {
+                    if (gdy !== 0) { ay += Math.sign(gdy) * CAVE_TILE; cg.dir = gdy > 0 ? 0 : 1; }
+                } else {
+                    if (gdx !== 0) { ax += Math.sign(gdx) * CAVE_TILE; cg.dir = gdx > 0 ? 3 : 2; }
+                }
+                ax = Math.max(CAVE_TILE * 2, Math.min((CAVE_COLS - 2) * CAVE_TILE, ax));
+                ay = Math.max(CAVE_TILE * 2, Math.min((CAVE_ROWS - 2) * CAVE_TILE, ay));
+                if ((ax !== cg.x || ay !== cg.y) && !isCaveTileBlocked(ax, ay, cg)) {
+                    cg.destX = ax;
+                    cg.destY = ay;
+                    cg.stuckCount = 0;
+                } else {
+                    // Anti-stuck: after 3 failed attempts, take one direct step
+                    cg.stuckCount = (cg.stuckCount || 0) + 1;
+                    if (cg.stuckCount >= 3) {
+                        const sdx = p.x - cg.x;
+                        const sdy = p.y - cg.y;
+                        const sd = Math.sqrt(sdx * sdx + sdy * sdy) || 1;
+                        cg.x += (sdx / sd) * cg.speed;
+                        cg.y += (sdy / sd) * cg.speed;
+                        cg.stuckCount = 0;
+                    }
+                }
+            }
+        } else {
+            // Smooth movement toward destination (one axis at a time, like overworld)
+            if (Math.abs(dx) > 0) {
+                cg.x += Math.sign(dx) * Math.min(cg.speed, Math.abs(dx));
+            }
+            if (Math.abs(dy) > 0) {
+                cg.y += Math.sign(dy) * Math.min(cg.speed, Math.abs(dy));
+            }
+            cg.frameTimer++;
+            if (cg.frameTimer >= 8) { cg.frameTimer = 0; cg.frame = (cg.frame + 1) % 4; }
+        }
     }
 
     // Spawn more goblins over time
@@ -3254,7 +3435,7 @@ function updateMinigameArena() {
     // Update boulders
     for (let i = caveBoulders.length - 1; i >= 0; i--) {
         const b = caveBoulders[i];
-        b.progress += 0.02;
+        b.progress += 1/45;
         if (b.progress >= 1) {
             // Boulder impacts
             const impactX = b.targetX;
@@ -3298,6 +3479,7 @@ function updateMinigameArena() {
                     cg.deathAnimActive = true;
                     cg.deathAnimTimer = 24;
                     caveKillCount++;
+                    score += 50;
                     // Impact particles
                     for (let j = 0; j < 8; j++) {
                         caveDeathParticles.push({
@@ -3402,20 +3584,33 @@ function updateMinigameArena() {
 function updateCaveCatapult() {
     const cat = caveCatapult;
     cat.phaseTimer++;
-    cat.frameTimer++;
-    if (cat.frameTimer > 10) { cat.frame = (cat.frame + 1) % 4; cat.frameTimer = 0; }
 
-    if (cat.phase === "positioning") {
-        // Move to a position along the top
-        const targetX = CAVE_TILE * 3 + Math.random() * (CAVE_COLS - 8) * CAVE_TILE;
-        if (cat.phaseTimer > 60) {
+    if (cat.phase === "entering") {
+        // Walk toward dest using one-axis-at-a-time (matching overworld)
+        const dx = cat.destX - cat.x;
+        const dy = cat.destY - cat.y;
+        const dist = Math.abs(dx) + Math.abs(dy);
+        if (dist < cat.speed) {
+            cat.x = cat.destX;
+            cat.y = cat.destY;
             cat.phase = "aiming";
             cat.phaseTimer = 0;
-            cat.targetX = player.x + player.w / 2;
-            cat.targetY = player.y + player.h / 2;
+            // Snap target to nearest tile grid
+            cat.targetX = Math.round(player.x / CAVE_TILE) * CAVE_TILE + CAVE_TILE / 2;
+            cat.targetY = Math.round(player.y / CAVE_TILE) * CAVE_TILE + CAVE_TILE / 2;
+        } else {
+            if (Math.abs(dx) > Math.abs(dy)) {
+                cat.x += Math.sign(dx) * Math.min(cat.speed, Math.abs(dx));
+                cat.dir = dx > 0 ? 3 : 2;
+            } else {
+                cat.y += Math.sign(dy) * Math.min(cat.speed, Math.abs(dy));
+                cat.dir = dy > 0 ? 0 : 1;
+            }
+            cat.frameTimer++;
+            if (cat.frameTimer >= 8) { cat.frameTimer = 0; cat.frame = (cat.frame + 1) % 4; }
         }
     } else if (cat.phase === "aiming") {
-        // Brief aim pause
+        // Brief aim pause (40 frames)
         if (cat.phaseTimer > 40) {
             cat.phase = "launching";
             cat.phaseTimer = 0;
@@ -3445,11 +3640,27 @@ function updateCaveCatapult() {
         if (cat.phaseTimer > 30) {
             cat.phase = "retreating";
             cat.phaseTimer = 0;
+            // Set retreat destination back to spawn edge
+            cat.destX = cat.spawnX;
+            cat.destY = cat.spawnY;
         }
     } else if (cat.phase === "retreating") {
-        cat.y -= 1;
-        if (cat.y < -CAVE_TILE * 2) {
+        // Walk back to spawn edge using one-axis-at-a-time (matching overworld)
+        const dx = cat.destX - cat.x;
+        const dy = cat.destY - cat.y;
+        const dist = Math.abs(dx) + Math.abs(dy);
+        if (dist < cat.speed) {
             caveCatapult = null; // gone
+        } else {
+            if (Math.abs(dx) > Math.abs(dy)) {
+                cat.x += Math.sign(dx) * Math.min(cat.speed, Math.abs(dx));
+                cat.dir = dx > 0 ? 3 : 2;
+            } else {
+                cat.y += Math.sign(dy) * Math.min(cat.speed, Math.abs(dy));
+                cat.dir = dy > 0 ? 0 : 1;
+            }
+            cat.frameTimer++;
+            if (cat.frameTimer >= 8) { cat.frameTimer = 0; cat.frame = (cat.frame + 1) % 4; }
         }
     }
 }
@@ -3645,15 +3856,46 @@ function renderMinigameArena() {
     for (const b of caveBoulders) {
         const t = b.progress;
         const bx = b.startX + (b.targetX - b.startX) * t;
-        const by = b.startY + (b.targetY - b.startY) * t - Math.sin(t * Math.PI) * 60; // arc
-        const bSize = 6 + t * 4;
-        // Shadow
-        drawRect(bx - bSize / 2, b.targetY - 2, bSize, 3, "rgba(0,0,0,0.3)");
-        // Boulder
-        drawRect(bx - bSize / 2, by - bSize / 2, bSize, bSize, "#8B6914");
-        drawRect(bx - bSize / 2 + 1, by - bSize / 2 + 1, bSize - 2, bSize - 2, "#A0522D");
-        // Highlight
-        drawRect(bx - bSize / 2 + 1, by - bSize / 2 + 1, 2, 2, "#C4A882");
+        const baseY = b.startY + (b.targetY - b.startY) * t;
+        // Parabolic arc (matching overworld: 40px peak)
+        const arcHeight = 40;
+        const arcY = -4 * arcHeight * t * (1 - t);
+        const by = baseY + arcY;
+
+        // Dust/smoke trail (matching overworld)
+        const trailCount = 5;
+        for (let ti = 0; ti < trailCount; ti++) {
+            const trailT = Math.max(0, t - ti * 0.04);
+            const tx = b.startX + (b.targetX - b.startX) * trailT;
+            const tBaseY = b.startY + (b.targetY - b.startY) * trailT;
+            const tArcY = -4 * arcHeight * trailT * (1 - trailT);
+            const ty = tBaseY + tArcY;
+            const trailAlpha = (1 - ti / trailCount) * 0.3 * (1 - t);
+            ctx.globalAlpha = trailAlpha;
+            const trailSize = (3 + ti * 2) * SCALE;
+            ctx.fillStyle = ti % 2 === 0 ? "#aaaaaa" : "#888888";
+            ctx.fillRect(tx * SCALE - trailSize / 2, ty * SCALE - trailSize / 2, trailSize, trailSize);
+        }
+        ctx.globalAlpha = 1.0;
+
+        // Shadow on ground (grows as boulder descends)
+        const shadowPx = (3 + (1 - Math.abs(arcY) / arcHeight) * 4) * SCALE;
+        const sx = bx * SCALE - shadowPx / 2;
+        const sy = b.targetY * SCALE + 6;
+        drawPx(sx, sy, shadowPx, 6, PAL.shadow);
+
+        // Boulder (detailed rock sprite — matching overworld)
+        const rx = bx * SCALE - 12;
+        const ry = by * SCALE - 12;
+        drawPx(rx + 3, ry, 18, 24, "#6a6a6a");
+        drawPx(rx, ry + 3, 24, 18, "#6a6a6a");
+        drawPx(rx + 3, ry + 3, 18, 18, "#888888");
+        drawPx(rx + 3, ry + 3, 9, 6, "#aaaaaa");
+        drawPx(rx + 3, ry + 3, 6, 9, "#aaaaaa");
+        drawPx(rx + 15, ry + 15, 6, 6, "#392a1c");
+        drawPx(rx + 18, ry + 9, 3, 9, "#392a1c");
+        drawPx(rx + 9, ry + 9, 3, 9, "#5a5a5a");
+        drawPx(rx + 12, ry + 12, 6, 3, "#5a5a5a");
     }
 
     // Draw boulder impact dust clouds
@@ -3696,24 +3938,50 @@ function renderMinigameArena() {
         }
     }
 
-    // Draw cave goblins
+    // Draw cave goblins (unified with overworld rendering)
     for (const cg of caveGoblins) {
         if (cg.dead && !cg.deathAnimActive) continue;
         if (cg.deathAnimActive) {
-            // Poof animation
-            const progress = 1 - cg.deathAnimTimer / 24;
-            ctx.globalAlpha = 1 - progress;
-            const puffSize = 8 + progress * 16;
-            drawRect(cg.x + cg.w / 2 - puffSize / 2, cg.y + cg.h / 2 - puffSize / 2,
-                puffSize, puffSize, cg.deathAnimElite ? "#FF69B4" : "#39FF14");
-            ctx.globalAlpha = 1;
+            // Shrink-spin-dissolve (matches overworld death animation)
+            const progress = 1 - cg.deathAnimTimer / 24; // 0→1
+            const scale = 1 - progress * 0.85; // shrink to 15%
+            const alpha = 1 - progress * 0.9;  // fade to 10%
+            const rotation = progress * Math.PI * 2.5; // 2.5 full spins
+            const cx = (cg.x + cg.w / 2) * SCALE;
+            const cy = (cg.y + cg.h / 2) * SCALE;
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(rotation);
+            ctx.scale(scale, scale);
+            ctx.translate(-cx, -cy);
+            ctx.globalAlpha = alpha;
+            // Flash between normal colors and white as it dissolves
+            if (progress > 0.5 && Math.floor(cg.deathAnimTimer) % 3 === 0) {
+                drawGoblinSprite(cg.deathAnimElite ? "elite" : "normal", cg.x, cg.y, 0, {
+                    dir: cg.dir, bodyCol: "#ffffff", darkCol: "#dddddd", headCol: "#ffffff", eyeCol: "#00FFFF"
+                });
+            } else {
+                drawGoblinFor(cg);
+            }
+            ctx.restore();
+            ctx.globalAlpha = 1.0;
+            // Death particle bursts during countdown
+            if (cg.deathAnimTimer % 4 === 0) {
+                const burstCount = cg.deathAnimElite ? 4 : 2;
+                for (let i = 0; i < burstCount; i++) {
+                    caveDeathParticles.push({
+                        x: cg.x + cg.w / 2, y: cg.y + cg.h / 2,
+                        vx: (Math.random() - 0.5) * 3,
+                        vy: (Math.random() - 0.5) * 3,
+                        life: 20 + Math.random() * 10,
+                        size: 2 + Math.random() * 2,
+                        color: cg.deathAnimElite ? "#FF69B4" : "#39FF14"
+                    });
+                }
+            }
             continue;
         }
-        const hurtFlash = cg.hurtTimer > 0 && cg.hurtTimer % 4 < 2;
-        const type = cg.elite ? "elite" : "normal";
-        if (hurtFlash) ctx.globalAlpha = 0.5;
-        drawGoblinSprite(type, cg.x, cg.y, cg.frame, { dir: cg.dir });
-        if (hurtFlash) ctx.globalAlpha = 1;
+        drawGoblinFor(cg);
     }
 
     // Draw player (unless dead)
