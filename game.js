@@ -1007,9 +1007,13 @@ let patternMatched = false; // pattern correct but goblins may still be alive
 let levelCelebrateTimer = 0;
 let levelCelebrateDisplayScore = 0; // for count-up animation
 let titleBlink = 0; // blink timer for "PRESS ENTER"
+let controlsOverlayActive = true;   // whether controls overlay should show during level 1
+let controlsMoveConfirmed = false;   // player pressed an arrow key
+let controlsPunchConfirmed = false;  // player pressed spacebar
+let controlsFadeTimer = 0;          // counts up after both confirmed, for fade-out
 
 // ---- Animated Intro Cutscene State ----
-let introScene = 1;         // current scene index (0-6)
+let introScene = 1;         // current scene index (0-5)
 let introTimer = 0;         // frame counter within current scene
 let introGlobalTimer = 0;   // total frames since intro started
 let introBeatStep = 0;      // simulated sequencer step for the intro beat
@@ -1040,8 +1044,7 @@ const INTRO_SCENE_DURATIONS = [
     660,  // Scene 2 (1B): Goblin Emergence + Attack + Aftermath (11s)
     420,  // Scene 3: Call to Action — DJ crawls to center + rises (7s)
     Infinity, // Scene 4: The Discovery (wait for Enter)
-    Infinity, // Scene 5: The Threat (wait for Enter)
-    Infinity, // Scene 6: The Stand (wait for Enter)
+    Infinity, // Scene 5: The Stand (wait for Enter)
 ];
 let newInstrumentType = null;   // "cowbell" or "tom"
 let newInstrumentTimer = 0;     // animation timer for new instrument popup
@@ -1336,10 +1339,20 @@ window.addEventListener("keydown", (e) => {
         if (gameState === "enemywarning" || gameState === "enemywarning-intro") return; // ignore Space on warning screen
         if (gameState === "newinstrument") return; // ignore Space on instrument screen
         if (gameState === "sabotage-anim") return; // ignore input during sabotage animation
-        if (minigameState === "kidnap" || minigameState === "instructions" || minigameState === "rescue" || minigameState === "reward") return; // ignore during minigame cutscenes
+        if (minigameState === "kidnap" || minigameState === "rescue" || minigameState === "reward") return; // ignore during minigame cutscenes
         if (!keys[e.code]) spaceJustPressed = true; // only on initial press
     }
     keys[e.code] = true;
+
+    // Controls overlay: track when player first moves/punches during level 1
+    if (controlsOverlayActive && gameState === "playing" && currentLevel === 0) {
+        if (["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","KeyA","KeyD","KeyW","KeyS"].includes(e.code)) {
+            controlsMoveConfirmed = true;
+        }
+        if (e.code === "Space") {
+            controlsPunchConfirmed = true;
+        }
+    }
 
     // High score initials entry input
     if (gameState === "highscore") {
@@ -1386,11 +1399,6 @@ window.addEventListener("keydown", (e) => {
         e.preventDefault();
         if (gameState === "sabotage-anim") return; // ignore input during sabotage animation
         if (minigameState === "kidnap") return; // no skipping kidnap cutscene
-        if (minigameState === "instructions" && minigameInstructionsTimer > 30) {
-            startMinigameArena();
-            return;
-        }
-        if (minigameState === "instructions") return; // let intro play
         const rewardDismissThreshold = allPiecesJustCompleted ? 180 : 140;
         if (minigameState === "reward" && minigameRewardTimer > rewardDismissThreshold) {
             // Player dismisses reward screen — continue to next level
@@ -1604,6 +1612,14 @@ function tickSequencer() {
 
 // ---- Update ----
 function update(dt) {
+    // Controls overlay fade-out after both move and punch confirmed
+    if (controlsOverlayActive && controlsMoveConfirmed && controlsPunchConfirmed) {
+        controlsFadeTimer++;
+        if (controlsFadeTimer > 40) {
+            controlsOverlayActive = false;
+        }
+    }
+
     // Decay visual effect timers
     for (let r = 0; r < GRID_ROWS; r++) {
         if (rowTrigger[r] > 0) rowTrigger[r]--;
@@ -2586,6 +2602,12 @@ function resetGame() {
     player.punchHit = false;
     player.blinkTimer = 0;
 
+    // Reset controls overlay
+    controlsOverlayActive = true;
+    controlsMoveConfirmed = false;
+    controlsPunchConfirmed = false;
+    controlsFadeTimer = 0;
+
     // Reset enemies
     killCount = 0;
     score = 0;
@@ -2895,8 +2917,8 @@ function updateMinigameKidnap() {
         kidnapGoblin2.x = kidnapDJPos.x + TILE * 1.5;
 
         if (kidnapDJPos.y < kidnapTargetY) {
-            // Transition to instructions screen before arena
-            startMinigameInstructions();
+            // Go straight to arena (controls shown as overlay during level 1)
+            startMinigameArena();
         }
     }
 }
@@ -2935,106 +2957,6 @@ function renderMinigameKidnap() {
     }
 }
 
-function startMinigameInstructions() {
-    minigameState = "instructions";
-    minigameInstructionsTimer = 0;
-}
-
-function renderMinigameInstructions() {
-    minigameInstructionsTimer++;
-    const t = minigameInstructionsTimer;
-    const W = COLS * TILE;
-    const H = ROWS * TILE;
-
-    // Dark cave-themed background
-    drawRect(0, 0, W, H, "#1a0e08");
-
-    // Threat color tint pulse (red/orange — danger theme)
-    const threatPulse = 0.03 + Math.sin(t * 0.06) * 0.02;
-    ctx.fillStyle = "#FF4400";
-    ctx.globalAlpha = threatPulse;
-    ctx.fillRect(0, 0, W * SCALE, H * SCALE);
-    ctx.globalAlpha = 1.0;
-
-    // Starfield
-    for (let i = 0; i < 60; i++) {
-        const sx = ((i * 137 + 50) % W);
-        const sy = ((i * 97 + 30) % H);
-        const twinkle = Math.sin(t * 0.05 + i) * 0.5 + 0.5;
-        ctx.globalAlpha = 0.3 + twinkle * 0.7;
-        const starSize = (i % 3 === 0) ? 2 : 1;
-        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#efac28" : "#efd8a1");
-    }
-    ctx.globalAlpha = 1;
-
-    // Centered text helper
-    function drawCenteredText(text, y, color, scale) {
-        ctx.font = `${scale * SCALE}px monospace`;
-        ctx.fillStyle = color;
-        ctx.textAlign = "center";
-        ctx.fillText(text, (W * SCALE) / 2, y * SCALE);
-        ctx.textAlign = "start";
-    }
-
-    // Danger border effect — animated hazard stripes
-    const borderPulse = 0.3 + Math.sin(t * 0.1) * 0.2;
-    const borderCol = "#FF4400";
-    const stripeW = 8;
-    const borderThick = 4;
-    const stripeOffset = (t * 0.5) % (stripeW * 2);
-    ctx.globalAlpha = borderPulse;
-    for (let sx = -stripeW * 2; sx < W; sx += stripeW * 2) {
-        drawRect(sx + stripeOffset, 0, stripeW, borderThick, borderCol);
-    }
-    for (let sx = -stripeW * 2; sx < W; sx += stripeW * 2) {
-        drawRect(sx - stripeOffset + stripeW, H - borderThick, stripeW, borderThick, borderCol);
-    }
-    for (let sy = -stripeW * 2; sy < H; sy += stripeW * 2) {
-        drawRect(0, sy + stripeOffset, borderThick, stripeW, borderCol);
-    }
-    for (let sy = -stripeW * 2; sy < H; sy += stripeW * 2) {
-        drawRect(W - borderThick, sy - stripeOffset + stripeW, borderThick, stripeW, borderCol);
-    }
-    ctx.globalAlpha = 1.0;
-
-    // Title
-    drawCenteredText("DUNGEON!", 30, "#FF4400", 8);
-    drawCenteredText("A FRIEND HAS BEEN CAPTURED", 52, "#efac28", 6);
-
-    // Animated sprites: player punching a goblin
-    const bobOffset = Math.round(Math.sin(t * 0.08) * 3);
-    const gobFrame = Math.floor(t / 10) % 4;
-
-    // Dramatic zoom-in
-    const zoomDuration = 30;
-    const zoomProgress = Math.min(1, t / zoomDuration);
-    const zoomEase = zoomProgress < 1 ? 1 - Math.pow(1 - zoomProgress, 3) * (1 - 0.3 * Math.sin(zoomProgress * Math.PI)) : 1;
-    const spriteScale = 0.2 + zoomEase * 0.8;
-
-    // Draw player and goblin facing each other
-    ctx.save();
-    const cx_w = (W / 2) * SCALE;
-    const cy_w = (82 + bobOffset + 8) * SCALE;
-    ctx.translate(cx_w, cy_w);
-    ctx.scale(spriteScale, spriteScale);
-    ctx.translate(-cx_w, -cy_w);
-    // Player on left facing right
-    const punchCycle = Math.sin(t * 0.12) > 0.3 ? Math.sin(t * 0.12) : 0;
-    drawPlayerSprite(W / 2 - 28, 82 + bobOffset, gobFrame, 3, { punchThrust: punchCycle });
-    // Goblin on right facing left
-    drawGoblinSprite("normal", W / 2 + 12, 82 + bobOffset, gobFrame, { dir: 2, showShadow: false });
-    ctx.restore();
-
-    // Instructions
-    drawCenteredText("MOVE: ARROW KEYS", 125, "#efb775", 5);
-    drawCenteredText("PUNCH: SPACEBAR", 142, "#efb775", 5);
-    drawCenteredText("SURVIVE UNTIL HELP ARRIVES!", 162, "#FF4400", 6);
-
-    // Blinking "PRESS ENTER TO CONTINUE"
-    if (t > 60 && t % 60 < 40) {
-        drawCenteredText("PRESS ENTER TO CONTINUE", H - 12, "#efd8a1", 5);
-    }
-}
 
 function startMinigameArena() {
     minigameState = "playing";
@@ -5991,6 +5913,49 @@ function drawPunch() {
             ctx.stroke();
         }
         ctx.globalAlpha = 1.0;
+    }
+
+    // Controls overlay (level 1 only — fades after player confirms move + punch)
+    if (controlsOverlayActive && currentLevel === 0) {
+        const alpha = controlsMoveConfirmed && controlsPunchConfirmed
+            ? Math.max(0, 1 - controlsFadeTimer / 40)
+            : 1;
+        if (alpha > 0) {
+            const W = COLS * TILE;
+            const overlayY = (GRID_Y + LEVELS[currentLevel].activeRows + 2) * TILE + GRID_Y_OFFSET;
+            const boxW = 100;
+            const boxH = 28;
+            const boxX = W / 2 - boxW / 2;
+
+            // Semi-transparent background
+            ctx.globalAlpha = alpha * 0.65;
+            drawRect(boxX, overlayY, boxW, boxH, "#1a0e08");
+            // Border
+            ctx.globalAlpha = alpha * 0.4;
+            drawRect(boxX, overlayY, boxW, 1, "#efac28");
+            drawRect(boxX, overlayY + boxH - 1, boxW, 1, "#efac28");
+            drawRect(boxX, overlayY, 1, boxH, "#efac28");
+            drawRect(boxX + boxW - 1, overlayY, 1, boxH, "#efac28");
+
+            ctx.globalAlpha = alpha;
+            ctx.textAlign = "center";
+
+            // MOVE line
+            const moveColor = controlsMoveConfirmed ? "#5a7a3a" : "#efb775";
+            const moveText = controlsMoveConfirmed ? "MOVE  OK" : "MOVE: ARROW KEYS";
+            ctx.font = `${4 * SCALE}px monospace`;
+            ctx.fillStyle = moveColor;
+            ctx.fillText(moveText, (W / 2) * SCALE, (overlayY + 11) * SCALE);
+
+            // PUNCH line
+            const punchColor = controlsPunchConfirmed ? "#5a7a3a" : "#efb775";
+            const punchText = controlsPunchConfirmed ? "PUNCH  OK" : "PUNCH: SPACEBAR";
+            ctx.fillStyle = punchColor;
+            ctx.fillText(punchText, (W / 2) * SCALE, (overlayY + 22) * SCALE);
+
+            ctx.textAlign = "start";
+            ctx.globalAlpha = 1;
+        }
     }
 
     ctx.restore();
@@ -9042,10 +9007,10 @@ function renderIntro() {
             ctx.globalAlpha = 1;
         }
 
-        // Page indicator dots (scenes 4-6)
+        // Page indicator dots (scenes 4-5)
         const dotY = H - 22;
-        for (let i = 0; i < 3; i++) {
-            const dx = W / 2 - 10 + i * 8;
+        for (let i = 0; i < 2; i++) {
+            const dx = W / 2 - 6 + i * 8;
             const active = i === (introScene - 4);
             drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
         }
@@ -9347,182 +9312,14 @@ function renderIntro() {
         ctx.globalAlpha = 1;
     }
 
-    // ==================== SCENE 5: THE THREAT ====================
+    // ==================== SCENE 5: THE STAND ====================
     else if (introScene === 5) {
         drawRuinedVenueBackdrop(t, { skipGrid: true });
 
-        // Page indicator dots (scenes 4-6)
+        // Page indicator dots (scenes 4-5)
         const dotY = H - 22;
-        for (let i = 0; i < 3; i++) {
-            const dx = W / 2 - 10 + i * 8;
-            const active = i === (introScene - 4);
-            drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
-        }
-
-        // Story captions — lead with the threat, then the mechanic
-        if (t < 120) {
-            const capAlpha = Math.min(1, Math.max(0, (t - 20) / 25));
-            ctx.globalAlpha = capAlpha;
-            drawCentered("BUT THE GOBLINS WEREN'T DONE.", H - 54, "#ef3a0c", 6);
-            drawCentered("IN THE SHADOWS, SMALL EYES WATCHED.", H - 44, "#ef3a0c", 5);
-            ctx.globalAlpha = 1;
-        } else {
-            const capAlpha2 = Math.min(1, (t - 120) / 30);
-            ctx.globalAlpha = capAlpha2;
-            drawCentered("EACH BEAT HAD A PATTERN TO COMPLETE.", H - 54, "#efd8a1", 5);
-            drawCentered("FINISH BEFORE THEY CLOSE IN.", H - 44, "#efac28", 5);
-            ctx.globalAlpha = 1;
-        }
-
-        // --- LEFT: Pulsing outlines (beats to ADD) ---
-        const gx = W / 2 - 4 * TILE;
-        const gy = 150;
-        const patCols = 4;
-        const addColor = "#efac28";
-        const addTarget = [true, false, true, false];
-        const addFillOrder = [0, 2];
-        const ADD_INTERVAL = 60;
-        const ADD_CYCLE = addFillOrder.length * ADD_INTERVAL + 80;
-        const addT = Math.max(0, t - 40) % ADD_CYCLE;
-        const addFilled = Math.min(addFillOrder.length, Math.floor(addT / ADD_INTERVAL));
-
-        for (let c = 0; c < patCols; c++) {
-            const bx = gx + c * TILE, by = gy;
-            let isOn = false;
-            for (let i = 0; i < addFilled; i++) {
-                if (addFillOrder[i] === c) isOn = true;
-            }
-            drawRect(bx, by, TILE, TILE, PAL.gridBorder);
-            drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? addColor : PAL.gridOff);
-            if (addTarget[c] && !isOn) {
-                ctx.globalAlpha = 0.3 + Math.sin(t * 0.06) * 0.15;
-                drawRect(bx + 1, by + 1, TILE - 2, 1, addColor);
-                drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, addColor);
-                drawRect(bx + 1, by + 1, 1, TILE - 2, addColor);
-                drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, addColor);
-                drawRect(bx + 6, by + 6, 4, 4, addColor);
-                ctx.globalAlpha = 1;
-            }
-            if (isOn) {
-                const fIdx = addFillOrder.indexOf(c);
-                if (fIdx >= 0) {
-                    const flashAge = addT - fIdx * ADD_INTERVAL;
-                    if (flashAge >= 0 && flashAge < 12) {
-                        ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
-                        drawRect(bx, by, TILE, TILE, "#ffffff");
-                        ctx.globalAlpha = 1;
-                    }
-                }
-            }
-        }
-        drawText("OUTLINES = ADD", gx - 2, gy + TILE + 10, "#efb775", 4);
-
-        // Vertical divider
-        const divX = W / 2;
-        const divTop = gy - 4;
-        const divBot = gy + TILE + 18;
-        ctx.strokeStyle = "#684c3c";
-        ctx.lineWidth = SCALE;
-        ctx.globalAlpha = 0.5;
-        ctx.beginPath();
-        ctx.moveTo(divX * SCALE, divTop * SCALE);
-        ctx.lineTo(divX * SCALE, divBot * SCALE);
-        ctx.stroke();
-        ctx.globalAlpha = 1.0;
-        const dMid = (divTop + divBot) / 2;
-        drawRect(divX - 1, dMid - 2, 3, 3, "#efac28");
-
-        // --- TOP RIGHT: X marks (beats to REMOVE) ---
-        const xgx = W / 2 + TILE;
-        const xColor = "#efb775";
-        const xIndicatorColor = "#9b1a0a";
-        const xStartOn = [true, true, false, true];
-        const xTarget = [true, false, false, true];
-        const xRemoveOrder = [1];
-        const X_INTERVAL = 80;
-        const X_CYCLE = xRemoveOrder.length * X_INTERVAL + 100;
-        const xT = Math.max(0, t - 60) % X_CYCLE;
-        const xRemoved = Math.min(xRemoveOrder.length, Math.floor(xT / X_INTERVAL));
-
-        for (let c = 0; c < patCols; c++) {
-            const bx = xgx + c * TILE, by = gy;
-            let isOn = xStartOn[c];
-            for (let i = 0; i < xRemoved; i++) {
-                if (xRemoveOrder[i] === c) isOn = false;
-            }
-            drawRect(bx, by, TILE, TILE, PAL.gridBorder);
-            drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, isOn ? xColor : PAL.gridOff);
-            if (isOn && !xTarget[c]) {
-                ctx.globalAlpha = 0.6 + Math.sin(t * 0.04) * 0.15;
-                drawRect(bx + 3, by + 3, 2, 2, xIndicatorColor);
-                drawRect(bx + 5, by + 5, 2, 2, xIndicatorColor);
-                drawRect(bx + 7, by + 7, 2, 2, xIndicatorColor);
-                drawRect(bx + 9, by + 9, 2, 2, xIndicatorColor);
-                drawRect(bx + 9, by + 3, 2, 2, xIndicatorColor);
-                drawRect(bx + 7, by + 5, 2, 2, xIndicatorColor);
-                drawRect(bx + 5, by + 7, 2, 2, xIndicatorColor);
-                drawRect(bx + 3, by + 9, 2, 2, xIndicatorColor);
-                ctx.globalAlpha = 1;
-            }
-            if (!isOn && xStartOn[c]) {
-                const fIdx = xRemoveOrder.indexOf(c);
-                if (fIdx >= 0) {
-                    const flashAge = xT - fIdx * X_INTERVAL;
-                    if (flashAge >= 0 && flashAge < 12) {
-                        ctx.globalAlpha = (1 - flashAge / 12) * 0.5;
-                        drawRect(bx, by, TILE, TILE, "#ffffff");
-                        ctx.globalAlpha = 1;
-                    }
-                }
-            }
-        }
-        drawText("X MARKS = REMOVE", xgx, gy + TILE + 10, "#efb775", 4);
-
-        // --- Lurking goblins creep inward from the edges ---
-        // Constant-speed movement matching gameplay goblin speed (~0.5 px/frame)
-        const gobSpeed = 0.5;
-        const gobCreepDist = Math.min(TILE * 2.5, t * gobSpeed);
-        const gobMoving = gobCreepDist < TILE * 2.5;
-        const gobFrame = gobMoving ? Math.floor(t / 8) % 4 : 0;
-        const gobPulse = 0.85 + Math.sin(t * 0.04) * 0.15;
-        // Left goblin — moves right toward grid
-        ctx.globalAlpha = gobPulse;
-        drawGoblinSprite("normal", TILE + 4 + gobCreepDist, gy - 4, gobFrame, { dir: 3, showShadow: true });
-        // Right goblin — moves left toward grid
-        drawGoblinSprite("normal", (COLS - 2) * TILE - 4 - gobCreepDist, gy - 4, (gobFrame + 2) % 4, { dir: 2, showShadow: true });
-        // Additional goblins appearing behind (slower, same constant speed)
-        if (t > 80) {
-            const backCreepDist = Math.min(TILE * 2.5, (t - 80) * gobSpeed * 0.6);
-            const backMoving = backCreepDist < TILE * 2.5;
-            const backFrame = backMoving ? Math.floor(t / 8) % 4 : 0;
-            const backAlpha = Math.min(gobPulse * 0.7, (t - 80) / 60);
-            ctx.globalAlpha = backAlpha;
-            drawGoblinSprite("normal", TILE - 6 + backCreepDist, gy + TILE + 8, (backFrame + 1) % 4, { dir: 3, showShadow: true });
-            drawGoblinSprite("normal", (COLS - 1) * TILE - backCreepDist, gy + TILE + 8, (backFrame + 3) % 4, { dir: 2, showShadow: true });
-        }
-        // Glowing eyes in the dark edges
-        if (t > 40) {
-            const eyeAlpha = 0.4 + Math.sin(t * 0.08) * 0.3;
-            ctx.globalAlpha = eyeAlpha;
-            for (let ei = 0; ei < 3; ei++) {
-                const ey = gy - 10 + ei * 20;
-                drawRect(4 + ei * 3, ey, 2, 2, "#FF00FF");
-                drawRect(8 + ei * 3, ey, 2, 2, "#FF00FF");
-                drawRect(W - 8 - ei * 3, ey + 5, 2, 2, "#FF00FF");
-                drawRect(W - 4 - ei * 3, ey + 5, 2, 2, "#FF00FF");
-            }
-        }
-        ctx.globalAlpha = 1;
-    }
-
-    // ==================== SCENE 6: THE STAND ====================
-    else if (introScene === 6) {
-        drawRuinedVenueBackdrop(t, { skipGrid: true });
-
-        // Page indicator dots (scenes 4-6)
-        const dotY = H - 22;
-        for (let i = 0; i < 3; i++) {
-            const dx = W / 2 - 10 + i * 8;
+        for (let i = 0; i < 2; i++) {
+            const dx = W / 2 - 6 + i * 8;
             const active = i === (introScene - 4);
             drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
         }
@@ -9636,10 +9433,10 @@ function renderIntro() {
     }
 
     // HUD "PRESS ENTER" prompt — appears 60 frames after each scene's last story beat
-    const lastBeatFrame = [60, 300, 180, 90, 150, 120, 185][introScene] || 60;
+    const lastBeatFrame = [60, 300, 180, 90, 150, 185][introScene] || 60;
     const hudPromptDelay = lastBeatFrame + 60;
     if (t > hudPromptDelay) {
-        const promptText = introScene >= 6 ? "PRESS ENTER TO BEGIN" : "PRESS ENTER";
+        const promptText = introScene >= 5 ? "PRESS ENTER TO BEGIN" : "PRESS ENTER";
         // Draw HUD background (matches gameplay HUD style)
         drawHudRect(0, 0, COLS * TILE, HUD_H, "#2a1d0d");
         // Teal border along top
@@ -10660,8 +10457,7 @@ function gameLoop(timestamp) {
                         "Scene 2: Goblin Attack",
                         "Scene 3: Call to Action",
                         "Scene 4: The Discovery",
-                        "Scene 5: The Threat",
-                        "Scene 6: The Stand",
+                        "Scene 5: The Stand",
                     ];
                     const label = gameState === "title"
                         ? "Title Screen"
@@ -10691,8 +10487,6 @@ function gameLoop(timestamp) {
                 if (minigameState === "kidnap") {
                     updateMinigameKidnap();
                     renderMinigameKidnap();
-                } else if (minigameState === "instructions") {
-                    renderMinigameInstructions();
                 } else if (minigameState === "playing") {
                     updateMinigameArena();
                     renderMinigameArena();
