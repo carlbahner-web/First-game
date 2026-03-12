@@ -8902,8 +8902,8 @@ function renderIntro() {
         const CRAWL_FRAMES = 120;
         const crawlStartX = W / 2 - 8;   // Scene 2 landing X (center of venue)
         const crawlStartY = (GRID_Y + 8) * TILE; // Scene 2 landing Y (deep in dance floor)
-        const crawlEndX = W / 2 - 8;     // Center X
-        const crawlEndY = H / 2 + 10;    // Center Y
+        const crawlEndX = (GRID_X + 7) * TILE;   // Match level 1 player start X
+        const crawlEndY = (GRID_Y + LEVELS[0].activeRows + 1) * TILE + GRID_Y_OFFSET + 20; // +20 because rise phase subtracts 20
         const crawlT = Math.min(1, t / CRAWL_FRAMES);
 
         let djX, djY, djDir, djFrame;
