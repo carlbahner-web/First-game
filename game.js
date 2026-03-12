@@ -1094,6 +1094,22 @@ let minigameRewardTimer = 0;
 let allPiecesJustCompleted = false;
 let minigamePendingAfterLevel = -1; // which level triggered the minigame
 
+// ---- Ending Scene State ----
+let endingPhase = 0;           // 0=rebuild, 1=first beat, 2=crowd, 3=missing, 4=cave rave, 5=score
+let endingTimer = 0;           // frame counter within current phase
+let endingGlobalTimer = 0;     // total frames since ending started
+let endingPiecesPlaced = 0;    // 0-6, tracks which pieces have landed on booth
+let endingDJX = 0;             // DJ position during ending
+let endingDJY = 0;
+let endingDancers = [];        // surface dancers for phases 0-3
+let endingCavePartygoers = []; // mixed dancers + goblins for cave rave
+let endingKickPump = 0;        // speaker pump animation
+let endingBeatStep = 0;        // sequencer step for ending beat
+let endingBeatTimer = 0;       // frame counter for beat stepping
+let endingDrumGain = null;
+let endingDrumStarted = false;
+let endingDrumTimer = null;
+
 // Cave arena entities
 let caveGoblins = []; // goblins in the cave arena
 let caveBoulders = []; // active boulders from catapult goblins
@@ -1339,6 +1355,21 @@ window.addEventListener("keydown", (e) => {
                 initialsPos++; // lock in letter, move to next
             } else {
                 confirmHighScore(); // all 3 locked, submit
+            }
+        }
+        return;
+    }
+
+    // Ending scene input
+    if (gameState === "ending" && e.code === "Enter") {
+        if (endingPhase === 5 && endingTimer > 90) {
+            stopEndingDrums();
+            if (scoreQualifies(finalScore)) {
+                enterHighScoreState();
+            } else {
+                resetGame();
+                gameState = "title";
+                startTitleDrums();
             }
         }
         return;
@@ -2531,6 +2562,7 @@ function playSadSong() {
 
 function resetGame() {
     stopIntroDrums();
+    stopEndingDrums();
     // Load starting pattern for current level (or empty if none)
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
@@ -4629,15 +4661,10 @@ function stopMinigameMusic() {
 function advanceLevel() {
     currentLevel++;
     if (currentLevel >= LEVELS.length) {
-        // Player beat all levels — victory!
+        // Player beat all levels — start ending cinematic!
         finalScore = score;
-        if (scoreQualifies(finalScore)) {
-            enterHighScoreState();
-        } else {
-            resetGame();
-            gameState = "title";
-            startTitleDrums();
-        }
+        gameState = "ending";
+        startEnding();
         return;
     }
     levelTimer = LEVELS[currentLevel].timerSeconds * 90;
@@ -6578,6 +6605,578 @@ function drawDancer(d) {
     drawRect(d.x + 2 - bob * 0.25, d.y + 13, shadowW, 2, PAL.shadow);
 
     drawDancerSprite(d.x, d.y, pal, { bob, armBlend, footOffset });
+}
+
+// ---- Ending Scene: The Underground Rave ----
+
+function startEndingDrums(initialGain) {
+    if (endingDrumStarted) return;
+    endingDrumStarted = true;
+    ensureAudio();
+    if (!audioCtx) return;
+
+    endingDrumGain = audioCtx.createGain();
+    endingDrumGain.gain.setValueAtTime(initialGain || 1, audioCtx.currentTime);
+    endingDrumGain.connect(audioCtx.destination);
+
+    const bpm = 110;
+    const sixteenth = 60 / bpm / 4;
+    const K = INTRO_BEAT.K, S = INTRO_BEAT.S, H = INTRO_BEAT.H, O = INTRO_BEAT.O;
+    const loopLen = 16 * sixteenth;
+
+    function scheduleLoop() {
+        if (!endingDrumStarted || !audioCtx || !endingDrumGain) return;
+        const now = audioCtx.currentTime;
+        const dest = endingDrumGain;
+
+        for (let i = 0; i < 16; i++) {
+            const t = now + i * sixteenth;
+            if (K[i]) {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = "sine";
+                osc.frequency.setValueAtTime(150, t);
+                osc.frequency.exponentialRampToValueAtTime(30, t + 0.12);
+                gain.gain.setValueAtTime(1.0, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+                osc.connect(gain); gain.connect(dest);
+                osc.start(t); osc.stop(t + 0.3);
+            }
+            if (S[i]) {
+                const bufSz = audioCtx.sampleRate * 0.15;
+                const buf = audioCtx.createBuffer(1, bufSz, audioCtx.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let s = 0; s < bufSz; s++) data[s] = Math.random() * 2 - 1;
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buf;
+                const nGain = audioCtx.createGain();
+                nGain.gain.setValueAtTime(0.6, t);
+                nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+                const filt = audioCtx.createBiquadFilter();
+                filt.type = "highpass"; filt.frequency.value = 1000;
+                noise.connect(filt); filt.connect(nGain); nGain.connect(dest);
+                noise.start(t); noise.stop(t + 0.15);
+                const osc = audioCtx.createOscillator();
+                const oGain = audioCtx.createGain();
+                osc.type = "triangle";
+                osc.frequency.setValueAtTime(180, t);
+                osc.frequency.exponentialRampToValueAtTime(60, t + 0.08);
+                oGain.gain.setValueAtTime(0.5, t);
+                oGain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+                osc.connect(oGain); oGain.connect(dest);
+                osc.start(t); osc.stop(t + 0.1);
+            }
+            if (H[i]) {
+                const bufSz = audioCtx.sampleRate * 0.06;
+                const buf = audioCtx.createBuffer(1, bufSz, audioCtx.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let s = 0; s < bufSz; s++) data[s] = Math.random() * 2 - 1;
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buf;
+                const gain = audioCtx.createGain();
+                gain.gain.setValueAtTime(0.25, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+                const filt = audioCtx.createBiquadFilter();
+                filt.type = "bandpass"; filt.frequency.value = 10000; filt.Q.value = 1.0;
+                noise.connect(filt); filt.connect(gain); gain.connect(dest);
+                noise.start(t); noise.stop(t + 0.06);
+            }
+            if (O[i]) {
+                const bufSz2 = audioCtx.sampleRate * 0.15;
+                const buf2 = audioCtx.createBuffer(1, bufSz2, audioCtx.sampleRate);
+                const data2 = buf2.getChannelData(0);
+                for (let s = 0; s < bufSz2; s++) data2[s] = Math.random() * 2 - 1;
+                const noise2 = audioCtx.createBufferSource();
+                noise2.buffer = buf2;
+                const gain2 = audioCtx.createGain();
+                gain2.gain.setValueAtTime(0.15, t);
+                gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+                const filt2 = audioCtx.createBiquadFilter();
+                filt2.type = "highpass"; filt2.frequency.value = 4000;
+                noise2.connect(filt2); filt2.connect(gain2); gain2.connect(dest);
+                noise2.start(t); noise2.stop(t + 0.15);
+            }
+        }
+        endingDrumTimer = setTimeout(scheduleLoop, loopLen * 1000);
+    }
+    scheduleLoop();
+}
+
+function stopEndingDrums() {
+    endingDrumStarted = false;
+    if (endingDrumTimer !== null) { clearTimeout(endingDrumTimer); endingDrumTimer = null; }
+    if (endingDrumGain && audioCtx) {
+        endingDrumGain.gain.setValueAtTime(0, audioCtx.currentTime);
+        endingDrumGain.disconnect();
+        endingDrumGain = null;
+    }
+}
+
+function startEnding() {
+    endingPhase = 0;
+    endingTimer = 0;
+    endingGlobalTimer = 0;
+    endingPiecesPlaced = 0;
+    endingKickPump = 0;
+    endingBeatStep = 0;
+    endingBeatTimer = 0;
+    endingDJX = COLS * TILE / 2 - 8;
+    endingDJY = ROWS * TILE + 10; // start below screen
+    stopStoryDrums();
+    stopEndingDrums();
+
+    // Set up surface dancers (will enter from edges in phase 2)
+    endingDancers = [];
+    const danceFloorY = (GRID_Y + 5) * TILE;
+    const positions = [
+        { x: -20, targetX: 2 * TILE, y: danceFloorY, pal: 0, phase: 0 },
+        { x: -20, targetX: 4 * TILE, y: danceFloorY + 4, pal: 1, phase: 3 },
+        { x: -20, targetX: 6 * TILE, y: danceFloorY + 2, pal: 2, phase: 7 },
+        { x: COLS * TILE + 20, targetX: 8 * TILE, y: danceFloorY, pal: 3, phase: 11 },
+        { x: COLS * TILE + 20, targetX: 10 * TILE, y: danceFloorY + 3, pal: 4, phase: 5 },
+        { x: COLS * TILE + 20, targetX: 12 * TILE, y: danceFloorY + 1, pal: 5, phase: 9 },
+        { x: -20, targetX: 14 * TILE, y: danceFloorY + 4, pal: 0, phase: 2 },
+        { x: COLS * TILE + 20, targetX: 16 * TILE, y: danceFloorY, pal: 3, phase: 13 },
+        { x: -20, targetX: 3 * TILE, y: danceFloorY + 14, pal: 2, phase: 4 },
+        { x: COLS * TILE + 20, targetX: 5 * TILE, y: danceFloorY + 16, pal: 5, phase: 8 },
+        { x: -20, targetX: 11 * TILE, y: danceFloorY + 15, pal: 1, phase: 1 },
+        { x: COLS * TILE + 20, targetX: 13 * TILE, y: danceFloorY + 14, pal: 0, phase: 10 },
+        { x: COLS * TILE + 20, targetX: 15 * TILE, y: danceFloorY + 16, pal: 3, phase: 14 },
+        { x: -20, targetX: 17 * TILE, y: danceFloorY + 14, pal: 5, phase: 6 },
+    ];
+    endingDancers = positions;
+
+    // Set up cave rave partygoers (mixed dancers and goblins)
+    endingCavePartygoers = [];
+    const caveDanceY = 6 * TILE;
+    for (let i = 0; i < 16; i++) {
+        const isGoblin = i % 2 === 1; // alternate human/goblin
+        endingCavePartygoers.push({
+            isGoblin,
+            x: (2 + (i % 8) * 2.2) * TILE,
+            y: caveDanceY + Math.floor(i / 8) * 4 * TILE + (i % 3) * 6,
+            pal: i % DANCER_PALETTES.length,
+            gobType: i === 7 ? "elite" : "normal",
+            phase: i * 2.3,
+            frame: 0,
+        });
+    }
+}
+
+const ENDING_BEAT_FRAMES = 8.2; // ~110bpm at 60fps
+
+function updateEnding() {
+    endingTimer++;
+    endingGlobalTimer++;
+
+    // Beat step tracking (for visual sync)
+    endingBeatTimer++;
+    if (endingBeatTimer >= ENDING_BEAT_FRAMES) {
+        endingBeatTimer -= ENDING_BEAT_FRAMES;
+        endingBeatStep = (endingBeatStep + 1) % 16;
+        // Kick pump
+        if (INTRO_BEAT.K[endingBeatStep] && endingPhase >= 1 && endingPhase <= 2) {
+            endingKickPump = 1;
+        }
+        if (INTRO_BEAT.K[endingBeatStep] && endingPhase === 4) {
+            endingKickPump = 1;
+        }
+    }
+    endingKickPump *= 0.85;
+
+    // Phase transitions
+    if (endingPhase === 0) {
+        // DJ walks up to booth
+        const boothY = GRID_Y * TILE - 8;
+        const targetY = boothY - 10;
+        endingDJY += (targetY - endingDJY) * 0.04;
+
+        // Place pieces every 40 frames starting at frame 60
+        if (endingTimer > 60 && endingPiecesPlaced < 6) {
+            const placeFrame = 60 + endingPiecesPlaced * 40;
+            if (endingTimer === placeFrame) {
+                playPieceRevealChime();
+                endingPiecesPlaced++;
+            }
+        }
+
+        if (endingTimer >= 300) {
+            endingPhase = 1;
+            endingTimer = 0;
+            startEndingDrums(0.15);
+        }
+    } else if (endingPhase === 1) {
+        // Ramp up drums
+        if (endingDrumGain && audioCtx) {
+            const rampT = Math.min(1, endingTimer / 180);
+            endingDrumGain.gain.setValueAtTime(0.15 + rampT * 0.35, audioCtx.currentTime);
+        }
+        if (endingTimer >= 180) {
+            endingPhase = 2;
+            endingTimer = 0;
+        }
+    } else if (endingPhase === 2) {
+        // Move dancers inward, ramp drums to full
+        for (const d of endingDancers) {
+            d.x += (d.targetX - d.x) * 0.03;
+        }
+        if (endingDrumGain && audioCtx) {
+            const rampT = Math.min(1, endingTimer / 120);
+            endingDrumGain.gain.setValueAtTime(0.5 + rampT * 0.5, audioCtx.currentTime);
+        }
+        if (endingTimer >= 240) {
+            endingPhase = 3;
+            endingTimer = 0;
+        }
+    } else if (endingPhase === 3) {
+        // Fade drums and fade to black
+        if (endingDrumGain && audioCtx && endingTimer < 120) {
+            const fadeT = Math.min(1, endingTimer / 120);
+            endingDrumGain.gain.setValueAtTime(1.0 * (1 - fadeT), audioCtx.currentTime);
+        }
+        if (endingTimer === 120) {
+            stopEndingDrums();
+        }
+        if (endingTimer >= 240) {
+            endingPhase = 4;
+            endingTimer = 0;
+            startEndingDrums(1.0);
+        }
+    } else if (endingPhase === 4) {
+        // Cave rave — animate partygoers
+        for (const p of endingCavePartygoers) {
+            if (p.isGoblin) {
+                p.frame = Math.floor(endingGlobalTimer / 10) % 4;
+            }
+        }
+        if (endingTimer >= 540) {
+            endingPhase = 5;
+            endingTimer = 0;
+        }
+    }
+    // Phase 5: just wait for Enter
+}
+
+function renderEnding() {
+    const W = COLS * TILE;
+    const H = ROWS * TILE;
+
+    function drawCentered(text, y, color, size) {
+        ctx.font = `${size * SCALE}px monospace`;
+        ctx.fillStyle = color;
+        ctx.textAlign = "center";
+        ctx.fillText(text, (W * SCALE) / 2, y * SCALE);
+        ctx.textAlign = "start";
+    }
+
+    if (endingPhase <= 3) {
+        // === SURFACE VENUE ===
+        // Dark floor
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                const shade = (r + c) % 2 === 0 ? "#2a1d0d" : "#1f1209";
+                drawRect(c * TILE, r * TILE, TILE, TILE, shade);
+            }
+        }
+
+        // Walls
+        for (let c = 0; c < COLS; c++) {
+            drawRect(c * TILE, 0, TILE, TILE, c % 2 === 0 ? "#39200a" : "#493f35");
+            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#172527" : "#1c282a");
+        }
+        for (let r = 0; r < ROWS; r++) {
+            drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#172527" : "#1c282a");
+            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#172527" : "#1c282a");
+        }
+
+        // String lights (fade in during phase 0)
+        const lightsAlpha = endingPhase === 0 ? Math.min(1, endingPiecesPlaced / 4) : 1;
+        if (lightsAlpha > 0) {
+            ctx.globalAlpha = lightsAlpha;
+            const bulbColors = ["#FF4400", "#efac28", "#00FF88", "#4488FF", "#FF44AA", "#efac28"];
+            for (let c = 0; c < 18; c++) {
+                const bulbX = 2 * TILE + c * (TILE + 2);
+                const bulbY = TILE + 4;
+                const lightCol = bulbColors[c % bulbColors.length];
+                const chase = Math.sin(endingGlobalTimer * 0.05 + c * 0.6) * 0.5 + 0.5;
+                ctx.globalAlpha = lightsAlpha * (0.5 + chase * 0.5);
+                drawRect(bulbX - 2, bulbY, 4, 4, lightCol);
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        // DJ Booth
+        const boothX = W / 2 - 24;
+        const boothY = GRID_Y * TILE - 8;
+
+        // Platform
+        drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
+        drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
+
+        // Equipment pieces (fly in during phase 0)
+        for (let i = 0; i < 6; i++) {
+            if (i < endingPiecesPlaced) {
+                // Piece is in place
+                drawDJSetupPiece(i, boothX, boothY, {});
+            } else if (endingPhase === 0) {
+                // Show as silhouette
+                drawDJSetupPiece(i, boothX, boothY, { silhouette: true });
+            }
+        }
+
+        // DJ sprite
+        const djFrame = Math.floor(endingGlobalTimer / 10) % 4;
+        const djBob = endingKickPump > 0.1 ? 3 : 0;
+        drawPlayerSprite(endingDJX, endingDJY - djBob, djFrame, 0, {});
+
+        // Beat grid (lights up in phase 1+)
+        if (endingPhase >= 1) {
+            const miniGridY = GRID_Y * TILE + GRID_Y_OFFSET;
+            const miniGridX = 3 * TILE;
+            const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
+            const gridAlpha = endingPhase === 1 ? Math.min(1, endingTimer / 60) : 1;
+            ctx.globalAlpha = gridAlpha;
+            for (let r = 0; r < 4; r++) {
+                for (let c = 0; c < 16; c++) {
+                    const gx = miniGridX + c * TILE;
+                    const gy = miniGridY + r * TILE;
+                    const on = patterns[r][c];
+                    drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
+                    drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, on ? PAL.gridOn[r] : PAL.gridOff);
+                }
+            }
+            // Playhead
+            const phX = miniGridX + endingBeatStep * TILE;
+            ctx.fillStyle = "#efac28";
+            ctx.globalAlpha = gridAlpha * 0.35;
+            ctx.fillRect(phX * SCALE, miniGridY * SCALE, TILE * SCALE, (4 * TILE) * SCALE);
+            ctx.globalAlpha = 1;
+        }
+
+        // Dancers (phase 2+)
+        if (endingPhase >= 2) {
+            const beatOn = INTRO_BEAT.K[endingBeatStep];
+            for (const d of endingDancers) {
+                if (d.x < -10 || d.x > W + 10) continue;
+                const step = (endingBeatStep + d.phase) % 16;
+                const bobWave = Math.sin(step * Math.PI / 2);
+                const bob = Math.abs(bobWave) * 3;
+                const armBlend = Math.abs(bobWave);
+                const footOffset = bobWave * 1.5;
+                drawDancerSprite(d.x, d.y, DANCER_PALETTES[d.pal], { bob, armBlend, footOffset });
+            }
+        }
+
+        // Phase 3: "Something is missing" + fade to black
+        if (endingPhase === 3) {
+            if (endingTimer > 30 && endingTimer < 150) {
+                const textAlpha = endingTimer < 60 ? (endingTimer - 30) / 30 : Math.max(0, 1 - (endingTimer - 120) / 30);
+                ctx.globalAlpha = textAlpha;
+                ctx.textAlign = "center";
+                ctx.font = `${8 * SCALE}px monospace`;
+                ctx.fillStyle = "#000";
+                ctx.fillText("...SOMETHING IS STILL MISSING.", (W / 2) * SCALE + SCALE, (H / 2 + 1) * SCALE);
+                ctx.fillStyle = "#efd8a1";
+                ctx.fillText("...SOMETHING IS STILL MISSING.", (W / 2) * SCALE, (H / 2) * SCALE);
+                ctx.textAlign = "start";
+                ctx.globalAlpha = 1;
+            }
+
+            // Fade to black
+            if (endingTimer > 120) {
+                const fadeAlpha = Math.min(1, (endingTimer - 120) / 60);
+                ctx.globalAlpha = fadeAlpha;
+                ctx.fillStyle = "#000";
+                ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+                ctx.globalAlpha = 1;
+            }
+        }
+
+    } else {
+        // === PHASES 4-5: UNDERGROUND RAVE ===
+        const caveW = CAVE_COLS * CAVE_TILE;
+        const caveH = CAVE_ROWS * CAVE_TILE;
+
+        // Cave background
+        drawRect(0, 0, caveW, caveH, "#1a0e08");
+
+        // Stone floor
+        for (let r = 3; r < CAVE_ROWS - 1; r++) {
+            for (let c = 1; c < CAVE_COLS - 1; c++) {
+                let seed = r * 997 + c * 31;
+                seed = (seed * 9301 + 49297) % 233280;
+                const bright = (seed / 233280) > 0.6;
+                const floorCol = bright ? "#251a0f" : "#1f1209";
+                drawRect(c * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, floorCol);
+            }
+        }
+
+        // Cave walls
+        for (let c = 0; c < CAVE_COLS; c++) {
+            // Top wall (3 rows for grand stage area)
+            for (let r = 0; r < 3; r++) {
+                drawRect(c * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, (c + r) % 2 === 0 ? "#3d2b1f" : "#2e1f14");
+            }
+            // Bottom wall
+            drawRect(c * CAVE_TILE, (CAVE_ROWS - 1) * CAVE_TILE, CAVE_TILE, CAVE_TILE, c % 2 === 0 ? "#3d2b1f" : "#2e1f14");
+            // Stalactites
+            if (c % 3 === 1) {
+                const stalH = 4 + (c * 7) % 6;
+                drawRect(c * CAVE_TILE + 5, 3 * CAVE_TILE, 3, stalH, "#4a3628");
+                drawRect(c * CAVE_TILE + 6, 3 * CAVE_TILE, 1, stalH + 2, "#5a4638");
+            }
+        }
+        // Side walls
+        for (let r = 0; r < CAVE_ROWS; r++) {
+            drawRect(0, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, r % 2 === 0 ? "#3d2b1f" : "#2e1f14");
+            drawRect((CAVE_COLS - 1) * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, r % 2 === 0 ? "#3d2b1f" : "#2e1f14");
+        }
+
+        // Torches on walls
+        const torchPositions = [
+            { x: 1 * CAVE_TILE + 2, y: 4 * CAVE_TILE },
+            { x: 1 * CAVE_TILE + 2, y: 10 * CAVE_TILE },
+            { x: (CAVE_COLS - 2) * CAVE_TILE - 2, y: 4 * CAVE_TILE },
+            { x: (CAVE_COLS - 2) * CAVE_TILE - 2, y: 10 * CAVE_TILE },
+            { x: 5 * CAVE_TILE, y: 2 * CAVE_TILE + 8 },
+            { x: (CAVE_COLS - 6) * CAVE_TILE, y: 2 * CAVE_TILE + 8 },
+        ];
+        for (const tp of torchPositions) {
+            drawCaveTorch(tp.x, tp.y);
+        }
+
+        // Grand DJ stage at back of cave
+        const stageX = caveW / 2 - 40;
+        const stageY = 3 * CAVE_TILE;
+
+        // Stage platform (wider than normal booth)
+        drawRect(stageX - 16, stageY + 16, 112, 10, "#45230d");
+        drawRect(stageX - 16, stageY + 16, 112, 2, "#684c3c");
+        // Stage risers
+        drawRect(stageX - 20, stageY + 26, 120, 6, "#392a1c");
+
+        // All 6 equipment pieces on the grand stage
+        const sBoothX = caveW / 2 - 24;
+        const sBoothY = stageY;
+        for (let i = 0; i < 6; i++) {
+            drawDJSetupPiece(i, sBoothX, sBoothY, {});
+        }
+
+        // DJ at the booth
+        const djFrame = Math.floor(endingGlobalTimer / 10) % 4;
+        const djBob = endingKickPump > 0.1 ? 3 : 0;
+        drawPlayerSprite(caveW / 2 - 8, stageY - 8 - djBob, djFrame, 0, {});
+
+        // Disco ball with light reflections
+        const ballX = caveW / 2 - 4;
+        const ballY = CAVE_TILE + 4;
+        drawDiscoBall(ballX, ballY);
+
+        // Disco ball light reflections sweeping cave walls
+        const reflectionColors = ["#FF4400", "#efac28", "#00FF88", "#4488FF", "#FF44AA", "#FFD700",
+                                   "#FF6600", "#88FF44", "#44DDFF", "#FF88CC", "#AAFFEE", "#FFAA44"];
+        for (let ri = 0; ri < 12; ri++) {
+            const speed = 0.015 + (ri % 4) * 0.005;
+            const angle = endingGlobalTimer * speed + ri * (Math.PI * 2 / 12);
+            const radius = 60 + (ri % 3) * 30;
+            const rx = ballX + 4 + Math.cos(angle) * radius;
+            const ry = ballY + 4 + Math.sin(angle) * radius * 0.6;
+
+            // Only draw if on a wall or ceiling (not in the middle of the floor)
+            if (rx < 2 * CAVE_TILE || rx > (CAVE_COLS - 2) * CAVE_TILE || ry < 3 * CAVE_TILE || ry > (CAVE_ROWS - 2) * CAVE_TILE) {
+                const pulse = 0.3 + Math.sin(endingGlobalTimer * 0.08 + ri) * 0.2;
+                ctx.globalAlpha = pulse;
+                ctx.fillStyle = reflectionColors[ri];
+                ctx.beginPath();
+                ctx.ellipse(rx * SCALE, ry * SCALE, 6 * SCALE, 3 * SCALE, angle * 0.3, 0, Math.PI * 2);
+                ctx.fill();
+                // Glow
+                ctx.globalAlpha = pulse * 0.3;
+                ctx.beginPath();
+                ctx.ellipse(rx * SCALE, ry * SCALE, 12 * SCALE, 6 * SCALE, angle * 0.3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        // Mixed crowd: dancers and goblins partying together
+        const beatOn = INTRO_BEAT.K[endingBeatStep];
+        for (const p of endingCavePartygoers) {
+            if (p.isGoblin) {
+                drawGoblinSprite(p.gobType, p.x, p.y, p.frame, { dir: 0, showShadow: false });
+            } else {
+                const step = (endingBeatStep + p.phase) % 16;
+                const bobWave = Math.sin(step * Math.PI / 2);
+                const bob = Math.abs(bobWave) * 3;
+                const armBlend = Math.abs(bobWave);
+                const footOffset = bobWave * 1.5;
+                drawDancerSprite(p.x, p.y, DANCER_PALETTES[p.pal], { bob, armBlend, footOffset });
+            }
+        }
+
+        // Fade in from black at start of phase 4
+        if (endingPhase === 4 && endingTimer < 60) {
+            const fadeAlpha = 1 - endingTimer / 60;
+            ctx.globalAlpha = fadeAlpha;
+            ctx.fillStyle = "#000";
+            ctx.fillRect(0, 0, caveW * SCALE, caveH * SCALE);
+            ctx.globalAlpha = 1;
+        }
+
+        // Caption text
+        if (endingPhase === 4) {
+            if (endingTimer > 120 && endingTimer < 360) {
+                const capAlpha = endingTimer < 150 ? (endingTimer - 120) / 30 : endingTimer > 300 ? Math.max(0, 1 - (endingTimer - 300) / 60) : 1;
+                ctx.globalAlpha = capAlpha;
+                drawCentered("THE UNDERGROUND CAME ALIVE AGAIN.", caveH - 40, "#FFD700", 6);
+                ctx.globalAlpha = 1;
+            }
+            if (endingTimer > 360) {
+                const capAlpha = Math.min(1, (endingTimer - 360) / 30);
+                ctx.globalAlpha = capAlpha;
+                drawCentered("BUT THIS TIME, EVERYONE WAS INVITED.", caveH - 40, "#00FF88", 6);
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        // Phase 5: Score overlay
+        if (endingPhase === 5) {
+            // Semi-transparent overlay
+            ctx.globalAlpha = Math.min(0.5, endingTimer / 60);
+            ctx.fillStyle = "#000";
+            ctx.fillRect(0, 0, caveW * SCALE, caveH * SCALE);
+            ctx.globalAlpha = 1;
+
+            const overlayAlpha = Math.min(1, endingTimer / 60);
+            ctx.globalAlpha = overlayAlpha;
+
+            // "THE END" header
+            ctx.textAlign = "center";
+            ctx.font = `${12 * SCALE}px monospace`;
+            ctx.fillStyle = "#000";
+            ctx.fillText("THE END", (caveW / 2) * SCALE + SCALE, (caveH / 3 + 1) * SCALE);
+            ctx.fillStyle = "#FFD700";
+            ctx.fillText("THE END", (caveW / 2) * SCALE, (caveH / 3) * SCALE);
+
+            // Final score
+            ctx.font = `${8 * SCALE}px monospace`;
+            ctx.fillStyle = "#efd8a1";
+            ctx.fillText("FINAL SCORE: " + finalScore, (caveW / 2) * SCALE, (caveH / 3 + 20) * SCALE);
+
+            // Press Enter prompt
+            if (endingTimer > 90) {
+                const blink = Math.sin(endingTimer * 0.08) > 0;
+                if (blink) {
+                    ctx.font = `${5 * SCALE}px monospace`;
+                    ctx.fillStyle = "#efd8a1";
+                    const promptText = scoreQualifies(finalScore) ? "PRESS ENTER FOR HIGH SCORE" : "PRESS ENTER TO CONTINUE";
+                    ctx.fillText(promptText, (caveW / 2) * SCALE, (caveH - 20) * SCALE);
+                }
+            }
+            ctx.textAlign = "start";
+            ctx.globalAlpha = 1;
+        }
+    }
 }
 
 // ---- Game Loop (60 fps) ----
@@ -10105,6 +10704,9 @@ function gameLoop(timestamp) {
                     updateMinigameReward();
                     renderMinigameReward();
                 }
+            } else if (gameState === "ending") {
+                updateEnding();
+                renderEnding();
             } else if (gameState === "gameover") {
                 renderGameOverScreen();
             } else if (gameState === "highscore") {
