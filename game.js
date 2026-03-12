@@ -1013,7 +1013,7 @@ let controlsPunchConfirmed = false;  // player pressed spacebar
 let controlsFadeTimer = 0;          // counts up after both confirmed, for fade-out
 
 // ---- Animated Intro Cutscene State ----
-let introScene = 1;         // current scene index (0-5)
+let introScene = 1;         // current scene index (0-3)
 let introTimer = 0;         // frame counter within current scene
 let introGlobalTimer = 0;   // total frames since intro started
 let introBeatStep = 0;      // simulated sequencer step for the intro beat
@@ -1043,8 +1043,6 @@ const INTRO_SCENE_DURATIONS = [
     480,  // Scene 1 (1A): Earthquake + Caves + Eyes (8s)
     660,  // Scene 2 (1B): Goblin Emergence + Attack + Aftermath (11s)
     420,  // Scene 3: Call to Action — DJ crawls to center + rises (7s)
-    Infinity, // Scene 4: The Discovery (wait for Enter)
-    Infinity, // Scene 5: The Stand (wait for Enter)
 ];
 let newInstrumentType = null;   // "cowbell" or "tom"
 let newInstrumentTimer = 0;     // animation timer for new instrument popup
@@ -5632,6 +5630,49 @@ function render() {
         }
     }
 
+    // Controls overlay (level 1 only — fades after player confirms move + punch)
+    if (controlsOverlayActive && currentLevel === 0) {
+        const alpha = controlsMoveConfirmed && controlsPunchConfirmed
+            ? Math.max(0, 1 - controlsFadeTimer / 40)
+            : 1;
+        if (alpha > 0) {
+            const W = COLS * TILE;
+            const overlayY = (GRID_Y + LEVELS[currentLevel].activeRows + 2) * TILE + GRID_Y_OFFSET;
+            const boxW = 100;
+            const boxH = 28;
+            const boxX = W / 2 - boxW / 2;
+
+            // Semi-transparent background
+            ctx.globalAlpha = alpha * 0.65;
+            drawRect(boxX, overlayY, boxW, boxH, "#1a0e08");
+            // Border
+            ctx.globalAlpha = alpha * 0.4;
+            drawRect(boxX, overlayY, boxW, 1, "#efac28");
+            drawRect(boxX, overlayY + boxH - 1, boxW, 1, "#efac28");
+            drawRect(boxX, overlayY, 1, boxH, "#efac28");
+            drawRect(boxX + boxW - 1, overlayY, 1, boxH, "#efac28");
+
+            ctx.globalAlpha = alpha;
+            ctx.textAlign = "center";
+
+            // MOVE line
+            const moveColor = controlsMoveConfirmed ? "#5a7a3a" : "#efb775";
+            const moveText = controlsMoveConfirmed ? "MOVE  OK" : "MOVE: ARROW KEYS";
+            ctx.font = `${4 * SCALE}px monospace`;
+            ctx.fillStyle = moveColor;
+            ctx.fillText(moveText, (W / 2) * SCALE, (overlayY + 11) * SCALE);
+
+            // PUNCH line
+            const punchColor = controlsPunchConfirmed ? "#5a7a3a" : "#efb775";
+            const punchText = controlsPunchConfirmed ? "PUNCH  OK" : "PUNCH: SPACEBAR";
+            ctx.fillStyle = punchColor;
+            ctx.fillText(punchText, (W / 2) * SCALE, (overlayY + 22) * SCALE);
+
+            ctx.textAlign = "start";
+            ctx.globalAlpha = 1;
+        }
+    }
+
     // Restore screen shake transform
     if (screenShake > 0) {
         ctx.restore();
@@ -5913,49 +5954,6 @@ function drawPunch() {
             ctx.stroke();
         }
         ctx.globalAlpha = 1.0;
-    }
-
-    // Controls overlay (level 1 only — fades after player confirms move + punch)
-    if (controlsOverlayActive && currentLevel === 0) {
-        const alpha = controlsMoveConfirmed && controlsPunchConfirmed
-            ? Math.max(0, 1 - controlsFadeTimer / 40)
-            : 1;
-        if (alpha > 0) {
-            const W = COLS * TILE;
-            const overlayY = (GRID_Y + LEVELS[currentLevel].activeRows + 2) * TILE + GRID_Y_OFFSET;
-            const boxW = 100;
-            const boxH = 28;
-            const boxX = W / 2 - boxW / 2;
-
-            // Semi-transparent background
-            ctx.globalAlpha = alpha * 0.65;
-            drawRect(boxX, overlayY, boxW, boxH, "#1a0e08");
-            // Border
-            ctx.globalAlpha = alpha * 0.4;
-            drawRect(boxX, overlayY, boxW, 1, "#efac28");
-            drawRect(boxX, overlayY + boxH - 1, boxW, 1, "#efac28");
-            drawRect(boxX, overlayY, 1, boxH, "#efac28");
-            drawRect(boxX + boxW - 1, overlayY, 1, boxH, "#efac28");
-
-            ctx.globalAlpha = alpha;
-            ctx.textAlign = "center";
-
-            // MOVE line
-            const moveColor = controlsMoveConfirmed ? "#5a7a3a" : "#efb775";
-            const moveText = controlsMoveConfirmed ? "MOVE  OK" : "MOVE: ARROW KEYS";
-            ctx.font = `${4 * SCALE}px monospace`;
-            ctx.fillStyle = moveColor;
-            ctx.fillText(moveText, (W / 2) * SCALE, (overlayY + 11) * SCALE);
-
-            // PUNCH line
-            const punchColor = controlsPunchConfirmed ? "#5a7a3a" : "#efb775";
-            const punchText = controlsPunchConfirmed ? "PUNCH  OK" : "PUNCH: SPACEBAR";
-            ctx.fillStyle = punchColor;
-            ctx.fillText(punchText, (W / 2) * SCALE, (overlayY + 22) * SCALE);
-
-            ctx.textAlign = "start";
-            ctx.globalAlpha = 1;
-        }
     }
 
     ctx.restore();
@@ -7873,11 +7871,6 @@ function advanceIntroScene() {
         introCorruptedSoFar = 0;
     }
     if (introScene === 3) stopIntroDrums();
-    if (introScene === 4) {
-        // Transition from cinematic to tutorial scenes — switch audio
-        stopIntroDrums();
-        startStoryDrums();
-    }
 }
 
 function renderIntro() {
@@ -8995,448 +8988,11 @@ function renderIntro() {
         // Scene loops in place — no fade out
     }
 
-    // ==================== SCENE 4: THE DISCOVERY ====================
-    else if (introScene === 4) {
-        drawRuinedVenueBackdrop(t, { skipGrid: true });
-
-        // Fade in from black (smooth transition from Scene 3's spotlight)
-        if (t < 30) {
-            ctx.fillStyle = "#000";
-            ctx.globalAlpha = 1 - t / 30;
-            ctx.fillRect(0, 0, W * SCALE, H * SCALE);
-            ctx.globalAlpha = 1;
-        }
-
-        // Page indicator dots (scenes 4-5)
-        const dotY = H - 22;
-        for (let i = 0; i < 2; i++) {
-            const dx = W / 2 - 6 + i * 8;
-            const active = i === (introScene - 4);
-            drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
-        }
-
-        // DJ sprite standing before demo begins — narrative bridge from Scene 3
-        if (t < 60) {
-            const djBridgeX = W / 2 - 8;
-            const djBridgeY = 96;
-            const djAlpha = Math.min(1, t / 20);
-            ctx.globalAlpha = djAlpha;
-            drawPlayerSprite(djBridgeX, djBridgeY, 0, 0, {});
-            // Determination sparkles carry over from Scene 3
-            if (t < 40) {
-                for (let si = 0; si < 4; si++) {
-                    const angle = (si / 4) * Math.PI * 2 + t * 0.05;
-                    const dist = 12 + Math.sin(t * 0.1 + si) * 4;
-                    const sx = (djBridgeX + 8 + Math.cos(angle) * dist) * SCALE;
-                    const sy = (djBridgeY - 2 + Math.sin(angle) * dist) * SCALE;
-                    ctx.fillStyle = si % 2 === 0 ? "#efac28" : "#efd8a1";
-                    ctx.globalAlpha = djAlpha * (0.4 - t * 0.01);
-                    ctx.fillRect(sx - SCALE, sy - SCALE, 2 * SCALE, 2 * SCALE);
-                }
-            }
-            ctx.globalAlpha = 1;
-        }
-
-        // Story captions (in safe zone: below dancers, above bottom wall)
-        if (t < 120) {
-            const capAlpha = Math.min(1, Math.max(0, (t - 30) / 30));
-            ctx.globalAlpha = capAlpha;
-            drawCentered("A SINGLE PUNCH. A SINGLE NOTE.", H - 54, "#efd8a1", 5);
-            drawCentered("THE SOUND RANG OUT THROUGH THE RUINS LIKE A BELL.", H - 44, "#efd8a1", 5);
-            ctx.globalAlpha = 1;
-        } else {
-            const capAlpha = Math.min(1, (t - 120) / 30);
-            ctx.globalAlpha = capAlpha;
-            drawCentered("THE BEAT WASN'T DEAD. IT WAS WAITING.", H - 48, "#efac28", 6);
-            ctx.globalAlpha = 1;
-        }
-
-        // Animated demo grid — player walks to blocks and hits them (scaled up)
-        const DT = Math.floor(TILE * 1.4);
-        const gridStartX = W / 2 - 4 * DT / 2;
-        const gridStartY = 120;
-        const miniRows = 2;
-        const rowColors = ["#efac28", "#efb775"];
-        const demoTarget = [[true, false, true, false], [false, true, false, true]];
-        const toggleOrder = [[0,0], [0,2], [1,1], [1,3]];
-        const WALK_FRAMES = 35, ATTACK_AT = 38, ATTACK_DUR_5 = 15, HIT_OFFSET = 45;
-        const ATTACK_STEP_LEN = 80, WALK_STEP_LEN = 40;
-        const demoSteps = [
-            { x: gridStartX - DT, y: gridStartY, attack: true, toggleIdx: 0, dur: ATTACK_STEP_LEN },
-            { x: gridStartX + DT, y: gridStartY, attack: true, toggleIdx: 1, dur: ATTACK_STEP_LEN },
-            { x: gridStartX + DT, y: gridStartY + DT, attack: false, toggleIdx: -1, dur: WALK_STEP_LEN },
-            { x: gridStartX, y: gridStartY + DT, attack: true, toggleIdx: 2, dur: ATTACK_STEP_LEN },
-            { x: gridStartX + 2 * DT, y: gridStartY + DT, attack: true, toggleIdx: 3, dur: ATTACK_STEP_LEN },
-        ];
-        const stepStart = [0];
-        for (let i = 1; i < demoSteps.length; i++) stepStart.push(stepStart[i - 1] + demoSteps[i - 1].dur);
-        const STEPS_TOTAL = stepStart[demoSteps.length - 1] + demoSteps[demoSteps.length - 1].dur;
-        const CYCLE = STEPS_TOTAL + 60;
-        const hitFrames = [];
-        for (let i = 0; i < demoSteps.length; i++) {
-            if (demoSteps[i].attack) hitFrames.push({ toggleIdx: demoSteps[i].toggleIdx, frame: stepStart[i] + HIT_OFFSET });
-        }
-
-        {
-            const demoAlpha = 1;
-            const demoT = t;
-            const cycleT = demoT % CYCLE;
-            const blockOn = [false, false, false, false];
-            for (const hf of hitFrames) {
-                if (cycleT >= hf.frame && cycleT < CYCLE - 30) blockOn[hf.toggleIdx] = true;
-            }
-
-            for (let r = 0; r < miniRows; r++) {
-                for (let c = 0; c < 4; c++) {
-                    const bx = gridStartX + c * DT;
-                    const by = gridStartY + r * DT;
-                    let isOn = false;
-                    for (let i = 0; i < toggleOrder.length; i++) {
-                        if (toggleOrder[i][0] === r && toggleOrder[i][1] === c && blockOn[i]) isOn = true;
-                    }
-                    drawRect(bx, by, DT, DT, PAL.gridBorder);
-                    drawRect(bx + 1, by + 1, DT - 2, DT - 2, isOn ? rowColors[r] : PAL.gridOff);
-                    if (demoTarget[r][c] && !isOn) {
-                        const pulse = 0.3 + Math.sin(t * 0.06) * 0.15;
-                        ctx.globalAlpha = pulse;
-                        drawRect(bx + 1, by + 1, DT - 2, 1, rowColors[r]);
-                        drawRect(bx + 1, by + DT - 2, DT - 2, 1, rowColors[r]);
-                        drawRect(bx + 1, by + 1, 1, DT - 2, rowColors[r]);
-                        drawRect(bx + DT - 2, by + 1, 1, DT - 2, rowColors[r]);
-                        drawRect(bx + DT / 2 - 2, by + DT / 2 - 2, 4, 4, rowColors[r]);
-                        ctx.globalAlpha = demoAlpha;
-                    }
-                    if (isOn) {
-                        const glowR = DT * 1.2;
-                        const gcx = (bx + DT / 2) * SCALE, gcy = (by + DT / 2) * SCALE;
-                        const glow = ctx.createRadialGradient(gcx, gcy, 0, gcx, gcy, glowR * SCALE);
-                        glow.addColorStop(0, "rgba(239,172,40,0.12)");
-                        glow.addColorStop(1, "rgba(239,172,40,0)");
-                        ctx.fillStyle = glow;
-                        ctx.fillRect((bx - DT * 0.3) * SCALE, (by - DT * 0.3) * SCALE, DT * 1.6 * SCALE, DT * 1.6 * SCALE);
-                        for (const hf of hitFrames) {
-                            if (toggleOrder[hf.toggleIdx][0] === r && toggleOrder[hf.toggleIdx][1] === c) {
-                                const flashAge = cycleT - hf.frame;
-                                if (flashAge >= 0 && flashAge < 10) {
-                                    ctx.globalAlpha = (1 - flashAge / 10) * 0.6;
-                                    drawRect(bx, by, DT, DT, "#ffffff");
-                                    ctx.globalAlpha = demoAlpha;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Animated player
-            {
-                const playerAlpha = 1;
-                let stepIdx = demoSteps.length - 1;
-                for (let i = 0; i < demoSteps.length; i++) {
-                    if (cycleT < stepStart[i] + demoSteps[i].dur) { stepIdx = i; break; }
-                }
-                const step = demoSteps[stepIdx];
-                const stepT = cycleT - stepStart[stepIdx];
-                const prevPos = stepIdx === 0 ? { x: gridStartX - 3 * DT, y: gridStartY } : demoSteps[stepIdx - 1];
-                const ddx = step.x - prevPos.x;
-                const ddy = step.y - prevPos.y;
-                let walkDir = Math.abs(ddx) >= Math.abs(ddy) ? (ddx >= 0 ? 3 : 2) : (ddy >= 0 ? 0 : 1);
-                let px, py, isWalking = false, isAttacking = false;
-                if (cycleT >= STEPS_TOTAL) {
-                    px = demoSteps[demoSteps.length - 1].x; py = demoSteps[demoSteps.length - 1].y; walkDir = 3;
-                } else if (stepT < WALK_FRAMES) {
-                    // L-shaped movement: horizontal first, then vertical (matches gameplay)
-                    const prog = Math.min(1, stepT / WALK_FRAMES);
-                    const adxW = Math.abs(step.x - prevPos.x);
-                    const adyW = Math.abs(step.y - prevPos.y);
-                    const totalW = adxW + adyW;
-                    const hRatioW = totalW > 0 ? adxW / totalW : 0;
-                    if (prog <= hRatioW) {
-                        const hProg = hRatioW > 0 ? prog / hRatioW : 1;
-                        px = prevPos.x + (step.x - prevPos.x) * hProg;
-                        py = prevPos.y;
-                        walkDir = step.x >= prevPos.x ? 3 : 2;
-                    } else {
-                        const vProg = hRatioW < 1 ? (prog - hRatioW) / (1 - hRatioW) : 1;
-                        px = step.x;
-                        py = prevPos.y + (step.y - prevPos.y) * vProg;
-                        walkDir = step.y >= prevPos.y ? 0 : 1;
-                    }
-                    isWalking = true;
-                } else if (step.attack && stepT >= ATTACK_AT && stepT < ATTACK_AT + ATTACK_DUR_5) {
-                    px = step.x; py = step.y; isAttacking = true;
-                } else { px = step.x; py = step.y; }
-                const walkFrame = isWalking ? Math.floor(t / 6) % 4 : 0;
-                const bob = walkFrame % 2 === 1 ? 1 : 0;
-                const faceDir = isAttacking ? 3 : (isWalking ? walkDir : 3);
-                const punchProg = isAttacking ? Math.sin(((stepT - ATTACK_AT) / ATTACK_DUR_5) * Math.PI) : 0;
-                drawPlayerSprite(px, py, walkFrame, faceDir, { punchThrust: punchProg });
-                if (isAttacking) {
-                    const thrust = punchProg;
-                    const pDir = faceDir;
-                    let ddx2 = 0, ddy2 = 0;
-                    switch (pDir) { case 0: ddy2 = 1; break; case 1: ddy2 = -1; break; case 2: ddx2 = -1; break; case 3: ddx2 = 1; break; }
-                    const pLeanX = ddx2 !== 0 ? ddx2 * thrust * 5 : 0;
-                    const pLeanY = ddy2 !== 0 ? ddy2 * thrust * 4 : 0;
-                    const pcx = px + 8, pcy = py + 6;
-                    let shOX, shOY;
-                    switch (pDir) { case 0: shOX = -5; shOY = 2; break; case 1: shOX = 5; shOY = -8; break; case 2: shOX = -8; shOY = -2; break; case 3: shOX = 8; shOY = -2; break; }
-                    const armLen = 3 + thrust * 6;
-                    const shX = (pcx + pLeanX + shOX) * SCALE, shY = (pcy + pLeanY + shOY) * SCALE;
-                    const fiX = (pcx + pLeanX + shOX + ddx2 * armLen) * SCALE, fiY = (pcy + pLeanY + shOY + ddy2 * armLen) * SCALE;
-                    ctx.strokeStyle = "#efb775"; ctx.lineWidth = 4 * SCALE; ctx.lineCap = "round";
-                    ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(fiX, fiY); ctx.stroke();
-                    ctx.fillStyle = "#efb775"; ctx.beginPath(); ctx.arc(fiX, fiY, 3.5 * SCALE, 0, Math.PI * 2); ctx.fill();
-                    if (thrust > 0.5) {
-                        const burstCount = 6;
-                        for (let bi = 0; bi < burstCount; bi++) {
-                            const angle = (bi / burstCount) * Math.PI * 2 + (stepT - ATTACK_AT) * 0.3;
-                            ctx.strokeStyle = "#efd8a1"; ctx.lineWidth = 2 * SCALE; ctx.globalAlpha = thrust * 0.8;
-                            ctx.beginPath();
-                            ctx.moveTo(fiX + Math.cos(angle) * 5 * SCALE, fiY + Math.sin(angle) * 5 * SCALE);
-                            ctx.lineTo(fiX + Math.cos(angle) * (8 + thrust * 4) * SCALE, fiY + Math.sin(angle) * (8 + thrust * 4) * SCALE);
-                            ctx.stroke();
-                        }
-                        ctx.globalAlpha = demoAlpha * playerAlpha;
-                    }
-                }
-                // Gold bracket indicator
-                if (!isAttacking && step.attack && step.toggleIdx >= 0 && cycleT < STEPS_TOTAL && !blockOn[step.toggleIdx]) {
-                    const btx = gridStartX + toggleOrder[step.toggleIdx][1] * DT;
-                    const bty = gridStartY + toggleOrder[step.toggleIdx][0] * DT;
-                    ctx.globalAlpha = demoAlpha * playerAlpha * (0.25 + Math.sin(t * 0.1) * 0.15);
-                    const bc = "#efac28";
-                    drawRect(btx, bty, 4, 1, bc); drawRect(btx, bty, 1, 4, bc);
-                    drawRect(btx + DT - 4, bty, 4, 1, bc); drawRect(btx + DT - 1, bty, 1, 4, bc);
-                    drawRect(btx, bty + DT - 1, 4, 1, bc); drawRect(btx, bty + DT - 4, 1, 4, bc);
-                    drawRect(btx + DT - 4, bty + DT - 1, 4, 1, bc); drawRect(btx + DT - 1, bty + DT - 4, 1, 4, bc);
-                }
-                ctx.globalAlpha = demoAlpha;
-            }
-            ctx.globalAlpha = 1;
-        }
-
-        // Control instructions with key press highlights
-        ctx.globalAlpha = 0.7;
-        {
-            const ky = gridStartY + miniRows * DT + 18;
-            const ks = 9;
-            const kg = 2;
-            const keyCol = "#392a1c";
-            const keyHi = "#684c3c";
-            const labelCol = "#efd8a1";
-            const activeKeyCol = "#efac28";
-            const activeKeyBg = "#684c3c";
-            const arrowGroupW = 3 * ks + 2 * kg;
-            const spW = 28;
-            const gap = 14;
-            const totalW = arrowGroupW + gap + spW;
-            const kx = W / 2 - totalW / 2;
-
-            const cycleT_k = t % CYCLE;
-            let demoWalking_k = false, demoAttacking_k = false, demoDir_k = 0;
-            if (cycleT_k < STEPS_TOTAL) {
-                let stepIdx_k = 0;
-                for (let i = 0; i < demoSteps.length; i++) {
-                    if (cycleT_k < stepStart[i] + demoSteps[i].dur) { stepIdx_k = i; break; }
-                }
-                const step_k = demoSteps[stepIdx_k];
-                const stepT_k = cycleT_k - stepStart[stepIdx_k];
-                const prevPos_k = stepIdx_k === 0 ? { x: gridStartX - 3 * DT, y: gridStartY } : demoSteps[stepIdx_k - 1];
-                const ddx_k = step_k.x - prevPos_k.x;
-                const ddy_k = step_k.y - prevPos_k.y;
-                // Match L-shaped movement: direction depends on which phase of the L we're in
-                const adxK = Math.abs(ddx_k), adyK = Math.abs(ddy_k);
-                const totalK = adxK + adyK;
-                const hRatioK = totalK > 0 ? adxK / totalK : 0;
-                const progK = Math.min(1, stepT_k / WALK_FRAMES);
-                if (progK <= hRatioK) {
-                    demoDir_k = ddx_k >= 0 ? 3 : 2;
-                } else {
-                    demoDir_k = ddy_k >= 0 ? 0 : 1;
-                }
-                demoWalking_k = stepT_k < WALK_FRAMES;
-                demoAttacking_k = step_k.attack && stepT_k >= ATTACK_AT && stepT_k < ATTACK_AT + ATTACK_DUR_5;
-            }
-
-            function drawKey(x, y, w, h, active) {
-                drawRect(x, y, w, h, active ? activeKeyCol : keyCol);
-                drawRect(x + 1, y + 1, w - 2, h - 2, active ? activeKeyCol : keyHi);
-                if (active) {
-                    ctx.fillStyle = activeKeyCol;
-                    ctx.globalAlpha = 0.3;
-                    ctx.fillRect((x - 1) * SCALE, (y - 1) * SCALE, (w + 2) * SCALE, (h + 2) * SCALE);
-                    ctx.globalAlpha = 1.0;
-                }
-            }
-
-            const upActive = demoWalking_k && demoDir_k === 1;
-            const downActive = demoWalking_k && demoDir_k === 0;
-            const leftActive = demoWalking_k && demoDir_k === 2;
-            const rightActive = demoWalking_k && demoDir_k === 3;
-            const spaceActive = demoAttacking_k;
-
-            drawKey(kx + ks + kg, ky, ks, ks, upActive);
-            drawRect(kx + ks + kg + 3, ky + 3, 3, 1, upActive ? "#000" : labelCol);
-            drawRect(kx + ks + kg + 4, ky + 2, 1, 1, upActive ? "#000" : labelCol);
-            drawKey(kx + ks + kg, ky + ks + kg, ks, ks, downActive);
-            drawRect(kx + ks + kg + 3, ky + ks + kg + 5, 3, 1, downActive ? "#000" : labelCol);
-            drawRect(kx + ks + kg + 4, ky + ks + kg + 6, 1, 1, downActive ? "#000" : labelCol);
-            drawKey(kx, ky + ks + kg, ks, ks, leftActive);
-            drawRect(kx + 3, ky + ks + kg + 4, 1, 1, leftActive ? "#000" : labelCol);
-            drawRect(kx + 4, ky + ks + kg + 3, 1, 3, leftActive ? "#000" : labelCol);
-            drawKey(kx + 2 * (ks + kg), ky + ks + kg, ks, ks, rightActive);
-            drawRect(kx + 2 * (ks + kg) + 5, ky + ks + kg + 4, 1, 1, rightActive ? "#000" : labelCol);
-            drawRect(kx + 2 * (ks + kg) + 4, ky + ks + kg + 3, 1, 3, rightActive ? "#000" : labelCol);
-
-            const spX = kx + arrowGroupW + gap;
-            drawKey(spX, ky + ks + kg, spW, ks, spaceActive);
-            if (spaceActive) {
-                ctx.fillStyle = "#ffffff";
-                ctx.globalAlpha = 0.4;
-                ctx.fillRect((spX - 3) * SCALE, (ky + ks + kg - 3) * SCALE, (spW + 6) * SCALE, (ks + 6) * SCALE);
-                ctx.globalAlpha = 1.0;
-            }
-            ctx.font = `${3 * SCALE}px monospace`;
-            ctx.fillStyle = spaceActive ? "#000" : labelCol;
-            ctx.textAlign = "center";
-            ctx.fillText("SPACE", (spX + spW / 2) * SCALE, (ky + ks + kg + 7) * SCALE);
-
-            ctx.font = `${5 * SCALE}px monospace`;
-            ctx.fillStyle = "#efb775";
-            const arrowCenterX = kx + ks + kg + ks / 2;
-            ctx.fillText("MOVE", arrowCenterX * SCALE, (ky + 2 * ks + 2 * kg + 8) * SCALE);
-            ctx.fillText("ATTACK", (spX + spW / 2) * SCALE, (ky + 2 * ks + 2 * kg + 8) * SCALE);
-            ctx.textAlign = "start";
-        }
-        ctx.globalAlpha = 1;
-    }
-
-    // ==================== SCENE 5: THE STAND ====================
-    else if (introScene === 5) {
-        drawRuinedVenueBackdrop(t, { skipGrid: true });
-
-        // Page indicator dots (scenes 4-5)
-        const dotY = H - 22;
-        for (let i = 0; i < 2; i++) {
-            const dx = W / 2 - 6 + i * 8;
-            const active = i === (introScene - 4);
-            drawRect(dx, dotY, 3, 3, active ? "#efac28" : "#392a1c");
-        }
-
-        // Timeline constants
-        const CAPTION1_START = 30;
-        const GOB_START = 40;
-        const GOB_END = 140;
-        const PUNCH_START = 155;
-        const ATTACK_DUR_7 = 12;
-        const HIT_FRAME = 160;
-        const CAPTION2_START = 185;
-
-        // Positions — DJ left of center facing away, goblin sneaks from behind (right)
-        const djX = W / 2 - TILE * 2;
-        const djY = 155;
-        const gobStartX = W - TILE * 2;   // enters from far right
-        const gobEndX = W / 2 + TILE;     // stops just behind DJ
-
-        // DJ turn timing — DJ reacts when goblin gets close
-        const TURN_FRAME = GOB_END - 10;  // DJ notices just before goblin stops
-
-        // --- Caption 1 (in safe zone) ---
-        if (t > CAPTION1_START) {
-            const fadeIn = Math.min(1, (t - CAPTION1_START) / 20);
-            ctx.globalAlpha = fadeIn;
-            drawCentered("ONE OF THEM CREPT UP FROM BEHIND. BOLD. STUPID.", H - 54, "#efd8a1", 6);
-            ctx.globalAlpha = 1;
-        }
-
-        // --- Goblin sneaks in from the right (constant speed, matching gameplay) ---
-        const gobAlive = t < HIT_FRAME;
-        if (gobAlive) {
-            const gobSpeed = 0.6; // px/frame, matching gameplay goblin speed
-            const gobMaxDist = Math.abs(gobEndX - gobStartX);
-            const gobDist = Math.min(gobMaxDist, Math.max(0, (t - GOB_START) * gobSpeed));
-            const gobX = gobStartX + (gobEndX - gobStartX) * (gobDist / gobMaxDist);
-            const gobMoving = t >= GOB_START && gobDist < gobMaxDist;
-            const gobFrame = gobMoving ? Math.floor(t / 8) % 4 : 0;
-            drawGoblinSprite("normal", gobX, djY, gobFrame, { dir: 2, showShadow: true });
-        }
-
-        // --- Death particles ---
-        if (t >= HIT_FRAME && t < HIT_FRAME + 30) {
-            const deathT = t - HIT_FRAME;
-            const particleColors = ["#39FF14", "#1a5c0a", "#efac28", "#39FF14", "#2d8a0e", "#efac28", "#39FF14", "#1a5c0a"];
-            for (let pi = 0; pi < 8; pi++) {
-                const angle = (pi / 8) * Math.PI * 2 + 0.3;
-                const speed = 1.5 + (pi % 3) * 0.5;
-                const px = gobEndX + 6 + Math.cos(angle) * speed * deathT;
-                const py = djY + 6 + Math.sin(angle) * speed * deathT + deathT * deathT * 0.04;
-                const life = 1 - deathT / 30;
-                if (life > 0) {
-                    ctx.globalAlpha = life;
-                    drawRect(px, py, 2, 2, particleColors[pi]);
-                }
-            }
-            ctx.globalAlpha = 1;
-            if (deathT < 3) {
-                ctx.globalAlpha = 0.3 * (1 - deathT / 3);
-                drawRect(0, 0, W, H, "#39FF14");
-                ctx.globalAlpha = 1;
-            }
-        }
-
-        // --- DJ sprite — starts facing left, turns right when goblin approaches ---
-        let djDir = 2;  // facing left initially (surveying ruins)
-        if (t >= TURN_FRAME) djDir = 3;  // snaps right — reacting to the threat
-        let punchThrust = 0;
-        let djFrame = 0;
-        if (t >= PUNCH_START && t < PUNCH_START + ATTACK_DUR_7) {
-            const punchProgress = (t - PUNCH_START) / ATTACK_DUR_7;
-            punchThrust = Math.sin(punchProgress * Math.PI);
-        }
-        drawPlayerSprite(djX, djY, djFrame, djDir, { punchThrust: punchThrust });
-
-        if (punchThrust > 0) {
-            const thrust = punchThrust;
-            let ddx2 = 1, ddy2 = 0;  // punching RIGHT (toward goblin)
-            const pLeanX = ddx2 * thrust * 5;
-            const pLeanY = 0;
-            const pcx = djX + 8, pcy = djY + 6;
-            const shOX = 8, shOY = -2;  // right-side shoulder offset
-            const armLen = 3 + thrust * 6;
-            const shX = (pcx + pLeanX + shOX) * SCALE, shY = (pcy + pLeanY + shOY) * SCALE;
-            const fiX = (pcx + pLeanX + shOX + ddx2 * armLen) * SCALE, fiY = (pcy + pLeanY + shOY + ddy2 * armLen) * SCALE;
-            ctx.strokeStyle = "#efb775"; ctx.lineWidth = 4 * SCALE; ctx.lineCap = "round";
-            ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(fiX, fiY); ctx.stroke();
-            ctx.fillStyle = "#efb775"; ctx.beginPath(); ctx.arc(fiX, fiY, 3.5 * SCALE, 0, Math.PI * 2); ctx.fill();
-            if (thrust > 0.5) {
-                for (let bi = 0; bi < 6; bi++) {
-                    const angle = (bi / 6) * Math.PI * 2 + (t - PUNCH_START) * 0.3;
-                    ctx.strokeStyle = "#efd8a1"; ctx.lineWidth = 2 * SCALE; ctx.globalAlpha = thrust * 0.8;
-                    ctx.beginPath();
-                    ctx.moveTo(fiX + Math.cos(angle) * 5 * SCALE, fiY + Math.sin(angle) * 5 * SCALE);
-                    ctx.lineTo(fiX + Math.cos(angle) * (8 + thrust * 4) * SCALE, fiY + Math.sin(angle) * (8 + thrust * 4) * SCALE);
-                    ctx.stroke();
-                }
-                ctx.globalAlpha = 1;
-            }
-        }
-
-        // --- Caption 2 (in safe zone) ---
-        if (t > CAPTION2_START) {
-            const fadeIn = Math.min(1, (t - CAPTION2_START) / 20);
-            ctx.globalAlpha = fadeIn;
-            drawCentered("IT TURNS OUT FISTS THAT COULD FIX A BEAT", H - 48, "#efac28", 5);
-            drawCentered("COULD BREAK A GOBLIN JUST AS EASILY.", H - 38, "#efac28", 5);
-            ctx.globalAlpha = 1;
-        }
-    }
-
     // HUD "PRESS ENTER" prompt — appears 60 frames after each scene's last story beat
-    const lastBeatFrame = [60, 300, 180, 90, 150, 185][introScene] || 60;
+    const lastBeatFrame = [60, 300, 180, 90][introScene] || 60;
     const hudPromptDelay = lastBeatFrame + 60;
     if (t > hudPromptDelay) {
-        const promptText = introScene >= 5 ? "PRESS ENTER TO BEGIN" : "PRESS ENTER";
+        const promptText = introScene >= 3 ? "PRESS ENTER TO BEGIN" : "PRESS ENTER";
         // Draw HUD background (matches gameplay HUD style)
         drawHudRect(0, 0, COLS * TILE, HUD_H, "#2a1d0d");
         // Teal border along top
@@ -10456,8 +10012,6 @@ function gameLoop(timestamp) {
                         "Scene 1: Earthquake + Caves",
                         "Scene 2: Goblin Attack",
                         "Scene 3: Call to Action",
-                        "Scene 4: The Discovery",
-                        "Scene 5: The Stand",
                     ];
                     const label = gameState === "title"
                         ? "Title Screen"
