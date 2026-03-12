@@ -2889,7 +2889,7 @@ function renderMinigameInstructions() {
 
     // Title
     drawCenteredText("DUNGEON!", 30, "#FF4400", 8);
-    drawCenteredText("A FRIEND HAS BEEN CAPTURED", 52, "#efac28", 5);
+    drawCenteredText("A FRIEND HAS BEEN CAPTURED", 52, "#efac28", 6);
 
     // Animated sprites: player punching a goblin
     const bobOffset = Math.round(Math.sin(t * 0.08) * 3);
@@ -2918,11 +2918,11 @@ function renderMinigameInstructions() {
     // Instructions
     drawCenteredText("MOVE: ARROW KEYS", 125, "#efb775", 5);
     drawCenteredText("PUNCH: SPACEBAR", 142, "#efb775", 5);
-    drawCenteredText("SURVIVE UNTIL HELP ARRIVES!", 162, "#FF4400", 5);
+    drawCenteredText("SURVIVE UNTIL HELP ARRIVES!", 162, "#FF4400", 6);
 
     // Blinking "PRESS ENTER TO CONTINUE"
     if (t > 60 && t % 60 < 40) {
-        drawCenteredText("PRESS ENTER TO CONTINUE", H - 10, "#efd8a1", 5);
+        drawCenteredText("PRESS ENTER TO CONTINUE", H - 12, "#efd8a1", 5);
     }
 }
 
@@ -3733,7 +3733,7 @@ function renderMinigameArena() {
 
     // "SURVIVE!" text at top
     ctx.font = `${6 * SCALE}px monospace`;
-    ctx.fillStyle = "#C4A882";
+    ctx.fillStyle = "#FF4400";
     ctx.fillText("SURVIVE!", (W / 2) * SCALE, 2 * SCALE);
 
     // Rescue wall progress hint
@@ -4018,9 +4018,9 @@ function renderMinigameReward() {
     if (minigameRewardTimer > 120) {
         const blink = Math.sin(minigameRewardTimer * 0.08) > 0;
         if (blink) {
-            ctx.font = `${6 * SCALE}px monospace`;
+            ctx.font = `${5 * SCALE}px monospace`;
             ctx.fillStyle = "#efd8a1";
-            ctx.fillText("PRESS ENTER", (W / 2) * SCALE, (H - 20) * SCALE);
+            ctx.fillText("PRESS ENTER TO CONTINUE", (W / 2) * SCALE, (H - 12) * SCALE);
         }
     }
 
@@ -5034,8 +5034,10 @@ function render() {
         const blink = Math.floor(performance.now() / 400) % 2 === 0;
         if (blink) {
             ctx.font = `${6 * SCALE}px monospace`;
-            ctx.fillStyle = "#ef3a0c";
             ctx.textAlign = "center";
+            ctx.fillStyle = "#000000";
+            ctx.fillText("SLAY THE GOBLIN!", (COLS * TILE * SCALE) / 2 + SCALE, 14 * SCALE + SCALE);
+            ctx.fillStyle = "#ef3a0c";
             ctx.fillText("SLAY THE GOBLIN!", (COLS * TILE * SCALE) / 2, 14 * SCALE);
             ctx.textAlign = "start";
         }
@@ -6274,10 +6276,10 @@ function renderTitleScreen() {
         const modeLabel = gameMode === "thrill" ? "THRILL MODE" : "CHILL MODE";
         const modeCol = gameMode === "thrill" ? "#ef3a0c" : "#3c9f9c";
         const arrowPulse = 0.4 + Math.sin(titleBlink * 0.08) * 0.3;
-        ctx.globalAlpha = titleTextAlpha * 0.6;
-        drawCentered("<              >", modeY, "#efd8a1", 5);
+        ctx.globalAlpha = titleTextAlpha * 0.8;
+        drawCentered("<              >", modeY, "#efd8a1", 6);
         ctx.globalAlpha = titleTextAlpha;
-        drawCentered(modeLabel, modeY, modeCol, 5);
+        drawCentered(modeLabel, modeY, modeCol, 6);
         ctx.globalAlpha = 1.0;
     }
 
@@ -8245,18 +8247,18 @@ function renderHighScoreEntry() {
 
     // "NEW HIGH SCORE!" header
     const header = "NEW HIGH SCORE!";
-    const headerW = header.length * 5;
-    drawText(header, W / 2 - headerW / 2, 20, "#efac28", 5);
+    const headerW = header.length * 8;
+    drawText(header, W / 2 - headerW / 2, 14, "#efac28", 8);
 
     // Score display
     const scoreStr = String(finalScore);
-    const scoreW = scoreStr.length * 6;
-    drawText(scoreStr, W / 2 - scoreW / 2, 40, "#efd8a1", 6);
+    const scoreW = scoreStr.length * 8;
+    drawText(scoreStr, W / 2 - scoreW / 2, 40, "#efd8a1", 8);
 
     // "ENTER YOUR INITIALS" label
     const label = "ENTER YOUR INITIALS";
-    const labelW = label.length * 3;
-    drawText(label, W / 2 - labelW / 2, 65, "#efb775", 3);
+    const labelW = label.length * 5;
+    drawText(label, W / 2 - labelW / 2, 68, "#efb775", 5);
 
     // Three letter slots — large and centered
     const letterScale = 18;
@@ -8303,15 +8305,15 @@ function renderHighScoreEntry() {
 
     // "PRESS ENTER TO CONFIRM" blinking
     const confirmText = "PRESS ENTER TO CONFIRM";
-    const confirmW = confirmText.length * 3;
+    const confirmW = confirmText.length * 5;
     if (initialsBlink % 60 < 40) {
-        drawText(confirmText, W / 2 - confirmW / 2, H - 30, "#efb775", 3);
+        drawText(confirmText, W / 2 - confirmW / 2, H - 30, "#efb775", 5);
     }
 
     // Controls hint
     const hint = "UP/DOWN: LETTER   ENTER: CONFIRM";
-    const hintW = hint.length * 2;
-    drawText(hint, W / 2 - hintW / 2, H - 18, "#684c3c", 2);
+    const hintW = hint.length * 3;
+    drawText(hint, W / 2 - hintW / 2, H - 16, "#684c3c", 3);
 }
 
 function renderLevelComplete() {
@@ -8521,7 +8523,7 @@ function renderLevelComplete() {
             ctx.textAlign = "center";
             ctx.font = `${5 * SCALE}px monospace`;
             ctx.fillStyle = "#efd8a1";
-            ctx.fillText(pressText, (W * SCALE) / 2, (H / 2 + 60) * SCALE);
+            ctx.fillText(pressText, (W * SCALE) / 2, (H - 12) * SCALE);
             ctx.textAlign = "start";
         }
     }
@@ -8695,11 +8697,11 @@ function renderGameOverScreen() {
         const textAlpha = gameOverTimer >= 540 ? Math.max(0, 1 - (gameOverTimer - 540) / 60) : Math.min(1, (gameOverTimer - 75) / 30);
         ctx.globalAlpha = textAlpha;
         const shitText = "ummmmm RUDE!";
-        const shitW = shitText.length * 5;
+        const shitW = shitText.length * 7;
         // Position below the player (offset by collapse)
         const textY = player.y + player.h + 20;
-        drawText(shitText, W / 2 - shitW / 2 + 1, textY + 1, "#000000", 5);
-        drawText(shitText, W / 2 - shitW / 2, textY, "#efb775", 5);
+        drawText(shitText, W / 2 - shitW / 2 + 1, textY + 1, "#000000", 7);
+        drawText(shitText, W / 2 - shitW / 2, textY, "#efb775", 7);
         ctx.globalAlpha = 1.0;
     }
 
@@ -8961,7 +8963,7 @@ function renderEnemyWarning() {
 
     // Blinking "PRESS ENTER TO CONTINUE"
     if (t > 60 && t % 60 < 40) {
-        drawCenteredText("PRESS ENTER TO CONTINUE", H - 10, "#efd8a1", 5);
+        drawCenteredText("PRESS ENTER TO CONTINUE", H - 12, "#efd8a1", 5);
     }
 
 }
