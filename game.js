@@ -1103,6 +1103,7 @@ let caveShakeIntensity = 0;
 let caveHitFreeze = 0;
 let cavePendingShake = false;
 let caveScreenFlash = 0;
+let caveBoulderImpacts = []; // dust cloud rings from boulder landings
 let caveKillCount = 0;
 let caveCatapultKillCount = 0; // kills toward next catapult spawn
 
@@ -2233,7 +2234,7 @@ function update(dt) {
         const progress = 1 - gob.deathAnimTimer / 24;
         const wasElite = gob.deathAnimElite;
         if (gob.deathAnimTimer % 2 === 0) {
-            const burstCount = wasElite ? 4 : 2;
+            const burstCount = wasElite ? 5 : 3;
             for (let i = 0; i < burstCount; i++) {
                 const angle = Math.random() * Math.PI * 2;
                 const speed = 0.5 + progress * 2;
@@ -2254,19 +2255,20 @@ function update(dt) {
         }
         if (gob.deathAnimTimer <= 0) {
             gob.deathAnimActive = false;
-            const particleCount = wasElite ? 35 : 15;
-            const spreadMul = wasElite ? 3 : 2;
+            const particleCount = wasElite ? 45 : 22;
+            const spreadMul = wasElite ? 3.5 : 2.6;
             for (let i = 0; i < particleCount; i++) {
                 const isSparkle = wasElite && Math.random() > 0.5;
+                const brightVar = 0.85 + Math.random() * 0.3; // brightness variation
                 deathParticles.push({
                     x: gob.x + gob.w / 2,
                     y: gob.y + gob.h / 2,
                     vx: (Math.random() - 0.5) * spreadMul,
-                    vy: (Math.random() - 0.5) * spreadMul - 1,
+                    vy: (Math.random() - 0.5) * spreadMul - 1.2,
                     life: wasElite ? 50 + Math.random() * 50 : 30 + Math.random() * 30,
                     color: wasElite
                         ? (isSparkle ? "#00FFFF" : Math.random() > 0.3 ? "#FF00FF" : "#FF44FF")
-                        : (Math.random() > 0.3 ? "#39FF14" : "#00CC00"),
+                        : (Math.random() > 0.5 ? "#39FF14" : Math.random() > 0.3 ? "#00CC00" : "#66FF44"),
                     size: wasElite ? 2 + Math.random() * 4 : 2 + Math.random() * 3,
                     sparkle: isSparkle,
                 });
@@ -2933,6 +2935,7 @@ function startMinigameArena() {
     cavePlayerDead = false;
     caveKillCount = 0;
     caveCatapultKillCount = 0;
+    caveBoulderImpacts = [];
 
     // Reset player to center of cave arena
     player.x = (CAVE_COLS / 2) * CAVE_TILE;
@@ -3317,6 +3320,8 @@ function updateMinigameArena() {
 
             caveScreenShake = 8;
             caveShakeIntensity = 3;
+            // Dust cloud ring
+            caveBoulderImpacts.push({ x: impactX, y: impactY, timer: 20 });
             caveBoulders.splice(i, 1);
 
             // Impact sound
@@ -3609,14 +3614,28 @@ function renderMinigameArena() {
         const bobY = Math.sin(ck.bobPhase) * 3;
         const blinkOn = ck.timer < 90 ? (ck.timer % 10 < 5) : true;
         if (blinkOn) {
-            // Clock icon (yellow circle with hands)
-            drawRect(ck.x, ck.y + bobY, 8, 8, "#FFD700");
-            drawRect(ck.x + 1, ck.y + bobY + 1, 6, 6, "#1a0e08");
+            const cx = ck.x + 4;
+            const cy = ck.y + bobY + 4;
+            // Pulsing glow halo
+            const glowPulse = 0.06 + Math.sin(ck.bobPhase * 1.5) * 0.04;
+            ctx.globalAlpha = glowPulse;
+            for (let r = 12; r > 4; r -= 3) {
+                drawRect(cx - r, cy - r, r * 2, r * 2, "#FFD700");
+            }
+            ctx.globalAlpha = 1;
+            // Clock icon (yellow square with hands) — slightly pulsing size
+            const sizePulse = Math.sin(ck.bobPhase) * 0.5;
+            const sz = Math.round(8 + sizePulse);
+            const off = Math.round((8 - sz) / 2);
+            drawRect(ck.x + off, ck.y + bobY + off, sz, sz, "#FFD700");
+            drawRect(ck.x + off + 1, ck.y + bobY + off + 1, sz - 2, sz - 2, "#1a0e08");
             drawRect(ck.x + 3, ck.y + bobY + 2, 1, 3, "#FFD700"); // minute hand
             drawRect(ck.x + 3, ck.y + bobY + 3, 2, 1, "#FFD700"); // hour hand
             // "+5" text above
             ctx.textAlign = "center";
-            ctx.font = `${6 * SCALE}px monospace`;
+            ctx.font = `${7 * SCALE}px monospace`;
+            ctx.fillStyle = "#000";
+            ctx.fillText("+5", (ck.x + 4) * SCALE + SCALE, (ck.y + bobY - 3) * SCALE + SCALE);
             ctx.fillStyle = "#00FF88";
             ctx.fillText("+5", (ck.x + 4) * SCALE, (ck.y + bobY - 3) * SCALE);
         }
@@ -3637,18 +3656,42 @@ function renderMinigameArena() {
         drawRect(bx - bSize / 2 + 1, by - bSize / 2 + 1, 2, 2, "#C4A882");
     }
 
+    // Draw boulder impact dust clouds
+    for (let i = caveBoulderImpacts.length - 1; i >= 0; i--) {
+        const imp = caveBoulderImpacts[i];
+        const progress = 1 - imp.timer / 20;
+        const radius = 6 + progress * 10;
+        ctx.globalAlpha = (1 - progress) * 0.3;
+        drawRect(imp.x - radius, imp.y - radius / 2, radius * 2, radius, "#C4A882");
+        ctx.globalAlpha = (1 - progress) * 0.15;
+        drawRect(imp.x - radius * 0.6, imp.y - radius * 0.3, radius * 1.2, radius * 0.6, "#A0522D");
+        ctx.globalAlpha = 1;
+        imp.timer--;
+        if (imp.timer <= 0) caveBoulderImpacts.splice(i, 1);
+    }
+
     // Draw catapult goblin
     if (caveCatapult) {
         drawGoblinSprite("catapult",
             caveCatapult.x, caveCatapult.y,
             caveCatapult.frame, { dir: caveCatapult.dir });
-        // Aim indicator when aiming
+        // Aim indicator when aiming — growing danger zone
         if (caveCatapult.phase === "aiming") {
-            const blink = caveCatapult.phaseTimer % 8 < 4;
+            const aimProgress = Math.min(1, caveCatapult.phaseTimer / 40);
+            const blink = caveCatapult.phaseTimer % 10 < 7; // visible 70% of the time
+            const tx = caveCatapult.targetX;
+            const ty = caveCatapult.targetY;
+            // Outer ring: grows inward as impact approaches
+            const outerSize = Math.floor(14 - aimProgress * 4); // 14→10
+            ctx.globalAlpha = 0.15 + aimProgress * 0.15;
+            drawRect(tx - outerSize / 2, ty - outerSize / 2, outerSize, outerSize, "#FF0000");
+            ctx.globalAlpha = 1;
+            // Inner target (always visible)
             if (blink) {
-                drawRect(caveCatapult.targetX - 4, caveCatapult.targetY - 4, 8, 8, "rgba(255,0,0,0.4)");
-                drawRect(caveCatapult.targetX - 2, caveCatapult.targetY - 1, 4, 2, "rgba(255,0,0,0.6)");
-                drawRect(caveCatapult.targetX - 1, caveCatapult.targetY - 2, 2, 4, "rgba(255,0,0,0.6)");
+                drawRect(tx - 5, ty - 5, 10, 10, "rgba(255,0,0,0.45)");
+                // Crosshair
+                drawRect(tx - 3, ty - 1, 6, 2, "rgba(255,0,0,0.7)");
+                drawRect(tx - 1, ty - 3, 2, 6, "rgba(255,0,0,0.7)");
             }
         }
     }
@@ -3733,6 +3776,8 @@ function renderMinigameArena() {
 
     // "SURVIVE!" text at top
     ctx.font = `${6 * SCALE}px monospace`;
+    ctx.fillStyle = "#000";
+    ctx.fillText("SURVIVE!", (W / 2) * SCALE + SCALE, 2 * SCALE + SCALE);
     ctx.fillStyle = "#FF4400";
     ctx.fillText("SURVIVE!", (W / 2) * SCALE, 2 * SCALE);
 
@@ -3752,6 +3797,9 @@ function renderMinigameArena() {
     if (caveScreenShake > 0) {
         ctx.restore();
     }
+
+    // Render HUD strip (same style as main gameplay)
+    renderMinigameHUD();
 }
 
 function drawCaveTorch(x, y) {
@@ -3773,6 +3821,13 @@ function drawCaveTorch(x, y) {
     for (let r = glowR; r > 0; r -= 4) {
         drawRect(x + 7 - r, y + 2 - r, r * 2, r * 2, "#FF8C00");
     }
+    ctx.globalAlpha = 1;
+    // Warm floor light pool below torch
+    const floorPulse = 0.04 + Math.sin(performance.now() * 0.006 + x * 0.7) * 0.02;
+    ctx.globalAlpha = floorPulse;
+    drawRect(x - 4, y + 14, 24, 10, "#FF8C00");
+    ctx.globalAlpha = floorPulse * 0.6;
+    drawRect(x - 8, y + 16, 32, 6, "#FF6600");
     ctx.globalAlpha = 1;
 }
 
@@ -4609,6 +4664,106 @@ function renderHUD() {
     }
 }
 
+// ---- Minigame HUD (mirrors main HUD style during cave arena) ----
+function renderMinigameHUD() {
+    hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+
+    // Background fill (same as main HUD)
+    drawHudRect(0, 0, COLS * TILE, HUD_H, "#2a1d0d");
+
+    // Teal border along top
+    for (let c = 0; c < COLS; c++) {
+        drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+    }
+    hudCtx.fillStyle = "rgba(255,255,255,0.08)";
+    hudCtx.fillRect(0, 0, COLS * TILE * SCALE, 1 * SCALE);
+
+    // Subtle grain texture
+    for (let c = 0; c < COLS; c++) {
+        let seed = c * 37 + 7;
+        for (let i = 0; i < 4; i++) {
+            seed = (seed * 9301 + 49297) % 233280;
+            const gx = c * TILE + (seed % TILE);
+            seed = (seed * 9301 + 49297) % 233280;
+            const gy = 3 + (seed % (HUD_H - 4));
+            const bright = (seed % 2) === 0;
+            hudCtx.fillStyle = bright ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.08)";
+            hudCtx.fillRect(gx * SCALE, gy * SCALE, SCALE, SCALE);
+        }
+    }
+
+    const pxSz = 3;
+    const digitW = 3 * pxSz + pxSz;
+    const panelH = 5 * pxSz + 6;
+    const kcY = Math.floor((HUD_H - panelH) / 2);
+    const W = COLS * TILE;
+    const margin = TILE;
+    const iconW = 3 * pxSz + 2;
+    const numY = kcY + 3;
+    const p = pxSz;
+
+    function drawMiniHudPanel(x, y, w, h, borderCol, bgCol, hiCol) {
+        drawHudRect(x - 2, y - 2, w + 4, h + 4, borderCol);
+        drawHudRect(x, y, w, h, bgCol);
+        drawHudRect(x, y, w, 1, hiCol);
+        drawHudRect(x, y + h - 1, w, 1, "rgba(0,0,0,0.2)");
+    }
+
+    // --- Level counter (left) ---
+    const lvlStr = String(currentLevel + 1).padStart(2, "0");
+    const lvlPanelW = iconW + 2 * digitW + 6;
+    const lvlX = margin;
+    drawMiniHudPanel(lvlX, kcY, lvlPanelW, panelH, "#2a1d0d", "#392a1c", "#684c3c");
+    // "L" icon
+    const fx = lvlX + 2, fy = kcY + 3;
+    drawHudRect(fx, fy, p, 5 * p, "#efd8a1");
+    drawHudRect(fx + p, fy + 4 * p, 2 * p, p, "#efd8a1");
+    drawHudPixelDigits(lvlStr, lvlX + iconW + (lvlPanelW - iconW) / 2, numY, "#efd8a1", p);
+
+    // --- Timer counter (right) — cave countdown ---
+    const timerSecs = Math.max(0, Math.ceil(minigameTimer / 60));
+    const timerStr = timerSecs < 10 ? "0" + timerSecs : String(timerSecs);
+    const timerPanelW = iconW + timerStr.length * digitW + 6;
+    const timerX = W - margin - timerPanelW;
+    const isUrgent = timerSecs <= 10;
+    const isCritical = timerSecs <= 5;
+    const blinkRate = isCritical ? 15 : 30;
+    const blinkOn = !isUrgent || Math.floor(minigameTimer / blinkRate) % 2 === 0;
+    const timerColor = isCritical ? "#FF0044" : isUrgent ? "#efac28" : "#00FF88";
+    const timerBorderColor = isUrgent ? "#550f0a" : "#2a1d0d";
+    const timerBgColor = isUrgent ? "#45230d" : "#392a1c";
+    const timerHighlight = isUrgent ? "#9b1a0a" : "#684c3c";
+    drawMiniHudPanel(timerX, kcY, timerPanelW, panelH, timerBorderColor, timerBgColor, timerHighlight);
+    // "T" icon
+    const tx2 = timerX + 2, ty2 = kcY + 3;
+    drawHudRect(tx2, ty2, 3 * p, p, blinkOn ? timerColor : timerBgColor);
+    drawHudRect(tx2 + p, ty2 + p, p, 4 * p, blinkOn ? timerColor : timerBgColor);
+    if (blinkOn) {
+        const timerDigitArea = timerPanelW - iconW;
+        drawHudPixelDigits(timerStr, timerX + iconW + timerDigitArea / 2, numY, timerColor, p);
+    }
+
+    // --- Kill count (center) — skull + cave kills ---
+    const scoreStr = String(caveKillCount).padStart(3, "0");
+    const skullW = 5 * p + 2;
+    const killPanelW = skullW + scoreStr.length * digitW + 6;
+    const kcX = Math.floor((W - killPanelW) / 2);
+    drawMiniHudPanel(kcX, kcY, killPanelW, panelH, "#2a1d0d", "#392a1c", "#684c3c");
+    // Skull icon (same as main HUD)
+    const sx = kcX + 2, sy = kcY + 3;
+    const skullBg = "#392a1c";
+    drawHudRect(sx + p, sy, 3 * p, p, "#efd8a1");
+    drawHudRect(sx, sy + p, 5 * p, 2 * p, "#efd8a1");
+    drawHudRect(sx + p, sy + 3 * p, 3 * p, p, "#efd8a1");
+    drawHudRect(sx + p, sy + 4 * p, p, p, "#efd8a1");
+    drawHudRect(sx + 3 * p, sy + 4 * p, p, p, "#efd8a1");
+    drawHudRect(sx + p, sy + p, p, p, skullBg);
+    drawHudRect(sx + 3 * p, sy + p, p, p, skullBg);
+    drawHudRect(sx + 2 * p, sy + 2 * p, p, p, skullBg);
+    drawHudRect(sx + 2 * p, sy + 4 * p, p, p, skullBg);
+    drawHudPixelDigits(scoreStr, kcX + skullW + (killPanelW - skullW) / 2, numY, "#efd8a1", p);
+}
+
 // ---- Render ----
 function render() {
     // Screen shake offset
@@ -4784,15 +4939,15 @@ function render() {
                 ctx.globalAlpha = 1.0;
             }
 
-            // Sabotage flash overlay
+            // Sabotage flash overlay — boosted visibility
             if (cellFlash[r][c] > 0) {
                 ctx.fillStyle = "#FF00FF";
-                ctx.globalAlpha = cellFlash[r][c] / 30 * 0.6;
+                ctx.globalAlpha = cellFlash[r][c] / 30 * 0.75;
                 ctx.fillRect((bx + 1) * SCALE, (by + 1) * SCALE, (TILE - 2) * SCALE, (TILE - 2) * SCALE);
                 ctx.globalAlpha = 1.0;
-                // "!" indicator for first half of flash
-                if (cellFlash[r][c] > 15) {
-                    drawText("!", bx + 5, by - 4, "#39FF14", 4);
+                // "!" indicator — visible longer, larger
+                if (cellFlash[r][c] > 10) {
+                    drawText("!", bx + 5, by - 5, "#39FF14", 5);
                 }
                 cellFlash[r][c]--;
             }
@@ -4920,6 +5075,23 @@ function render() {
         const arcY = -4 * arcHeight * t.progress * (1 - t.progress);
         const drawX = t.x;
         const drawY = t.y + arcY;
+        // Trailing afterimages — fading red dots behind the tomato
+        if (t.progress > 0.05) {
+            const tdx = t.targetX - t.x;
+            const tdy = t.targetY - t.y;
+            const td = Math.sqrt(tdx * tdx + tdy * tdy) || 1;
+            const vnx = tdx / td;
+            const vny = tdy / td;
+            for (let ti = 1; ti <= 3; ti++) {
+                const trailP = Math.max(0, t.progress - ti * 0.06);
+                const trailArcY = -4 * arcHeight * trailP * (1 - trailP);
+                const trailX = t.x - vnx * ti * 5;
+                const trailY = t.y - vny * ti * 5 + (trailArcY - arcY) * 0.5;
+                ctx.globalAlpha = (4 - ti) / 4 * 0.25;
+                drawRect(trailX - 1, trailY - 1, 3, 2, "#ef3a0c");
+            }
+            ctx.globalAlpha = 1;
+        }
         // Shadow on ground
         ctx.globalAlpha = 0.25;
         drawRect(t.x - 1, t.y + 1, 3, 1, "#000");
@@ -4997,11 +5169,15 @@ function render() {
         }
         const tx = ttx * TILE;
         const ty = tty * TILE;
-        const pulse = 0.25 + Math.sin(performance.now() * 0.004) * 0.15;
-        ctx.globalAlpha = pulse;
+        const pulse = 0.35 + Math.sin(performance.now() * 0.004) * 0.2;
         const c = PAL.punch; // "#efac28"
-        const s = 1; // bracket stroke width
-        const L = 4; // bracket arm length
+        const s = 2; // bracket stroke width
+        const L = 5; // bracket arm length
+        // Subtle filled highlight behind brackets
+        ctx.globalAlpha = 0.08;
+        drawRect(tx + 1, ty + 1, TILE - 2, TILE - 2, c);
+        // Corner brackets
+        ctx.globalAlpha = pulse;
         // Top-left corner
         drawRect(tx, ty, L, s, c);
         drawRect(tx, ty, s, L, c);
@@ -5309,25 +5485,25 @@ function drawPunch() {
 
     // === IMPACT EFFECT on hit ===
     if (thrust > 0.5 && p.punchHit) {
-        // Impact burst lines
-        const burstCount = 6;
+        // Impact burst lines — larger, more visible
+        const burstCount = 8;
         for (let i = 0; i < burstCount; i++) {
             const angle = (i / burstCount) * Math.PI * 2 + progress * 2;
             const innerR = 5 * SCALE;
-            const outerR = (8 + thrust * 4) * SCALE;
+            const outerR = (10 + thrust * 5) * SCALE;
             ctx.strokeStyle = "#efd8a1";
-            ctx.lineWidth = 2 * SCALE;
-            ctx.globalAlpha = thrust * 0.8;
+            ctx.lineWidth = 2.5 * SCALE;
+            ctx.globalAlpha = thrust * 0.85;
             ctx.beginPath();
             ctx.moveTo(fistX + Math.cos(angle) * innerR, fistY + Math.sin(angle) * innerR);
             ctx.lineTo(fistX + Math.cos(angle) * outerR, fistY + Math.sin(angle) * outerR);
             ctx.stroke();
         }
-        // Impact flash
+        // Impact flash — larger
         ctx.fillStyle = "#FFF";
-        ctx.globalAlpha = thrust * 0.4;
+        ctx.globalAlpha = thrust * 0.5;
         ctx.beginPath();
-        ctx.arc(fistX, fistY, 7 * SCALE, 0, Math.PI * 2);
+        ctx.arc(fistX, fistY, 9 * SCALE, 0, Math.PI * 2);
         ctx.fill();
         ctx.globalAlpha = 1.0;
     }
@@ -5335,8 +5511,8 @@ function drawPunch() {
     // === MOTION LINES (whoosh trail) ===
     if (thrust > 0.3) {
         ctx.strokeStyle = "#efb775";
-        ctx.lineWidth = 1 * SCALE;
-        ctx.globalAlpha = thrust * 0.4;
+        ctx.lineWidth = 1.5 * SCALE;
+        ctx.globalAlpha = thrust * 0.55;
         for (let i = 1; i <= 3; i++) {
             const trailLen = i * 3;
             const offset = i * 2.5;
@@ -6275,8 +6451,8 @@ function renderTitleScreen() {
         const modeY = titleBaseY + 58;
         const modeLabel = gameMode === "thrill" ? "THRILL MODE" : "CHILL MODE";
         const modeCol = gameMode === "thrill" ? "#ef3a0c" : "#3c9f9c";
-        const arrowPulse = 0.4 + Math.sin(titleBlink * 0.08) * 0.3;
-        ctx.globalAlpha = titleTextAlpha * 0.8;
+        const arrowPulse = 0.5 + Math.sin(titleBlink * 0.08) * 0.3;
+        ctx.globalAlpha = titleTextAlpha * arrowPulse;
         drawCentered("<              >", modeY, "#efd8a1", 6);
         ctx.globalAlpha = titleTextAlpha;
         drawCentered(modeLabel, modeY, modeCol, 6);
@@ -8245,20 +8421,29 @@ function renderHighScoreEntry() {
 
     initialsBlink++;
 
-    // "NEW HIGH SCORE!" header
+    // "NEW HIGH SCORE!" header — prominent, celebratory
     const header = "NEW HIGH SCORE!";
-    const headerW = header.length * 8;
-    drawText(header, W / 2 - headerW / 2, 14, "#efac28", 8);
+    ctx.textAlign = "center";
+    ctx.font = `${8 * SCALE}px monospace`;
+    ctx.fillStyle = "#000";
+    ctx.fillText(header, (W / 2) * SCALE + SCALE, 20 * SCALE + SCALE);
+    ctx.fillStyle = "#efac28";
+    ctx.fillText(header, (W / 2) * SCALE, 20 * SCALE);
 
-    // Score display
+    // Score display — big and proud
     const scoreStr = String(finalScore);
-    const scoreW = scoreStr.length * 8;
-    drawText(scoreStr, W / 2 - scoreW / 2, 40, "#efd8a1", 8);
+    ctx.font = `${8 * SCALE}px monospace`;
+    ctx.fillStyle = "#000";
+    ctx.fillText(scoreStr, (W / 2) * SCALE + SCALE, 42 * SCALE + SCALE);
+    ctx.fillStyle = "#efd8a1";
+    ctx.fillText(scoreStr, (W / 2) * SCALE, 42 * SCALE);
 
-    // "ENTER YOUR INITIALS" label
+    // "ENTER YOUR INITIALS" label — readable instruction
     const label = "ENTER YOUR INITIALS";
-    const labelW = label.length * 5;
-    drawText(label, W / 2 - labelW / 2, 68, "#efb775", 5);
+    ctx.font = `${5 * SCALE}px monospace`;
+    ctx.fillStyle = "#efb775";
+    ctx.fillText(label, (W / 2) * SCALE, 68 * SCALE);
+    ctx.textAlign = "start";
 
     // Three letter slots — large and centered
     const letterScale = 18;
@@ -8303,17 +8488,23 @@ function renderHighScoreEntry() {
         }
     }
 
-    // "PRESS ENTER TO CONFIRM" blinking
+    // "PRESS ENTER TO CONFIRM" blinking — standard CTA size
     const confirmText = "PRESS ENTER TO CONFIRM";
-    const confirmW = confirmText.length * 5;
     if (initialsBlink % 60 < 40) {
-        drawText(confirmText, W / 2 - confirmW / 2, H - 30, "#efb775", 5);
+        ctx.textAlign = "center";
+        ctx.font = `${5 * SCALE}px monospace`;
+        ctx.fillStyle = "#efb775";
+        ctx.fillText(confirmText, (W / 2) * SCALE, (H - 24) * SCALE);
+        ctx.textAlign = "start";
     }
 
-    // Controls hint
+    // Controls hint — minimum readable size
     const hint = "UP/DOWN: LETTER   ENTER: CONFIRM";
-    const hintW = hint.length * 3;
-    drawText(hint, W / 2 - hintW / 2, H - 16, "#684c3c", 3);
+    ctx.textAlign = "center";
+    ctx.font = `${3 * SCALE}px monospace`;
+    ctx.fillStyle = "#684c3c";
+    ctx.fillText(hint, (W / 2) * SCALE, (H - 12) * SCALE);
+    ctx.textAlign = "start";
 }
 
 function renderLevelComplete() {
@@ -8387,9 +8578,9 @@ function renderLevelComplete() {
     }
 
     // Firework bursts + confetti
-    const fwColors = ["#efac28", "#ef3a0c", "#3c9f9c", "#ef692f", "#efd8a1", "#39FF14", "#FF00FF"];
-    // Launch new fireworks periodically
-    if (levelCelebrateTimer % 25 === 0 && levelCelebrateTimer < 240) {
+    const fwColors = ["#efac28", "#ef3a0c", "#3c9f9c", "#ef692f", "#efd8a1", "#39FF14", "#FF00FF", "#00FFFF", "#FFD700"];
+    // Launch new fireworks periodically — more frequent
+    if (levelCelebrateTimer % 18 === 0 && levelCelebrateTimer < 240) {
         fireworks.push({
             x: W * 0.2 + Math.random() * W * 0.6,
             y: H + 5,
@@ -8421,7 +8612,7 @@ function renderLevelComplete() {
             if (fw.life <= 0 || fw.vy > -0.5) {
                 fw.exploded = true;
                 // Spawn explosion particles in a starburst
-                const particleCount = 20 + Math.floor(Math.random() * 15);
+                const particleCount = 28 + Math.floor(Math.random() * 18);
                 for (let p = 0; p < particleCount; p++) {
                     const angle = (p / particleCount) * Math.PI * 2 + Math.random() * 0.3;
                     const speed = 1 + Math.random() * 2;
@@ -8429,10 +8620,10 @@ function renderLevelComplete() {
                         x: fw.x, y: fw.y,
                         vx: Math.cos(angle) * speed,
                         vy: Math.sin(angle) * speed,
-                        life: 30 + Math.random() * 30,
-                        maxLife: 30 + Math.random() * 30,
+                        life: 35 + Math.random() * 35,
+                        maxLife: 35 + Math.random() * 35,
                         color: Math.random() > 0.3 ? fw.color : "#ffffff",
-                        size: 1 + Math.random() * 2,
+                        size: 1 + Math.random() * 2.5,
                     });
                 }
             }
@@ -8459,9 +8650,9 @@ function renderLevelComplete() {
     }
 
     // Confetti — varied shapes (rectangles, triangles, pennants)
-    if (levelCelebrateTimer % 6 === 0 && levelCelebrateTimer < 240) {
-        const confColors = ["#efac28", "#ef3a0c", "#3c9f9c", "#ef692f", "#efd8a1", "#ab5c1c"];
-        for (let ci = 0; ci < 3; ci++) {
+    if (levelCelebrateTimer % 5 === 0 && levelCelebrateTimer < 240) {
+        const confColors = ["#efac28", "#ef3a0c", "#3c9f9c", "#ef692f", "#efd8a1", "#ab5c1c", "#FFD700", "#FF69B4"];
+        for (let ci = 0; ci < 4; ci++) {
             deathParticles.push({
                 x: Math.random() * W,
                 y: -5,
@@ -8795,7 +8986,7 @@ function renderSabotageAnim() {
                 const tx = (GRID_X + tc.c) * TILE;
                 const ty = rowPixelY(tc.r);
                 ctx.fillStyle = "#39FF14";
-                ctx.globalAlpha = (4 - trail) / 4 * 0.3;
+                ctx.globalAlpha = (4 - trail) / 4 * 0.45;
                 ctx.fillRect((tx + 2) * SCALE, (ty + 2) * SCALE, (TILE - 4) * SCALE, (TILE - 4) * SCALE);
             }
         }
