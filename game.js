@@ -3856,19 +3856,23 @@ function renderMinigameRescue() {
     if (minigameRescuePhase >= 1) {
         // Gap in left wall
         drawRect(0, CAVE_TILE * 3, CAVE_TILE * 2, (CAVE_ROWS - 6) * CAVE_TILE, "#1a0e08");
-        // Rubble edges
+        // Rubble edges (deterministic positions — no flickering)
         for (let i = 0; i < 6; i++) {
-            const rx = Math.random() * CAVE_TILE;
+            const rx = ((i * 7 + 3) % 10) * CAVE_TILE / 10;
             const ry = CAVE_TILE * 3 + i * CAVE_TILE * 2;
             drawRect(rx, ry, 4, 3, "#4a3628");
         }
     }
 
     // Draw rescue dancers with torches
-    for (const d of rescueDancers) {
+    for (let di = 0; di < rescueDancers.length; di++) {
+        const d = rescueDancers[di];
         if (d.x > 0) {
+            const walkPhase = Math.sin(minigameRescueTimer * 0.15 + di * 2);
+            const bob = minigameRescuePhase < 2 ? Math.abs(walkPhase) * 2 : 0;
+            const footOfs = minigameRescuePhase < 2 ? walkPhase * 1.5 : 0;
             drawDancerSprite(d.x, d.y, DANCER_PALETTES[d.palette],
-                { armBlend: 1 });
+                { armBlend: 1, bob, footOffset: footOfs });
             // Torch in raised hand
             if (d.hasTorch) {
                 drawCaveTorch(d.x + 6, d.y - 12);
@@ -3887,6 +3891,7 @@ function renderMinigameRescue() {
         ctx.fillText("RESCUED!", (W / 2) * SCALE + SCALE, (H / 3 + bounce + 1) * SCALE);
         ctx.fillStyle = "#00FF88";
         ctx.fillText("RESCUED!", (W / 2) * SCALE, (H / 3 + bounce) * SCALE);
+        ctx.textAlign = "start";
         ctx.globalAlpha = 1;
     }
 }
@@ -7723,8 +7728,24 @@ function renderIntro() {
                 if (cycleT >= STEPS_TOTAL) {
                     px = demoSteps[demoSteps.length - 1].x; py = demoSteps[demoSteps.length - 1].y; walkDir = 3;
                 } else if (stepT < WALK_FRAMES) {
-                    const prog = stepT / WALK_FRAMES; const eased = prog * prog * (3 - 2 * prog);
-                    px = prevPos.x + (step.x - prevPos.x) * eased; py = prevPos.y + (step.y - prevPos.y) * eased; isWalking = true;
+                    // L-shaped movement: horizontal first, then vertical (matches gameplay)
+                    const prog = Math.min(1, stepT / WALK_FRAMES);
+                    const adxW = Math.abs(step.x - prevPos.x);
+                    const adyW = Math.abs(step.y - prevPos.y);
+                    const totalW = adxW + adyW;
+                    const hRatioW = totalW > 0 ? adxW / totalW : 0;
+                    if (prog <= hRatioW) {
+                        const hProg = hRatioW > 0 ? prog / hRatioW : 1;
+                        px = prevPos.x + (step.x - prevPos.x) * hProg;
+                        py = prevPos.y;
+                        walkDir = step.x >= prevPos.x ? 3 : 2;
+                    } else {
+                        const vProg = hRatioW < 1 ? (prog - hRatioW) / (1 - hRatioW) : 1;
+                        px = step.x;
+                        py = prevPos.y + (step.y - prevPos.y) * vProg;
+                        walkDir = step.y >= prevPos.y ? 0 : 1;
+                    }
+                    isWalking = true;
                 } else if (step.attack && stepT >= ATTACK_AT && stepT < ATTACK_AT + ATTACK_DUR_5) {
                     px = step.x; py = step.y; isAttacking = true;
                 } else { px = step.x; py = step.y; }
@@ -7807,7 +7828,16 @@ function renderIntro() {
                 const prevPos_k = stepIdx_k === 0 ? { x: gridStartX - 3 * DT, y: gridStartY } : demoSteps[stepIdx_k - 1];
                 const ddx_k = step_k.x - prevPos_k.x;
                 const ddy_k = step_k.y - prevPos_k.y;
-                demoDir_k = Math.abs(ddx_k) >= Math.abs(ddy_k) ? (ddx_k >= 0 ? 3 : 2) : (ddy_k >= 0 ? 0 : 1);
+                // Match L-shaped movement: direction depends on which phase of the L we're in
+                const adxK = Math.abs(ddx_k), adyK = Math.abs(ddy_k);
+                const totalK = adxK + adyK;
+                const hRatioK = totalK > 0 ? adxK / totalK : 0;
+                const progK = Math.min(1, stepT_k / WALK_FRAMES);
+                if (progK <= hRatioK) {
+                    demoDir_k = ddx_k >= 0 ? 3 : 2;
+                } else {
+                    demoDir_k = ddy_k >= 0 ? 0 : 1;
+                }
                 demoWalking_k = stepT_k < WALK_FRAMES;
                 demoAttacking_k = step_k.attack && stepT_k >= ATTACK_AT && stepT_k < ATTACK_AT + ATTACK_DUR_5;
             }
@@ -7997,21 +8027,26 @@ function renderIntro() {
         drawText("X MARKS = REMOVE", xgx, gy + TILE + 10, "#efb775", 4);
 
         // --- Lurking goblins creep inward from the edges ---
-        const gobFrame = Math.floor(t / 12) % 4;
-        const gobCreep = Math.min(1, t / 400);  // slowly advance over time
-        const gobCreepDist = gobCreep * TILE * 2.5;
+        // Constant-speed movement matching gameplay goblin speed (~0.5 px/frame)
+        const gobSpeed = 0.5;
+        const gobCreepDist = Math.min(TILE * 2.5, t * gobSpeed);
+        const gobMoving = gobCreepDist < TILE * 2.5;
+        const gobFrame = gobMoving ? Math.floor(t / 8) % 4 : 0;
         const gobPulse = 0.85 + Math.sin(t * 0.04) * 0.15;
-        // Left goblin
+        // Left goblin — moves right toward grid
         ctx.globalAlpha = gobPulse;
         drawGoblinSprite("normal", TILE + 4 + gobCreepDist, gy - 4, gobFrame, { dir: 3, showShadow: true });
-        // Right goblin
+        // Right goblin — moves left toward grid
         drawGoblinSprite("normal", (COLS - 2) * TILE - 4 - gobCreepDist, gy - 4, (gobFrame + 2) % 4, { dir: 2, showShadow: true });
-        // Additional goblins appearing behind
+        // Additional goblins appearing behind (slower, same constant speed)
         if (t > 80) {
+            const backCreepDist = Math.min(TILE * 2.5, (t - 80) * gobSpeed * 0.6);
+            const backMoving = backCreepDist < TILE * 2.5;
+            const backFrame = backMoving ? Math.floor(t / 8) % 4 : 0;
             const backAlpha = Math.min(gobPulse * 0.7, (t - 80) / 60);
             ctx.globalAlpha = backAlpha;
-            drawGoblinSprite("normal", TILE - 6 + gobCreepDist * 0.4, gy + TILE + 8, (gobFrame + 1) % 4, { dir: 3, showShadow: true });
-            drawGoblinSprite("normal", (COLS - 1) * TILE - gobCreepDist * 0.4, gy + TILE + 8, (gobFrame + 3) % 4, { dir: 2, showShadow: true });
+            drawGoblinSprite("normal", TILE - 6 + backCreepDist, gy + TILE + 8, (backFrame + 1) % 4, { dir: 3, showShadow: true });
+            drawGoblinSprite("normal", (COLS - 1) * TILE - backCreepDist, gy + TILE + 8, (backFrame + 3) % 4, { dir: 2, showShadow: true });
         }
         // Glowing eyes in the dark edges
         if (t > 40) {
@@ -8066,13 +8101,15 @@ function renderIntro() {
             ctx.globalAlpha = 1;
         }
 
-        // --- Goblin sneaks in from the right ---
+        // --- Goblin sneaks in from the right (constant speed, matching gameplay) ---
         const gobAlive = t < HIT_FRAME;
         if (gobAlive) {
-            const gobProgress = Math.min(1, Math.max(0, (t - GOB_START) / (GOB_END - GOB_START)));
-            const eased = gobProgress * gobProgress * (3 - 2 * gobProgress);
-            const gobX = gobStartX + (gobEndX - gobStartX) * eased;
-            const gobFrame = t < GOB_END ? Math.floor(t / 10) % 4 : 0;
+            const gobSpeed = 0.6; // px/frame, matching gameplay goblin speed
+            const gobMaxDist = Math.abs(gobEndX - gobStartX);
+            const gobDist = Math.min(gobMaxDist, Math.max(0, (t - GOB_START) * gobSpeed));
+            const gobX = gobStartX + (gobEndX - gobStartX) * (gobDist / gobMaxDist);
+            const gobMoving = t >= GOB_START && gobDist < gobMaxDist;
+            const gobFrame = gobMoving ? Math.floor(t / 8) % 4 : 0;
             drawGoblinSprite("normal", gobX, djY, gobFrame, { dir: 2, showShadow: true });
         }
 
