@@ -5352,14 +5352,14 @@ function render() {
                     // Needs to be OFF — draw X indicator in complementary color
                     const xCol = PAL.gridX[r];
                     ctx.globalAlpha = 0.8 + Math.sin(performance.now() * 0.004) * 0.2;
-                    drawRect(bx + 3, by + 3, 2, 2, xCol);
-                    drawRect(bx + 5, by + 5, 2, 2, xCol);
-                    drawRect(bx + 7, by + 7, 2, 2, xCol);
-                    drawRect(bx + 9, by + 9, 2, 2, xCol);
-                    drawRect(bx + 9, by + 3, 2, 2, xCol);
-                    drawRect(bx + 7, by + 5, 2, 2, xCol);
-                    drawRect(bx + 5, by + 7, 2, 2, xCol);
-                    drawRect(bx + 3, by + 9, 2, 2, xCol);
+                    drawRect(bx + 4, by + 4, 2, 2, xCol);
+                    drawRect(bx + 6, by + 6, 2, 2, xCol);
+                    drawRect(bx + 8, by + 8, 2, 2, xCol);
+                    drawRect(bx + 10, by + 10, 2, 2, xCol);
+                    drawRect(bx + 10, by + 4, 2, 2, xCol);
+                    drawRect(bx + 8, by + 6, 2, 2, xCol);
+                    drawRect(bx + 6, by + 8, 2, 2, xCol);
+                    drawRect(bx + 4, by + 10, 2, 2, xCol);
                     ctx.globalAlpha = 1.0;
                 }
             }
@@ -5540,7 +5540,7 @@ function render() {
     // Punch target tile indicator (gold corner brackets)
     if (!player.attacking && player.x === player.destX && player.y === player.destY) {
         const ptx = Math.round(player.x / TILE);
-        const pty = Math.round(player.y / TILE);
+        const pty = Math.round((player.y - GRID_Y_OFFSET) / TILE);
         let ttx = ptx, tty = pty;
         switch (player.dir) {
             case 0: tty += 1; break;
@@ -5549,7 +5549,7 @@ function render() {
             case 3: ttx += 1; break;
         }
         const tx = ttx * TILE;
-        const ty = tty * TILE;
+        const ty = tty * TILE + GRID_Y_OFFSET;
         const pulse = 0.35 + Math.sin(performance.now() * 0.004) * 0.2;
         const c = PAL.punch; // "#efac28"
         const s = 2; // bracket stroke width
