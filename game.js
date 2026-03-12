@@ -1022,6 +1022,8 @@ let introGridState = null;  // mutable copy of INTRO_BEAT patterns for goblin fl
 let introGridFlash = null;  // flash timers per cell [row][col]
 let introCorruptOrder = [];  // pre-sorted cell coords for Scene 2 progressive corruption
 let introCorruptedSoFar = 0; // how many cells Scene 2 has flipped so far
+let introBoothDebris = [];   // [{pieceIndex, x, y, vx, vy, landed, carriedBy}] — 6 pieces during explosion
+let introTheftGoblins = [];  // [{x, y, dir, frame, frameTimer, pieceIndex, targetCave, carrying, gone}]
 let introDrumGain = null;   // audio gain node for intro drums
 let introDrumStarted = false;
 let introDrumTimer = null;
@@ -1089,6 +1091,7 @@ let minigameKidnapPhase = 0; // 0=goblins appear, 1=flank DJ, 2=escort to cave
 let minigameRescueTimer = 0;
 let minigameRescuePhase = 0; // 0=wall bursts, 1=dancers enter, 2=celebration
 let minigameRewardTimer = 0;
+let allPiecesJustCompleted = false;
 let minigamePendingAfterLevel = -1; // which level triggered the minigame
 
 // Cave arena entities
@@ -1357,7 +1360,8 @@ window.addEventListener("keydown", (e) => {
             return;
         }
         if (minigameState === "instructions") return; // let intro play
-        if (minigameState === "reward" && minigameRewardTimer > 120) {
+        const rewardDismissThreshold = allPiecesJustCompleted ? 180 : 140;
+        if (minigameState === "reward" && minigameRewardTimer > rewardDismissThreshold) {
             // Player dismisses reward screen — continue to next level
             endMinigame();
             return;
@@ -2672,6 +2676,78 @@ function playLevelFanfare() {
         osc.connect(g); g.connect(audioCtx.destination);
         osc.start(now + 0.7); osc.stop(now + 2.0);
     });
+}
+
+function playPieceRevealChime() {
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    // Sparkle chime: rapid ascending sine tones
+    const notes = [1047, 1319, 1568, 2093, 2637];
+    notes.forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, now + i * 0.06);
+        g.gain.setValueAtTime(0.12, now + i * 0.06);
+        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.06 + 0.4);
+        osc.connect(g); g.connect(audioCtx.destination);
+        osc.start(now + i * 0.06); osc.stop(now + i * 0.06 + 0.4);
+    });
+}
+
+function playSetupCompleteFanfare() {
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    // Grand ascending arpeggio with full major chord resolution
+    const notes = [523, 659, 784, 1047, 1319, 1568, 2093, 2637];
+    notes.forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(freq, now + i * 0.08);
+        g.gain.setValueAtTime(0.15, now + i * 0.08);
+        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.6);
+        osc.connect(g); g.connect(audioCtx.destination);
+        osc.start(now + i * 0.08); osc.stop(now + i * 0.08 + 0.6);
+    });
+    // Triumphant sustained chord (C major + octave)
+    [1047, 1319, 1568, 2093].forEach((freq) => {
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(freq, now + 0.7);
+        g.gain.setValueAtTime(0.1, now + 0.7);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 2.5);
+        osc.connect(g); g.connect(audioCtx.destination);
+        osc.start(now + 0.7); osc.stop(now + 2.5);
+    });
+}
+
+function playBoothExplosion() {
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    // Deep rumble
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(50, now);
+    osc.frequency.exponentialRampToValueAtTime(20, now + 0.8);
+    g.gain.setValueAtTime(0.3, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+    osc.connect(g); g.connect(audioCtx.destination);
+    osc.start(now); osc.stop(now + 0.8);
+    // Crash (white noise burst)
+    const bufSize = audioCtx.sampleRate * 0.4;
+    const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufSize);
+    const noise = audioCtx.createBufferSource();
+    const ng = audioCtx.createGain();
+    noise.buffer = buf;
+    ng.gain.setValueAtTime(0.2, now);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    noise.connect(ng); ng.connect(audioCtx.destination);
+    noise.start(now); noise.stop(now + 0.4);
 }
 
 function triggerLevelComplete() {
@@ -4279,10 +4355,17 @@ function startMinigameReward() {
     if (pieceIndex < DJ_SETUP_PIECES.length) {
         djSetupEarned.push(DJ_SETUP_PIECES[pieceIndex]);
     }
+    allPiecesJustCompleted = (djSetupEarned.length === DJ_SETUP_PIECES.length);
 }
 
 function updateMinigameReward() {
     minigameRewardTimer++;
+    if (minigameRewardTimer === 56) {
+        playPieceRevealChime();
+    }
+    if (allPiecesJustCompleted && minigameRewardTimer === 111) {
+        playSetupCompleteFanfare();
+    }
 }
 
 function renderMinigameReward() {
@@ -4292,7 +4375,7 @@ function renderMinigameReward() {
     // Dark background
     drawRect(0, 0, W, H, "#1a0e08");
 
-    // "DJ SETUP RESTORED!" header
+    // "DJ SETUP PIECE!" header
     const headerAlpha = Math.min(1, minigameRewardTimer / 40);
     ctx.globalAlpha = headerAlpha;
     ctx.textAlign = "center";
@@ -4302,31 +4385,125 @@ function renderMinigameReward() {
     ctx.fillStyle = "#efac28";
     ctx.fillText("DJ SETUP PIECE!", (W / 2) * SCALE, (H / 4) * SCALE);
 
-    // Show the piece earned
+    // Narrative connection text
+    if (minigameRewardTimer > 20) {
+        const narrativeAlpha = Math.min(1, (minigameRewardTimer - 20) / 30);
+        ctx.globalAlpha = narrativeAlpha;
+        ctx.font = `${6 * SCALE}px monospace`;
+        ctx.fillStyle = "#efb775";
+        ctx.fillText("YOU RECOVERED YOUR STOLEN...", (W / 2) * SCALE, (H / 4 + 16) * SCALE);
+    }
+
+    // Visual DJ booth with pieces assembling
     if (minigameRewardTimer > 40) {
-        const pieceAlpha = Math.min(1, (minigameRewardTimer - 40) / 30);
-        ctx.globalAlpha = pieceAlpha;
+        const boothAlpha = Math.min(1, (minigameRewardTimer - 40) / 20);
+        ctx.globalAlpha = boothAlpha;
 
-        const pieceName = djSetupEarned[djSetupEarned.length - 1] || "???";
-        const bounce = Math.sin(minigameRewardTimer * 0.03) * 2;
+        // Booth positioned in center of reward screen
+        const rBoothX = W / 2 - 24;
+        const rBoothY = H / 2 - 10;
 
-        ctx.font = `${8 * SCALE}px monospace`;
-        ctx.fillStyle = "#FFD700";
-        ctx.fillText(pieceName.toUpperCase(), (W / 2) * SCALE, (H / 2 + bounce) * SCALE);
+        // Booth platform
+        drawRect(rBoothX - 8, rBoothY + 12, 64, 8, "#45230d");
+        drawRect(rBoothX - 8, rBoothY + 12, 64, 2, "#684c3c");
 
-        // Draw setup progress (which pieces earned)
-        ctx.font = `${5 * SCALE}px monospace`;
-        const startY = H / 2 + 25;
+        // Draw all 6 piece slots
+        const newPieceIndex = djSetupEarned.length - 1;
         for (let i = 0; i < DJ_SETUP_PIECES.length; i++) {
-            const earned = i < djSetupEarned.length;
-            ctx.fillStyle = earned ? "#00FF88" : "#444";
-            const mark = earned ? "✓ " : "○ ";
-            ctx.fillText(mark + DJ_SETUP_PIECES[i].toUpperCase(), (W / 2) * SCALE, (startY + i * 10) * SCALE);
+            if (i < newPieceIndex) {
+                // Previously earned — draw fully
+                drawDJSetupPiece(i, rBoothX, rBoothY, {});
+            } else if (i === newPieceIndex && minigameRewardTimer > 55) {
+                // Newly earned piece — scale-in with glow and sparkles
+                const pt = minigameRewardTimer - 55;
+                const pieceAlpha = Math.min(1, pt / 30);
+
+                // Golden glow (pulsing larger, more transparent)
+                const glowPulse = 0.3 + Math.sin(minigameRewardTimer * 0.05) * 0.15;
+                ctx.globalAlpha = boothAlpha * pieceAlpha * glowPulse;
+                ctx.save();
+                const pcx = rBoothX * SCALE + 16 * SCALE;
+                const pcy = rBoothY * SCALE;
+                ctx.translate(pcx, pcy);
+                ctx.scale(1.3, 1.3);
+                ctx.translate(-pcx, -pcy);
+                drawDJSetupPiece(i, rBoothX, rBoothY, {});
+                ctx.restore();
+
+                // Scale-in effect: starts at 1.8x, settles to 1x
+                const scaleProgress = Math.min(1, pt / 20);
+                const eased = 1 + (1 - scaleProgress) * 0.8;
+                ctx.globalAlpha = boothAlpha * pieceAlpha;
+                ctx.save();
+                ctx.translate(pcx, pcy);
+                ctx.scale(eased, eased);
+                ctx.translate(-pcx, -pcy);
+                drawDJSetupPiece(i, rBoothX, rBoothY, {});
+                ctx.restore();
+
+                // Sparkle particles
+                if (pt < 40) {
+                    for (let si = 0; si < 3; si++) {
+                        const angle = (pt * 0.2 + si * 2.1) + (si * 7.3 % 1);
+                        const radius = 20 + (si * 13.7 % 30);
+                        const sx = (rBoothX + 16 + Math.cos(angle) * radius) * SCALE;
+                        const sy = (rBoothY + Math.sin(angle) * radius) * SCALE;
+                        const sparkSize = (1 + (si * 3.1 % 2)) * SCALE;
+                        ctx.globalAlpha = boothAlpha * pieceAlpha * (0.4 + (si * 2.7 % 0.6));
+                        ctx.fillStyle = si % 2 === 0 ? "#FFD700" : "#FFFFFF";
+                        ctx.fillRect(sx - sparkSize / 2, sy - sparkSize / 2, sparkSize, sparkSize);
+                    }
+                }
+            } else {
+                // Unearned — draw as dark silhouette
+                drawDJSetupPiece(i, rBoothX, rBoothY, { silhouette: true });
+            }
+        }
+
+        // Piece name label below booth
+        if (minigameRewardTimer > 55) {
+            const labelAlpha = Math.min(1, (minigameRewardTimer - 55) / 30);
+            ctx.globalAlpha = boothAlpha * labelAlpha;
+            const pieceName = djSetupEarned[djSetupEarned.length - 1] || "???";
+            const bounce = Math.sin(minigameRewardTimer * 0.03) * 2;
+            ctx.font = `${7 * SCALE}px monospace`;
+            ctx.fillStyle = "#FFD700";
+            ctx.fillText(pieceName.toUpperCase(), (W / 2) * SCALE, (rBoothY + 30 + bounce) * SCALE);
+
+            // Progress counter
+            ctx.font = `${5 * SCALE}px monospace`;
+            ctx.fillStyle = "#efb775";
+            ctx.fillText(`${djSetupEarned.length} / ${DJ_SETUP_PIECES.length} PIECES RECOVERED`, (W / 2) * SCALE, (rBoothY + 42) * SCALE);
         }
     }
 
+    // "DJ SETUP COMPLETE!" celebration when all 6 pieces earned
+    if (allPiecesJustCompleted && minigameRewardTimer > 110) {
+        const ct = minigameRewardTimer - 110;
+
+        // Flash effect on first appearance
+        if (ct < 5) {
+            ctx.globalAlpha = 1 - ct / 5;
+            drawRect(0, 0, W, H, "#FFD700");
+        }
+
+        const completeAlpha = Math.min(1, ct / 20);
+        ctx.globalAlpha = completeAlpha;
+        const completeBounce = Math.sin(ct * 0.06) * 3;
+
+        // Shadow
+        ctx.font = `${9 * SCALE}px monospace`;
+        ctx.fillStyle = "#000";
+        ctx.fillText("DJ SETUP COMPLETE!", (W / 2) * SCALE + SCALE, (H - 40 + completeBounce + 1) * SCALE);
+        // Rainbow cycling text
+        const hue = (ct * 3) % 360;
+        ctx.fillStyle = `hsl(${hue}, 100%, 60%)`;
+        ctx.fillText("DJ SETUP COMPLETE!", (W / 2) * SCALE, (H - 40 + completeBounce) * SCALE);
+    }
+
     // "PRESS ENTER" prompt
-    if (minigameRewardTimer > 120) {
+    const pressEnterThreshold = allPiecesJustCompleted ? 180 : 140;
+    if (minigameRewardTimer > pressEnterThreshold) {
         const blink = Math.sin(minigameRewardTimer * 0.08) > 0;
         if (blink) {
             ctx.font = `${5 * SCALE}px monospace`;
@@ -4342,6 +4519,7 @@ function endMinigame() {
     minigamesCompleted.push(minigamePendingAfterLevel);
     minigameState = "none";
     minigameActive = false;
+    allPiecesJustCompleted = false;
     stopMinigameMusic();
 
     // Return to normal game flow — advance to next level
@@ -5900,6 +6078,110 @@ function drawSubwoofer(sx, sy, pump, side) {
     }
 }
 
+// ---- DJ Equipment Sprite Functions ----
+
+function drawTurntable(tx, ty) {
+    // Platter base
+    drawRect(tx, ty + 6, 14, 6, "#45230d");
+    drawRect(tx + 1, ty + 7, 12, 4, "#392a1c");
+    // Platter (circular disc)
+    drawRect(tx + 2, ty + 1, 10, 8, "#1a1410");
+    drawRect(tx + 3, ty, 8, 10, "#1a1410");
+    // Vinyl grooves
+    drawRect(tx + 4, ty + 2, 6, 6, "#2a2018");
+    drawRect(tx + 5, ty + 3, 4, 4, "#1a1410");
+    // Label center
+    drawRect(tx + 6, ty + 4, 2, 2, "#efac28");
+    // Tonearm
+    drawRect(tx + 11, ty, 1, 6, "#888");
+    drawRect(tx + 10, ty + 5, 2, 1, "#aaa");
+    drawRect(tx + 12, ty, 2, 1, "#666");
+}
+
+function drawMixer(mx, my) {
+    drawRect(mx, my, 12, 10, "#2e4a4e");
+    // Fader slots
+    for (let ml = 0; ml < 4; ml++) {
+        drawRect(mx + 2 + ml * 2, my + 1, 1, 2, "#1f240a");
+    }
+    // Crossfader
+    drawRect(mx + 3, my + 5, 6, 2, "#1f240a");
+    drawRect(mx + 5, my + 5, 2, 2, "#efac28");
+    // Level meters
+    drawRect(mx + 1, my + 8, 2, 1, "#00FF88");
+    drawRect(mx + 5, my + 8, 2, 1, "#00FF88");
+    drawRect(mx + 9, my + 8, 2, 1, "#FF4400");
+}
+
+function drawLightRig(lx, ly) {
+    // Horizontal bar
+    drawRect(lx, ly, 48, 2, "#555");
+    drawRect(lx, ly, 48, 1, "#777");
+    // Support posts
+    drawRect(lx + 2, ly + 2, 2, 4, "#444");
+    drawRect(lx + 44, ly + 2, 2, 4, "#444");
+    // Colored lights hanging down
+    const colors = ["#FF4400", "#efac28", "#00FF88", "#4488FF", "#FF44AA", "#efac28"];
+    for (let i = 0; i < 6; i++) {
+        const bx = lx + 4 + i * 7;
+        drawRect(bx, ly + 2, 3, 3, colors[i]);
+        // Glow
+        ctx.globalAlpha = 0.2;
+        ctx.fillStyle = colors[i];
+        ctx.fillRect((bx - 1) * SCALE, (ly + 1) * SCALE, 5 * SCALE, 5 * SCALE);
+        ctx.globalAlpha = 1;
+    }
+}
+
+function drawDiscoBall(dx, dy) {
+    // String
+    drawRect(dx + 4, dy - 6, 1, 6, "#888");
+    // Ball body (9x9 approximation of sphere)
+    drawRect(dx + 1, dy + 1, 7, 7, "#aaa");
+    drawRect(dx, dy + 2, 9, 5, "#aaa");
+    drawRect(dx + 2, dy, 5, 9, "#aaa");
+    // Mirror facets (grid pattern)
+    const facetCols = ["#ddd", "#fff", "#bbb", "#eee"];
+    for (let fy = 0; fy < 3; fy++) {
+        for (let fx = 0; fx < 3; fx++) {
+            drawRect(dx + 1 + fx * 3, dy + 1 + fy * 3, 2, 2, facetCols[(fx + fy) % 4]);
+        }
+    }
+    // Highlight
+    drawRect(dx + 2, dy + 1, 2, 1, "#fff");
+}
+
+// Map DJ_SETUP_PIECES names to draw functions with booth-relative offsets
+// Offsets are relative to boothX, boothY as defined in intro Scene 0
+function drawDJSetupPiece(pieceIndex, boothX, boothY, options) {
+    const alpha = (options && options.alpha !== undefined) ? options.alpha : 1;
+    const silhouette = (options && options.silhouette) || false;
+    const prevAlpha = ctx.globalAlpha;
+    ctx.globalAlpha = prevAlpha * alpha;
+    if (silhouette) ctx.globalAlpha = prevAlpha * 0.15;
+    switch (pieceIndex) {
+        case 0: // left speaker
+            drawSubwoofer(boothX - 12, boothY - 2, 0, -1);
+            break;
+        case 1: // right speaker
+            drawSubwoofer(boothX + 44, boothY - 2, 0, 1);
+            break;
+        case 2: // turntable
+            drawTurntable(boothX + 1, boothY - 2);
+            break;
+        case 3: // mixer
+            drawMixer(boothX + 18, boothY + 2);
+            break;
+        case 4: // light rig
+            drawLightRig(boothX - 8, boothY - 18);
+            break;
+        case 5: // disco ball
+            drawDiscoBall(boothX + 20, boothY - 30);
+            break;
+    }
+    ctx.globalAlpha = prevAlpha;
+}
+
 // type: "normal", "elite", "catapult"
 // gx, gy: top-left position (game coords)
 // frame: animation frame (0-3)
@@ -6500,19 +6782,17 @@ function renderTitleScreen() {
     }
     ctx.globalAlpha = 1;
 
-    // DJ Booth (center)
+    // DJ Booth (center) — full setup with all equipment
     const boothX = W / 2 - 24;
     const boothY = GRID_Y * TILE - 8;
+    drawLightRig(boothX - 8, boothY - 18);
+    drawDiscoBall(boothX + 20, boothY - 30);
     drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
     drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
-    // Subwoofer speakers (left and right of mixer)
     drawSubwoofer(boothX - 12, boothY - 2, titleKickPump, -1);
     drawSubwoofer(boothX + 44, boothY - 2, titleKickPump, 1);
-    // Mixer (center)
-    drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e");
-    for (let ml = 0; ml < 4; ml++) {
-        drawRect(boothX + 20 + ml * 2, boothY + 3, 1, 2, "#1f240a");
-    }
+    drawTurntable(boothX + 1, boothY - 2);
+    drawMixer(boothX + 18, boothY + 2);
 
     // DJ (player sprite behind booth)
     const djFrame = Math.floor(titleBlink / 10) % 4;
@@ -7094,21 +7374,17 @@ function renderIntro() {
         }
         ctx.globalAlpha = 1;
 
-        // DJ Booth (center)
+        // DJ Booth (center) — full setup with all equipment
         const boothX = W / 2 - 24;
         const boothY = GRID_Y * TILE - 8;
-        // Booth platform
+        drawLightRig(boothX - 8, boothY - 18);
+        drawDiscoBall(boothX + 20, boothY - 30);
         drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
         drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
-        // Subwoofer speakers (left and right of mixer)
         drawSubwoofer(boothX - 12, boothY - 2, introKickPump, -1);
         drawSubwoofer(boothX + 44, boothY - 2, introKickPump, 1);
-        // Mixer
-        drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e");
-        // Mixer lights
-        for (let ml = 0; ml < 4; ml++) {
-            drawRect(boothX + 20 + ml * 2, boothY + 3, 1, 2, "#1f240a");
-        }
+        drawTurntable(boothX + 1, boothY - 2);
+        drawMixer(boothX + 18, boothY + 2);
 
         // DJ (player sprite behind booth)
         const djFrame = Math.floor(introGlobalTimer / 10) % 4;
@@ -7269,22 +7545,17 @@ function renderIntro() {
         }
         ctx.globalAlpha = 1;
 
-        // DJ booth
+        // DJ booth — full setup (power fading)
         const boothX = W / 2 - 24;
         const boothY = GRID_Y * TILE - 8;
+        drawLightRig(boothX - 8, boothY - 18);
+        drawDiscoBall(boothX + 20, boothY - 30);
         drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
         drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
-        // Subwoofer speakers (left and right of mixer)
         drawSubwoofer(boothX - 12, boothY - 2, introKickPump, -1);
         drawSubwoofer(boothX + 44, boothY - 2, introKickPump, 1);
-        // Mixer
-        drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e");
-        // Mixer lights (dim with power)
-        ctx.globalAlpha = 1 - powerFade;
-        for (let ml = 0; ml < 4; ml++) {
-            drawRect(boothX + 20 + ml * 2, boothY + 3, 1, 2, "#1f240a");
-        }
-        ctx.globalAlpha = 1;
+        drawTurntable(boothX + 1, boothY - 2);
+        drawMixer(boothX + 18, boothY + 2);
 
         // Beat grid — uses mutable state so goblins can flip cells
         const miniGridY = GRID_Y * TILE + GRID_Y_OFFSET;
@@ -7657,29 +7928,121 @@ function renderIntro() {
             }
         }
 
-        // DJ booth — sparks flying
+        // DJ booth — sparks flying, then explodes on tackle
         const boothX = W / 2 - 24;
         const boothY = GRID_Y * TILE - 8;
-        drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
-        drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
-        drawSubwoofer(boothX - 12, boothY - 2, 0, -1);
-        drawSubwoofer(boothX + 44, boothY - 2, 0, 1);
-        drawRect(boothX + 18, boothY + 2, 12, 10, "#2e4a4e");
-        // Booth damage appears once goblins are swarming
-        if (t > swarmStart) {
-            drawRect(boothX + 5, boothY + 6, 10, 6, "#1f240a");
-            drawRect(boothX + 35, boothY + 8, 8, 4, "#1f240a");
-            drawRect(boothX + 18, boothY + 2, 12, 10, "#1f240a");
-            if (t % 8 < 2) {
-                drawRect(boothX + 10 + Math.random() * 30, boothY + Math.random() * 10, 2, 3, "#efac28");
+        const knockStart = 260;
+
+        if (t < knockStart) {
+            // Intact booth — full setup (with damage after swarm)
+            drawLightRig(boothX - 8, boothY - 18);
+            drawDiscoBall(boothX + 20, boothY - 30);
+            drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
+            drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
+            drawSubwoofer(boothX - 12, boothY - 2, 0, -1);
+            drawSubwoofer(boothX + 44, boothY - 2, 0, 1);
+            drawTurntable(boothX + 1, boothY - 2);
+            drawMixer(boothX + 18, boothY + 2);
+            if (t > swarmStart) {
+                drawRect(boothX + 5, boothY + 6, 10, 6, "#1f240a");
+                drawRect(boothX + 35, boothY + 8, 8, 4, "#1f240a");
+                drawRect(boothX + 18, boothY + 2, 12, 10, "#1f240a");
+                if (t % 8 < 2) {
+                    drawRect(boothX + 10 + Math.random() * 30, boothY + Math.random() * 10, 2, 3, "#efac28");
+                }
             }
+        } else {
+            // Initialize debris on first explosion frame
+            if (t === knockStart) {
+                playBoothExplosion();
+                // Piece origins relative to booth (matching drawDJSetupPiece offsets)
+                const pieceOrigins = [
+                    { x: boothX - 12, y: boothY - 2 },   // left speaker
+                    { x: boothX + 44, y: boothY - 2 },   // right speaker
+                    { x: boothX + 1,  y: boothY - 2 },   // turntable
+                    { x: boothX + 18, y: boothY + 2 },   // mixer
+                    { x: boothX - 8,  y: boothY - 18 },  // light rig
+                    { x: boothX + 20, y: boothY - 30 },  // disco ball
+                ];
+                introBoothDebris = pieceOrigins.map((p, i) => ({
+                    pieceIndex: i,
+                    x: p.x, y: p.y,
+                    vx: (Math.random() - 0.5) * 4 + (p.x < boothX + 16 ? -1.5 : 1.5),
+                    vy: -(3 + Math.random() * 3),
+                    landed: false,
+                    carriedBy: -1,
+                }));
+                // Assign 6 theft goblins from the introGoblins that are on screen
+                const caveTargets = [CAVES[0], CAVES[1], CAVES[2], CAVES[0], CAVES[1], CAVES[2]];
+                introTheftGoblins = introBoothDebris.map((d, i) => ({
+                    x: d.x, y: d.y + 40 + Math.random() * 20,
+                    dir: 0, frame: 0, frameTimer: 0,
+                    pieceIndex: i,
+                    targetCave: caveTargets[i],
+                    carrying: false,
+                    gone: false,
+                    waitUntil: knockStart + 60 + i * 15, // staggered grab times
+                }));
+            }
+
+            // Destroyed booth platform (scorch marks)
+            drawRect(boothX - 8, boothY + 12, 64, 8, "#2a1a0a");
+            drawRect(boothX - 8, boothY + 12, 64, 2, "#3a2a1a");
+            // Scorch marks
+            drawRect(boothX + 5, boothY + 4, 15, 8, "#1a0e08");
+            drawRect(boothX + 25, boothY + 6, 12, 6, "#1a0e08");
+
+            // Update and draw debris pieces
+            const gravity = 0.12;
+            for (let di = 0; di < introBoothDebris.length; di++) {
+                const d = introBoothDebris[di];
+                if (d.carriedBy >= 0) continue; // being carried by goblin
+                if (!d.landed) {
+                    d.vy += gravity;
+                    d.x += d.vx;
+                    d.y += d.vy;
+                    // Land on the floor
+                    if (d.y > boothY + 20) {
+                        d.y = boothY + 20;
+                        d.landed = true;
+                        d.vx = 0;
+                        d.vy = 0;
+                    }
+                }
+            }
+
+            // Draw debris pieces at their scattered positions
+            const origOffsets = [
+                { x: -12, y: -2 }, { x: 44, y: -2 }, { x: 1, y: -2 },
+                { x: 18, y: 2 }, { x: -8, y: -18 }, { x: 20, y: -30 }
+            ];
+            for (let di = 0; di < introBoothDebris.length; di++) {
+                const d = introBoothDebris[di];
+                if (d.carriedBy >= 0) continue;
+                ctx.save();
+                const ofsX = d.x - (boothX + origOffsets[d.pieceIndex].x);
+                const ofsY = d.y - (boothY + origOffsets[d.pieceIndex].y);
+                ctx.translate(ofsX * SCALE, ofsY * SCALE);
+                drawDJSetupPiece(d.pieceIndex, boothX, boothY, { alpha: 0.9 });
+                ctx.restore();
+            }
+
+            // Smoke rising from destroyed booth
+            for (let si = 0; si < 4; si++) {
+                const smokeX = boothX + 5 + si * 14;
+                const smokeAnim = ((t - knockStart) * 0.3 + si * 20) % 40;
+                const smokeY = boothY + 8 - smokeAnim;
+                ctx.globalAlpha = Math.max(0, 0.2 - smokeAnim / 200);
+                if (ctx.globalAlpha > 0) drawRect(smokeX, smokeY, 3, 3, "#888888");
+            }
+            ctx.globalAlpha = 1;
         }
 
         // DJ — ducking once goblins appear, then LAUNCHED across the venue
         const djStartX = W / 2 - 8, djStartY = boothY - 2;
         // Landing spot: deep in the dance floor (open field area)
         const djEndX = W / 2 - 8, djEndY = (GRID_Y + 8) * TILE;
-        const knockStart = 260;
+        // knockStart already declared above in booth section
         const knockFlyEnd = 360;    // 100 frames of glorious airtime
         const knockLandEnd = 420;   // 60 frames of dust settling
         const aftermathStart = 420;
@@ -7874,20 +8237,66 @@ function renderIntro() {
             drawPlayerSprite(djEndX, djEndY, 0, 0, {});
         }
 
-        // Aftermath: goblins celebrate, smoke rises from booth
-        if (t >= aftermathStart) {
-            const celebFrame = Math.floor(introGlobalTimer / 10) % 4;
-            drawGoblinSprite("normal", miniGridX + 4 * TILE, miniGridY, celebFrame, { dir: 3, showShadow: false });
-            drawGoblinSprite("normal", miniGridX + 10 * TILE, miniGridY + TILE, celebFrame, { dir: 2, showShadow: false });
-            drawGoblinSprite("elite", miniGridX + 7 * TILE, miniGridY + 2 * TILE, (celebFrame + 2) % 4, { dir: 0, showShadow: false });
-            for (let si = 0; si < 3; si++) {
-                const smokeX = boothX + 15 + si * 12;
-                const smokeAnim = ((t - aftermathStart) * 0.3 + si * 20) % 30;
-                const smokeY = boothY - smokeAnim;
-                ctx.globalAlpha = Math.max(0, 0.15 - smokeAnim / 200);
-                if (ctx.globalAlpha > 0) drawRect(smokeX, smokeY, 3, 3, "#888888");
+        // Aftermath: goblins grab debris pieces and flee to caves
+        if (t >= knockStart + 30) {
+            const origOffsets2 = [
+                { x: -12, y: -2 }, { x: 44, y: -2 }, { x: 1, y: -2 },
+                { x: 18, y: 2 }, { x: -8, y: -18 }, { x: 20, y: -30 }
+            ];
+            for (let gi = 0; gi < introTheftGoblins.length; gi++) {
+                const tg = introTheftGoblins[gi];
+                if (tg.gone) continue;
+                const d = introBoothDebris[tg.pieceIndex];
+
+                if (t < tg.waitUntil) {
+                    // Goblin running toward the fallen piece
+                    const moveT = Math.min(1, (t - knockStart - 30) / (tg.waitUntil - knockStart - 30));
+                    const targetX = d.x;
+                    const targetY = d.y;
+                    tg.x = tg.x + (targetX - tg.x) * 0.08;
+                    tg.y = tg.y + (targetY - tg.y) * 0.08;
+                    tg.dir = targetX > tg.x ? 3 : 2;
+                } else if (!tg.carrying) {
+                    // Grab the piece
+                    tg.carrying = true;
+                    d.carriedBy = gi;
+                } else {
+                    // Flee toward target cave
+                    const caveX = tg.targetCave.tileX * TILE;
+                    const caveY = tg.targetCave.tileY * TILE;
+                    const dx = caveX - tg.x;
+                    const dy = caveY - tg.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 3) {
+                        tg.gone = true;
+                        continue;
+                    }
+                    const speed = 2.5;
+                    tg.x += (dx / dist) * speed;
+                    tg.y += (dy / dist) * speed;
+                    tg.dir = dx > 0 ? 3 : 2;
+                    // Move the carried piece with the goblin
+                    d.x = tg.x;
+                    d.y = tg.y - 8;
+                }
+
+                // Draw the goblin
+                tg.frameTimer++;
+                if (tg.frameTimer > 6) { tg.frameTimer = 0; tg.frame = (tg.frame + 1) % 4; }
+                const gobType = gi === 4 ? "elite" : "normal";
+                drawGoblinSprite(gobType, tg.x, tg.y, tg.frame, { dir: tg.dir, showShadow: false });
+
+                // Draw carried piece above goblin
+                if (tg.carrying && !tg.gone) {
+                    ctx.save();
+                    const ofsX = d.x - (boothX + origOffsets2[d.pieceIndex].x);
+                    const ofsY = d.y - (boothY + origOffsets2[d.pieceIndex].y);
+                    ctx.translate(ofsX * SCALE, ofsY * SCALE);
+                    ctx.scale(0.6, 0.6);
+                    drawDJSetupPiece(d.pieceIndex, boothX, boothY, { alpha: 0.9 });
+                    ctx.restore();
+                }
             }
-            ctx.globalAlpha = 1;
         }
 
         ctx.restore();
@@ -7910,13 +8319,20 @@ function renderIntro() {
         ctx.fillRect(0, 0, W * SCALE, H * SCALE);
         ctx.globalAlpha = 1;
 
-        // Caption — appears once goblins are swarming
-        if (t > 180) {
+        // Caption — appears once goblins are swarming, changes after theft
+        if (t > 180 && t < aftermathStart) {
             const capAlpha = Math.min(1, (t - 180) / 30);
             ctx.globalAlpha = capAlpha;
             drawCentered("THEY CAME POURING OUT. SMALL, VICIOUS, AND FAST.", H - 60, "#39FF14", 5);
             drawCentered("THEY SWARMED THE BEAT GRID AND TORE IT APART,", H - 50, "#39FF14", 5);
             drawCentered("NOTE BY NOTE. THE MUSIC TWISTED INTO NOISE.", H - 40, "#39FF14", 5);
+            ctx.globalAlpha = 1;
+        }
+        if (t >= aftermathStart) {
+            const capAlpha = Math.min(1, (t - aftermathStart) / 30);
+            ctx.globalAlpha = capAlpha;
+            drawCentered("THEY TORE THE SETUP APART AND DRAGGED IT", H - 50, "#FF4400", 5);
+            drawCentered("BACK INTO THE CAVES, PIECE BY PIECE.", H - 40, "#FF4400", 5);
             ctx.globalAlpha = 1;
         }
     }
