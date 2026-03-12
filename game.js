@@ -4030,18 +4030,6 @@ function renderMinigameArena() {
         ctx.globalAlpha = 1;
     }
 
-    // HUD: Timer display
-    const timerSecs = Math.ceil(minigameTimer / 60);
-    const timerColor = timerSecs <= 5 ? "#FF0044" : timerSecs <= 10 ? "#efac28" : "#00FF88";
-    const timerPulse = timerSecs <= 5 ? Math.sin(minigameTimer * 0.2) * 2 : 0;
-
-    ctx.textAlign = "center";
-    ctx.font = `${(12 + timerPulse) * SCALE}px monospace`;
-    ctx.fillStyle = "#000";
-    ctx.fillText(String(timerSecs), (W / 2) * SCALE + SCALE, (12 + timerPulse / 2) * SCALE + SCALE);
-    ctx.fillStyle = timerColor;
-    ctx.fillText(String(timerSecs), (W / 2) * SCALE, (12 + timerPulse / 2) * SCALE);
-
     // "SURVIVE!" text at top
     ctx.font = `${6 * SCALE}px monospace`;
     ctx.fillStyle = "#000";
