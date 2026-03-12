@@ -3129,7 +3129,7 @@ function updateMinigameArena() {
                     cg.dead = true;
                     caveKillCount++;
                     caveCatapultKillCount++;
-                    score += cg.elite ? 150 : 50;
+                    score += cg.elite ? 300 : 100;
 
                     caveHitFreeze = cg.deathAnimElite ? 5 : 3;
                     cavePendingShake = true;
