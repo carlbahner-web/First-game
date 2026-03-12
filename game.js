@@ -7232,27 +7232,32 @@ function renderIntro() {
             }
         }
 
-        // DJ — ducking once goblins appear, then tackled, collapses
+        // DJ — ducking once goblins appear, then LAUNCHED across the venue
         const djStartX = W / 2 - 8, djStartY = boothY - 2;
-        const djEndX = W / 2 + 15, djEndY = boothY + 4;
-        const knockStart = 260, knockEnd = 300;
-        const aftermathStart = 470;
+        // Landing spot: deep in the dance floor (open field area)
+        const djEndX = W / 2 - 8, djEndY = (GRID_Y + 8) * TILE;
+        const knockStart = 260;
+        const knockFlyEnd = 360;    // 100 frames of glorious airtime
+        const knockLandEnd = 420;   // 60 frames of dust settling
+        const aftermathStart = 420;
 
         // Tackling goblin — charges from right cave, hits DJ, runs back
         const tackleGobStart = 200;
         const tackleGobX0 = (COLS - 2) * TILE;
         const tackleGobY0 = boothY;
         const tackleGobXEnd = djStartX + 10;
-        const tackleRetreatEnd = knockEnd + 60;
+        const tackleRetreatEnd = knockFlyEnd + 60;
         if (t >= tackleGobStart && t < tackleRetreatEnd) {
             let tgx, tgy = tackleGobY0, tgDir = 2;
             if (t < knockStart) {
                 const tackleT = Math.min(1, (t - tackleGobStart) / (knockStart - tackleGobStart));
                 tgx = tackleGobX0 + (tackleGobXEnd - tackleGobX0) * tackleT;
-            } else if (t < knockEnd) {
+            } else if (t < knockStart + 10) {
+                // Stays at impact point briefly
                 tgx = tackleGobXEnd;
             } else {
-                const retreatT = (t - knockEnd) / 60;
+                // Retreating back to cave
+                const retreatT = Math.min(1, (t - knockStart - 10) / 60);
                 tgx = tackleGobXEnd + (tackleGobX0 - tackleGobXEnd) * retreatT;
                 tgDir = 3;
             }
@@ -7260,27 +7265,173 @@ function renderIntro() {
         }
 
         if (t < knockStart) {
+            // Ducking behind booth, looking around nervously
             const djLook = Math.floor(t / 15) % 4;
             const djDir = djLook < 2 ? 2 : 3;
             drawPlayerSprite(djStartX, djStartY, 0, djDir, {});
-        } else if (t < knockEnd) {
-            const knockT = (t - knockStart) / (knockEnd - knockStart);
+        } else if (t < knockFlyEnd) {
+            // === DRAMATIC LAUNCH — DJ flies across the entire venue ===
+            const knockT = (t - knockStart) / (knockFlyEnd - knockStart); // 0→1 over 100 frames
+
+            // X: slight drift toward center
             const djX = djStartX + (djEndX - djStartX) * knockT;
-            const arcHeight = -22 * Math.sin(knockT * Math.PI * 0.7);
-            const djY = djStartY + (djEndY - djStartY) * knockT * knockT + arcHeight;
+            // Y: massive parabolic arc — launches UP then crashes DOWN into dance floor
+            // Arc peaks at ~40% of flight (launched hard, gravity pulls down)
+            const arcHeight = -90 * Math.sin(knockT * Math.PI * 0.85);
+            const djY = djStartY + (djEndY - djStartY) * Math.pow(knockT, 1.8) + arcHeight;
+
+            // Comic perspective scaling — sprite grows as DJ "flies toward camera" at apex
+            const flyScale = 1 + 0.9 * Math.sin(knockT * Math.PI);
+
+            // Tumbling rapidly — direction changes every 3 frames
             const tumbleDir = [3, 0, 2, 1][Math.floor(t / 3) % 4];
-            const djFrame = Math.floor(t / 3) % 4;
+            const djFrame = Math.floor(t / 2) % 4; // fast leg cycling = flailing
+
+            // Impact flash on first frame
             if (t === knockStart) {
-                ctx.globalAlpha = 0.6;
-                drawRect(djStartX - 4, djStartY - 4, 24, 24, "#FFFFFF");
+                ctx.globalAlpha = 0.8;
+                drawRect(djStartX - 8, djStartY - 8, 32, 32, "#FFFFFF");
                 ctx.globalAlpha = 1;
             }
+
+            // Draw scaled DJ with flailing limbs
+            ctx.save();
+            const spriteCX = djX * SCALE + 24 * SCALE * 0.5; // center of 16px sprite
+            const spriteCY = djY * SCALE + 21 * SCALE * 0.5;
+            ctx.translate(spriteCX, spriteCY);
+            ctx.scale(flyScale, flyScale);
+            ctx.translate(-spriteCX, -spriteCY);
             drawPlayerSprite(djX, djY, djFrame, tumbleDir, {});
+
+            // Flailing arms — skin-colored lines thrashing around the sprite
+            const flailAngle = t * 0.8; // rapid rotation
+            const flailLen = (8 + Math.sin(t * 0.5) * 4) * SCALE;
+            ctx.strokeStyle = "#efb775";
+            ctx.lineWidth = 3 * SCALE;
+            ctx.lineCap = "round";
+            // Left arm flailing
+            const armBaseX = (djX + 4) * SCALE;
+            const armBaseY = (djY + 6) * SCALE;
+            ctx.beginPath();
+            ctx.moveTo(armBaseX, armBaseY);
+            ctx.lineTo(armBaseX + Math.cos(flailAngle) * flailLen, armBaseY + Math.sin(flailAngle) * flailLen);
+            ctx.stroke();
+            // Right arm flailing (offset phase)
+            const armBaseX2 = (djX + 12) * SCALE;
+            ctx.beginPath();
+            ctx.moveTo(armBaseX2, armBaseY);
+            ctx.lineTo(armBaseX2 + Math.cos(flailAngle + 2.5) * flailLen, armBaseY + Math.sin(flailAngle + 2.5) * flailLen);
+            ctx.stroke();
+            // Flailing fists at arm ends
+            ctx.fillStyle = "#efb775";
+            ctx.beginPath();
+            ctx.arc(armBaseX + Math.cos(flailAngle) * flailLen, armBaseY + Math.sin(flailAngle) * flailLen, 2.5 * SCALE, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(armBaseX2 + Math.cos(flailAngle + 2.5) * flailLen, armBaseY + Math.sin(flailAngle + 2.5) * flailLen, 2.5 * SCALE, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            // Speed lines trailing behind the DJ
+            if (knockT > 0.05 && knockT < 0.9) {
+                ctx.strokeStyle = "#efd8a1";
+                ctx.lineWidth = 1 * SCALE;
+                ctx.globalAlpha = 0.4 * (1 - knockT);
+                for (let sl = 0; sl < 5; sl++) {
+                    const slX = (djX + 8 + (sl - 2) * 4) * SCALE;
+                    const slY = djY * SCALE;
+                    const slLen = (10 + sl * 5) * SCALE * flyScale;
+                    ctx.beginPath();
+                    ctx.moveTo(slX, slY);
+                    ctx.lineTo(slX - (djX - djStartX) * 0.3 * SCALE, slY - slLen);
+                    ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
+            }
+
+            // Shadow on the ground grows/shrinks with height
+            const shadowY = djEndY + 4;
+            const shadowWidth = 10 + flyScale * 6;
+            const shadowAlpha = 0.15 + (1 - Math.abs(arcHeight) / 90) * 0.15;
+            ctx.globalAlpha = shadowAlpha;
+            ctx.fillStyle = "#000000";
+            ctx.beginPath();
+            ctx.ellipse((djX + 8) * SCALE, shadowY * SCALE, shadowWidth * SCALE, 2 * SCALE, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        } else if (t < knockLandEnd) {
+            // === CRASH LANDING — dust cloud erupts ===
+            const landT = (t - knockFlyEnd) / (knockLandEnd - knockFlyEnd); // 0→1 over 60 frames
+
+            // Screen shake on impact (strong, fading)
+            if (t - knockFlyEnd < 20) {
+                const impactShake = (1 - (t - knockFlyEnd) / 20) * 8;
+                ctx.save();
+                ctx.translate(
+                    (Math.random() - 0.5) * impactShake * SCALE,
+                    (Math.random() - 0.5) * impactShake * SCALE
+                );
+            }
+
+            // DJ lying collapsed in crater
+            drawPlayerSprite(djEndX, djEndY, 0, 0, {});
+
+            // Dust cloud — particles burst outward then rise and fade
+            const dustCount = 16;
+            for (let di = 0; di < dustCount; di++) {
+                const angle = (di / dustCount) * Math.PI * 2 + di * 0.7;
+                const burstSpeed = 15 + (di % 5) * 8;
+                const burstDist = burstSpeed * landT;
+                const riseAmt = landT * landT * 20; // dust rises over time
+                const dustX = (djEndX + 8 + Math.cos(angle) * burstDist) * SCALE;
+                const dustY = (djEndY + 4 + Math.sin(angle) * burstDist * 0.5 - riseAmt) * SCALE;
+                const dustSize = (3 + di % 3) * (1 - landT * 0.6) * SCALE;
+                const dustAlpha = Math.max(0, 0.6 * (1 - landT));
+                if (dustAlpha > 0 && dustSize > 0) {
+                    ctx.globalAlpha = dustAlpha;
+                    ctx.fillStyle = di % 3 === 0 ? "#b8a888" : di % 3 === 1 ? "#8a7a60" : "#c8b898";
+                    ctx.beginPath();
+                    ctx.arc(dustX, dustY, dustSize, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            // Central dust cloud (big billowing mass)
+            const cloudAlpha = Math.max(0, 0.5 * (1 - landT * 0.8));
+            if (cloudAlpha > 0) {
+                ctx.globalAlpha = cloudAlpha;
+                const cloudR = (20 + landT * 30) * SCALE;
+                const cloudRise = landT * 15;
+                ctx.fillStyle = "#a09070";
+                ctx.beginPath();
+                ctx.ellipse((djEndX + 8) * SCALE, (djEndY + 4 - cloudRise) * SCALE, cloudR, cloudR * 0.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+                // Lighter inner cloud
+                ctx.fillStyle = "#c8b898";
+                ctx.beginPath();
+                ctx.ellipse((djEndX + 8) * SCALE, (djEndY + 2 - cloudRise) * SCALE, cloudR * 0.6, cloudR * 0.3, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+
+            // Impact flash on first landing frame
+            if (t === knockFlyEnd) {
+                ctx.globalAlpha = 0.5;
+                ctx.fillStyle = "#FFFFFF";
+                ctx.beginPath();
+                ctx.arc((djEndX + 8) * SCALE, (djEndY + 4) * SCALE, 30 * SCALE, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+
+            if (t - knockFlyEnd < 20) {
+                ctx.restore(); // restore screen shake
+            }
         } else {
+            // Collapsed — lying still where he landed
             drawPlayerSprite(djEndX, djEndY, 0, 0, {});
         }
 
-        // Aftermath: goblins celebrate, smoke rises
+        // Aftermath: goblins celebrate, smoke rises from booth
         if (t >= aftermathStart) {
             const celebFrame = Math.floor(introGlobalTimer / 10) % 4;
             drawGoblinSprite("normal", miniGridX + 4 * TILE, miniGridY, celebFrame, { dir: 3, showShadow: false });
@@ -7330,36 +7481,21 @@ function renderIntro() {
     // ==================== SCENE 3: CALL TO ACTION ====================
     else if (introScene === 3) {
         // DJ crawls from collapsed position to center, then rises and clenches fists
-        // Crawl phase (0-120): axis-aligned L-path from Scene 2 collapsed position to center
+        // Crawl phase (0-120): crawls up from dance floor landing spot toward center
         // Rise phase (120+): existing stand-up and fist-clench sequence
         const CRAWL_FRAMES = 120;
-        const crawlStartX = W / 2 + 15;  // Scene 2 collapsed X (183)
-        const crawlStartY = GRID_Y * TILE - 8 + 4; // Scene 2 collapsed Y (boothY + 4 = 76)
-        const crawlEndX = W / 2 - 8;     // Center X (168)
-        const crawlEndY = H / 2 + 10;    // Center Y (154)
-
-        // L-shaped crawl: horizontal first (left), then vertical (down)
-        const adx = Math.abs(crawlEndX - crawlStartX); // 15
-        const ady = Math.abs(crawlEndY - crawlStartY);  // 94
-        const hRatio = adx / (adx + ady); // ~0.14
+        const crawlStartX = W / 2 - 8;   // Scene 2 landing X (center of venue)
+        const crawlStartY = (GRID_Y + 8) * TILE; // Scene 2 landing Y (deep in dance floor)
+        const crawlEndX = W / 2 - 8;     // Center X
+        const crawlEndY = H / 2 + 10;    // Center Y
         const crawlT = Math.min(1, t / CRAWL_FRAMES);
 
         let djX, djY, djDir, djFrame;
         if (t < CRAWL_FRAMES) {
-            // Crawl phase
-            if (crawlT <= hRatio) {
-                // Horizontal phase (moving left)
-                const hProgress = hRatio > 0 ? crawlT / hRatio : 1;
-                djX = crawlStartX + (crawlEndX - crawlStartX) * hProgress;
-                djY = crawlStartY;
-                djDir = 2; // facing left
-            } else {
-                // Vertical phase (moving down)
-                const vProgress = (crawlT - hRatio) / (1 - hRatio);
-                djX = crawlEndX;
-                djY = crawlStartY + (crawlEndY - crawlStartY) * vProgress;
-                djDir = 0; // facing down
-            }
+            // Crawl straight up from landing spot to center
+            djX = crawlStartX;
+            djY = crawlStartY + (crawlEndY - crawlStartY) * crawlT;
+            djDir = 1; // facing up (crawling upward)
             djFrame = Math.floor(t / 10) % 4; // slow crawl animation
         } else {
             // Rise phase (same as original, offset by CRAWL_FRAMES)
