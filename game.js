@@ -5355,7 +5355,9 @@ function drawPunch() {
 
 // Draw the ruined venue backdrop (used in tutorial scenes)
 // t: animation timer for smoke wisps
-function drawRuinedVenueBackdrop(t) {
+function drawRuinedVenueBackdrop(t, options) {
+    const opts = options || {};
+    const skipGrid = opts.skipGrid || false;
     const W = COLS * TILE;
     const H = ROWS * TILE;
     // Dark floor
@@ -5396,7 +5398,7 @@ function drawRuinedVenueBackdrop(t) {
     }
     ctx.globalAlpha = 1;
     // Corrupted beat grid (carries over from intro scenes)
-    if (introGridState) {
+    if (introGridState && !skipGrid) {
         const miniGridY = GRID_Y * TILE + GRID_Y_OFFSET;
         const miniGridX = 3 * TILE;
         ctx.globalAlpha = 0.35;
@@ -6264,7 +6266,7 @@ function renderTitleScreen() {
 
     // === Mode selector above "PRESS ENTER" ===
     if (!titleFadingOut) {
-        const modeY = titleBaseY + 50;
+        const modeY = titleBaseY + 58;
         const modeLabel = gameMode === "thrill" ? "THRILL MODE" : "CHILL MODE";
         const modeCol = gameMode === "thrill" ? "#ef3a0c" : "#3c9f9c";
         const arrowPulse = 0.4 + Math.sin(titleBlink * 0.08) * 0.3;
@@ -6276,7 +6278,7 @@ function renderTitleScreen() {
     }
 
     // === "PRESS ENTER" below the title ===
-    const pressY = titleBaseY + 64;
+    const pressY = titleBaseY + 72;
 
     // Blink the text with a faster, more urgent rhythm
     if (titleBlink % 45 < 32 && !titleFadingOut) {
@@ -7577,7 +7579,7 @@ function renderIntro() {
 
     // ==================== SCENE 4: THE DISCOVERY ====================
     else if (introScene === 4) {
-        drawRuinedVenueBackdrop(t);
+        drawRuinedVenueBackdrop(t, { skipGrid: true });
 
         // Fade in from black (smooth transition from Scene 3's spotlight)
         if (t < 30) {
@@ -7598,7 +7600,7 @@ function renderIntro() {
         // DJ sprite standing before demo begins — narrative bridge from Scene 3
         if (t < 60) {
             const djBridgeX = W / 2 - 8;
-            const djBridgeY = H / 2 - 10;
+            const djBridgeY = 96;
             const djAlpha = Math.min(1, t / 20);
             ctx.globalAlpha = djAlpha;
             drawPlayerSprite(djBridgeX, djBridgeY, 0, 0, {});
@@ -7634,7 +7636,7 @@ function renderIntro() {
         // Animated demo grid — player walks to blocks and hits them (scaled up)
         const DT = Math.floor(TILE * 1.4);
         const gridStartX = W / 2 - 4 * DT / 2;
-        const gridStartY = 150;
+        const gridStartY = 120;
         const miniRows = 2;
         const rowColors = ["#efac28", "#efb775"];
         const demoTarget = [[true, false, true, false], [false, true, false, true]];
@@ -7894,7 +7896,7 @@ function renderIntro() {
 
     // ==================== SCENE 5: THE THREAT ====================
     else if (introScene === 5) {
-        drawRuinedVenueBackdrop(t);
+        drawRuinedVenueBackdrop(t, { skipGrid: true });
 
         // Page indicator dots (scenes 4-6)
         const dotY = H - 22;
@@ -8062,7 +8064,7 @@ function renderIntro() {
 
     // ==================== SCENE 6: THE STAND ====================
     else if (introScene === 6) {
-        drawRuinedVenueBackdrop(t);
+        drawRuinedVenueBackdrop(t, { skipGrid: true });
 
         // Page indicator dots (scenes 4-6)
         const dotY = H - 22;
