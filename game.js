@@ -1083,7 +1083,8 @@ let djSetupEarned = []; // pieces earned so far
 // Minigame state
 let minigameActive = false;
 let minigameTimer = 0; // countdown in frames
-let minigameState = "none"; // "none", "kidnap", "playing", "rescue", "reward"
+let minigameState = "none"; // "none", "kidnap", "instructions", "playing", "rescue", "reward"
+let minigameInstructionsTimer = 0;
 let minigameKidnapTimer = 0;
 let minigameKidnapPhase = 0; // 0=goblins appear, 1=flank DJ, 2=escort to cave
 let minigameRescueTimer = 0;
@@ -1317,7 +1318,7 @@ window.addEventListener("keydown", (e) => {
         if (gameState === "enemywarning" || gameState === "enemywarning-intro") return; // ignore Space on warning screen
         if (gameState === "newinstrument") return; // ignore Space on instrument screen
         if (gameState === "sabotage-anim") return; // ignore input during sabotage animation
-        if (minigameState === "kidnap" || minigameState === "rescue" || minigameState === "reward") return; // ignore during minigame cutscenes
+        if (minigameState === "kidnap" || minigameState === "instructions" || minigameState === "rescue" || minigameState === "reward") return; // ignore during minigame cutscenes
         if (!keys[e.code]) spaceJustPressed = true; // only on initial press
     }
     keys[e.code] = true;
@@ -1352,6 +1353,11 @@ window.addEventListener("keydown", (e) => {
         e.preventDefault();
         if (gameState === "sabotage-anim") return; // ignore input during sabotage animation
         if (minigameState === "kidnap") return; // no skipping kidnap cutscene
+        if (minigameState === "instructions" && minigameInstructionsTimer > 30) {
+            startMinigameArena();
+            return;
+        }
+        if (minigameState === "instructions") return; // let intro play
         if (minigameState === "reward" && minigameRewardTimer > 120) {
             // Player dismisses reward screen — continue to next level
             endMinigame();
@@ -2828,8 +2834,8 @@ function updateMinigameKidnap() {
         kidnapGoblin2.x = kidnapDJPos.x + TILE * 1.5;
 
         if (kidnapDJPos.y < kidnapTargetY) {
-            // Transition to cave arena
-            startMinigameArena();
+            // Transition to instructions screen before arena
+            startMinigameInstructions();
         }
     }
 }
@@ -2865,6 +2871,107 @@ function renderMinigameKidnap() {
             ctx.fillStyle = "#FF0044";
             ctx.fillText("KIDNAPPED!", (W * SCALE) / 2, (H / 3) * SCALE);
         }
+    }
+}
+
+function startMinigameInstructions() {
+    minigameState = "instructions";
+    minigameInstructionsTimer = 0;
+}
+
+function renderMinigameInstructions() {
+    minigameInstructionsTimer++;
+    const t = minigameInstructionsTimer;
+    const W = COLS * TILE;
+    const H = ROWS * TILE;
+
+    // Dark cave-themed background
+    drawRect(0, 0, W, H, "#1a0e08");
+
+    // Threat color tint pulse (red/orange — danger theme)
+    const threatPulse = 0.03 + Math.sin(t * 0.06) * 0.02;
+    ctx.fillStyle = "#FF4400";
+    ctx.globalAlpha = threatPulse;
+    ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+    ctx.globalAlpha = 1.0;
+
+    // Starfield
+    for (let i = 0; i < 60; i++) {
+        const sx = ((i * 137 + 50) % W);
+        const sy = ((i * 97 + 30) % H);
+        const twinkle = Math.sin(t * 0.05 + i) * 0.5 + 0.5;
+        ctx.globalAlpha = 0.3 + twinkle * 0.7;
+        const starSize = (i % 3 === 0) ? 2 : 1;
+        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#efac28" : "#efd8a1");
+    }
+    ctx.globalAlpha = 1;
+
+    // Centered text helper
+    function drawCenteredText(text, y, color, scale) {
+        ctx.font = `${scale * SCALE}px monospace`;
+        ctx.fillStyle = color;
+        ctx.textAlign = "center";
+        ctx.fillText(text, (W * SCALE) / 2, y * SCALE);
+        ctx.textAlign = "start";
+    }
+
+    // Danger border effect — animated hazard stripes
+    const borderPulse = 0.3 + Math.sin(t * 0.1) * 0.2;
+    const borderCol = "#FF4400";
+    const stripeW = 8;
+    const borderThick = 4;
+    const stripeOffset = (t * 0.5) % (stripeW * 2);
+    ctx.globalAlpha = borderPulse;
+    for (let sx = -stripeW * 2; sx < W; sx += stripeW * 2) {
+        drawRect(sx + stripeOffset, 0, stripeW, borderThick, borderCol);
+    }
+    for (let sx = -stripeW * 2; sx < W; sx += stripeW * 2) {
+        drawRect(sx - stripeOffset + stripeW, H - borderThick, stripeW, borderThick, borderCol);
+    }
+    for (let sy = -stripeW * 2; sy < H; sy += stripeW * 2) {
+        drawRect(0, sy + stripeOffset, borderThick, stripeW, borderCol);
+    }
+    for (let sy = -stripeW * 2; sy < H; sy += stripeW * 2) {
+        drawRect(W - borderThick, sy - stripeOffset + stripeW, borderThick, stripeW, borderCol);
+    }
+    ctx.globalAlpha = 1.0;
+
+    // Title
+    drawCenteredText("DUNGEON!", 30, "#FF4400", 8);
+    drawCenteredText("A FRIEND HAS BEEN CAPTURED", 52, "#efac28", 5);
+
+    // Animated sprites: player punching a goblin
+    const bobOffset = Math.round(Math.sin(t * 0.08) * 3);
+    const gobFrame = Math.floor(t / 10) % 4;
+
+    // Dramatic zoom-in
+    const zoomDuration = 30;
+    const zoomProgress = Math.min(1, t / zoomDuration);
+    const zoomEase = zoomProgress < 1 ? 1 - Math.pow(1 - zoomProgress, 3) * (1 - 0.3 * Math.sin(zoomProgress * Math.PI)) : 1;
+    const spriteScale = 0.2 + zoomEase * 0.8;
+
+    // Draw player and goblin facing each other
+    ctx.save();
+    const cx_w = (W / 2) * SCALE;
+    const cy_w = (82 + bobOffset + 8) * SCALE;
+    ctx.translate(cx_w, cy_w);
+    ctx.scale(spriteScale, spriteScale);
+    ctx.translate(-cx_w, -cy_w);
+    // Player on left facing right
+    const punchCycle = Math.sin(t * 0.12) > 0.3 ? Math.sin(t * 0.12) : 0;
+    drawPlayerSprite(W / 2 - 28, 82 + bobOffset, gobFrame, 3, { punchThrust: punchCycle });
+    // Goblin on right facing left
+    drawGoblinSprite("normal", W / 2 + 12, 82 + bobOffset, gobFrame, { dir: 2, showShadow: false });
+    ctx.restore();
+
+    // Instructions
+    drawCenteredText("MOVE: ARROW KEYS", 125, "#efb775", 5);
+    drawCenteredText("PUNCH: SPACEBAR", 142, "#efb775", 5);
+    drawCenteredText("SURVIVE UNTIL HELP ARRIVES!", 162, "#FF4400", 5);
+
+    // Blinking "PRESS ENTER TO CONTINUE"
+    if (t > 60 && t % 60 < 40) {
+        drawCenteredText("PRESS ENTER TO CONTINUE", H - 10, "#efd8a1", 5);
     }
 }
 
@@ -9229,6 +9336,8 @@ function gameLoop(timestamp) {
                 if (minigameState === "kidnap") {
                     updateMinigameKidnap();
                     renderMinigameKidnap();
+                } else if (minigameState === "instructions") {
+                    renderMinigameInstructions();
                 } else if (minigameState === "playing") {
                     updateMinigameArena();
                     renderMinigameArena();
