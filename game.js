@@ -5632,6 +5632,49 @@ function render() {
         }
     }
 
+    // Controls overlay (level 1 only — fades after player confirms move + punch)
+    if (controlsOverlayActive && currentLevel === 0) {
+        const alpha = controlsMoveConfirmed && controlsPunchConfirmed
+            ? Math.max(0, 1 - controlsFadeTimer / 40)
+            : 1;
+        if (alpha > 0) {
+            const W = COLS * TILE;
+            const overlayY = (GRID_Y + LEVELS[currentLevel].activeRows + 2) * TILE + GRID_Y_OFFSET;
+            const boxW = 100;
+            const boxH = 28;
+            const boxX = W / 2 - boxW / 2;
+
+            // Semi-transparent background
+            ctx.globalAlpha = alpha * 0.65;
+            drawRect(boxX, overlayY, boxW, boxH, "#1a0e08");
+            // Border
+            ctx.globalAlpha = alpha * 0.4;
+            drawRect(boxX, overlayY, boxW, 1, "#efac28");
+            drawRect(boxX, overlayY + boxH - 1, boxW, 1, "#efac28");
+            drawRect(boxX, overlayY, 1, boxH, "#efac28");
+            drawRect(boxX + boxW - 1, overlayY, 1, boxH, "#efac28");
+
+            ctx.globalAlpha = alpha;
+            ctx.textAlign = "center";
+
+            // MOVE line
+            const moveColor = controlsMoveConfirmed ? "#5a7a3a" : "#efb775";
+            const moveText = controlsMoveConfirmed ? "MOVE  OK" : "MOVE: ARROW KEYS";
+            ctx.font = `${4 * SCALE}px monospace`;
+            ctx.fillStyle = moveColor;
+            ctx.fillText(moveText, (W / 2) * SCALE, (overlayY + 11) * SCALE);
+
+            // PUNCH line
+            const punchColor = controlsPunchConfirmed ? "#5a7a3a" : "#efb775";
+            const punchText = controlsPunchConfirmed ? "PUNCH  OK" : "PUNCH: SPACEBAR";
+            ctx.fillStyle = punchColor;
+            ctx.fillText(punchText, (W / 2) * SCALE, (overlayY + 22) * SCALE);
+
+            ctx.textAlign = "start";
+            ctx.globalAlpha = 1;
+        }
+    }
+
     // Restore screen shake transform
     if (screenShake > 0) {
         ctx.restore();
@@ -5913,49 +5956,6 @@ function drawPunch() {
             ctx.stroke();
         }
         ctx.globalAlpha = 1.0;
-    }
-
-    // Controls overlay (level 1 only — fades after player confirms move + punch)
-    if (controlsOverlayActive && currentLevel === 0) {
-        const alpha = controlsMoveConfirmed && controlsPunchConfirmed
-            ? Math.max(0, 1 - controlsFadeTimer / 40)
-            : 1;
-        if (alpha > 0) {
-            const W = COLS * TILE;
-            const overlayY = (GRID_Y + LEVELS[currentLevel].activeRows + 2) * TILE + GRID_Y_OFFSET;
-            const boxW = 100;
-            const boxH = 28;
-            const boxX = W / 2 - boxW / 2;
-
-            // Semi-transparent background
-            ctx.globalAlpha = alpha * 0.65;
-            drawRect(boxX, overlayY, boxW, boxH, "#1a0e08");
-            // Border
-            ctx.globalAlpha = alpha * 0.4;
-            drawRect(boxX, overlayY, boxW, 1, "#efac28");
-            drawRect(boxX, overlayY + boxH - 1, boxW, 1, "#efac28");
-            drawRect(boxX, overlayY, 1, boxH, "#efac28");
-            drawRect(boxX + boxW - 1, overlayY, 1, boxH, "#efac28");
-
-            ctx.globalAlpha = alpha;
-            ctx.textAlign = "center";
-
-            // MOVE line
-            const moveColor = controlsMoveConfirmed ? "#5a7a3a" : "#efb775";
-            const moveText = controlsMoveConfirmed ? "MOVE  OK" : "MOVE: ARROW KEYS";
-            ctx.font = `${4 * SCALE}px monospace`;
-            ctx.fillStyle = moveColor;
-            ctx.fillText(moveText, (W / 2) * SCALE, (overlayY + 11) * SCALE);
-
-            // PUNCH line
-            const punchColor = controlsPunchConfirmed ? "#5a7a3a" : "#efb775";
-            const punchText = controlsPunchConfirmed ? "PUNCH  OK" : "PUNCH: SPACEBAR";
-            ctx.fillStyle = punchColor;
-            ctx.fillText(punchText, (W / 2) * SCALE, (overlayY + 22) * SCALE);
-
-            ctx.textAlign = "start";
-            ctx.globalAlpha = 1;
-        }
     }
 
     ctx.restore();
