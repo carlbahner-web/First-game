@@ -14,6 +14,7 @@ const GRID_COLS = 16;      // sequencer steps
 const GRID_ROWS = 6;       // max drum channels (O, H, S, K, B, T)
 const GRID_X = 3;          // grid start tile-x
 const GRID_Y = 5;          // grid start tile-y
+const GRID_Y_OFFSET = 14;  // pixel offset to push grid below booth (matches intro scenes)
 // (gap row after kick removed)
 // Tempo is set per level using frames-per-16th-note at 60fps
 // Gradual curve across 30 levels:
@@ -869,9 +870,9 @@ const DANCER_PALETTES = [
 // ---- Player State ----
 const player = {
     x: (GRID_X + 7) * TILE,   // current position (smooth, pixel-level)
-    y: (GRID_Y + LEVELS[0].activeRows + 1) * TILE,
+    y: (GRID_Y + LEVELS[0].activeRows + 1) * TILE + GRID_Y_OFFSET,
     destX: (GRID_X + 7) * TILE, // movement destination
-    destY: (GRID_Y + LEVELS[0].activeRows + 1) * TILE,
+    destY: (GRID_Y + LEVELS[0].activeRows + 1) * TILE + GRID_Y_OFFSET,
     w: TILE,
     h: TILE,
     dir: 0,        // 0=down, 1=up, 2=left, 3=right
@@ -1295,7 +1296,7 @@ function handleCheatCode(key) {
                         grid[r][c] = startPat[r][c];
             }
             levelTimer = LEVELS[currentLevel].timerSeconds * 90;
-            player.y = (gridBottomTileY() + 1) * TILE;
+            player.y = (gridBottomTileY() + 1) * TILE + GRID_Y_OFFSET;
             player.destY = player.y;
             setLevelTempo(currentLevel);
             ensureAudio();
@@ -1479,7 +1480,7 @@ function getActiveRows() {
 
 // ---- Helper: pixel Y for a grid row ----
 function rowPixelY(r) {
-    return (GRID_Y + r) * TILE;
+    return (GRID_Y + r) * TILE + GRID_Y_OFFSET;
 }
 
 // ---- Helper: tile Y of the bottom of the active grid ----
@@ -1489,7 +1490,7 @@ function gridBottomTileY() {
 
 // ---- Helper: convert tile Y back to grid row (inverse of rowPixelY) ----
 function tileYToRow(tileY) {
-    return tileY - GRID_Y;
+    return tileY - GRID_Y - Math.round(GRID_Y_OFFSET / TILE);
 }
 
 // ---- Helper: check if a tile is occupied by a dancer ----
@@ -2579,7 +2580,7 @@ function resetGame() {
 
     // Reset player (currentLevel is set to 0 below, so use level 0 activeRows)
     player.x = (GRID_X + 7) * TILE;
-    player.y = (GRID_Y + LEVELS[0].activeRows + 1) * TILE;
+    player.y = (GRID_Y + LEVELS[0].activeRows + 1) * TILE + GRID_Y_OFFSET;
     player.destX = player.x;
     player.destY = player.y;
     player.dir = 0;
@@ -4101,7 +4102,7 @@ function advanceLevel() {
 
     // Reset player position (below the active grid)
     player.x = (GRID_X + 7) * TILE;
-    player.y = (gridBottomTileY() + 1) * TILE;
+    player.y = (gridBottomTileY() + 1) * TILE + GRID_Y_OFFSET;
     player.destX = player.x;
     player.destY = player.y;
     player.attacking = false;
@@ -4767,10 +4768,10 @@ function render() {
         ctx.fillStyle = PAL.playhead;
         ctx.globalAlpha = 0.25;
         const playheadH = (gridBottomTileY() - GRID_Y) * TILE;
-        ctx.fillRect(px * SCALE, GRID_Y * TILE * SCALE, TILE * SCALE, playheadH * SCALE);
+        ctx.fillRect(px * SCALE, (GRID_Y * TILE + GRID_Y_OFFSET) * SCALE, TILE * SCALE, playheadH * SCALE);
         ctx.globalAlpha = 1.0;
         // Top marker
-        drawRect(px + 2, (GRID_Y - 1) * TILE + 10, TILE - 4, 4, PAL.playhead);
+        drawRect(px + 2, (GRID_Y - 1) * TILE + 10 + GRID_Y_OFFSET, TILE - 4, 4, PAL.playhead);
         // Beat pulse: brighten blocks under the playhead that are ON
         for (let r = 0; r < ar; r++) {
             if (grid[r][currentStep] && rowTrigger[r] > 0) {
@@ -4788,7 +4789,7 @@ function render() {
     for (let c = 0; c < GRID_COLS; c++) {
         const num = String(c + 1);
         const tx = (GRID_X + c) * TILE + (c < 9 ? 4 : 1);
-        drawText(num, tx, gridBottomTileY() * TILE + 8, c === currentStep && playing ? PAL.playhead : "#5a8a8f", 3);
+        drawText(num, tx, gridBottomTileY() * TILE + 8 + GRID_Y_OFFSET, c === currentStep && playing ? PAL.playhead : "#5a8a8f", 3);
     }
 
     // HUD is rendered on separate canvas
@@ -5394,7 +5395,7 @@ function drawRuinedVenueBackdrop(t) {
     ctx.globalAlpha = 1;
     // Corrupted beat grid (carries over from intro scenes)
     if (introGridState) {
-        const miniGridY = GRID_Y * TILE + 14;
+        const miniGridY = GRID_Y * TILE + GRID_Y_OFFSET;
         const miniGridX = 3 * TILE;
         ctx.globalAlpha = 0.35;
         for (let r = 0; r < 4; r++) {
@@ -6077,7 +6078,7 @@ function renderTitleScreen() {
     drawPlayerSprite(W / 2 - 8, boothY - 10 - djBob, djFrame, 0, {});
 
     // Beat grid (small, showing the beat)
-    const miniGridY = GRID_Y * TILE + 14;
+    const miniGridY = GRID_Y * TILE + GRID_Y_OFFSET;
     const miniGridX = 3 * TILE;
     const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
     for (let r = 0; r < 4; r++) {
@@ -6673,7 +6674,7 @@ function renderIntro() {
         drawPlayerSprite(W / 2 - 8, boothY - 10 - djBob, djFrame, 0, {});
 
         // Beat grid (small, showing the beat is perfect)
-        const miniGridY = GRID_Y * TILE + 14;
+        const miniGridY = GRID_Y * TILE + GRID_Y_OFFSET;
         const miniGridX = 3 * TILE;
         const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
         for (let r = 0; r < 4; r++) {
@@ -6844,7 +6845,7 @@ function renderIntro() {
         ctx.globalAlpha = 1;
 
         // Beat grid — uses mutable state so goblins can flip cells
-        const miniGridY = GRID_Y * TILE + 14;
+        const miniGridY = GRID_Y * TILE + GRID_Y_OFFSET;
         const miniGridX = 3 * TILE;
         const patterns = introGridState || [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
         for (let r = 0; r < 4; r++) {
@@ -7067,7 +7068,7 @@ function renderIntro() {
         }
 
         // Beat grid — corruption starts after goblins reach it (~frame 120)
-        const miniGridY = GRID_Y * TILE + 14;
+        const miniGridY = GRID_Y * TILE + GRID_Y_OFFSET;
         const miniGridX = 3 * TILE;
         const corruptStart = 120;
         if (t > corruptStart) {
