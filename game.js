@@ -3734,7 +3734,7 @@ function renderMinigameArena() {
     // "SURVIVE!" text at top
     ctx.font = `${6 * SCALE}px monospace`;
     ctx.fillStyle = "#C4A882";
-    ctx.fillText("SURVIVE!", (W / 2) * SCALE, 4 * SCALE);
+    ctx.fillText("SURVIVE!", (W / 2) * SCALE, 2 * SCALE);
 
     // Rescue wall progress hint
     if (rescueWallProgress > 0.3) {
@@ -5033,7 +5033,11 @@ function render() {
     if (patternMatched && !levelComplete && areGoblinsAlive()) {
         const blink = Math.floor(performance.now() / 400) % 2 === 0;
         if (blink) {
-            drawCenteredText("SLAY THE GOBLIN!", 14, "#ef3a0c", 6);
+            ctx.font = `${6 * SCALE}px monospace`;
+            ctx.fillStyle = "#ef3a0c";
+            ctx.textAlign = "center";
+            ctx.fillText("SLAY THE GOBLIN!", (COLS * TILE * SCALE) / 2, 14 * SCALE);
+            ctx.textAlign = "start";
         }
     }
 
