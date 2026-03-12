@@ -3689,6 +3689,8 @@ function renderMinigameArena() {
         ctx.globalAlpha = 1;
     }
 
+    ctx.textAlign = "start";
+
     if (caveScreenShake > 0) {
         ctx.restore();
     }
@@ -3768,6 +3770,9 @@ function startMinigameRescue() {
 
 function updateMinigameRescue() {
     minigameRescueTimer++;
+
+    // Decrement screen effects (carried over from arena state)
+    if (caveScreenFlash > 0) caveScreenFlash--;
 
     if (minigameRescuePhase === 0) {
         // Wall burst — rubble flies, shake dies down
