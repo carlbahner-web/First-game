@@ -976,7 +976,6 @@ let catapultSequenceCount = 0; // how many catapults have fired in current seque
 let tomatoes = []; // { x, y, targetX, targetY, speed, life }
 let tomatoSplats = []; // { x, y, timer }
 
-let gamePaused = false;
 let gameState = "title"; // "title", "intro", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim", "minigame"
 let gameMode = "thrill"; // "thrill" = full game with goblins, "chill" = no goblins during gameplay
 
@@ -1302,7 +1301,6 @@ function handleCheatCode(key) {
             setLevelTempo(currentLevel);
             ensureAudio();
             gameState = "playing";
-            gamePaused = false;
             lastStepTime = performance.now();
             console.log("DEBUG: Jumped to level " + (targetLevel + 1));
         }
@@ -1415,52 +1413,7 @@ window.addEventListener("keydown", (e) => {
             return;
         }
         if (gameState === "gameover") return; // let the cinematic play
-        if (gameState === "minigame") return; // don't pause during minigame
-        ensureAudio();
-        gamePaused = !gamePaused;
-        // Reset sequencer timing so it doesn't fast-forward on unpause
-        if (!gamePaused) lastStepTime = performance.now();
-        // Pause/unpause sound
-        if (audioCtx) {
-            const now = audioCtx.currentTime;
-            if (gamePaused) {
-                // Descending two-tone "pause" chime
-                const o1 = audioCtx.createOscillator();
-                const g1 = audioCtx.createGain();
-                o1.type = "square";
-                o1.frequency.setValueAtTime(440, now);
-                g1.gain.setValueAtTime(0.1, now);
-                g1.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-                o1.connect(g1); g1.connect(audioCtx.destination);
-                o1.start(now); o1.stop(now + 0.15);
-                const o2 = audioCtx.createOscillator();
-                const g2 = audioCtx.createGain();
-                o2.type = "square";
-                o2.frequency.setValueAtTime(330, now + 0.12);
-                g2.gain.setValueAtTime(0.1, now + 0.12);
-                g2.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-                o2.connect(g2); g2.connect(audioCtx.destination);
-                o2.start(now + 0.12); o2.stop(now + 0.3);
-            } else {
-                // Ascending two-tone "unpause" chime
-                const o1 = audioCtx.createOscillator();
-                const g1 = audioCtx.createGain();
-                o1.type = "square";
-                o1.frequency.setValueAtTime(330, now);
-                g1.gain.setValueAtTime(0.1, now);
-                g1.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-                o1.connect(g1); g1.connect(audioCtx.destination);
-                o1.start(now); o1.stop(now + 0.15);
-                const o2 = audioCtx.createOscillator();
-                const g2 = audioCtx.createGain();
-                o2.type = "square";
-                o2.frequency.setValueAtTime(440, now + 0.12);
-                g2.gain.setValueAtTime(0.1, now + 0.12);
-                g2.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-                o2.connect(g2); g2.connect(audioCtx.destination);
-                o2.start(now + 0.12); o2.stop(now + 0.3);
-            }
-        }
+        if (gameState === "minigame") return;
     }
 });
 window.addEventListener("keyup", (e) => { keys[e.code] = false; });
@@ -1615,8 +1568,6 @@ function tickSequencer() {
 
 // ---- Update ----
 function update(dt) {
-    if (gamePaused) return;
-
     // Decay visual effect timers
     for (let r = 0; r < GRID_ROWS; r++) {
         if (rowTrigger[r] > 0) rowTrigger[r]--;
@@ -5114,72 +5065,6 @@ function render() {
             ctx.fillRect(0, 0, W_v, H_v);
             ctx.globalAlpha = 1.0;
         }
-    }
-
-    // Pause overlay
-    if (gamePaused) {
-        // Dim the screen
-        ctx.fillStyle = "#000";
-        ctx.globalAlpha = 0.55;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.globalAlpha = 1.0;
-
-        // Pixel-art style banner background
-        const bannerX = 3 * TILE;
-        const bannerY = 5 * TILE;
-        const bannerW = (COLS - 6) * TILE;
-        const bannerH = 8 * TILE;
-        // Outer border (dark)
-        drawRect(bannerX - 2, bannerY - 2, bannerW + 4, bannerH + 4, "#2a1d0d");
-        // Inner fill (matches carnival tent style)
-        drawRect(bannerX, bannerY, bannerW, bannerH, "#392a1c");
-        // Highlight edge top
-        drawRect(bannerX, bannerY, bannerW, 2, "#684c3c");
-        // Highlight edge bottom
-        drawRect(bannerX, bannerY + bannerH - 2, bannerW, 2, "#1f240a");
-        // Striped accents (carnival style)
-        for (let i = 0; i < bannerW; i += 8) {
-            if (Math.floor(i / 8) % 2 === 0) {
-                drawRect(bannerX + i, bannerY, Math.min(8, bannerW - i), 2, "#9b1a0a");
-            }
-        }
-
-        // "PAUSED" text centered
-        const pauseText = "PAUSED";
-        const textScale = 7;
-        const textW = pauseText.length * textScale * 1.1;
-        const textX = bannerX + bannerW / 2 - textW / 2;
-        const textY = bannerY + 12;
-        // Shadow
-        drawText(pauseText, textX + 1, textY + 1, "#1f240a", textScale);
-        // Main text
-        drawText(pauseText, textX, textY, "#efac28", textScale);
-
-        // Controls section
-        const ctrlX = bannerX + 16;
-        const ctrlY = textY + 22;
-        const ctrlCol = "#efb775";
-        const labelCol = "#efac28";
-        drawText("CONTROLS:", ctrlX, ctrlY, labelCol, 4);
-        drawText("ARROWS", ctrlX, ctrlY + 12, labelCol, 4);
-        drawText("Move around", ctrlX + 32, ctrlY + 12, ctrlCol, 4);
-        drawText("SPACE", ctrlX, ctrlY + 22, labelCol, 4);
-        drawText("Punch attack", ctrlX + 28, ctrlY + 22, ctrlCol, 4);
-        drawText("ENTER", ctrlX, ctrlY + 32, labelCol, 4);
-        drawText("Pause / Unpause", ctrlX + 28, ctrlY + 32, ctrlCol, 4);
-
-        // Tips
-        drawText("TIPS:", ctrlX, ctrlY + 48, labelCol, 4);
-        drawText("Hit blocks to toggle beats", ctrlX, ctrlY + 58, ctrlCol, 4);
-        drawText("Slay goblins to earn dancers", ctrlX, ctrlY + 68, ctrlCol, 4);
-
-        // "PRESS ENTER" hint at bottom
-        const hintText = "PRESS ENTER TO RESUME";
-        const hintScale = 3;
-        const hintW = hintText.length * hintScale * 1.1;
-        const hintX = bannerX + bannerW / 2 - hintW / 2;
-        const hintY = bannerY + bannerH - 10;
-        drawText(hintText, hintX, hintY, "#8ab0b4", hintScale);
     }
 
     // Restore screen shake transform
