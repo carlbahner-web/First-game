@@ -6104,21 +6104,35 @@ function drawMixer(mx, my) {
 }
 
 function drawLightRig(lx, ly) {
-    // Horizontal bar
-    drawRect(lx, ly, 48, 2, "#555");
-    drawRect(lx, ly, 48, 1, "#777");
-    // Support posts
-    drawRect(lx + 2, ly + 2, 2, 4, "#444");
-    drawRect(lx + 44, ly + 2, 2, 4, "#444");
-    // Colored lights hanging down
+    // Two vertical light arrays flanking the stage (left and right)
+    // lx, ly is top-left reference; booth platform spans 48px wide from lx
     const colors = ["#FF4400", "#efac28", "#00FF88", "#4488FF", "#FF44AA", "#efac28"];
-    for (let i = 0; i < 6; i++) {
-        const bx = lx + 4 + i * 7;
-        drawRect(bx, ly + 2, 3, 3, colors[i]);
-        // Glow
+    const leftX = lx - 2;       // left array just outside booth left edge
+    const rightX = lx + 50;     // right array just outside booth right edge
+    const poleTop = ly;
+    const poleH = 18;           // vertical pole height
+
+    // Left pole
+    drawRect(leftX + 1, poleTop, 2, poleH, "#555");
+    drawRect(leftX + 1, poleTop, 2, 1, "#777");
+    // Right pole
+    drawRect(rightX + 1, poleTop, 2, poleH, "#555");
+    drawRect(rightX + 1, poleTop, 2, 1, "#777");
+
+    // 3 lights on each pole, evenly spaced
+    for (let i = 0; i < 3; i++) {
+        const by = poleTop + 2 + i * 5;
+        // Left side lights (face inward)
+        drawRect(leftX + 3, by, 3, 3, colors[i]);
         ctx.globalAlpha = 0.2;
         ctx.fillStyle = colors[i];
-        ctx.fillRect((bx - 1) * SCALE, (ly + 1) * SCALE, 5 * SCALE, 5 * SCALE);
+        ctx.fillRect((leftX + 2) * SCALE, (by - 1) * SCALE, 5 * SCALE, 5 * SCALE);
+        ctx.globalAlpha = 1;
+        // Right side lights (face inward)
+        drawRect(rightX - 2, by, 3, 3, colors[i + 3]);
+        ctx.globalAlpha = 0.2;
+        ctx.fillStyle = colors[i + 3];
+        ctx.fillRect((rightX - 3) * SCALE, (by - 1) * SCALE, 5 * SCALE, 5 * SCALE);
         ctx.globalAlpha = 1;
     }
 }
