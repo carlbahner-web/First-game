@@ -976,7 +976,7 @@ let catapultSequenceCount = 0; // how many catapults have fired in current seque
 let tomatoes = []; // { x, y, targetX, targetY, speed, life }
 let tomatoSplats = []; // { x, y, timer }
 
-let gameState = "title"; // "title", "intro", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim", "minigame"
+let gameState = "title"; // "title", "intro", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim", "cave-return", "minigame"
 let gameMode = "thrill"; // "thrill" = full game with goblins, "chill" = no goblins during gameplay
 
 // --- Visual Improvement State ---
@@ -1157,6 +1157,12 @@ let rescueDancers = [];
 
 // Track which minigames have been completed (prevent re-triggering)
 let minigamesCompleted = [];
+
+// Cave-return animation state (dancers + DJ emerge from top cave after rescue)
+let caveReturnTimer = 0;
+let caveReturnPhase = 0; // 0=dancers emerge, 1=DJ emerges, 2=done
+let caveReturnDancerCount = 0; // how many dancers have been spawned so far
+let caveReturnDJVisible = false;
 
 // Minigame music state
 let minigameMusicGain = null;
@@ -1347,7 +1353,7 @@ window.addEventListener("keydown", (e) => {
         e.preventDefault();
         if (gameState === "enemywarning" || gameState === "enemywarning-intro") return; // ignore Space on warning screen
         if (gameState === "newinstrument") return; // ignore Space on instrument screen
-        if (gameState === "sabotage-anim") return; // ignore input during sabotage animation
+        if (gameState === "sabotage-anim" || gameState === "cave-return") return; // ignore input during animations
         if (minigameState === "kidnap" || minigameState === "boarding" || minigameState === "rescue" || minigameState === "reward") return; // ignore during minigame cutscenes
         if (!keys[e.code]) spaceJustPressed = true; // only on initial press
     }
@@ -1406,7 +1412,7 @@ window.addEventListener("keydown", (e) => {
 
     if (e.code === "Enter") {
         e.preventDefault();
-        if (gameState === "sabotage-anim") return; // ignore input during sabotage animation
+        if (gameState === "sabotage-anim" || gameState === "cave-return") return; // ignore input during animations
         if (minigameState === "kidnap" || minigameState === "boarding") return; // no skipping kidnap/boarding cutscene
         const rewardDismissThreshold = allPiecesJustCompleted ? 180 : 140;
         if (minigameState === "reward" && minigameRewardTimer > rewardDismissThreshold) {
@@ -4812,10 +4818,259 @@ function endMinigame() {
     allPiecesJustCompleted = false;
     stopMinigameMusic();
 
-    // Return to normal game flow — advance to next level
-    gameState = "levelcomplete"; // temporarily restore for feature screen checks
-    if (checkPendingFeatureScreens()) return;
-    advanceLevel();
+    // Check for pending feature screens BEFORE advancing level
+    // (feature screens use currentLevel+1 to decide, so check while still on current level)
+    gameState = "levelcomplete";
+    if (checkPendingFeatureScreens()) return; // feature screen → advanceLevel() on dismiss (normal flow)
+
+    // No feature screens — do the cave-return animation
+    startCaveReturn();
+}
+
+function startCaveReturn() {
+    gameState = "cave-return";
+    caveReturnTimer = 0;
+    caveReturnPhase = 0;
+    caveReturnDancerCount = 0;
+    caveReturnDJVisible = false;
+
+    // Clear any leftover dancers from before the minigame
+    dancers.length = 0;
+
+    // Prepare the next level's state (grid, goblins, etc.) but DON'T give player control yet
+    currentLevel++;
+    if (currentLevel >= LEVELS.length) {
+        finalScore = score;
+        gameState = "ending";
+        startEnding();
+        return;
+    }
+
+    levelTimer = LEVELS[currentLevel].timerSeconds * 90;
+    const prevPattern = LEVELS[currentLevel - 1].pattern;
+    for (let r = 0; r < GRID_ROWS; r++)
+        for (let c = 0; c < GRID_COLS; c++)
+            grid[r][c] = prevPattern[r][c];
+
+    // Build zigzag cell list for sabotage animation
+    sabotageCells = [];
+    const ar = LEVELS[currentLevel].activeRows;
+    for (let r = 0; r < ar; r++) {
+        for (let i = 0; i < GRID_COLS; i++) {
+            const c = r % 2 === 0 ? i : GRID_COLS - 1 - i;
+            sabotageCells.push({ r, c, flip: Math.random() < getSabotageFlipChance() });
+        }
+    }
+
+    // Position player hidden above the top cave (will walk out in phase 1)
+    const topCave = CAVES[1]; // top wall cave
+    player.x = topCave.tileX * TILE;
+    player.y = -TILE;
+    player.destX = player.x;
+    player.destY = player.y;
+    player.dir = 0; // face down
+    player.attacking = false;
+    player.attackTimer = 0;
+    player.punchHit = false;
+
+    // Reset goblins with extra-long timers (they don't appear during return anim)
+    for (let i = 0; i < goblins.length; i++) {
+        const g = goblins[i];
+        g.dead = true;
+        g.deathAnimActive = false;
+        g.deathAnimTimer = 0;
+        const staggerGap = Math.round(600 - (currentLevel / 29) * 360);
+        g.respawnTimer = 600 + i * staggerGap; // extra delay for cave-return anim
+    }
+    catapultGoblin = null;
+    catapultSpawnedThisCycle = false;
+    catapultSequenceCount = 0;
+
+    // Reset effects
+    deathParticles = [];
+    tomatoes = [];
+    tomatoSplats = [];
+    deathText = null;
+    screenFlash = 0;
+    screenShake = 0;
+    hitFreeze = 0;
+    levelComplete = false;
+    patternMatched = false;
+    levelCelebrateTimer = 0;
+    levelCelebrateDisplayScore = 0;
+    for (let r = 0; r < GRID_ROWS; r++)
+        for (let c = 0; c < GRID_COLS; c++)
+            cellFlash[r][c] = 0;
+
+    currentStep = 0;
+    lastStepTime = performance.now();
+    setLevelTempo(currentLevel);
+    stopStoryDrums();
+
+    // Determine how many dancers to spawn (same as advanceLevel logic)
+    caveReturnDancerCount = 0;
+}
+
+function updateCaveReturn() {
+    caveReturnTimer++;
+
+    const topCave = CAVES[1];
+    const cavePixelX = topCave.tileX * TILE;
+    const cavePixelY = topCave.tileY * TILE;
+
+    if (caveReturnPhase === 0) {
+        // Phase 0: Dancers emerge from top cave one by one and scatter
+        const totalDancers = currentLevel * 3;
+        const spawnInterval = 12; // frames between each dancer emerging
+
+        // Spawn a new dancer every spawnInterval frames
+        if (caveReturnTimer % spawnInterval === 1 && caveReturnDancerCount < totalDancers) {
+            const palette = DANCER_PALETTES[caveReturnDancerCount % DANCER_PALETTES.length];
+
+            // Target position: random spot in the dancer area
+            const minPxX = 2 * TILE + 2;
+            const maxPxX = (COLS - 3) * TILE - 2;
+            const minPxY = 11 * TILE;
+            const maxPxY = (ROWS - 1) * TILE - TILE;
+            let targetX, targetY, attempts = 0;
+            let valid = false;
+            const occupiedPositions = dancers.map(d => ({ x: d.targetX ?? d.x, y: d.targetY ?? d.y }));
+            const MIN_DIST = 14;
+            do {
+                targetX = Math.round(minPxX + Math.random() * (maxPxX - minPxX));
+                targetY = Math.round(minPxY + Math.random() * (maxPxY - minPxY));
+                const tileX = Math.floor(targetX / TILE);
+                const tileY = Math.floor(targetY / TILE);
+                attempts++;
+                const tooClose = occupiedPositions.some(p =>
+                    Math.abs(p.x - targetX) < MIN_DIST && Math.abs(p.y - targetY) < MIN_DIST
+                );
+                const nearCave = CAVES.some(c =>
+                    Math.abs(c.tileX - tileX) <= 1 && Math.abs(c.tileY - tileY) <= 1
+                );
+                valid = !tooClose && !nearCave;
+            } while (!valid && attempts < 80);
+
+            if (valid) {
+                dancers.push({
+                    x: cavePixelX, y: cavePixelY,
+                    targetX: targetX, targetY: targetY,
+                    walkingIn: true,
+                    palette: palette,
+                    phase: Math.floor(Math.random() * 16),
+                });
+                caveReturnDancerCount++;
+            }
+        }
+
+        // Update dancer walk-in positions
+        for (const d of dancers) {
+            if (d.walkingIn) {
+                const dx = d.targetX - d.x;
+                const dy = d.targetY - d.y;
+                const walkSpeed = 0.8; // slightly faster than normal walk-in
+                if (Math.abs(dx) > 0.5) d.x += Math.sign(dx) * Math.min(walkSpeed, Math.abs(dx));
+                if (Math.abs(dy) > 0.5) d.y += Math.sign(dy) * Math.min(walkSpeed, Math.abs(dy));
+                if (Math.abs(dx) <= 0.5 && Math.abs(dy) <= 0.5) {
+                    d.x = d.targetX;
+                    d.y = d.targetY;
+                    d.walkingIn = false;
+                }
+            }
+        }
+
+        // Check if all dancers have been spawned and most have arrived
+        const allSpawned = caveReturnDancerCount >= totalDancers;
+        const arrivedCount = dancers.filter(d => !d.walkingIn).length;
+        if (allSpawned && arrivedCount >= Math.floor(totalDancers * 0.7)) {
+            caveReturnPhase = 1;
+            caveReturnTimer = 0;
+        }
+    } else if (caveReturnPhase === 1) {
+        // Phase 1: DJ emerges from cave and walks to starting position
+        caveReturnDJVisible = true;
+
+        // Update remaining dancers still walking
+        for (const d of dancers) {
+            if (d.walkingIn) {
+                const dx = d.targetX - d.x;
+                const dy = d.targetY - d.y;
+                const walkSpeed = 0.8;
+                if (Math.abs(dx) > 0.5) d.x += Math.sign(dx) * Math.min(walkSpeed, Math.abs(dx));
+                if (Math.abs(dy) > 0.5) d.y += Math.sign(dy) * Math.min(walkSpeed, Math.abs(dy));
+                if (Math.abs(dx) <= 0.5 && Math.abs(dy) <= 0.5) {
+                    d.x = d.targetX;
+                    d.y = d.targetY;
+                    d.walkingIn = false;
+                }
+            }
+        }
+
+        // DJ walks from cave to their normal starting position
+        const djTargetX = (GRID_X + 7) * TILE;
+        const djTargetY = (gridBottomTileY() + 1) * TILE + GRID_Y_OFFSET;
+        const djSpeed = 1.0;
+        const ddx = djTargetX - player.x;
+        const ddy = djTargetY - player.y;
+        if (Math.abs(ddx) > 0.5) player.x += Math.sign(ddx) * Math.min(djSpeed, Math.abs(ddx));
+        if (Math.abs(ddy) > 0.5) player.y += Math.sign(ddy) * Math.min(djSpeed, Math.abs(ddy));
+        player.destX = player.x;
+        player.destY = player.y;
+
+        // DJ walk animation direction
+        if (Math.abs(ddy) > Math.abs(ddx)) {
+            player.dir = ddy > 0 ? 0 : 1; // down or up
+        } else if (Math.abs(ddx) > 0.5) {
+            player.dir = ddx > 0 ? 3 : 2; // right or left
+        }
+
+        if (Math.abs(ddx) <= 0.5 && Math.abs(ddy) <= 0.5) {
+            player.x = djTargetX;
+            player.y = djTargetY;
+            player.destX = djTargetX;
+            player.destY = djTargetY;
+            caveReturnPhase = 2;
+            caveReturnTimer = 0;
+        }
+    } else if (caveReturnPhase === 2) {
+        // Phase 2: Brief pause then hand off to sabotage animation
+        // Snap any remaining walking dancers to their targets
+        for (const d of dancers) {
+            if (d.walkingIn) {
+                d.x = d.targetX;
+                d.y = d.targetY;
+                d.walkingIn = false;
+            }
+        }
+
+        if (caveReturnTimer > 30) {
+            // Start sabotage animation (goblin scrambles the grid)
+            sabotageNextState = "playing";
+            sabotageAnimTimer = 0;
+            sabotageFlipIndex = 0;
+            gameState = "sabotage-anim";
+        }
+    }
+}
+
+function renderCaveReturn() {
+    // Render the normal overworld scene
+    render();
+
+    const W = COLS * TILE;
+    const H = ROWS * TILE;
+
+    // Dark opening at the top cave entrance
+    const topCave = CAVES[1];
+    const cx = topCave.tileX * TILE;
+    const cy = topCave.tileY * TILE;
+    drawRect(cx - 2, cy, TILE + 4, TILE + 2, "#0a0604");
+
+    // Draw the DJ during phase 1+ (walking out of cave)
+    if (caveReturnDJVisible) {
+        const walkFrame = (caveReturnTimer >> 3) % 4;
+        drawPlayerSprite(player.x, player.y, walkFrame, player.dir, {});
+    }
 }
 
 // ---- Minigame Music ----
@@ -10389,6 +10644,9 @@ function gameLoop(timestamp) {
                 renderNewInstrument();
             } else if (gameState === "sabotage-anim") {
                 renderSabotageAnim();
+            } else if (gameState === "cave-return") {
+                updateCaveReturn();
+                renderCaveReturn();
             } else if (gameState === "levelcomplete") {
                 renderLevelComplete();
             } else if (gameState === "minigame") {
