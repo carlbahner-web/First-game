@@ -3958,23 +3958,29 @@ function renderMinigameArena() {
         drawGoblinSprite("catapult",
             caveCatapult.x, caveCatapult.y,
             caveCatapult.frame, { dir: caveCatapult.dir });
-        // Aim indicator when aiming — growing danger zone
+        // Aim indicator when aiming — tile-based flash (matches overworld)
         if (caveCatapult.phase === "aiming") {
-            const aimProgress = Math.min(1, caveCatapult.phaseTimer / 40);
-            const blink = caveCatapult.phaseTimer % 10 < 7; // visible 70% of the time
-            const tx = caveCatapult.targetX;
-            const ty = caveCatapult.targetY;
-            // Outer ring: grows inward as impact approaches
-            const outerSize = Math.floor(14 - aimProgress * 4); // 14→10
-            ctx.globalAlpha = 0.15 + aimProgress * 0.15;
-            drawRect(tx - outerSize / 2, ty - outerSize / 2, outerSize, outerSize, "#FF0000");
-            ctx.globalAlpha = 1;
-            // Inner target (always visible)
-            if (blink) {
-                drawRect(tx - 5, ty - 5, 10, 10, "rgba(255,0,0,0.45)");
-                // Crosshair
-                drawRect(tx - 3, ty - 1, 6, 2, "rgba(255,0,0,0.7)");
-                drawRect(tx - 1, ty - 3, 2, 6, "rgba(255,0,0,0.7)");
+            const flashOn = Math.floor(caveCatapult.phaseTimer / 4) % 2 === 0;
+            if (flashOn) {
+                const ttx = Math.round(caveCatapult.targetX / CAVE_TILE) * CAVE_TILE;
+                const tty = Math.round(caveCatapult.targetY / CAVE_TILE) * CAVE_TILE;
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        const rx = ttx + dc * CAVE_TILE;
+                        const ry = tty + dr * CAVE_TILE;
+                        // Bounds check (inside cave walls)
+                        if (rx >= CAVE_TILE * 2 && rx <= (CAVE_COLS - 2) * CAVE_TILE &&
+                            ry >= CAVE_TILE * 2 && ry <= (CAVE_ROWS - 2) * CAVE_TILE) {
+                            ctx.fillStyle = "#ff4400";
+                            ctx.globalAlpha = 0.35;
+                            ctx.fillRect(rx * SCALE, ry * SCALE, CAVE_TILE * SCALE, CAVE_TILE * SCALE);
+                            ctx.globalAlpha = 1.0;
+                            ctx.strokeStyle = "#ff6600";
+                            ctx.lineWidth = SCALE;
+                            ctx.strokeRect(rx * SCALE + SCALE, ry * SCALE + SCALE, CAVE_TILE * SCALE - 2 * SCALE, CAVE_TILE * SCALE - 2 * SCALE);
+                        }
+                    }
+                }
             }
         }
     }
@@ -4025,19 +4031,39 @@ function renderMinigameArena() {
         drawGoblinFor(cg);
     }
 
+    // Punch target tile indicator (gold corner brackets — matches overworld)
+    if (!cavePlayerDead && !player.attacking && player.x === player.destX && player.y === player.destY) {
+        const ptx = Math.round(player.x / CAVE_TILE);
+        const pty = Math.round(player.y / CAVE_TILE);
+        let ttx = ptx, tty = pty;
+        switch (player.dir) {
+            case 0: tty += 1; break;
+            case 1: tty -= 1; break;
+            case 2: ttx -= 1; break;
+            case 3: ttx += 1; break;
+        }
+        const tx = ttx * CAVE_TILE;
+        const ty = tty * CAVE_TILE;
+        const pulse = 0.35 + Math.sin(performance.now() * 0.004) * 0.2;
+        const c = PAL.punch;
+        const s = 2, L = 5;
+        ctx.globalAlpha = 0.08;
+        drawRect(tx + 1, ty + 1, CAVE_TILE - 2, CAVE_TILE - 2, c);
+        ctx.globalAlpha = pulse;
+        drawRect(tx, ty, L, s, c); drawRect(tx, ty, s, L, c);
+        drawRect(tx + CAVE_TILE - L, ty, L, s, c); drawRect(tx + CAVE_TILE - s, ty, s, L, c);
+        drawRect(tx, ty + CAVE_TILE - s, L, s, c); drawRect(tx, ty + CAVE_TILE - L, s, L, c);
+        drawRect(tx + CAVE_TILE - L, ty + CAVE_TILE - s, L, s, c); drawRect(tx + CAVE_TILE - s, ty + CAVE_TILE - L, s, L, c);
+        ctx.globalAlpha = 1.0;
+    }
+
     // Draw player (unless dead)
     if (!cavePlayerDead) {
-        const punchProgress = player.attacking ? 1 - (player.attackTimer / player.attackDuration) : 0;
-        const punchThrust = player.attacking ? Math.sin(punchProgress * Math.PI) : 0;
-        drawPlayerSprite(player.x, player.y,
-            player.frame, player.dir, { punchThrust: punchThrust });
-        // Punch effect
-        if (player.attacking && player.attackTimer > 4) {
-            const pb = getPunchBox();
-            ctx.globalAlpha = 0.5;
-            drawRect(pb.x, pb.y, pb.w, pb.h, "#efac28");
-            ctx.globalAlpha = 1;
-        }
+        // Punch (draw behind player for up-facing)
+        if (player.attacking && player.dir === 1) drawPunch();
+        drawPlayer();
+        // Punch (in front for down/left/right)
+        if (player.attacking && player.dir !== 1) drawPunch();
     } else {
         // Dead player — flat on ground
         ctx.globalAlpha = 0.6;
@@ -4052,23 +4078,19 @@ function renderMinigameArena() {
         ctx.globalAlpha = 1;
     }
 
-    // Death text
+    // Death text (matches overworld style)
     if (caveDeathText) {
-        ctx.textAlign = "center";
-        ctx.font = `${caveDeathText.scale * SCALE}px monospace`;
         ctx.globalAlpha = Math.min(1, caveDeathText.timer / 20);
-        ctx.fillStyle = "#000";
-        ctx.fillText(caveDeathText.text, (caveDeathText.x + 20) * SCALE + SCALE, caveDeathText.y * SCALE + SCALE);
-        ctx.fillStyle = caveDeathText.color;
-        ctx.fillText(caveDeathText.text, (caveDeathText.x + 20) * SCALE, caveDeathText.y * SCALE);
+        drawText(caveDeathText.text, caveDeathText.x + 20, caveDeathText.y, caveDeathText.color, caveDeathText.scale);
         ctx.globalAlpha = 1;
     }
 
-    // Screen flash
+    // Screen flash (matches overworld style)
     if (caveScreenFlash > 0) {
-        ctx.globalAlpha = caveScreenFlash / 15;
-        drawRect(0, 0, W, H, "#FFF");
-        ctx.globalAlpha = 1;
+        ctx.fillStyle = "#fff";
+        ctx.globalAlpha = Math.min(1, caveScreenFlash / 15) * 0.6;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1.0;
     }
 
     // "SURVIVE!" text at top
