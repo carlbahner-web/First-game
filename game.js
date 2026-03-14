@@ -1142,6 +1142,10 @@ let boardingGoblins = []; // goblins that nail boards
 let boardingTimer = 0;
 let boardingPhase = 0;
 
+// Rescue board-breaking state
+let rescueBoardBreakPhase = 0;
+let rescueBrokenEntrances = [false, false, false];
+
 // Kidnap cutscene positions
 let kidnapGoblin1 = { x: 0, y: 0, dir: 0, frame: 0, frameTimer: 0 };
 let kidnapGoblin2 = { x: 0, y: 0, dir: 0, frame: 0, frameTimer: 0 };
@@ -4000,14 +4004,23 @@ function renderMinigameArena() {
         ctx.globalAlpha = 1;
     }
 
-    // Torches on walls (right and top walls)
+    // Torches on all cave walls
     const torchPositions = [
+        // Right wall
         { x: (CAVE_COLS - 2) * CAVE_TILE, y: 3 * CAVE_TILE },
         { x: (CAVE_COLS - 2) * CAVE_TILE, y: 8 * CAVE_TILE },
         { x: (CAVE_COLS - 2) * CAVE_TILE, y: 13 * CAVE_TILE },
-        { x: 5 * CAVE_TILE, y: 2 * CAVE_TILE },
-        { x: 11 * CAVE_TILE, y: 2 * CAVE_TILE },
-        { x: 17 * CAVE_TILE, y: 2 * CAVE_TILE },
+        // Left wall
+        { x: 1 * CAVE_TILE, y: 3 * CAVE_TILE },
+        { x: 1 * CAVE_TILE, y: 8 * CAVE_TILE },
+        { x: 1 * CAVE_TILE, y: 13 * CAVE_TILE },
+        // Top wall (between boarded entrances)
+        { x: 7 * CAVE_TILE, y: 2 * CAVE_TILE },
+        { x: 14 * CAVE_TILE, y: 2 * CAVE_TILE },
+        // Bottom wall
+        { x: 5 * CAVE_TILE, y: (CAVE_ROWS - 2) * CAVE_TILE },
+        { x: 11 * CAVE_TILE, y: (CAVE_ROWS - 2) * CAVE_TILE },
+        { x: 17 * CAVE_TILE, y: (CAVE_ROWS - 2) * CAVE_TILE },
     ];
     for (const t of torchPositions) {
         drawCaveTorch(t.x, t.y);
@@ -4306,6 +4319,7 @@ function startMinigameRescue() {
     minigameState = "rescue";
     minigameRescueTimer = 0;
     minigameRescuePhase = 0;
+    rescueBoardBreakPhase = 0; // staggered board breaking: 0=buildup, 1/2/3=each entrance bursts
     stopMinigameMusic();
 
     // Set up rescue dancers — they spill in from the top through broken boards
@@ -4323,39 +4337,56 @@ function startMinigameRescue() {
         });
     }
 
-    // Play dramatic breakthrough sound — wood splintering
+    // Track which entrances have been broken open
+    rescueBrokenEntrances = [false, false, false];
+
+    // Play dramatic buildup — deep rumble before the break
     if (audioCtx) {
         const now = audioCtx.currentTime;
-        // Deep rumble
+        // Ominous buildup rumble
         const osc = audioCtx.createOscillator();
         const g = audioCtx.createGain();
         osc.type = "sine";
-        osc.frequency.setValueAtTime(40, now);
-        osc.frequency.exponentialRampToValueAtTime(25, now + 1.0);
-        g.gain.setValueAtTime(0.3, now);
-        g.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+        osc.frequency.setValueAtTime(30, now);
+        osc.frequency.linearRampToValueAtTime(60, now + 1.5);
+        g.gain.setValueAtTime(0.15, now);
+        g.gain.linearRampToValueAtTime(0.35, now + 1.5);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 1.8);
         osc.connect(g); g.connect(audioCtx.destination);
-        osc.start(now); osc.stop(now + 1.0);
-        // Wood crash / splintering
-        const bufLen = audioCtx.sampleRate * 0.5;
-        const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
-        const data = buf.getChannelData(0);
-        for (let i = 0; i < bufLen; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufLen);
-        const noise = audioCtx.createBufferSource();
-        noise.buffer = buf;
-        const ng = audioCtx.createGain();
-        ng.gain.setValueAtTime(0.2, now + 0.1);
-        ng.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-        noise.connect(ng); ng.connect(audioCtx.destination);
-        noise.start(now + 0.1);
+        osc.start(now); osc.stop(now + 1.8);
+
+        // Staggered crash sounds for each entrance breaking
+        for (let b = 0; b < 3; b++) {
+            const t = now + 1.0 + b * 0.4; // each entrance breaks 0.4s apart
+            // Wood splintering crack
+            const crack = audioCtx.createOscillator();
+            const cg = audioCtx.createGain();
+            crack.type = "square";
+            crack.frequency.setValueAtTime(400 - b * 60, t);
+            crack.frequency.exponentialRampToValueAtTime(50, t + 0.15);
+            cg.gain.setValueAtTime(0.2, t);
+            cg.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+            crack.connect(cg); cg.connect(audioCtx.destination);
+            crack.start(t); crack.stop(t + 0.2);
+            // Burst noise
+            const bufLen = Math.floor(audioCtx.sampleRate * 0.4);
+            const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+            const data = buf.getChannelData(0);
+            for (let i = 0; i < bufLen; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufLen, 2);
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buf;
+            const ng = audioCtx.createGain();
+            ng.gain.setValueAtTime(0.15, t);
+            ng.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+            noise.connect(ng); ng.connect(audioCtx.destination);
+            noise.start(t);
+        }
     }
 
-    // Boards are broken now
-    caveBoardedUp = false;
-
-    caveScreenShake = 20;
-    caveShakeIntensity = 6;
-    caveScreenFlash = 15;
+    // Initial subtle shake during buildup
+    caveScreenShake = 10;
+    caveShakeIntensity = 2;
+    caveScreenFlash = 0;
 }
 
 function updateMinigameRescue() {
@@ -4365,26 +4396,103 @@ function updateMinigameRescue() {
     if (caveScreenFlash > 0) caveScreenFlash--;
 
     if (minigameRescuePhase === 0) {
-        // Board burst — wood splinters fly down, shake dies down
+        // Dramatic staggered board-breaking — each entrance bursts one at a time
         if (caveScreenShake > 0) caveScreenShake--;
 
-        // Spawn wood splinter particles falling from boarded entrances
-        if (minigameRescueTimer < 30) {
-            for (let i = 0; i < 5; i++) {
-                const ent = boardedEntrances[Math.floor(Math.random() * boardedEntrances.length)];
-                caveDeathParticles.push({
-                    x: ent.x + Math.random() * ent.w,
-                    y: CAVE_TILE * 2,
-                    vx: (Math.random() - 0.5) * 4,
-                    vy: 1 + Math.random() * 3,
-                    life: 30 + Math.random() * 30,
-                    color: i % 2 ? "#8B6914" : "#A07828",
-                    size: 3 + Math.random() * 4,
-                });
+        // Buildup phase: subtle dust and growing shake (first 60 frames)
+        if (minigameRescueTimer < 60) {
+            // Growing shake intensity
+            caveShakeIntensity = Math.min(4, 1 + minigameRescueTimer * 0.05);
+            caveScreenShake = Math.max(caveScreenShake, 5);
+            // Dust falls from all entrances during buildup
+            if (minigameRescueTimer % 4 === 0) {
+                for (const ent of boardedEntrances) {
+                    caveDeathParticles.push({
+                        x: ent.x + Math.random() * ent.w,
+                        y: CAVE_TILE * 2,
+                        vx: (Math.random() - 0.5) * 1,
+                        vy: 0.5 + Math.random() * 1,
+                        life: 20 + Math.random() * 15,
+                        color: "#C4A882",
+                        size: 1 + Math.random() * 2,
+                    });
+                }
             }
         }
 
-        if (minigameRescueTimer > 60) {
+        // Each entrance breaks at staggered intervals (frames 60, 84, 108)
+        const breakFrames = [60, 84, 108];
+        for (let b = 0; b < 3; b++) {
+            if (minigameRescueTimer === breakFrames[b]) {
+                rescueBrokenEntrances[b] = true;
+                // Big shake on each break
+                caveScreenShake = 25 + b * 5;
+                caveShakeIntensity = 8 + b * 2;
+                // Bright flash
+                caveScreenFlash = 12 + b * 3;
+
+                // Massive particle burst from this entrance
+                const ent = boardedEntrances[b];
+                // Big wood plank pieces
+                for (let p = 0; p < 12; p++) {
+                    caveDeathParticles.push({
+                        x: ent.x + Math.random() * ent.w,
+                        y: CAVE_TILE + Math.random() * CAVE_TILE,
+                        vx: (Math.random() - 0.5) * 8,
+                        vy: 2 + Math.random() * 6,
+                        life: 40 + Math.random() * 40,
+                        color: p % 3 === 0 ? "#8B6914" : p % 3 === 1 ? "#A07828" : "#6B4F12",
+                        size: 4 + Math.random() * 6,
+                    });
+                }
+                // Sawdust cloud
+                for (let p = 0; p < 15; p++) {
+                    caveDeathParticles.push({
+                        x: ent.x + Math.random() * ent.w,
+                        y: CAVE_TILE * 2,
+                        vx: (Math.random() - 0.5) * 5,
+                        vy: 1 + Math.random() * 4,
+                        life: 25 + Math.random() * 30,
+                        color: p % 2 ? "#C4A882" : "#D4B892",
+                        size: 2 + Math.random() * 3,
+                    });
+                }
+                // Nail sparks
+                for (let p = 0; p < 6; p++) {
+                    caveDeathParticles.push({
+                        x: ent.x + (p < 3 ? 3 : ent.w - 5),
+                        y: CAVE_TILE,
+                        vx: (Math.random() - 0.5) * 6,
+                        vy: 1 + Math.random() * 5,
+                        life: 15 + Math.random() * 15,
+                        color: "#FFD700",
+                        size: 1 + Math.random() * 2,
+                    });
+                }
+            }
+        }
+
+        // Ongoing splinter rain from broken entrances
+        if (minigameRescueTimer > 60 && minigameRescueTimer < 120) {
+            for (let b = 0; b < 3; b++) {
+                if (rescueBrokenEntrances[b] && Math.random() < 0.4) {
+                    const ent = boardedEntrances[b];
+                    caveDeathParticles.push({
+                        x: ent.x + Math.random() * ent.w,
+                        y: CAVE_TILE * 2,
+                        vx: (Math.random() - 0.5) * 2,
+                        vy: 0.5 + Math.random() * 2,
+                        life: 20 + Math.random() * 20,
+                        color: Math.random() > 0.5 ? "#8B6914" : "#A07828",
+                        size: 2 + Math.random() * 3,
+                    });
+                }
+            }
+        }
+
+        // All three broken — boards fully cleared, transition to dancers entering
+        if (minigameRescueTimer > 130) {
+            caveBoardedUp = false;
             minigameRescuePhase = 1;
             minigameRescueTimer = 0;
         }
@@ -4448,16 +4556,50 @@ function renderMinigameRescue() {
     const W = CAVE_COLS * CAVE_TILE;
     const H = CAVE_ROWS * CAVE_TILE;
 
-    // Broken boarded entrances at top — show open gaps where boards were
-    if (minigameRescuePhase >= 1) {
-        for (const ent of boardedEntrances) {
-            // Open gap — dark cave opening
+    // Staggered board breaking — show each entrance's state during phase 0 and the open gaps after
+    for (let ei = 0; ei < boardedEntrances.length; ei++) {
+        const ent = boardedEntrances[ei];
+        if (rescueBrokenEntrances[ei]) {
+            // This entrance has been smashed open — dark gap with debris
             drawRect(ent.x, 0, ent.w, CAVE_TILE * 2, "#0a0604");
-            // Wood splinter edges around the opening
-            for (let i = 0; i < 4; i++) {
+            // Splintered wood edges framing the opening
+            for (let i = 0; i < 6; i++) {
                 const sx = ent.x + ((i * 7 + 3) % ent.w);
-                const sy = CAVE_TILE * 2 - 2 + (i % 2) * 3;
-                drawRect(sx, sy, 3, 2, "#8B6914");
+                const sy = CAVE_TILE * 2 - 3 + (i % 3) * 2;
+                const sw = 2 + (i % 2) * 2;
+                const sh = 1 + (i % 2);
+                drawRect(sx, sy, sw, sh, i % 2 ? "#8B6914" : "#6B4F12");
+            }
+            // Hanging board fragment at top
+            drawRect(ent.x + ent.w / 2 - 4, 0, 8, 3 + Math.sin(performance.now() * 0.003 + ei) * 1, "#8B6914");
+            // Light spilling in from above
+            ctx.globalAlpha = 0.06;
+            drawRect(ent.x + 2, CAVE_TILE * 2, ent.w - 4, CAVE_TILE * 4, "#FFD080");
+            ctx.globalAlpha = 1;
+        } else if (minigameRescuePhase === 0) {
+            // Boards still intact during buildup — show them shaking/bulging
+            const shake = Math.min(1, minigameRescueTimer / 60);
+            const jitter = Math.sin(minigameRescueTimer * 0.5 + ei * 2) * shake * 2;
+            // Re-draw boards over the arena's existing boards with a shake offset
+            drawRect(ent.x, 0, ent.w, CAVE_TILE * 2, "#0a0604");
+            for (let b = 0; b < 4; b++) {
+                const boardY = b * (CAVE_TILE * 2 / 4);
+                const boardH = CAVE_TILE * 2 / 4 - 1;
+                drawRect(ent.x + 1 + jitter, boardY + 1, ent.w - 2, boardH, "#8B6914");
+                drawRect(ent.x + 3 + jitter, boardY + 2, ent.w - 6, 1, "#A07828");
+                drawRect(ent.x + 3, boardY + boardH / 2, 2, 2, "#888");
+                drawRect(ent.x + ent.w - 5, boardY + boardH / 2, 2, 2, "#888");
+            }
+            // Bulging cracks at high buildup
+            if (shake > 0.5) {
+                const bulge = (shake - 0.5) * 6;
+                ctx.globalAlpha = shake;
+                drawRect(ent.x + ent.w / 2 - 4, CAVE_TILE * 2 + bulge, 8, 3, "#8B6914");
+                for (let cr = 0; cr < 3; cr++) {
+                    const cx = ent.x + ent.w * (0.2 + cr * 0.3);
+                    drawRect(cx, CAVE_TILE * 0.5 + cr * 4, 1 + Math.floor(shake), cr * 3 + 2, "#000");
+                }
+                ctx.globalAlpha = 1;
             }
         }
     }
