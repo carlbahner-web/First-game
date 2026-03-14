@@ -1827,9 +1827,6 @@ function update(dt) {
                     if (patternMatched && !areGoblinsAlive()) {
                         triggerLevelComplete();
                     }
-                    if (killCount % 3 === 0) {
-                        spawnDancers(3);
-                    }
                 } // end else (lethal hit)
                 break; // only hit one goblin per attack
             }
@@ -2822,6 +2819,8 @@ function triggerLevelComplete() {
     screenFlash = 20;
     // Play fanfare instead of drums
     playLevelFanfare();
+    // Reward: 3 new dancer fans per level completed
+    spawnDancers(3);
 }
 
 // ============================================================
@@ -4852,9 +4851,6 @@ function updateCatapultGoblin() {
             // Chain next catapult if sequence not complete (3 total)
             if (catapultSequenceCount < 3) {
                 spawnCatapultGoblin();
-            } else {
-                // Survived the full catapult barrage — earn some fans!
-                spawnDancers(2);
             }
             return;
         }
