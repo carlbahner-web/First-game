@@ -976,7 +976,7 @@ let catapultSequenceCount = 0; // how many catapults have fired in current seque
 let tomatoes = []; // { x, y, targetX, targetY, speed, life }
 let tomatoSplats = []; // { x, y, timer }
 
-let gameState = "title"; // "title", "intro", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim", "minigame"
+let gameState = "title"; // "title", "intro", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim", "cave-return", "minigame"
 let gameMode = "thrill"; // "thrill" = full game with goblins, "chill" = no goblins during gameplay
 
 // --- Visual Improvement State ---
@@ -1027,7 +1027,6 @@ let introGridFlash = null;  // flash timers per cell [row][col]
 let introCorruptOrder = [];  // pre-sorted cell coords for Scene 2 progressive corruption
 let introCorruptedSoFar = 0; // how many cells Scene 2 has flipped so far
 let introBoothDebris = [];   // [{pieceIndex, x, y, vx, vy, landed, carriedBy}] — 6 pieces during explosion
-let introTheftGoblins = [];  // [{x, y, dir, frame, frameTimer, pieceIndex, targetCave, carrying, gone}]
 let introDrumGain = null;   // audio gain node for intro drums
 let introDrumStarted = false;
 let introDrumTimer = null;
@@ -1130,10 +1129,22 @@ let caveCatapultKillCount = 0; // kills toward next catapult spawn
 // Cave player state (reuses main player object but with cave-specific position)
 let cavePlayerDead = false;
 
-// Rescue wall state
-let rescueWallCracks = []; // generated crack lines
-let rescueWallDust = []; // dust particles near the wall
+// Boarded-up cave entrances state (top wall)
+let caveBoardedUp = false; // true after goblins board up the entrances
+let boardedEntrances = []; // {x, w} positions of the 3 boarded openings at top
+let boardProgress = 0; // 0→1 during boarding animation
+let rescueWallCracks = []; // generated crack lines (now on boarded entrances)
+let rescueWallDust = []; // dust particles falling from boards
 let rescueWallProgress = 0; // 0→1 based on timer progress
+
+// Boarding phase state
+let boardingGoblins = []; // goblins that nail boards
+let boardingTimer = 0;
+let boardingPhase = 0;
+
+// Rescue board-breaking state
+let rescueBoardBreakPhase = 0;
+let rescueBrokenEntrances = [false, false, false];
 
 // Kidnap cutscene positions
 let kidnapGoblin1 = { x: 0, y: 0, dir: 0, frame: 0, frameTimer: 0 };
@@ -1146,6 +1157,12 @@ let rescueDancers = [];
 
 // Track which minigames have been completed (prevent re-triggering)
 let minigamesCompleted = [];
+
+// Cave-return animation state (dancers + DJ emerge from top cave after rescue)
+let caveReturnTimer = 0;
+let caveReturnPhase = 0; // 0=dancers emerge, 1=DJ emerges, 2=done
+let caveReturnDancerCount = 0; // how many dancers have been spawned so far
+let caveReturnDJVisible = false;
 
 // Minigame music state
 let minigameMusicGain = null;
@@ -1336,8 +1353,8 @@ window.addEventListener("keydown", (e) => {
         e.preventDefault();
         if (gameState === "enemywarning" || gameState === "enemywarning-intro") return; // ignore Space on warning screen
         if (gameState === "newinstrument") return; // ignore Space on instrument screen
-        if (gameState === "sabotage-anim") return; // ignore input during sabotage animation
-        if (minigameState === "kidnap" || minigameState === "rescue" || minigameState === "reward") return; // ignore during minigame cutscenes
+        if (gameState === "sabotage-anim" || gameState === "cave-return") return; // ignore input during animations
+        if (minigameState === "kidnap" || minigameState === "boarding" || minigameState === "rescue" || minigameState === "reward") return; // ignore during minigame cutscenes
         if (!keys[e.code]) spaceJustPressed = true; // only on initial press
     }
     keys[e.code] = true;
@@ -1395,8 +1412,8 @@ window.addEventListener("keydown", (e) => {
 
     if (e.code === "Enter") {
         e.preventDefault();
-        if (gameState === "sabotage-anim") return; // ignore input during sabotage animation
-        if (minigameState === "kidnap") return; // no skipping kidnap cutscene
+        if (gameState === "sabotage-anim" || gameState === "cave-return") return; // ignore input during animations
+        if (minigameState === "kidnap" || minigameState === "boarding") return; // no skipping kidnap/boarding cutscene
         const rewardDismissThreshold = allPiecesJustCompleted ? 180 : 140;
         if (minigameState === "reward" && minigameRewardTimer > rewardDismissThreshold) {
             // Player dismisses reward screen — continue to next level
@@ -1421,6 +1438,15 @@ window.addEventListener("keydown", (e) => {
         if (gameState === "title") {
             if (titleFadingOut) return; // already transitioning
             ensureAudio();
+            if (gameMode === "chill") {
+                // Chill mode: skip the goblin intro cutscene — go straight to playing
+                stopTitleDrums();
+                resetGame();
+                spawnDancers(6);
+                gameState = "playing";
+                sceneTransition = { active: true, from: "title", to: "playing", progress: 0, duration: 20 };
+                return;
+            }
             // Start fading title text — state change happens when fade completes
             titleFadingOut = true;
             titleFadeTimer = 0;
@@ -1828,9 +1854,6 @@ function update(dt) {
                     if (patternMatched && !areGoblinsAlive()) {
                         triggerLevelComplete();
                     }
-                    if (killCount % 3 === 0) {
-                        spawnDancers(3);
-                    }
                 } // end else (lethal hit)
                 break; // only hit one goblin per attack
             }
@@ -1965,7 +1988,7 @@ function update(dt) {
             if (p.dir !== wantDir) {
                 // Turn only, don't move
                 p.dir = wantDir;
-                p.turnDelay = 10;
+                p.turnDelay = 3;
             } else if (p.turnDelay > 0) {
                 // Wait after turning before allowing movement
                 p.turnDelay--;
@@ -2839,6 +2862,9 @@ function startMinigameKidnap() {
     minigameKidnapPhase = 0;
     minigamePendingAfterLevel = currentLevel;
 
+    // Clear dancers — they'll respawn walking in when the next level starts
+    dancers.length = 0;
+
     // Stop any ongoing drums
     stopStoryDrums();
 
@@ -2943,23 +2969,30 @@ function renderMinigameKidnap() {
     drawPlayerSprite(kidnapDJPos.x + struggle, kidnapDJPos.y,
         (minigameKidnapTimer >> 3) % 4, 1, {});
 
-    // "KIDNAPPED!" text
+    // Kidnap text — escalates across the 6 minigames
     if (minigameKidnapPhase === 1 && minigameKidnapTimer > 20) {
+        const kidnapTexts = [
+            "KIDNAPPED!", "NOT AGAIN!", "THEY'RE GETTING BOLDER!",
+            "A WELL-PLANNED AMBUSH!", "THEY BROUGHT REINFORCEMENTS!", "THE FINAL HEIST!"
+        ];
+        const kidnapMsg = kidnapTexts[Math.min(minigamesCompleted.length, kidnapTexts.length - 1)];
         ctx.textAlign = "center";
         ctx.font = `${14 * SCALE}px monospace`;
         const blink = Math.sin(minigameKidnapTimer * 0.15) > 0;
         if (blink) {
             ctx.fillStyle = "#FF0044";
-            ctx.fillText("KIDNAPPED!", (W * SCALE) / 2, (H / 3) * SCALE);
+            ctx.fillText(kidnapMsg, (W * SCALE) / 2, (H / 3) * SCALE);
         }
     }
 }
 
 
 function startMinigameArena() {
-    minigameState = "playing";
+    minigameState = "boarding";
     minigameActive = true;
-    minigameTimer = MINIGAME_BASE_TIME;
+    // Scale timer: 20s → 22s → 24s → 26s → 28s → 30s across 6 minigames
+    const mgIndex = minigamesCompleted.length;
+    minigameTimer = MINIGAME_BASE_TIME + mgIndex * 2 * 60;
     cavePlayerDead = false;
     caveKillCount = 0;
     caveCatapultKillCount = 0;
@@ -2987,37 +3020,146 @@ function startMinigameArena() {
     caveScreenFlash = 0;
     rescueDancers = [];
 
-    // Generate initial rescue wall cracks (subtle)
-    rescueWallCracks = [];
-    for (let i = 0; i < 5; i++) {
-        const y = 3 * CAVE_TILE + Math.random() * (CAVE_ROWS - 6) * CAVE_TILE;
-        rescueWallCracks.push({
-            x1: 0, y1: y,
-            x2: 2 + Math.random() * 4, y2: y + (Math.random() - 0.5) * 20,
-            width: 1,
-            alpha: 0.2,
+    // Set up 3 boarded-up cave entrances at top of cave
+    // These correspond to the 3 overworld cave openings
+    const entranceWidth = 3; // tiles wide
+    boardedEntrances = [
+        { x: 3 * CAVE_TILE, w: entranceWidth * CAVE_TILE },
+        { x: Math.floor(CAVE_COLS / 2 - 1) * CAVE_TILE, w: entranceWidth * CAVE_TILE },
+        { x: (CAVE_COLS - 3 - entranceWidth) * CAVE_TILE, w: entranceWidth * CAVE_TILE },
+    ];
+    caveBoardedUp = false;
+    boardProgress = 0;
+    boardingTimer = 0;
+    boardingPhase = 0;
+
+    // Set up boarding goblins — one per entrance, they'll nail boards
+    boardingGoblins = [];
+    for (let i = 0; i < 3; i++) {
+        boardingGoblins.push({
+            x: boardedEntrances[i].x + boardedEntrances[i].w / 2 - CAVE_TILE / 2,
+            y: CAVE_TILE * 2,
+            frame: 0, frameTimer: 0, dir: 1,
+            entranceIdx: i,
         });
     }
+
+    rescueWallCracks = [];
     rescueWallDust = [];
     rescueWallProgress = 0;
 
-    // Spawn first wave of goblins from cave edges
-    for (let i = 0; i < 3; i++) {
-        spawnCaveGoblin(false);
+    gameState = "minigame";
+
+    // Play boarding hammering sound
+    if (audioCtx) {
+        const now = audioCtx.currentTime;
+        for (let h = 0; h < 4; h++) {
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = "square";
+            osc.frequency.setValueAtTime(180 + h * 20, now + h * 0.4);
+            osc.frequency.exponentialRampToValueAtTime(80, now + h * 0.4 + 0.1);
+            g.gain.setValueAtTime(0.12, now + h * 0.4);
+            g.gain.exponentialRampToValueAtTime(0.001, now + h * 0.4 + 0.15);
+            osc.connect(g); g.connect(audioCtx.destination);
+            osc.start(now + h * 0.4); osc.stop(now + h * 0.4 + 0.15);
+        }
+    }
+}
+
+function updateMinigameBoarding() {
+    boardingTimer++;
+
+    // Animate goblin frames
+    for (const bg of boardingGoblins) {
+        bg.frameTimer++;
+        if (bg.frameTimer > 8) { bg.frame = (bg.frame + 1) % 4; bg.frameTimer = 0; }
     }
 
-    // Start stressful music
-    startMinigameMusic();
+    // Progress boards being nailed (0→1 over ~120 frames / 2 seconds)
+    boardProgress = Math.min(1, boardingTimer / 120);
 
-    gameState = "minigame";
+    // Hammer sound effects at specific frames
+    if (audioCtx && (boardingTimer === 30 || boardingTimer === 60 || boardingTimer === 90)) {
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = "square";
+        osc.frequency.setValueAtTime(200, now);
+        osc.frequency.exponentialRampToValueAtTime(80, now + 0.08);
+        g.gain.setValueAtTime(0.1, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+        osc.connect(g); g.connect(audioCtx.destination);
+        osc.start(now); osc.stop(now + 0.1);
+    }
+
+    if (boardingTimer > 140) {
+        // Boarding complete — transition to arena gameplay
+        caveBoardedUp = true;
+        boardProgress = 1;
+        minigameState = "playing";
+
+        // Spawn first wave of goblins from cave edges
+        for (let i = 0; i < 3; i++) {
+            spawnCaveGoblin(false);
+        }
+
+        // Start stressful music
+        startMinigameMusic();
+    }
+}
+
+function renderMinigameBoarding() {
+    // Render cave arena underneath (this draws walls, floor, torches etc.)
+    renderMinigameArena();
+
+    const W = CAVE_COLS * CAVE_TILE;
+    const H = CAVE_ROWS * CAVE_TILE;
+
+    // Draw boarding goblins near the top entrances
+    for (const bg of boardingGoblins) {
+        drawGoblinSprite("normal", bg.x, bg.y, bg.frame, { dir: bg.dir });
+
+        // Hammering arm animation
+        if (boardingTimer % 30 < 8) {
+            const hammerX = bg.x + CAVE_TILE / 2 + 2;
+            const hammerY = bg.y - 4 - (8 - (boardingTimer % 30)) * 1.5;
+            drawRect(hammerX, hammerY, 3, 5, "#8B4513");
+            drawRect(hammerX - 1, hammerY - 2, 5, 3, "#666");
+        }
+    }
+
+    // Draw DJ cowering in center
+    const struggle = Math.sin(boardingTimer * 0.2) * 1.5;
+    drawPlayerSprite(player.x + struggle, player.y, (boardingTimer >> 4) % 4, 0, {});
+
+    // Darkness overlay to set mood
+    const darkAlpha = Math.min(0.3, boardingTimer * 0.003);
+    ctx.globalAlpha = darkAlpha;
+    drawRect(0, 0, W, H, "#000");
+    ctx.globalAlpha = 1;
+
+    // "TRAPPED!" text after boards are mostly done
+    if (boardProgress > 0.6) {
+        ctx.textAlign = "center";
+        ctx.font = `${12 * SCALE}px monospace`;
+        const blink = Math.sin(boardingTimer * 0.15) > 0;
+        if (blink) {
+            ctx.fillStyle = "#000";
+            ctx.fillText("TRAPPED!", (W / 2) * SCALE + SCALE, (H / 3 + 1) * SCALE);
+            ctx.fillStyle = "#FF4400";
+            ctx.fillText("TRAPPED!", (W / 2) * SCALE, (H / 3) * SCALE);
+        }
+        ctx.textAlign = "start";
+    }
 }
 
 function spawnCaveGoblin(elite) {
-    // Spawn from random edge (top, right, bottom — not left, that's the rescue wall)
+    // Spawn from random edge (right, bottom, left — not top, that's the boarded rescue entrance)
     const edges = [
-        { x: CAVE_TILE + Math.random() * (CAVE_COLS - 4) * CAVE_TILE, y: CAVE_TILE }, // top
         { x: (CAVE_COLS - 2) * CAVE_TILE, y: CAVE_TILE * 2 + Math.random() * (CAVE_ROWS - 5) * CAVE_TILE }, // right
         { x: CAVE_TILE * 2 + Math.random() * (CAVE_COLS - 5) * CAVE_TILE, y: (CAVE_ROWS - 2) * CAVE_TILE }, // bottom
+        { x: CAVE_TILE, y: CAVE_TILE * 2 + Math.random() * (CAVE_ROWS - 5) * CAVE_TILE }, // left
     ];
     const spawn = edges[Math.floor(Math.random() * edges.length)];
     // Snap spawn to tile grid
@@ -3028,7 +3170,7 @@ function spawnCaveGoblin(elite) {
         destX: snapX, destY: snapY,
         w: CAVE_TILE, h: CAVE_TILE,
         dir: 0, frame: 0, frameTimer: 0,
-        speed: 0.55 + Math.random() * 0.25,
+        speed: (0.55 + minigamesCompleted.length * 0.06) + Math.random() * 0.25,
         dead: false,
         elite: elite,
         hp: elite ? 3 : 1,
@@ -3044,27 +3186,27 @@ function spawnCaveGoblin(elite) {
 }
 
 function spawnCaveCatapult() {
-    // Pick random edge: top(0), right(1), bottom(2) — not left (rescue wall)
+    // Pick random edge: right(0), bottom(1), left(2) — not top (boarded rescue entrance)
     const edge = Math.floor(Math.random() * 3);
     let spawnX, spawnY, destX, destY, dir;
-    if (edge === 0) { // top
-        spawnX = (3 + Math.floor(Math.random() * (CAVE_COLS - 6))) * CAVE_TILE;
-        spawnY = 0;
-        destX = spawnX;
-        destY = (3 + Math.floor(Math.random() * 2)) * CAVE_TILE;
-        dir = 0;
-    } else if (edge === 1) { // right
+    if (edge === 0) { // right
         spawnX = (CAVE_COLS - 1) * CAVE_TILE;
         spawnY = (3 + Math.floor(Math.random() * (CAVE_ROWS - 6))) * CAVE_TILE;
         destX = (CAVE_COLS - 4 - Math.floor(Math.random() * 2)) * CAVE_TILE;
         destY = spawnY;
         dir = 2;
-    } else { // bottom
+    } else if (edge === 1) { // bottom
         spawnX = (3 + Math.floor(Math.random() * (CAVE_COLS - 6))) * CAVE_TILE;
         spawnY = (CAVE_ROWS - 1) * CAVE_TILE;
         destX = spawnX;
         destY = (CAVE_ROWS - 4 - Math.floor(Math.random() * 2)) * CAVE_TILE;
         dir = 1;
+    } else { // left
+        spawnX = 0;
+        spawnY = (3 + Math.floor(Math.random() * (CAVE_ROWS - 6))) * CAVE_TILE;
+        destX = (3 + Math.floor(Math.random() * 2)) * CAVE_TILE;
+        destY = spawnY;
+        dir = 3;
     }
     caveCatapult = {
         x: spawnX, y: spawnY,
@@ -3260,15 +3402,29 @@ function updateMinigameArena() {
         if (atDest) {
             p.x = p.destX;
             p.y = p.destY;
+            let wantDir = -1;
+            if (keys["ArrowLeft"] || keys["KeyA"]) wantDir = 2;
+            else if (keys["ArrowRight"] || keys["KeyD"]) wantDir = 3;
+            else if (keys["ArrowUp"] || keys["KeyW"]) wantDir = 1;
+            else if (keys["ArrowDown"] || keys["KeyS"]) wantDir = 0;
             let dx = 0, dy = 0;
-            if (keys["ArrowLeft"] || keys["KeyA"]) { dx = -1; p.dir = 2; }
-            else if (keys["ArrowRight"] || keys["KeyD"]) { dx = 1; p.dir = 3; }
-            else if (keys["ArrowUp"] || keys["KeyW"]) { dy = -1; p.dir = 1; }
-            else if (keys["ArrowDown"] || keys["KeyS"]) { dy = 1; p.dir = 0; }
+            if (wantDir >= 0) {
+                if (p.dir !== wantDir) {
+                    p.dir = wantDir;
+                    p.turnDelay = 3;
+                } else if (p.turnDelay > 0) {
+                    p.turnDelay--;
+                } else {
+                    if (wantDir === 2) dx = -1;
+                    else if (wantDir === 3) dx = 1;
+                    else if (wantDir === 1) dy = -1;
+                    else if (wantDir === 0) dy = 1;
+                }
+            }
             if (dx !== 0 || dy !== 0) {
                 const newX = p.x + dx * CAVE_TILE;
                 const newY = p.y + dy * CAVE_TILE;
-                // Bound to cave walls (leave left wall for rescue)
+                // Bound to cave walls
                 if (newX >= CAVE_TILE * 2 && newX <= (CAVE_COLS - 2) * CAVE_TILE &&
                     newY >= CAVE_TILE * 2 && newY <= (CAVE_ROWS - 2) * CAVE_TILE) {
                     // Collision check: can't walk into goblins or catapult (matches overworld)
@@ -3694,14 +3850,15 @@ function updateCaveCatapult() {
 }
 
 function updateRescueWallDust() {
-    // Spawn dust based on rescue wall progress
+    // Spawn dust falling from boarded-up top entrances
     const intensity = rescueWallProgress;
-    if (Math.random() < intensity * 0.3) {
+    if (Math.random() < intensity * 0.3 && boardedEntrances.length > 0) {
+        const ent = boardedEntrances[Math.floor(Math.random() * boardedEntrances.length)];
         rescueWallDust.push({
-            x: Math.random() * CAVE_TILE * 2,
-            y: CAVE_TILE * 2 + Math.random() * (CAVE_ROWS - 4) * CAVE_TILE,
-            vx: 0.3 + Math.random() * 0.5,
-            vy: (Math.random() - 0.5) * 0.3,
+            x: ent.x + Math.random() * ent.w,
+            y: CAVE_TILE * 2,
+            vx: (Math.random() - 0.5) * 0.3,
+            vy: 0.3 + Math.random() * 0.5,
             life: 30 + Math.random() * 30,
             size: 1 + Math.random() * (1 + intensity * 3),
             alpha: 0.3 + intensity * 0.5,
@@ -3781,7 +3938,7 @@ function renderMinigameArena() {
         drawRect((CAVE_COLS - 1) * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, shade);
     }
 
-    // LEFT WALL — Rescue wall with progressive cracking
+    // Left wall (normal wall — no longer the rescue wall)
     for (let r = 0; r < CAVE_ROWS; r++) {
         for (let c = 0; c < 2; c++) {
             const shade = r % 2 === 0 ? "#4a3628" : "#3d2b1f";
@@ -3789,60 +3946,103 @@ function renderMinigameArena() {
         }
     }
 
-    // Rescue wall cracks — intensity scales with progress
-    const crackAlpha = Math.min(1, rescueWallProgress * 1.5);
-    if (crackAlpha > 0) {
-        ctx.save();
-        ctx.globalAlpha = crackAlpha;
-        // Draw cracks on left wall
-        const numCracks = Math.floor(3 + rescueWallProgress * 12);
-        for (let i = 0; i < numCracks; i++) {
-            let seed = i * 7919 + 42;
-            seed = (seed * 9301 + 49297) % 233280;
-            const startY = (seed / 233280) * (CAVE_ROWS - 4) * CAVE_TILE + 2 * CAVE_TILE;
-            seed = (seed * 9301 + 49297) % 233280;
-            const len = 3 + (seed / 233280) * (8 + rescueWallProgress * 15);
-            seed = (seed * 9301 + 49297) % 233280;
-            const angle = (seed / 233280 - 0.5) * 0.8;
-            const crackWidth = 1 + Math.floor(rescueWallProgress * 2);
-            const sx = CAVE_TILE;
-            for (let j = 0; j < len; j++) {
-                const cx = sx + j * Math.cos(angle);
-                const cy = startY + j * Math.sin(angle) * 3;
-                drawRect(cx, cy, crackWidth, 1, "#000");
-                if (rescueWallProgress > 0.5) {
-                    drawRect(cx + crackWidth, cy, 1, 1, "#5a4638"); // crack edge highlight
+    // Boarded-up cave entrances at the top wall
+    if (caveBoardedUp || boardProgress > 0) {
+        const bp = caveBoardedUp ? 1 : boardProgress;
+        for (let ei = 0; ei < boardedEntrances.length; ei++) {
+            const ent = boardedEntrances[ei];
+            // Draw dark cave opening behind the boards
+            drawRect(ent.x, 0, ent.w, CAVE_TILE * 2, "#0a0604");
+
+            // Draw wooden boards across the entrance (progressively appearing)
+            const numBoards = Math.floor(bp * 4);
+            for (let b = 0; b < numBoards; b++) {
+                const boardY = b * (CAVE_TILE * 2 / 4);
+                const boardH = CAVE_TILE * 2 / 4 - 1;
+                // Main board plank
+                drawRect(ent.x + 1, boardY + 1, ent.w - 2, boardH, "#8B6914");
+                // Wood grain lines
+                drawRect(ent.x + 3, boardY + 2, ent.w - 6, 1, "#A07828");
+                drawRect(ent.x + 2, boardY + boardH - 2, ent.w - 4, 1, "#7A5A10");
+                // Nails at ends
+                drawRect(ent.x + 3, boardY + boardH / 2, 2, 2, "#888");
+                drawRect(ent.x + ent.w - 5, boardY + boardH / 2, 2, 2, "#888");
+            }
+
+            // Partially placed board during boarding animation
+            if (!caveBoardedUp && numBoards < 4) {
+                const partialBoard = numBoards;
+                const partialProgress = (bp * 4) - numBoards;
+                const boardY = partialBoard * (CAVE_TILE * 2 / 4);
+                const boardH = CAVE_TILE * 2 / 4 - 1;
+                const drawnW = (ent.w - 2) * partialProgress;
+                drawRect(ent.x + 1, boardY + 1, drawnW, boardH, "#8B6914");
+                if (drawnW > 6) {
+                    drawRect(ent.x + 3, boardY + 2, drawnW - 4, 1, "#A07828");
                 }
             }
         }
-        // Large crack chunks falling off at high progress
-        if (rescueWallProgress > 0.7) {
-            for (let i = 0; i < 3; i++) {
-                const chunkY = (CAVE_ROWS / 3 + i * CAVE_ROWS / 4) * CAVE_TILE;
-                const chunkOff = (rescueWallProgress - 0.7) * 10;
-                drawRect(CAVE_TILE + chunkOff, chunkY, 4, 6, "#4a3628");
-                drawRect(CAVE_TILE + chunkOff + 1, chunkY + 1, 2, 4, "#2e1f14");
+    }
+
+    // Cracks on boarded entrances — intensity scales with rescue progress
+    if (caveBoardedUp && rescueWallProgress > 0) {
+        const crackAlpha = Math.min(1, rescueWallProgress * 1.5);
+        ctx.save();
+        ctx.globalAlpha = crackAlpha;
+        for (let ei = 0; ei < boardedEntrances.length; ei++) {
+            const ent = boardedEntrances[ei];
+            const numCracks = Math.floor(2 + rescueWallProgress * 8);
+            for (let i = 0; i < numCracks; i++) {
+                let seed = (ei * 3 + i) * 7919 + 42;
+                seed = (seed * 9301 + 49297) % 233280;
+                const startX = ent.x + (seed / 233280) * ent.w;
+                seed = (seed * 9301 + 49297) % 233280;
+                const len = 2 + (seed / 233280) * (4 + rescueWallProgress * 10);
+                seed = (seed * 9301 + 49297) % 233280;
+                const angle = Math.PI / 2 + (seed / 233280 - 0.5) * 0.8;
+                const crackWidth = 1 + Math.floor(rescueWallProgress * 2);
+                for (let j = 0; j < len; j++) {
+                    const cx = startX + j * Math.cos(angle);
+                    const cy = j * Math.sin(angle);
+                    drawRect(cx, cy, crackWidth, 1, "#000");
+                }
+            }
+
+            // Boards bulging/splintering at high progress
+            if (rescueWallProgress > 0.7) {
+                const bulge = (rescueWallProgress - 0.7) * 8;
+                drawRect(ent.x + ent.w / 2 - 3, 2 * CAVE_TILE + bulge, 6, 3, "#8B6914");
+                drawRect(ent.x + ent.w / 2 - 2, 2 * CAVE_TILE + bulge + 1, 4, 1, "#7A5A10");
             }
         }
         ctx.globalAlpha = 1;
         ctx.restore();
     }
 
-    // Rescue wall dust particles
+    // Dust particles falling from boarded entrances
     for (const d of rescueWallDust) {
         ctx.globalAlpha = d.alpha;
         drawRect(d.x, d.y, d.size, d.size, "#C4A882");
         ctx.globalAlpha = 1;
     }
 
-    // Torches on walls (right and top walls)
+    // Torches on all cave walls
     const torchPositions = [
+        // Right wall
         { x: (CAVE_COLS - 2) * CAVE_TILE, y: 3 * CAVE_TILE },
         { x: (CAVE_COLS - 2) * CAVE_TILE, y: 8 * CAVE_TILE },
         { x: (CAVE_COLS - 2) * CAVE_TILE, y: 13 * CAVE_TILE },
-        { x: 5 * CAVE_TILE, y: 2 * CAVE_TILE },
-        { x: 11 * CAVE_TILE, y: 2 * CAVE_TILE },
-        { x: 17 * CAVE_TILE, y: 2 * CAVE_TILE },
+        // Left wall
+        { x: 1 * CAVE_TILE, y: 3 * CAVE_TILE },
+        { x: 1 * CAVE_TILE, y: 8 * CAVE_TILE },
+        { x: 1 * CAVE_TILE, y: 13 * CAVE_TILE },
+        // Top wall (between boarded entrances)
+        { x: 7 * CAVE_TILE, y: 2 * CAVE_TILE },
+        { x: 14 * CAVE_TILE, y: 2 * CAVE_TILE },
+        // Bottom wall
+        { x: 5 * CAVE_TILE, y: (CAVE_ROWS - 2) * CAVE_TILE },
+        { x: 11 * CAVE_TILE, y: (CAVE_ROWS - 2) * CAVE_TILE },
+        { x: 17 * CAVE_TILE, y: (CAVE_ROWS - 2) * CAVE_TILE },
     ];
     for (const t of torchPositions) {
         drawCaveTorch(t.x, t.y);
@@ -3945,23 +4145,29 @@ function renderMinigameArena() {
         drawGoblinSprite("catapult",
             caveCatapult.x, caveCatapult.y,
             caveCatapult.frame, { dir: caveCatapult.dir });
-        // Aim indicator when aiming — growing danger zone
+        // Aim indicator when aiming — tile-based flash (matches overworld)
         if (caveCatapult.phase === "aiming") {
-            const aimProgress = Math.min(1, caveCatapult.phaseTimer / 40);
-            const blink = caveCatapult.phaseTimer % 10 < 7; // visible 70% of the time
-            const tx = caveCatapult.targetX;
-            const ty = caveCatapult.targetY;
-            // Outer ring: grows inward as impact approaches
-            const outerSize = Math.floor(14 - aimProgress * 4); // 14→10
-            ctx.globalAlpha = 0.15 + aimProgress * 0.15;
-            drawRect(tx - outerSize / 2, ty - outerSize / 2, outerSize, outerSize, "#FF0000");
-            ctx.globalAlpha = 1;
-            // Inner target (always visible)
-            if (blink) {
-                drawRect(tx - 5, ty - 5, 10, 10, "rgba(255,0,0,0.45)");
-                // Crosshair
-                drawRect(tx - 3, ty - 1, 6, 2, "rgba(255,0,0,0.7)");
-                drawRect(tx - 1, ty - 3, 2, 6, "rgba(255,0,0,0.7)");
+            const flashOn = Math.floor(caveCatapult.phaseTimer / 4) % 2 === 0;
+            if (flashOn) {
+                const ttx = Math.round(caveCatapult.targetX / CAVE_TILE) * CAVE_TILE;
+                const tty = Math.round(caveCatapult.targetY / CAVE_TILE) * CAVE_TILE;
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        const rx = ttx + dc * CAVE_TILE;
+                        const ry = tty + dr * CAVE_TILE;
+                        // Bounds check (inside cave walls)
+                        if (rx >= CAVE_TILE * 2 && rx <= (CAVE_COLS - 2) * CAVE_TILE &&
+                            ry >= CAVE_TILE * 2 && ry <= (CAVE_ROWS - 2) * CAVE_TILE) {
+                            ctx.fillStyle = "#ff4400";
+                            ctx.globalAlpha = 0.35;
+                            ctx.fillRect(rx * SCALE, ry * SCALE, CAVE_TILE * SCALE, CAVE_TILE * SCALE);
+                            ctx.globalAlpha = 1.0;
+                            ctx.strokeStyle = "#ff6600";
+                            ctx.lineWidth = SCALE;
+                            ctx.strokeRect(rx * SCALE + SCALE, ry * SCALE + SCALE, CAVE_TILE * SCALE - 2 * SCALE, CAVE_TILE * SCALE - 2 * SCALE);
+                        }
+                    }
+                }
             }
         }
     }
@@ -4012,19 +4218,39 @@ function renderMinigameArena() {
         drawGoblinFor(cg);
     }
 
+    // Punch target tile indicator (gold corner brackets — matches overworld)
+    if (!cavePlayerDead && !player.attacking && player.x === player.destX && player.y === player.destY) {
+        const ptx = Math.round(player.x / CAVE_TILE);
+        const pty = Math.round(player.y / CAVE_TILE);
+        let ttx = ptx, tty = pty;
+        switch (player.dir) {
+            case 0: tty += 1; break;
+            case 1: tty -= 1; break;
+            case 2: ttx -= 1; break;
+            case 3: ttx += 1; break;
+        }
+        const tx = ttx * CAVE_TILE;
+        const ty = tty * CAVE_TILE;
+        const pulse = 0.35 + Math.sin(performance.now() * 0.004) * 0.2;
+        const c = PAL.punch;
+        const s = 2, L = 5;
+        ctx.globalAlpha = 0.08;
+        drawRect(tx + 1, ty + 1, CAVE_TILE - 2, CAVE_TILE - 2, c);
+        ctx.globalAlpha = pulse;
+        drawRect(tx, ty, L, s, c); drawRect(tx, ty, s, L, c);
+        drawRect(tx + CAVE_TILE - L, ty, L, s, c); drawRect(tx + CAVE_TILE - s, ty, s, L, c);
+        drawRect(tx, ty + CAVE_TILE - s, L, s, c); drawRect(tx, ty + CAVE_TILE - L, s, L, c);
+        drawRect(tx + CAVE_TILE - L, ty + CAVE_TILE - s, L, s, c); drawRect(tx + CAVE_TILE - s, ty + CAVE_TILE - L, s, L, c);
+        ctx.globalAlpha = 1.0;
+    }
+
     // Draw player (unless dead)
     if (!cavePlayerDead) {
-        const punchProgress = player.attacking ? 1 - (player.attackTimer / player.attackDuration) : 0;
-        const punchThrust = player.attacking ? Math.sin(punchProgress * Math.PI) : 0;
-        drawPlayerSprite(player.x, player.y,
-            player.frame, player.dir, { punchThrust: punchThrust });
-        // Punch effect
-        if (player.attacking && player.attackTimer > 4) {
-            const pb = getPunchBox();
-            ctx.globalAlpha = 0.5;
-            drawRect(pb.x, pb.y, pb.w, pb.h, "#efac28");
-            ctx.globalAlpha = 1;
-        }
+        // Punch (draw behind player for up-facing)
+        if (player.attacking && player.dir === 1) drawPunch();
+        drawPlayer();
+        // Punch (in front for down/left/right)
+        if (player.attacking && player.dir !== 1) drawPunch();
     } else {
         // Dead player — flat on ground
         ctx.globalAlpha = 0.6;
@@ -4039,23 +4265,19 @@ function renderMinigameArena() {
         ctx.globalAlpha = 1;
     }
 
-    // Death text
+    // Death text (matches overworld style)
     if (caveDeathText) {
-        ctx.textAlign = "center";
-        ctx.font = `${caveDeathText.scale * SCALE}px monospace`;
         ctx.globalAlpha = Math.min(1, caveDeathText.timer / 20);
-        ctx.fillStyle = "#000";
-        ctx.fillText(caveDeathText.text, (caveDeathText.x + 20) * SCALE + SCALE, caveDeathText.y * SCALE + SCALE);
-        ctx.fillStyle = caveDeathText.color;
-        ctx.fillText(caveDeathText.text, (caveDeathText.x + 20) * SCALE, caveDeathText.y * SCALE);
+        drawText(caveDeathText.text, caveDeathText.x + 20, caveDeathText.y, caveDeathText.color, caveDeathText.scale);
         ctx.globalAlpha = 1;
     }
 
-    // Screen flash
+    // Screen flash (matches overworld style)
     if (caveScreenFlash > 0) {
-        ctx.globalAlpha = caveScreenFlash / 15;
-        drawRect(0, 0, W, H, "#FFF");
-        ctx.globalAlpha = 1;
+        ctx.fillStyle = "#fff";
+        ctx.globalAlpha = Math.min(1, caveScreenFlash / 15) * 0.6;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1.0;
     }
 
     // "SURVIVE!" text at top
@@ -4065,14 +4287,14 @@ function renderMinigameArena() {
     ctx.fillStyle = "#FF4400";
     ctx.fillText("SURVIVE!", (W / 2) * SCALE, 2 * SCALE);
 
-    // Rescue wall progress hint
+    // Rescue progress hint — boards cracking overhead
     if (rescueWallProgress > 0.3) {
         const hintAlpha = Math.sin(minigameTimer * 0.05) * 0.3 + 0.5;
         ctx.globalAlpha = hintAlpha;
         ctx.font = `${4 * SCALE}px monospace`;
-        ctx.textAlign = "left";
+        ctx.textAlign = "center";
         ctx.fillStyle = "#FFD700";
-        ctx.fillText("HELP IS COMING...", 3 * SCALE, (CAVE_ROWS / 2 * CAVE_TILE) * SCALE);
+        ctx.fillText("HELP IS COMING...", (W / 2) * SCALE, (CAVE_TILE * 3 + 6) * SCALE);
         ctx.globalAlpha = 1;
     }
 
@@ -4119,50 +4341,74 @@ function startMinigameRescue() {
     minigameState = "rescue";
     minigameRescueTimer = 0;
     minigameRescuePhase = 0;
+    rescueBoardBreakPhase = 0; // staggered board breaking: 0=buildup, 1/2/3=each entrance bursts
     stopMinigameMusic();
 
-    // Set up rescue dancers
+    // Set up rescue dancers — they spill in from the top through broken boards
+    // Spread across the 3 boarded entrances (staggered)
     rescueDancers = [];
     for (let i = 0; i < 4; i++) {
+        const entIdx = i < 3 ? i : 1; // 1 per entrance, 4th goes to center
+        const ent = boardedEntrances[entIdx];
         rescueDancers.push({
-            x: -CAVE_TILE * (2 + i),
-            y: CAVE_TILE * (4 + i * 3),
+            x: ent.x + ent.w / 2 - CAVE_TILE / 2 + (i === 3 ? CAVE_TILE : 0),
+            y: -CAVE_TILE * (2 + i),
             palette: i % DANCER_PALETTES.length,
             frame: 0,
             hasTorch: true,
         });
     }
 
-    // Play dramatic breakthrough sound
+    // Track which entrances have been broken open
+    rescueBrokenEntrances = [false, false, false];
+
+    // Play dramatic buildup — deep rumble before the break
     if (audioCtx) {
         const now = audioCtx.currentTime;
-        // Deep rumble
+        // Ominous buildup rumble
         const osc = audioCtx.createOscillator();
         const g = audioCtx.createGain();
         osc.type = "sine";
-        osc.frequency.setValueAtTime(40, now);
-        osc.frequency.exponentialRampToValueAtTime(25, now + 1.0);
-        g.gain.setValueAtTime(0.3, now);
-        g.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+        osc.frequency.setValueAtTime(30, now);
+        osc.frequency.linearRampToValueAtTime(60, now + 1.5);
+        g.gain.setValueAtTime(0.15, now);
+        g.gain.linearRampToValueAtTime(0.35, now + 1.5);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 1.8);
         osc.connect(g); g.connect(audioCtx.destination);
-        osc.start(now); osc.stop(now + 1.0);
-        // Crash
-        const bufLen = audioCtx.sampleRate * 0.5;
-        const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
-        const data = buf.getChannelData(0);
-        for (let i = 0; i < bufLen; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufLen);
-        const noise = audioCtx.createBufferSource();
-        noise.buffer = buf;
-        const ng = audioCtx.createGain();
-        ng.gain.setValueAtTime(0.2, now + 0.1);
-        ng.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-        noise.connect(ng); ng.connect(audioCtx.destination);
-        noise.start(now + 0.1);
+        osc.start(now); osc.stop(now + 1.8);
+
+        // Staggered crash sounds for each entrance breaking
+        for (let b = 0; b < 3; b++) {
+            const t = now + 1.0 + b * 0.4; // each entrance breaks 0.4s apart
+            // Wood splintering crack
+            const crack = audioCtx.createOscillator();
+            const cg = audioCtx.createGain();
+            crack.type = "square";
+            crack.frequency.setValueAtTime(400 - b * 60, t);
+            crack.frequency.exponentialRampToValueAtTime(50, t + 0.15);
+            cg.gain.setValueAtTime(0.2, t);
+            cg.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+            crack.connect(cg); cg.connect(audioCtx.destination);
+            crack.start(t); crack.stop(t + 0.2);
+            // Burst noise
+            const bufLen = Math.floor(audioCtx.sampleRate * 0.4);
+            const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+            const data = buf.getChannelData(0);
+            for (let i = 0; i < bufLen; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufLen, 2);
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buf;
+            const ng = audioCtx.createGain();
+            ng.gain.setValueAtTime(0.15, t);
+            ng.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+            noise.connect(ng); ng.connect(audioCtx.destination);
+            noise.start(t);
+        }
     }
 
-    caveScreenShake = 20;
-    caveShakeIntensity = 6;
-    caveScreenFlash = 15;
+    // Initial subtle shake during buildup
+    caveScreenShake = 10;
+    caveShakeIntensity = 2;
+    caveScreenFlash = 0;
 }
 
 function updateMinigameRescue() {
@@ -4172,36 +4418,114 @@ function updateMinigameRescue() {
     if (caveScreenFlash > 0) caveScreenFlash--;
 
     if (minigameRescuePhase === 0) {
-        // Wall burst — rubble flies, shake dies down
+        // Dramatic staggered board-breaking — each entrance bursts one at a time
         if (caveScreenShake > 0) caveScreenShake--;
 
-        // Spawn rubble particles from left wall
-        if (minigameRescueTimer < 30) {
-            for (let i = 0; i < 5; i++) {
-                caveDeathParticles.push({
-                    x: CAVE_TILE + Math.random() * CAVE_TILE,
-                    y: CAVE_TILE * 2 + Math.random() * (CAVE_ROWS - 4) * CAVE_TILE,
-                    vx: 2 + Math.random() * 4,
-                    vy: (Math.random() - 0.5) * 4 - 1,
-                    life: 30 + Math.random() * 30,
-                    color: i % 2 ? "#8B4513" : "#A0522D",
-                    size: 3 + Math.random() * 4,
-                });
+        // Buildup phase: subtle dust and growing shake (first 60 frames)
+        if (minigameRescueTimer < 60) {
+            // Growing shake intensity
+            caveShakeIntensity = Math.min(4, 1 + minigameRescueTimer * 0.05);
+            caveScreenShake = Math.max(caveScreenShake, 5);
+            // Dust falls from all entrances during buildup
+            if (minigameRescueTimer % 4 === 0) {
+                for (const ent of boardedEntrances) {
+                    caveDeathParticles.push({
+                        x: ent.x + Math.random() * ent.w,
+                        y: CAVE_TILE * 2,
+                        vx: (Math.random() - 0.5) * 1,
+                        vy: 0.5 + Math.random() * 1,
+                        life: 20 + Math.random() * 15,
+                        color: "#C4A882",
+                        size: 1 + Math.random() * 2,
+                    });
+                }
             }
         }
 
-        if (minigameRescueTimer > 60) {
+        // Each entrance breaks at staggered intervals (frames 60, 84, 108)
+        const breakFrames = [60, 84, 108];
+        for (let b = 0; b < 3; b++) {
+            if (minigameRescueTimer === breakFrames[b]) {
+                rescueBrokenEntrances[b] = true;
+                // Big shake on each break
+                caveScreenShake = 25 + b * 5;
+                caveShakeIntensity = 8 + b * 2;
+                // Bright flash
+                caveScreenFlash = 12 + b * 3;
+
+                // Massive particle burst from this entrance
+                const ent = boardedEntrances[b];
+                // Big wood plank pieces
+                for (let p = 0; p < 12; p++) {
+                    caveDeathParticles.push({
+                        x: ent.x + Math.random() * ent.w,
+                        y: CAVE_TILE + Math.random() * CAVE_TILE,
+                        vx: (Math.random() - 0.5) * 8,
+                        vy: 2 + Math.random() * 6,
+                        life: 40 + Math.random() * 40,
+                        color: p % 3 === 0 ? "#8B6914" : p % 3 === 1 ? "#A07828" : "#6B4F12",
+                        size: 4 + Math.random() * 6,
+                    });
+                }
+                // Sawdust cloud
+                for (let p = 0; p < 15; p++) {
+                    caveDeathParticles.push({
+                        x: ent.x + Math.random() * ent.w,
+                        y: CAVE_TILE * 2,
+                        vx: (Math.random() - 0.5) * 5,
+                        vy: 1 + Math.random() * 4,
+                        life: 25 + Math.random() * 30,
+                        color: p % 2 ? "#C4A882" : "#D4B892",
+                        size: 2 + Math.random() * 3,
+                    });
+                }
+                // Nail sparks
+                for (let p = 0; p < 6; p++) {
+                    caveDeathParticles.push({
+                        x: ent.x + (p < 3 ? 3 : ent.w - 5),
+                        y: CAVE_TILE,
+                        vx: (Math.random() - 0.5) * 6,
+                        vy: 1 + Math.random() * 5,
+                        life: 15 + Math.random() * 15,
+                        color: "#FFD700",
+                        size: 1 + Math.random() * 2,
+                    });
+                }
+            }
+        }
+
+        // Ongoing splinter rain from broken entrances
+        if (minigameRescueTimer > 60 && minigameRescueTimer < 120) {
+            for (let b = 0; b < 3; b++) {
+                if (rescueBrokenEntrances[b] && Math.random() < 0.4) {
+                    const ent = boardedEntrances[b];
+                    caveDeathParticles.push({
+                        x: ent.x + Math.random() * ent.w,
+                        y: CAVE_TILE * 2,
+                        vx: (Math.random() - 0.5) * 2,
+                        vy: 0.5 + Math.random() * 2,
+                        life: 20 + Math.random() * 20,
+                        color: Math.random() > 0.5 ? "#8B6914" : "#A07828",
+                        size: 2 + Math.random() * 3,
+                    });
+                }
+            }
+        }
+
+        // All three broken — boards fully cleared, transition to dancers entering
+        if (minigameRescueTimer > 130) {
+            caveBoardedUp = false;
             minigameRescuePhase = 1;
             minigameRescueTimer = 0;
         }
     } else if (minigameRescuePhase === 1) {
-        // Dancers rush in through broken wall with torches
+        // Dancers rush in from the top through broken boarded entrances
         let allIn = true;
         for (let i = 0; i < rescueDancers.length; i++) {
             const d = rescueDancers[i];
-            const targetX = CAVE_TILE * 3 + i * CAVE_TILE * 2;
-            if (d.x < targetX) {
-                d.x += 2;
+            const targetY = CAVE_TILE * (4 + i * 2);
+            if (d.y < targetY) {
+                d.y += 2;
                 allIn = false;
             }
         }
@@ -4254,22 +4578,58 @@ function renderMinigameRescue() {
     const W = CAVE_COLS * CAVE_TILE;
     const H = CAVE_ROWS * CAVE_TILE;
 
-    // Broken left wall
-    if (minigameRescuePhase >= 1) {
-        // Gap in left wall
-        drawRect(0, CAVE_TILE * 3, CAVE_TILE * 2, (CAVE_ROWS - 6) * CAVE_TILE, "#1a0e08");
-        // Rubble edges (deterministic positions — no flickering)
-        for (let i = 0; i < 6; i++) {
-            const rx = ((i * 7 + 3) % 10) * CAVE_TILE / 10;
-            const ry = CAVE_TILE * 3 + i * CAVE_TILE * 2;
-            drawRect(rx, ry, 4, 3, "#4a3628");
+    // Staggered board breaking — show each entrance's state during phase 0 and the open gaps after
+    for (let ei = 0; ei < boardedEntrances.length; ei++) {
+        const ent = boardedEntrances[ei];
+        if (rescueBrokenEntrances[ei]) {
+            // This entrance has been smashed open — dark gap with debris
+            drawRect(ent.x, 0, ent.w, CAVE_TILE * 2, "#0a0604");
+            // Splintered wood edges framing the opening
+            for (let i = 0; i < 6; i++) {
+                const sx = ent.x + ((i * 7 + 3) % ent.w);
+                const sy = CAVE_TILE * 2 - 3 + (i % 3) * 2;
+                const sw = 2 + (i % 2) * 2;
+                const sh = 1 + (i % 2);
+                drawRect(sx, sy, sw, sh, i % 2 ? "#8B6914" : "#6B4F12");
+            }
+            // Hanging board fragment at top
+            drawRect(ent.x + ent.w / 2 - 4, 0, 8, 3 + Math.sin(performance.now() * 0.003 + ei) * 1, "#8B6914");
+            // Light spilling in from above
+            ctx.globalAlpha = 0.06;
+            drawRect(ent.x + 2, CAVE_TILE * 2, ent.w - 4, CAVE_TILE * 4, "#FFD080");
+            ctx.globalAlpha = 1;
+        } else if (minigameRescuePhase === 0) {
+            // Boards still intact during buildup — show them shaking/bulging
+            const shake = Math.min(1, minigameRescueTimer / 60);
+            const jitter = Math.sin(minigameRescueTimer * 0.5 + ei * 2) * shake * 2;
+            // Re-draw boards over the arena's existing boards with a shake offset
+            drawRect(ent.x, 0, ent.w, CAVE_TILE * 2, "#0a0604");
+            for (let b = 0; b < 4; b++) {
+                const boardY = b * (CAVE_TILE * 2 / 4);
+                const boardH = CAVE_TILE * 2 / 4 - 1;
+                drawRect(ent.x + 1 + jitter, boardY + 1, ent.w - 2, boardH, "#8B6914");
+                drawRect(ent.x + 3 + jitter, boardY + 2, ent.w - 6, 1, "#A07828");
+                drawRect(ent.x + 3, boardY + boardH / 2, 2, 2, "#888");
+                drawRect(ent.x + ent.w - 5, boardY + boardH / 2, 2, 2, "#888");
+            }
+            // Bulging cracks at high buildup
+            if (shake > 0.5) {
+                const bulge = (shake - 0.5) * 6;
+                ctx.globalAlpha = shake;
+                drawRect(ent.x + ent.w / 2 - 4, CAVE_TILE * 2 + bulge, 8, 3, "#8B6914");
+                for (let cr = 0; cr < 3; cr++) {
+                    const cx = ent.x + ent.w * (0.2 + cr * 0.3);
+                    drawRect(cx, CAVE_TILE * 0.5 + cr * 4, 1 + Math.floor(shake), cr * 3 + 2, "#000");
+                }
+                ctx.globalAlpha = 1;
+            }
         }
     }
 
     // Draw rescue dancers with torches
     for (let di = 0; di < rescueDancers.length; di++) {
         const d = rescueDancers[di];
-        if (d.x > 0) {
+        if (d.y > 0) {
             const walkPhase = Math.sin(minigameRescueTimer * 0.15 + di * 2);
             const bob = minigameRescuePhase < 2 ? Math.abs(walkPhase) * 2 : 0;
             const footOfs = minigameRescuePhase < 2 ? walkPhase * 1.5 : 0;
@@ -4282,17 +4642,22 @@ function renderMinigameRescue() {
         }
     }
 
-    // "RESCUED!" text during phase 2
+    // Rescue text — escalates across the 6 minigames
     if (minigameRescuePhase === 2) {
+        const rescueTexts = [
+            "RESCUED!", "THE CROWD CAME THROUGH!", "NEVER GIVE UP THE GROOVE!",
+            "THE FANS WON'T QUIT!", "UNBREAKABLE BOND!", "ONE LAST TIME!"
+        ];
+        const rescueMsg = rescueTexts[Math.min(minigamesCompleted.length, rescueTexts.length - 1)];
         const alpha = Math.min(1, minigameRescueTimer / 30);
         ctx.globalAlpha = alpha;
         ctx.textAlign = "center";
         ctx.font = `${14 * SCALE}px monospace`;
         const bounce = Math.sin(minigameRescueTimer * 0.05) * 3;
         ctx.fillStyle = "#000";
-        ctx.fillText("RESCUED!", (W / 2) * SCALE + SCALE, (H / 3 + bounce + 1) * SCALE);
+        ctx.fillText(rescueMsg, (W / 2) * SCALE + SCALE, (H / 3 + bounce + 1) * SCALE);
         ctx.fillStyle = "#00FF88";
-        ctx.fillText("RESCUED!", (W / 2) * SCALE, (H / 3 + bounce) * SCALE);
+        ctx.fillText(rescueMsg, (W / 2) * SCALE, (H / 3 + bounce) * SCALE);
         ctx.textAlign = "start";
         ctx.globalAlpha = 1;
     }
@@ -4474,10 +4839,259 @@ function endMinigame() {
     allPiecesJustCompleted = false;
     stopMinigameMusic();
 
-    // Return to normal game flow — advance to next level
-    gameState = "levelcomplete"; // temporarily restore for feature screen checks
-    if (checkPendingFeatureScreens()) return;
-    advanceLevel();
+    // Check for pending feature screens BEFORE advancing level
+    // (feature screens use currentLevel+1 to decide, so check while still on current level)
+    gameState = "levelcomplete";
+    if (checkPendingFeatureScreens()) return; // feature screen → advanceLevel() on dismiss (normal flow)
+
+    // No feature screens — do the cave-return animation
+    startCaveReturn();
+}
+
+function startCaveReturn() {
+    gameState = "cave-return";
+    caveReturnTimer = 0;
+    caveReturnPhase = 0;
+    caveReturnDancerCount = 0;
+    caveReturnDJVisible = false;
+
+    // Clear any leftover dancers from before the minigame
+    dancers.length = 0;
+
+    // Prepare the next level's state (grid, goblins, etc.) but DON'T give player control yet
+    currentLevel++;
+    if (currentLevel >= LEVELS.length) {
+        finalScore = score;
+        gameState = "ending";
+        startEnding();
+        return;
+    }
+
+    levelTimer = LEVELS[currentLevel].timerSeconds * 90;
+    const prevPattern = LEVELS[currentLevel - 1].pattern;
+    for (let r = 0; r < GRID_ROWS; r++)
+        for (let c = 0; c < GRID_COLS; c++)
+            grid[r][c] = prevPattern[r][c];
+
+    // Build zigzag cell list for sabotage animation
+    sabotageCells = [];
+    const ar = LEVELS[currentLevel].activeRows;
+    for (let r = 0; r < ar; r++) {
+        for (let i = 0; i < GRID_COLS; i++) {
+            const c = r % 2 === 0 ? i : GRID_COLS - 1 - i;
+            sabotageCells.push({ r, c, flip: Math.random() < getSabotageFlipChance() });
+        }
+    }
+
+    // Position player hidden above the top cave (will walk out in phase 1)
+    const topCave = CAVES[1]; // top wall cave
+    player.x = topCave.tileX * TILE;
+    player.y = -TILE;
+    player.destX = player.x;
+    player.destY = player.y;
+    player.dir = 0; // face down
+    player.attacking = false;
+    player.attackTimer = 0;
+    player.punchHit = false;
+
+    // Reset goblins with extra-long timers (they don't appear during return anim)
+    for (let i = 0; i < goblins.length; i++) {
+        const g = goblins[i];
+        g.dead = true;
+        g.deathAnimActive = false;
+        g.deathAnimTimer = 0;
+        const staggerGap = Math.round(600 - (currentLevel / 29) * 360);
+        g.respawnTimer = 600 + i * staggerGap; // extra delay for cave-return anim
+    }
+    catapultGoblin = null;
+    catapultSpawnedThisCycle = false;
+    catapultSequenceCount = 0;
+
+    // Reset effects
+    deathParticles = [];
+    tomatoes = [];
+    tomatoSplats = [];
+    deathText = null;
+    screenFlash = 0;
+    screenShake = 0;
+    hitFreeze = 0;
+    levelComplete = false;
+    patternMatched = false;
+    levelCelebrateTimer = 0;
+    levelCelebrateDisplayScore = 0;
+    for (let r = 0; r < GRID_ROWS; r++)
+        for (let c = 0; c < GRID_COLS; c++)
+            cellFlash[r][c] = 0;
+
+    currentStep = 0;
+    lastStepTime = performance.now();
+    setLevelTempo(currentLevel);
+    stopStoryDrums();
+
+    // Determine how many dancers to spawn (same as advanceLevel logic)
+    caveReturnDancerCount = 0;
+}
+
+function updateCaveReturn() {
+    caveReturnTimer++;
+
+    const topCave = CAVES[1];
+    const cavePixelX = topCave.tileX * TILE;
+    const cavePixelY = topCave.tileY * TILE;
+
+    if (caveReturnPhase === 0) {
+        // Phase 0: Dancers emerge from top cave one by one and scatter
+        const totalDancers = currentLevel * 3;
+        const spawnInterval = 12; // frames between each dancer emerging
+
+        // Spawn a new dancer every spawnInterval frames
+        if (caveReturnTimer % spawnInterval === 1 && caveReturnDancerCount < totalDancers) {
+            const palette = DANCER_PALETTES[caveReturnDancerCount % DANCER_PALETTES.length];
+
+            // Target position: random spot in the dancer area
+            const minPxX = 2 * TILE + 2;
+            const maxPxX = (COLS - 3) * TILE - 2;
+            const minPxY = 11 * TILE;
+            const maxPxY = (ROWS - 1) * TILE - TILE;
+            let targetX, targetY, attempts = 0;
+            let valid = false;
+            const occupiedPositions = dancers.map(d => ({ x: d.targetX ?? d.x, y: d.targetY ?? d.y }));
+            const MIN_DIST = 14;
+            do {
+                targetX = Math.round(minPxX + Math.random() * (maxPxX - minPxX));
+                targetY = Math.round(minPxY + Math.random() * (maxPxY - minPxY));
+                const tileX = Math.floor(targetX / TILE);
+                const tileY = Math.floor(targetY / TILE);
+                attempts++;
+                const tooClose = occupiedPositions.some(p =>
+                    Math.abs(p.x - targetX) < MIN_DIST && Math.abs(p.y - targetY) < MIN_DIST
+                );
+                const nearCave = CAVES.some(c =>
+                    Math.abs(c.tileX - tileX) <= 1 && Math.abs(c.tileY - tileY) <= 1
+                );
+                valid = !tooClose && !nearCave;
+            } while (!valid && attempts < 80);
+
+            if (valid) {
+                dancers.push({
+                    x: cavePixelX, y: cavePixelY,
+                    targetX: targetX, targetY: targetY,
+                    walkingIn: true,
+                    palette: palette,
+                    phase: Math.floor(Math.random() * 16),
+                });
+                caveReturnDancerCount++;
+            }
+        }
+
+        // Update dancer walk-in positions
+        for (const d of dancers) {
+            if (d.walkingIn) {
+                const dx = d.targetX - d.x;
+                const dy = d.targetY - d.y;
+                const walkSpeed = 0.8; // slightly faster than normal walk-in
+                if (Math.abs(dx) > 0.5) d.x += Math.sign(dx) * Math.min(walkSpeed, Math.abs(dx));
+                if (Math.abs(dy) > 0.5) d.y += Math.sign(dy) * Math.min(walkSpeed, Math.abs(dy));
+                if (Math.abs(dx) <= 0.5 && Math.abs(dy) <= 0.5) {
+                    d.x = d.targetX;
+                    d.y = d.targetY;
+                    d.walkingIn = false;
+                }
+            }
+        }
+
+        // Check if all dancers have been spawned and most have arrived
+        const allSpawned = caveReturnDancerCount >= totalDancers;
+        const arrivedCount = dancers.filter(d => !d.walkingIn).length;
+        if (allSpawned && arrivedCount >= Math.floor(totalDancers * 0.7)) {
+            caveReturnPhase = 1;
+            caveReturnTimer = 0;
+        }
+    } else if (caveReturnPhase === 1) {
+        // Phase 1: DJ emerges from cave and walks to starting position
+        caveReturnDJVisible = true;
+
+        // Update remaining dancers still walking
+        for (const d of dancers) {
+            if (d.walkingIn) {
+                const dx = d.targetX - d.x;
+                const dy = d.targetY - d.y;
+                const walkSpeed = 0.8;
+                if (Math.abs(dx) > 0.5) d.x += Math.sign(dx) * Math.min(walkSpeed, Math.abs(dx));
+                if (Math.abs(dy) > 0.5) d.y += Math.sign(dy) * Math.min(walkSpeed, Math.abs(dy));
+                if (Math.abs(dx) <= 0.5 && Math.abs(dy) <= 0.5) {
+                    d.x = d.targetX;
+                    d.y = d.targetY;
+                    d.walkingIn = false;
+                }
+            }
+        }
+
+        // DJ walks from cave to their normal starting position
+        const djTargetX = (GRID_X + 7) * TILE;
+        const djTargetY = (gridBottomTileY() + 1) * TILE + GRID_Y_OFFSET;
+        const djSpeed = 1.0;
+        const ddx = djTargetX - player.x;
+        const ddy = djTargetY - player.y;
+        if (Math.abs(ddx) > 0.5) player.x += Math.sign(ddx) * Math.min(djSpeed, Math.abs(ddx));
+        if (Math.abs(ddy) > 0.5) player.y += Math.sign(ddy) * Math.min(djSpeed, Math.abs(ddy));
+        player.destX = player.x;
+        player.destY = player.y;
+
+        // DJ walk animation direction
+        if (Math.abs(ddy) > Math.abs(ddx)) {
+            player.dir = ddy > 0 ? 0 : 1; // down or up
+        } else if (Math.abs(ddx) > 0.5) {
+            player.dir = ddx > 0 ? 3 : 2; // right or left
+        }
+
+        if (Math.abs(ddx) <= 0.5 && Math.abs(ddy) <= 0.5) {
+            player.x = djTargetX;
+            player.y = djTargetY;
+            player.destX = djTargetX;
+            player.destY = djTargetY;
+            caveReturnPhase = 2;
+            caveReturnTimer = 0;
+        }
+    } else if (caveReturnPhase === 2) {
+        // Phase 2: Brief pause then hand off to sabotage animation
+        // Snap any remaining walking dancers to their targets
+        for (const d of dancers) {
+            if (d.walkingIn) {
+                d.x = d.targetX;
+                d.y = d.targetY;
+                d.walkingIn = false;
+            }
+        }
+
+        if (caveReturnTimer > 30) {
+            // Start sabotage animation (goblin scrambles the grid)
+            sabotageNextState = "playing";
+            sabotageAnimTimer = 0;
+            sabotageFlipIndex = 0;
+            gameState = "sabotage-anim";
+        }
+    }
+}
+
+function renderCaveReturn() {
+    // Render the normal overworld scene
+    render();
+
+    const W = COLS * TILE;
+    const H = ROWS * TILE;
+
+    // Dark opening at the top cave entrance
+    const topCave = CAVES[1];
+    const cx = topCave.tileX * TILE;
+    const cy = topCave.tileY * TILE;
+    drawRect(cx - 2, cy, TILE + 4, TILE + 2, "#0a0604");
+
+    // Draw the DJ during phase 1+ (walking out of cave)
+    if (caveReturnDJVisible) {
+        const walkFrame = (caveReturnTimer >> 3) % 4;
+        drawPlayerSprite(player.x, player.y, walkFrame, player.dir, {});
+    }
 }
 
 // ---- Minigame Music ----
@@ -4586,6 +5200,13 @@ function advanceLevel() {
         gameState = "ending";
         startEnding();
         return;
+    }
+    // After a minigame, dancers rescued the DJ and scattered — respawn the full crowd
+    if (dancers.length === 0 && currentLevel > 1) {
+        spawnDancers(currentLevel * 3);
+    } else {
+        // Normal level start: 3 new dancer fans join the crowd
+        spawnDancers(3);
     }
     levelTimer = LEVELS[currentLevel].timerSeconds * 90;
     // Start with previous level's completed pattern (each level builds on the last)
@@ -4853,9 +5474,6 @@ function updateCatapultGoblin() {
             // Chain next catapult if sequence not complete (3 total)
             if (catapultSequenceCount < 3) {
                 spawnCatapultGoblin();
-            } else {
-                // Survived the full catapult barrage — earn some fans!
-                spawnDancers(2);
             }
             return;
         }
@@ -6103,12 +6721,14 @@ function drawMixer(mx, my) {
     drawRect(mx + 9, my + 8, 2, 1, "#FF4400");
 }
 
-function drawLightRig(lx, ly) {
+const LIGHT_RIG_COLORS = ["#FF4400", "#efac28", "#00FF88", "#4488FF", "#FF44AA", "#efac28"];
+function drawLightRig(lx, ly, pump) {
     // Two vertical light arrays flanking the stage (left and right)
-    // lx, ly is top-left reference; booth platform spans 48px wide from lx
-    const colors = ["#FF4400", "#efac28", "#00FF88", "#4488FF", "#FF44AA", "#efac28"];
-    const leftX = lx - 2;       // left array just outside booth left edge
-    const rightX = lx + 50;     // right array just outside booth right edge
+    // lx, ly is top-left reference (boothX - 8, boothY - 18)
+    // pump: 0-1 beat intensity for glow effect
+    pump = pump || 0;
+    const leftX = lx - 4;       // aligned with left speaker outer edge
+    const rightX = lx + 66;     // aligned with right speaker outer edge
     const poleTop = ly;
     const poleH = 18;           // vertical pole height
 
@@ -6120,20 +6740,25 @@ function drawLightRig(lx, ly) {
     drawRect(rightX + 1, poleTop, 2, 1, "#777");
 
     // 3 lights on each pole, evenly spaced
+    const baseGlow = 0.2;
+    const beatGlow = pump * 0.5;
+    const glowAlpha = baseGlow + beatGlow;
+    const bulbSize = pump > 0.1 ? 4 : 3;
+    // Glow pass (single alpha switch)
+    ctx.globalAlpha = glowAlpha;
     for (let i = 0; i < 3; i++) {
         const by = poleTop + 2 + i * 5;
-        // Left side lights (face inward)
-        drawRect(leftX + 3, by, 3, 3, colors[i]);
-        ctx.globalAlpha = 0.2;
-        ctx.fillStyle = colors[i];
-        ctx.fillRect((leftX + 2) * SCALE, (by - 1) * SCALE, 5 * SCALE, 5 * SCALE);
-        ctx.globalAlpha = 1;
-        // Right side lights (face inward)
-        drawRect(rightX - 2, by, 3, 3, colors[i + 3]);
-        ctx.globalAlpha = 0.2;
-        ctx.fillStyle = colors[i + 3];
-        ctx.fillRect((rightX - 3) * SCALE, (by - 1) * SCALE, 5 * SCALE, 5 * SCALE);
-        ctx.globalAlpha = 1;
+        ctx.fillStyle = LIGHT_RIG_COLORS[i];
+        ctx.fillRect((leftX + 1) * SCALE, (by - 2) * SCALE, 7 * SCALE, 7 * SCALE);
+        ctx.fillStyle = LIGHT_RIG_COLORS[i + 3];
+        ctx.fillRect((rightX - 4) * SCALE, (by - 2) * SCALE, 7 * SCALE, 7 * SCALE);
+    }
+    ctx.globalAlpha = 1;
+    // Bulb pass (on top of glow)
+    for (let i = 0; i < 3; i++) {
+        const by = poleTop + 2 + i * 5;
+        drawRect(leftX + 3, by, bulbSize, bulbSize, LIGHT_RIG_COLORS[i]);
+        drawRect(rightX - 2, by, bulbSize, bulbSize, LIGHT_RIG_COLORS[i + 3]);
     }
 }
 
@@ -6177,7 +6802,7 @@ function drawDJSetupPiece(pieceIndex, boothX, boothY, options) {
             drawMixer(boothX + 18, boothY + 2);
             break;
         case 4: // light rig
-            drawLightRig(boothX - 8, boothY - 18);
+            drawLightRig(boothX - 8, boothY - 18, options && options.pump);
             break;
         case 5: // disco ball
             drawDiscoBall(boothX + 20, boothY - 30);
@@ -6894,7 +7519,7 @@ function renderEnding() {
         for (let i = 0; i < 6; i++) {
             if (i < endingPiecesPlaced) {
                 // Piece is in place
-                drawDJSetupPiece(i, boothX, boothY, {});
+                drawDJSetupPiece(i, boothX, boothY, { pump: endingKickPump });
             } else if (endingPhase === 0) {
                 // Show as silhouette
                 drawDJSetupPiece(i, boothX, boothY, { silhouette: true });
@@ -6944,17 +7569,31 @@ function renderEnding() {
             }
         }
 
-        // Phase 3: "Something is missing" + fade to black
+        // Phase 3: Three-beat revelation + fade to black
         if (endingPhase === 3) {
-            if (endingTimer > 30 && endingTimer < 150) {
-                const textAlpha = endingTimer < 60 ? (endingTimer - 30) / 30 : Math.max(0, 1 - (endingTimer - 120) / 30);
-                ctx.globalAlpha = textAlpha;
+            // Beat 1 (frames 10-70): Acknowledge the rebuild
+            if (endingTimer > 10 && endingTimer < 70) {
+                const a = endingTimer < 30 ? (endingTimer - 10) / 20 : Math.max(0, 1 - (endingTimer - 50) / 20);
+                ctx.globalAlpha = a;
+                ctx.textAlign = "center";
+                ctx.font = `${7 * SCALE}px monospace`;
+                ctx.fillStyle = "#000";
+                ctx.fillText("THE BOOTH IS REBUILT. THE CROWD IS BACK.", (W / 2) * SCALE + SCALE, (H / 2 + 1) * SCALE);
+                ctx.fillStyle = "#efd8a1";
+                ctx.fillText("THE BOOTH IS REBUILT. THE CROWD IS BACK.", (W / 2) * SCALE, (H / 2) * SCALE);
+                ctx.textAlign = "start";
+                ctx.globalAlpha = 1;
+            }
+            // Beat 2 (frames 75-135): The caves
+            if (endingTimer > 75 && endingTimer < 135) {
+                const a = endingTimer < 95 ? (endingTimer - 75) / 20 : Math.max(0, 1 - (endingTimer - 115) / 20);
+                ctx.globalAlpha = a;
                 ctx.textAlign = "center";
                 ctx.font = `${8 * SCALE}px monospace`;
                 ctx.fillStyle = "#000";
-                ctx.fillText("...SOMETHING IS STILL MISSING.", (W / 2) * SCALE + SCALE, (H / 2 + 1) * SCALE);
-                ctx.fillStyle = "#efd8a1";
-                ctx.fillText("...SOMETHING IS STILL MISSING.", (W / 2) * SCALE, (H / 2) * SCALE);
+                ctx.fillText("...BUT THE CAVES ARE SILENT.", (W / 2) * SCALE + SCALE, (H / 2 + 1) * SCALE);
+                ctx.fillStyle = "#7a6a5a";
+                ctx.fillText("...BUT THE CAVES ARE SILENT.", (W / 2) * SCALE, (H / 2) * SCALE);
                 ctx.textAlign = "start";
                 ctx.globalAlpha = 1;
             }
@@ -6965,6 +7604,24 @@ function renderEnding() {
                 ctx.globalAlpha = fadeAlpha;
                 ctx.fillStyle = "#000";
                 ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+                ctx.globalAlpha = 1;
+            }
+
+            // Beat 3 (frames 155-230): The realization — drawn ON TOP of the black
+            if (endingTimer > 155 && endingTimer < 230) {
+                const a = endingTimer < 175 ? (endingTimer - 155) / 20 : Math.max(0, 1 - (endingTimer - 210) / 20);
+                ctx.globalAlpha = a;
+                ctx.textAlign = "center";
+                ctx.font = `${6 * SCALE}px monospace`;
+                ctx.fillStyle = "#1a3a1a";
+                ctx.fillText("MAYBE THEY WEREN'T ATTACKING.", (W / 2) * SCALE + SCALE, (H / 2 - 6) * SCALE);
+                ctx.fillStyle = "#39FF14";
+                ctx.fillText("MAYBE THEY WEREN'T ATTACKING.", (W / 2) * SCALE, (H / 2 - 7) * SCALE);
+                ctx.fillStyle = "#1a3a1a";
+                ctx.fillText("MAYBE THEY WERE ASKING TO JOIN IN.", (W / 2) * SCALE + SCALE, (H / 2 + 8) * SCALE);
+                ctx.fillStyle = "#39FF14";
+                ctx.fillText("MAYBE THEY WERE ASKING TO JOIN IN.", (W / 2) * SCALE, (H / 2 + 7) * SCALE);
+                ctx.textAlign = "start";
                 ctx.globalAlpha = 1;
             }
         }
@@ -7036,7 +7693,7 @@ function renderEnding() {
         const sBoothX = caveW / 2 - 24;
         const sBoothY = stageY;
         for (let i = 0; i < 6; i++) {
-            drawDJSetupPiece(i, sBoothX, sBoothY, {});
+            drawDJSetupPiece(i, sBoothX, sBoothY, { pump: endingKickPump });
         }
 
         // DJ at the booth
@@ -7361,7 +8018,7 @@ function renderTitleScreen() {
     // DJ Booth (center) — full setup with all equipment
     const boothX = W / 2 - 24;
     const boothY = GRID_Y * TILE - 8;
-    drawLightRig(boothX - 8, boothY - 18);
+    drawLightRig(boothX - 8, boothY - 18, titleKickPump);
     drawDiscoBall(boothX + 20, boothY - 30);
     drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
     drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
@@ -7786,8 +8443,8 @@ function playEarthquakeRumble() {
     osc.type = "sawtooth";
     osc.frequency.setValueAtTime(30, audioCtx.currentTime);
     osc.frequency.setValueAtTime(25, audioCtx.currentTime + 1);
-    g.gain.setValueAtTime(0.3, audioCtx.currentTime);
-    g.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 1);
+    g.gain.setValueAtTime(0.12, audioCtx.currentTime);
+    g.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 1);
     g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 3);
     osc.connect(g); g.connect(audioCtx.destination);
     osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime + 3);
@@ -7797,8 +8454,8 @@ function playEarthquakeRumble() {
     for (let s = 0; s < d.length; s++) d[s] = (Math.random() * 2 - 1) * Math.exp(-s / (audioCtx.sampleRate * 0.8));
     const n = audioCtx.createBufferSource(); n.buffer = buf;
     const ng = audioCtx.createGain();
-    ng.gain.setValueAtTime(0.15, audioCtx.currentTime);
-    ng.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.5);
+    ng.gain.setValueAtTime(0.06, audioCtx.currentTime);
+    ng.gain.linearRampToValueAtTime(0.12, audioCtx.currentTime + 0.5);
     ng.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2.5);
     const lp = audioCtx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 200;
     n.connect(lp); lp.connect(ng); ng.connect(audioCtx.destination);
@@ -7860,8 +8517,11 @@ function advanceIntroScene() {
             ];
             introGridFlash = Array.from({ length: 4 }, () => new Array(16).fill(0));
         }
-        // Spawn goblins at each cave for emergence
-        introGoblins = CAVES.map((cave, ci) => {
+        // Spawn 6 goblins: 5 green from caves (cycling), then 1 elite from top cave
+        // Caves cycle: right(0), top(1), left(2), right(0), left(2), top(1)
+        const goblinCaveAssign = [0, 1, 2, 0, 2, 1];
+        introGoblins = goblinCaveAssign.map((ci, gi) => {
+            const cave = CAVES[ci];
             const spawnX = cave.tileX * TILE;
             const spawnY = cave.tileY * TILE;
             return {
@@ -7871,6 +8531,11 @@ function advanceIntroScene() {
                 caveIdx: ci, emerged: false, speed: 0.5,
                 targetRow: -1, targetCol: -1,
                 moveSteps: 0,
+                isElite: gi === 5,
+                // Theft state (used after knockback)
+                carrying: false, gone: false,
+                targetCave: CAVES[ci],
+                pieceIndex: gi,
             };
         });
         // Pre-compute corruption order: sort all 64 cells by cellSeed so they flip deterministically
@@ -7948,7 +8613,7 @@ function renderIntro() {
         // DJ Booth (center) — full setup with all equipment
         const boothX = W / 2 - 24;
         const boothY = GRID_Y * TILE - 8;
-        drawLightRig(boothX - 8, boothY - 18);
+        drawLightRig(boothX - 8, boothY - 18, introKickPump);
         drawDiscoBall(boothX + 20, boothY - 30);
         drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
         drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
@@ -8119,7 +8784,7 @@ function renderIntro() {
         // DJ booth — full setup (power fading)
         const boothX = W / 2 - 24;
         const boothY = GRID_Y * TILE - 8;
-        drawLightRig(boothX - 8, boothY - 18);
+        drawLightRig(boothX - 8, boothY - 18, introKickPump);
         drawDiscoBall(boothX + 20, boothY - 30);
         drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
         drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
@@ -8306,10 +8971,9 @@ function renderIntro() {
 
     // ==================== SCENE 2 (1B): GOBLIN EMERGENCE + ATTACK ====================
     else if (introScene === 2) {
-        // Phase 1 (0-120): Eyes glow in caves, goblins emerge one by one
-        // Phase 2 (120-400): Goblins swarm grid, corrupt beats
-        // Phase 3 (200-300): Elite goblin tackles DJ
-        // Phase 4 (470+): Celebration, smoke, vignette
+        // Phase 1 (0-180): 5 green goblins emerge one by one, sabotage grid
+        // Phase 2 (200-260): Elite goblin charges from top cave, tackles DJ
+        // Phase 3 (260+): All 6 goblins grab equipment and flee to caves
 
         // Residual shake from earthquake, fading out
         const shAmt = Math.max(0, 1 - t / 120);
@@ -8335,8 +8999,8 @@ function renderIntro() {
             drawRect(cx, cy - 2, TILE, TILE + 4, "#0a0a0a");
             drawRect(cx - 2, cy - 4, TILE + 4, 3, "#684c3c");
             drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");
-            // Eyes glow until this cave's goblin emerges
-            const gobEmerged = introGoblins[ci] && introGoblins[ci].emerged;
+            // Eyes glow until first goblin from this cave emerges
+            const gobEmerged = introGoblins.some(g => g.caveIdx === ci && g.emerged);
             if (!gobEmerged) {
                 const eyeAlpha = 0.5 + Math.sin(t * 0.1 + ci) * 0.5;
                 ctx.globalAlpha = eyeAlpha;
@@ -8382,25 +9046,30 @@ function renderIntro() {
             }
         }
 
-        // === Goblins emerge from caves, then swarm the grid ===
-        // Phase 1: introGoblins emerge one by one (staggered by 40 frames)
+        // === 6 goblins emerge one by one from caves ===
+        // First 5 are green and sabotage the grid; 6th is the elite (index 5)
         const goblinEmergeTime = 30; // first goblin steps out after brief pause
+        const goblinStagger = 30;    // frames between each spawn
         for (let gi = 0; gi < introGoblins.length; gi++) {
             const gob = introGoblins[gi];
+            if (gob.gone) continue;
             const cave = CAVES[gob.caveIdx];
-            const caveReady = t > goblinEmergeTime + gi * 40;
+            const caveReady = t > goblinEmergeTime + gi * goblinStagger;
             if (!caveReady) continue;
+
+            // Elite goblin (index 5) is handled separately as the tackler
+            if (gob.isElite) continue;
 
             if (!gob.emerged) {
                 // Set initial destination: walk from cave toward the grid
                 gob.emerged = true;
                 if (cave.tileX === 0) {
                     gob.destX = miniGridX;
-                    gob.destY = miniGridY + gi * TILE;
+                    gob.destY = miniGridY + (gi % 4) * TILE;
                     gob.dir = 3; // right
                 } else if (cave.tileX === COLS - 1) {
                     gob.destX = miniGridX + 15 * TILE;
-                    gob.destY = miniGridY + gi * TILE;
+                    gob.destY = miniGridY + (gi % 4) * TILE;
                     gob.dir = 2; // left
                 } else {
                     gob.destX = miniGridX + 8 * TILE;
@@ -8463,42 +9132,6 @@ function renderIntro() {
             drawGoblinSprite("normal", gob.x, gob.y, gob.frame, { dir: gob.dir, showShadow: false });
         }
 
-        // Phase 2: Additional goblins swarm from caves (L-shaped animated paths)
-        const swarmStart = 120;
-        if (t > swarmStart) {
-            const swarmT = t - swarmStart;
-            const gobFrame = Math.floor(introGlobalTimer / 8) % 4;
-            const gobCount = Math.min(6, Math.floor(swarmT / 40));
-            for (let gi = 0; gi < gobCount; gi++) {
-                const caveIdx = gi % CAVES.length;
-                const cave = CAVES[caveIdx];
-                const startX = cave.tileX * TILE;
-                const startY = cave.tileY * TILE;
-                const targetX = miniGridX + (gi * 3) % 16 * TILE;
-                const targetY = miniGridY + (gi % 4) * TILE;
-                const gobT = Math.min(1, (swarmT - gi * 40) / 120);
-                if (gobT > 0) {
-                    const adx = Math.abs(targetX - startX);
-                    const ady = Math.abs(targetY - startY);
-                    const totalDist = adx + ady;
-                    const hRatio = totalDist > 0 ? adx / totalDist : 0.5;
-                    let gx, gy, gDir;
-                    if (gobT <= hRatio) {
-                        const hProgress = hRatio > 0 ? gobT / hRatio : 1;
-                        gx = startX + (targetX - startX) * hProgress;
-                        gy = startY;
-                        gDir = targetX > startX ? 3 : 2;
-                    } else {
-                        const vProgress = hRatio < 1 ? (gobT - hRatio) / (1 - hRatio) : 1;
-                        gx = targetX;
-                        gy = startY + (targetY - startY) * vProgress;
-                        gDir = targetY > startY ? 0 : 1;
-                    }
-                    drawGoblinSprite(gi === 4 ? "elite" : "normal", gx, gy, gobFrame, { dir: gDir, showShadow: false });
-                }
-            }
-        }
-
         // DJ booth — sparks flying, then explodes on tackle
         const boothX = W / 2 - 24;
         const boothY = GRID_Y * TILE - 8;
@@ -8506,7 +9139,7 @@ function renderIntro() {
 
         if (t < knockStart) {
             // Intact booth — full setup (with damage after swarm)
-            drawLightRig(boothX - 8, boothY - 18);
+            drawLightRig(boothX - 8, boothY - 18, introKickPump);
             drawDiscoBall(boothX + 20, boothY - 30);
             drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
             drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
@@ -8514,7 +9147,7 @@ function renderIntro() {
             drawSubwoofer(boothX + 44, boothY - 2, 0, 1);
             drawTurntable(boothX + 1, boothY - 2);
             drawMixer(boothX + 18, boothY + 2);
-            if (t > swarmStart) {
+            if (t > 120) {
                 drawRect(boothX + 5, boothY + 6, 10, 6, "#1f240a");
                 drawRect(boothX + 35, boothY + 8, 8, 4, "#1f240a");
                 drawRect(boothX + 18, boothY + 2, 12, 10, "#1f240a");
@@ -8543,17 +9176,14 @@ function renderIntro() {
                     landed: false,
                     carriedBy: -1,
                 }));
-                // Assign 6 theft goblins from the introGoblins that are on screen
-                const caveTargets = [CAVES[0], CAVES[1], CAVES[2], CAVES[0], CAVES[1], CAVES[2]];
-                introTheftGoblins = introBoothDebris.map((d, i) => ({
-                    x: d.x, y: d.y + 40 + Math.random() * 20,
-                    dir: 0, frame: 0, frameTimer: 0,
-                    pieceIndex: i,
-                    targetCave: caveTargets[i],
-                    carrying: false,
-                    gone: false,
-                    waitUntil: knockStart + 60 + i * 15, // staggered grab times
-                }));
+                // Assign each of the 6 introGoblins a debris piece to steal
+                for (let gi = 0; gi < introGoblins.length; gi++) {
+                    const gob = introGoblins[gi];
+                    gob.pieceIndex = gi;
+                    gob.carrying = false;
+                    gob.gone = false;
+                    gob.waitUntil = knockStart + 60 + gi * 15; // staggered grab times
+                }
             }
 
             // Destroyed booth platform (scorch marks)
@@ -8618,27 +9248,38 @@ function renderIntro() {
         const knockLandEnd = 420;   // 60 frames of dust settling
         const aftermathStart = 420;
 
-        // Tackling goblin — charges from right cave, hits DJ, runs back
+        // Tackling goblin — elite (index 5) charges from top cave, hits DJ
+        const tackleGob = introGoblins[5];
         const tackleGobStart = 200;
-        const tackleGobX0 = (COLS - 2) * TILE;
-        const tackleGobY0 = boothY;
+        const topCave = CAVES[tackleGob.caveIdx]; // top cave
+        const tackleGobX0 = topCave.tileX * TILE;
+        const tackleGobY0 = topCave.tileY * TILE;
         const tackleGobXEnd = djStartX + 10;
-        const tackleRetreatEnd = knockFlyEnd + 60;
-        if (t >= tackleGobStart && t < tackleRetreatEnd) {
-            let tgx, tgy = tackleGobY0, tgDir = 2;
+        const tackleGobYEnd = boothY;
+        if (t >= tackleGobStart && !tackleGob.gone) {
+            if (!tackleGob.emerged) tackleGob.emerged = true;
+            let tgx, tgy, tgDir = 0;
             if (t < knockStart) {
+                // Charge from top cave down to booth
                 const tackleT = Math.min(1, (t - tackleGobStart) / (knockStart - tackleGobStart));
                 tgx = tackleGobX0 + (tackleGobXEnd - tackleGobX0) * tackleT;
+                tgy = tackleGobY0 + (tackleGobYEnd - tackleGobY0) * tackleT;
+                tgDir = 0; // facing down
             } else if (t < knockStart + 10) {
                 // Stays at impact point briefly
                 tgx = tackleGobXEnd;
+                tgy = tackleGobYEnd;
             } else {
-                // Retreating back to cave
-                const retreatT = Math.min(1, (t - knockStart - 10) / 60);
-                tgx = tackleGobXEnd + (tackleGobX0 - tackleGobXEnd) * retreatT;
-                tgDir = 3;
+                // After impact, stays near booth (will join theft phase)
+                tgx = tackleGobXEnd;
+                tgy = tackleGobYEnd;
             }
-            drawGoblinSprite("elite", tgx, tgy, Math.floor(t / 6) % 4, { dir: tgDir, showShadow: false });
+            tackleGob.x = tgx;
+            tackleGob.y = tgy;
+            // Only draw if not yet in theft phase
+            if (t < knockStart + 30) {
+                drawGoblinSprite("elite", tgx, tgy, Math.floor(t / 6) % 4, { dir: tgDir, showShadow: false });
+            }
         }
 
         if (t < knockStart) {
@@ -8808,57 +9449,55 @@ function renderIntro() {
             drawPlayerSprite(djEndX, djEndY, 0, 0, {});
         }
 
-        // Aftermath: goblins grab debris pieces and flee to caves
+        // Aftermath: the same 6 goblins grab debris pieces and flee to caves
         if (t >= knockStart + 30) {
             const origOffsets2 = [
                 { x: -12, y: -2 }, { x: 44, y: -2 }, { x: 1, y: -2 },
                 { x: 18, y: 2 }, { x: -8, y: -18 }, { x: 20, y: -30 }
             ];
-            for (let gi = 0; gi < introTheftGoblins.length; gi++) {
-                const tg = introTheftGoblins[gi];
-                if (tg.gone) continue;
-                const d = introBoothDebris[tg.pieceIndex];
+            for (let gi = 0; gi < introGoblins.length; gi++) {
+                const gob = introGoblins[gi];
+                if (gob.gone) continue;
+                const d = introBoothDebris[gob.pieceIndex];
 
-                if (t < tg.waitUntil) {
+                if (t < gob.waitUntil) {
                     // Goblin running toward the fallen piece
-                    const moveT = Math.min(1, (t - knockStart - 30) / (tg.waitUntil - knockStart - 30));
                     const targetX = d.x;
                     const targetY = d.y;
-                    tg.x = tg.x + (targetX - tg.x) * 0.08;
-                    tg.y = tg.y + (targetY - tg.y) * 0.08;
-                    tg.dir = targetX > tg.x ? 3 : 2;
-                } else if (!tg.carrying) {
+                    gob.x = gob.x + (targetX - gob.x) * 0.08;
+                    gob.y = gob.y + (targetY - gob.y) * 0.08;
+                    gob.dir = targetX > gob.x ? 3 : 2;
+                } else if (!gob.carrying) {
                     // Grab the piece
-                    tg.carrying = true;
+                    gob.carrying = true;
                     d.carriedBy = gi;
                 } else {
-                    // Flee toward target cave
-                    const caveX = tg.targetCave.tileX * TILE;
-                    const caveY = tg.targetCave.tileY * TILE;
-                    const dx = caveX - tg.x;
-                    const dy = caveY - tg.y;
+                    // Flee toward home cave
+                    const caveX = gob.targetCave.tileX * TILE;
+                    const caveY = gob.targetCave.tileY * TILE;
+                    const dx = caveX - gob.x;
+                    const dy = caveY - gob.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
                     if (dist < 3) {
-                        tg.gone = true;
+                        gob.gone = true;
                         continue;
                     }
                     const speed = 2.5;
-                    tg.x += (dx / dist) * speed;
-                    tg.y += (dy / dist) * speed;
-                    tg.dir = dx > 0 ? 3 : 2;
+                    gob.x += (dx / dist) * speed;
+                    gob.y += (dy / dist) * speed;
+                    gob.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 3 : 2) : (dy > 0 ? 0 : 1);
                     // Move the carried piece with the goblin
-                    d.x = tg.x;
-                    d.y = tg.y - 8;
+                    d.x = gob.x;
+                    d.y = gob.y - 8;
                 }
 
                 // Draw the goblin
-                tg.frameTimer++;
-                if (tg.frameTimer > 6) { tg.frameTimer = 0; tg.frame = (tg.frame + 1) % 4; }
-                const gobType = gi === 4 ? "elite" : "normal";
-                drawGoblinSprite(gobType, tg.x, tg.y, tg.frame, { dir: tg.dir, showShadow: false });
+                gob.frameTimer++;
+                if (gob.frameTimer > 6) { gob.frameTimer = 0; gob.frame = (gob.frame + 1) % 4; }
+                drawGoblinSprite(gob.isElite ? "elite" : "normal", gob.x, gob.y, gob.frame, { dir: gob.dir, showShadow: false });
 
                 // Draw carried piece above goblin
-                if (tg.carrying && !tg.gone) {
+                if (gob.carrying && !gob.gone) {
                     ctx.save();
                     const ofsX = d.x - (boothX + origOffsets2[d.pieceIndex].x);
                     const ofsY = d.y - (boothY + origOffsets2[d.pieceIndex].y);
@@ -8917,23 +9556,23 @@ function renderIntro() {
         const crawlStartX = W / 2 - 8;   // Scene 2 landing X (center of venue)
         const crawlStartY = (GRID_Y + 8) * TILE; // Scene 2 landing Y (deep in dance floor)
         const crawlEndX = (GRID_X + 7) * TILE;   // Match level 1 player start X
-        const crawlEndY = (GRID_Y + LEVELS[0].activeRows + 1) * TILE + GRID_Y_OFFSET + 20; // +20 because rise phase subtracts 20
+        const crawlEndY = (GRID_Y + LEVELS[0].activeRows + 1) * TILE + GRID_Y_OFFSET;
         const crawlT = Math.min(1, t / CRAWL_FRAMES);
 
         let djX, djY, djDir, djFrame;
         if (t < CRAWL_FRAMES) {
-            // Crawl straight up from landing spot to center
-            djX = crawlStartX;
+            // Crawl from landing spot to final position
+            djX = crawlStartX + (crawlEndX - crawlStartX) * crawlT;
             djY = crawlStartY + (crawlEndY - crawlStartY) * crawlT;
             djDir = 1; // facing up (crawling upward)
             djFrame = Math.floor(t / 10) % 4; // slow crawl animation
         } else {
-            // Rise phase (same as original, offset by CRAWL_FRAMES)
+            // Rise in place — DJ stands up and faces forward (toward camera)
+            djX = crawlEndX;
+            djY = crawlEndY;
             const rt = t - CRAWL_FRAMES;
             const riseProgress = Math.min(1, rt / 90);
-            djX = crawlEndX;
-            djY = crawlEndY - riseProgress * 20;
-            djDir = 0;
+            djDir = 0; // now facing down (toward player)
             djFrame = riseProgress < 0.5 ? 0 : Math.floor((rt - 45) / 8) % 4;
         }
 
@@ -9151,6 +9790,10 @@ function renderLevelComplete() {
 
     levelCelebrateTimer++;
     if (screenFlash > 0) screenFlash--;
+    // Advance sequencer step to keep dancers dancing
+    if (levelCelebrateTimer % 8 === 0) {
+        currentStep = (currentStep + 1) % GRID_COLS;
+    }
 
     // Render the game map underneath, then fade to black over time
     render();
@@ -9158,6 +9801,11 @@ function renderLevelComplete() {
     ctx.globalAlpha = fadeAlpha;
     drawRect(0, 0, COLS * TILE, ROWS * TILE, "#1f240a");
     ctx.globalAlpha = 1.0;
+
+    // Keep dancers dancing on top of the dark overlay
+    for (const d of dancers) {
+        drawDancer(d);
+    }
 
     // "LEVEL X COMPLETE!" text
     if (levelCelebrateTimer > 30) {
@@ -9531,6 +10179,19 @@ function renderGameOverScreen() {
         const textY = player.y + player.h + 20;
         drawText(shitText, W / 2 - shitW / 2 + 1, textY + 1, "#000000", 7);
         drawText(shitText, W / 2 - shitW / 2, textY, "#efb775", 7);
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Narrative context — goblins win (appears after "RUDE!" has sunk in)
+    if (gameOverTimer >= 200 && gameOverTimer < 600) {
+        const narAlpha = gameOverTimer < 230 ? (gameOverTimer - 200) / 30
+            : gameOverTimer >= 540 ? Math.max(0, 1 - (gameOverTimer - 540) / 60) : 1;
+        ctx.globalAlpha = narAlpha;
+        const narText = "THE GOBLINS RECLAIMED THE STAGE.";
+        const narW = narText.length * 5;
+        const narY = player.y + player.h + 34;
+        drawText(narText, W / 2 - narW / 2 + 1, narY + 1, "#000000", 5);
+        drawText(narText, W / 2 - narW / 2, narY, "#39FF14", 5);
         ctx.globalAlpha = 1.0;
     }
 
@@ -10049,12 +10710,18 @@ function gameLoop(timestamp) {
                 renderNewInstrument();
             } else if (gameState === "sabotage-anim") {
                 renderSabotageAnim();
+            } else if (gameState === "cave-return") {
+                updateCaveReturn();
+                renderCaveReturn();
             } else if (gameState === "levelcomplete") {
                 renderLevelComplete();
             } else if (gameState === "minigame") {
                 if (minigameState === "kidnap") {
                     updateMinigameKidnap();
                     renderMinigameKidnap();
+                } else if (minigameState === "boarding") {
+                    updateMinigameBoarding();
+                    renderMinigameBoarding();
                 } else if (minigameState === "playing") {
                     updateMinigameArena();
                     renderMinigameArena();
