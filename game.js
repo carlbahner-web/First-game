@@ -2819,8 +2819,6 @@ function triggerLevelComplete() {
     screenFlash = 20;
     // Play fanfare instead of drums
     playLevelFanfare();
-    // Reward: 3 new dancer fans per level completed
-    spawnDancers(3);
 }
 
 // ============================================================
@@ -4585,6 +4583,8 @@ function advanceLevel() {
         startEnding();
         return;
     }
+    // 3 new dancer fans join the crowd at the start of each new level
+    spawnDancers(3);
     levelTimer = LEVELS[currentLevel].timerSeconds * 90;
     // Start with previous level's completed pattern (each level builds on the last)
     const prevPattern = LEVELS[currentLevel - 1].pattern;
