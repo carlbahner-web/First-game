@@ -1438,6 +1438,15 @@ window.addEventListener("keydown", (e) => {
         if (gameState === "title") {
             if (titleFadingOut) return; // already transitioning
             ensureAudio();
+            if (gameMode === "chill") {
+                // Chill mode: skip the goblin intro cutscene — go straight to playing
+                stopTitleDrums();
+                resetGame();
+                spawnDancers(6);
+                gameState = "playing";
+                sceneTransition = { active: true, from: "title", to: "playing", progress: 0, duration: 20 };
+                return;
+            }
             // Start fading title text — state change happens when fade completes
             titleFadingOut = true;
             titleFadeTimer = 0;
@@ -2960,14 +2969,19 @@ function renderMinigameKidnap() {
     drawPlayerSprite(kidnapDJPos.x + struggle, kidnapDJPos.y,
         (minigameKidnapTimer >> 3) % 4, 1, {});
 
-    // "KIDNAPPED!" text
+    // Kidnap text — escalates across the 6 minigames
     if (minigameKidnapPhase === 1 && minigameKidnapTimer > 20) {
+        const kidnapTexts = [
+            "KIDNAPPED!", "NOT AGAIN!", "THEY'RE GETTING BOLDER!",
+            "A WELL-PLANNED AMBUSH!", "THEY BROUGHT REINFORCEMENTS!", "THE FINAL HEIST!"
+        ];
+        const kidnapMsg = kidnapTexts[Math.min(minigamesCompleted.length, kidnapTexts.length - 1)];
         ctx.textAlign = "center";
         ctx.font = `${14 * SCALE}px monospace`;
         const blink = Math.sin(minigameKidnapTimer * 0.15) > 0;
         if (blink) {
             ctx.fillStyle = "#FF0044";
-            ctx.fillText("KIDNAPPED!", (W * SCALE) / 2, (H / 3) * SCALE);
+            ctx.fillText(kidnapMsg, (W * SCALE) / 2, (H / 3) * SCALE);
         }
     }
 }
@@ -2976,7 +2990,9 @@ function renderMinigameKidnap() {
 function startMinigameArena() {
     minigameState = "boarding";
     minigameActive = true;
-    minigameTimer = MINIGAME_BASE_TIME;
+    // Scale timer: 20s → 22s → 24s → 26s → 28s → 30s across 6 minigames
+    const mgIndex = minigamesCompleted.length;
+    minigameTimer = MINIGAME_BASE_TIME + mgIndex * 2 * 60;
     cavePlayerDead = false;
     caveKillCount = 0;
     caveCatapultKillCount = 0;
@@ -3154,7 +3170,7 @@ function spawnCaveGoblin(elite) {
         destX: snapX, destY: snapY,
         w: CAVE_TILE, h: CAVE_TILE,
         dir: 0, frame: 0, frameTimer: 0,
-        speed: 0.55 + Math.random() * 0.25,
+        speed: (0.55 + minigamesCompleted.length * 0.06) + Math.random() * 0.25,
         dead: false,
         elite: elite,
         hp: elite ? 3 : 1,
@@ -4626,17 +4642,22 @@ function renderMinigameRescue() {
         }
     }
 
-    // "RESCUED!" text during phase 2
+    // Rescue text — escalates across the 6 minigames
     if (minigameRescuePhase === 2) {
+        const rescueTexts = [
+            "RESCUED!", "THE CROWD CAME THROUGH!", "NEVER GIVE UP THE GROOVE!",
+            "THE FANS WON'T QUIT!", "UNBREAKABLE BOND!", "ONE LAST TIME!"
+        ];
+        const rescueMsg = rescueTexts[Math.min(minigamesCompleted.length, rescueTexts.length - 1)];
         const alpha = Math.min(1, minigameRescueTimer / 30);
         ctx.globalAlpha = alpha;
         ctx.textAlign = "center";
         ctx.font = `${14 * SCALE}px monospace`;
         const bounce = Math.sin(minigameRescueTimer * 0.05) * 3;
         ctx.fillStyle = "#000";
-        ctx.fillText("RESCUED!", (W / 2) * SCALE + SCALE, (H / 3 + bounce + 1) * SCALE);
+        ctx.fillText(rescueMsg, (W / 2) * SCALE + SCALE, (H / 3 + bounce + 1) * SCALE);
         ctx.fillStyle = "#00FF88";
-        ctx.fillText("RESCUED!", (W / 2) * SCALE, (H / 3 + bounce) * SCALE);
+        ctx.fillText(rescueMsg, (W / 2) * SCALE, (H / 3 + bounce) * SCALE);
         ctx.textAlign = "start";
         ctx.globalAlpha = 1;
     }
@@ -7548,17 +7569,31 @@ function renderEnding() {
             }
         }
 
-        // Phase 3: "Something is missing" + fade to black
+        // Phase 3: Three-beat revelation + fade to black
         if (endingPhase === 3) {
-            if (endingTimer > 30 && endingTimer < 150) {
-                const textAlpha = endingTimer < 60 ? (endingTimer - 30) / 30 : Math.max(0, 1 - (endingTimer - 120) / 30);
-                ctx.globalAlpha = textAlpha;
+            // Beat 1 (frames 10-70): Acknowledge the rebuild
+            if (endingTimer > 10 && endingTimer < 70) {
+                const a = endingTimer < 30 ? (endingTimer - 10) / 20 : Math.max(0, 1 - (endingTimer - 50) / 20);
+                ctx.globalAlpha = a;
+                ctx.textAlign = "center";
+                ctx.font = `${7 * SCALE}px monospace`;
+                ctx.fillStyle = "#000";
+                ctx.fillText("THE BOOTH IS REBUILT. THE CROWD IS BACK.", (W / 2) * SCALE + SCALE, (H / 2 + 1) * SCALE);
+                ctx.fillStyle = "#efd8a1";
+                ctx.fillText("THE BOOTH IS REBUILT. THE CROWD IS BACK.", (W / 2) * SCALE, (H / 2) * SCALE);
+                ctx.textAlign = "start";
+                ctx.globalAlpha = 1;
+            }
+            // Beat 2 (frames 75-135): The caves
+            if (endingTimer > 75 && endingTimer < 135) {
+                const a = endingTimer < 95 ? (endingTimer - 75) / 20 : Math.max(0, 1 - (endingTimer - 115) / 20);
+                ctx.globalAlpha = a;
                 ctx.textAlign = "center";
                 ctx.font = `${8 * SCALE}px monospace`;
                 ctx.fillStyle = "#000";
-                ctx.fillText("...SOMETHING IS STILL MISSING.", (W / 2) * SCALE + SCALE, (H / 2 + 1) * SCALE);
-                ctx.fillStyle = "#efd8a1";
-                ctx.fillText("...SOMETHING IS STILL MISSING.", (W / 2) * SCALE, (H / 2) * SCALE);
+                ctx.fillText("...BUT THE CAVES ARE SILENT.", (W / 2) * SCALE + SCALE, (H / 2 + 1) * SCALE);
+                ctx.fillStyle = "#7a6a5a";
+                ctx.fillText("...BUT THE CAVES ARE SILENT.", (W / 2) * SCALE, (H / 2) * SCALE);
                 ctx.textAlign = "start";
                 ctx.globalAlpha = 1;
             }
@@ -7569,6 +7604,24 @@ function renderEnding() {
                 ctx.globalAlpha = fadeAlpha;
                 ctx.fillStyle = "#000";
                 ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+                ctx.globalAlpha = 1;
+            }
+
+            // Beat 3 (frames 155-230): The realization — drawn ON TOP of the black
+            if (endingTimer > 155 && endingTimer < 230) {
+                const a = endingTimer < 175 ? (endingTimer - 155) / 20 : Math.max(0, 1 - (endingTimer - 210) / 20);
+                ctx.globalAlpha = a;
+                ctx.textAlign = "center";
+                ctx.font = `${6 * SCALE}px monospace`;
+                ctx.fillStyle = "#1a3a1a";
+                ctx.fillText("MAYBE THEY WEREN'T ATTACKING.", (W / 2) * SCALE + SCALE, (H / 2 - 6) * SCALE);
+                ctx.fillStyle = "#39FF14";
+                ctx.fillText("MAYBE THEY WEREN'T ATTACKING.", (W / 2) * SCALE, (H / 2 - 7) * SCALE);
+                ctx.fillStyle = "#1a3a1a";
+                ctx.fillText("MAYBE THEY WERE ASKING TO JOIN IN.", (W / 2) * SCALE + SCALE, (H / 2 + 8) * SCALE);
+                ctx.fillStyle = "#39FF14";
+                ctx.fillText("MAYBE THEY WERE ASKING TO JOIN IN.", (W / 2) * SCALE, (H / 2 + 7) * SCALE);
+                ctx.textAlign = "start";
                 ctx.globalAlpha = 1;
             }
         }
@@ -10126,6 +10179,19 @@ function renderGameOverScreen() {
         const textY = player.y + player.h + 20;
         drawText(shitText, W / 2 - shitW / 2 + 1, textY + 1, "#000000", 7);
         drawText(shitText, W / 2 - shitW / 2, textY, "#efb775", 7);
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Narrative context — goblins win (appears after "RUDE!" has sunk in)
+    if (gameOverTimer >= 200 && gameOverTimer < 600) {
+        const narAlpha = gameOverTimer < 230 ? (gameOverTimer - 200) / 30
+            : gameOverTimer >= 540 ? Math.max(0, 1 - (gameOverTimer - 540) / 60) : 1;
+        ctx.globalAlpha = narAlpha;
+        const narText = "THE GOBLINS RECLAIMED THE STAGE.";
+        const narW = narText.length * 5;
+        const narY = player.y + player.h + 34;
+        drawText(narText, W / 2 - narW / 2 + 1, narY + 1, "#000000", 5);
+        drawText(narText, W / 2 - narW / 2, narY, "#39FF14", 5);
         ctx.globalAlpha = 1.0;
     }
 
