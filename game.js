@@ -9135,6 +9135,10 @@ function renderLevelComplete() {
 
     levelCelebrateTimer++;
     if (screenFlash > 0) screenFlash--;
+    // Advance sequencer step to keep dancers dancing
+    if (levelCelebrateTimer % 8 === 0) {
+        currentStep = (currentStep + 1) % GRID_COLS;
+    }
 
     // Render the game map underneath, then fade to black over time
     render();
@@ -9142,6 +9146,11 @@ function renderLevelComplete() {
     ctx.globalAlpha = fadeAlpha;
     drawRect(0, 0, COLS * TILE, ROWS * TILE, "#1f240a");
     ctx.globalAlpha = 1.0;
+
+    // Keep dancers dancing on top of the dark overlay
+    for (const d of dancers) {
+        drawDancer(d);
+    }
 
     // "LEVEL X COMPLETE!" text
     if (levelCelebrateTimer > 30) {
