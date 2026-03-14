@@ -1027,7 +1027,6 @@ let introGridFlash = null;  // flash timers per cell [row][col]
 let introCorruptOrder = [];  // pre-sorted cell coords for Scene 2 progressive corruption
 let introCorruptedSoFar = 0; // how many cells Scene 2 has flipped so far
 let introBoothDebris = [];   // [{pieceIndex, x, y, vx, vy, landed, carriedBy}] — 6 pieces during explosion
-let introTheftGoblins = [];  // [{x, y, dir, frame, frameTimer, pieceIndex, targetCave, carrying, gone}]
 let introDrumGain = null;   // audio gain node for intro drums
 let introDrumStarted = false;
 let introDrumTimer = null;
@@ -7867,8 +7866,11 @@ function advanceIntroScene() {
             ];
             introGridFlash = Array.from({ length: 4 }, () => new Array(16).fill(0));
         }
-        // Spawn goblins at each cave for emergence
-        introGoblins = CAVES.map((cave, ci) => {
+        // Spawn 6 goblins: 5 green from caves (cycling), then 1 elite from top cave
+        // Caves cycle: right(0), top(1), left(2), right(0), left(2), top(1)
+        const goblinCaveAssign = [0, 1, 2, 0, 2, 1];
+        introGoblins = goblinCaveAssign.map((ci, gi) => {
+            const cave = CAVES[ci];
             const spawnX = cave.tileX * TILE;
             const spawnY = cave.tileY * TILE;
             return {
@@ -7878,6 +7880,11 @@ function advanceIntroScene() {
                 caveIdx: ci, emerged: false, speed: 0.5,
                 targetRow: -1, targetCol: -1,
                 moveSteps: 0,
+                isElite: gi === 5,
+                // Theft state (used after knockback)
+                carrying: false, gone: false,
+                targetCave: CAVES[ci],
+                pieceIndex: gi,
             };
         });
         // Pre-compute corruption order: sort all 64 cells by cellSeed so they flip deterministically
@@ -8313,10 +8320,9 @@ function renderIntro() {
 
     // ==================== SCENE 2 (1B): GOBLIN EMERGENCE + ATTACK ====================
     else if (introScene === 2) {
-        // Phase 1 (0-120): Eyes glow in caves, goblins emerge one by one
-        // Phase 2 (120-400): Goblins swarm grid, corrupt beats
-        // Phase 3 (200-300): Elite goblin tackles DJ
-        // Phase 4 (470+): Celebration, smoke, vignette
+        // Phase 1 (0-180): 5 green goblins emerge one by one, sabotage grid
+        // Phase 2 (200-260): Elite goblin charges from top cave, tackles DJ
+        // Phase 3 (260+): All 6 goblins grab equipment and flee to caves
 
         // Residual shake from earthquake, fading out
         const shAmt = Math.max(0, 1 - t / 120);
@@ -8342,8 +8348,8 @@ function renderIntro() {
             drawRect(cx, cy - 2, TILE, TILE + 4, "#0a0a0a");
             drawRect(cx - 2, cy - 4, TILE + 4, 3, "#684c3c");
             drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");
-            // Eyes glow until this cave's goblin emerges
-            const gobEmerged = introGoblins[ci] && introGoblins[ci].emerged;
+            // Eyes glow until first goblin from this cave emerges
+            const gobEmerged = introGoblins.some(g => g.caveIdx === ci && g.emerged);
             if (!gobEmerged) {
                 const eyeAlpha = 0.5 + Math.sin(t * 0.1 + ci) * 0.5;
                 ctx.globalAlpha = eyeAlpha;
@@ -8389,25 +8395,30 @@ function renderIntro() {
             }
         }
 
-        // === Goblins emerge from caves, then swarm the grid ===
-        // Phase 1: introGoblins emerge one by one (staggered by 40 frames)
+        // === 6 goblins emerge one by one from caves ===
+        // First 5 are green and sabotage the grid; 6th is the elite (index 5)
         const goblinEmergeTime = 30; // first goblin steps out after brief pause
+        const goblinStagger = 30;    // frames between each spawn
         for (let gi = 0; gi < introGoblins.length; gi++) {
             const gob = introGoblins[gi];
+            if (gob.gone) continue;
             const cave = CAVES[gob.caveIdx];
-            const caveReady = t > goblinEmergeTime + gi * 40;
+            const caveReady = t > goblinEmergeTime + gi * goblinStagger;
             if (!caveReady) continue;
+
+            // Elite goblin (index 5) is handled separately as the tackler
+            if (gob.isElite) continue;
 
             if (!gob.emerged) {
                 // Set initial destination: walk from cave toward the grid
                 gob.emerged = true;
                 if (cave.tileX === 0) {
                     gob.destX = miniGridX;
-                    gob.destY = miniGridY + gi * TILE;
+                    gob.destY = miniGridY + (gi % 4) * TILE;
                     gob.dir = 3; // right
                 } else if (cave.tileX === COLS - 1) {
                     gob.destX = miniGridX + 15 * TILE;
-                    gob.destY = miniGridY + gi * TILE;
+                    gob.destY = miniGridY + (gi % 4) * TILE;
                     gob.dir = 2; // left
                 } else {
                     gob.destX = miniGridX + 8 * TILE;
@@ -8470,42 +8481,6 @@ function renderIntro() {
             drawGoblinSprite("normal", gob.x, gob.y, gob.frame, { dir: gob.dir, showShadow: false });
         }
 
-        // Phase 2: Additional goblins swarm from caves (L-shaped animated paths)
-        const swarmStart = 120;
-        if (t > swarmStart) {
-            const swarmT = t - swarmStart;
-            const gobFrame = Math.floor(introGlobalTimer / 8) % 4;
-            const gobCount = Math.min(6, Math.floor(swarmT / 40));
-            for (let gi = 0; gi < gobCount; gi++) {
-                const caveIdx = gi % CAVES.length;
-                const cave = CAVES[caveIdx];
-                const startX = cave.tileX * TILE;
-                const startY = cave.tileY * TILE;
-                const targetX = miniGridX + (gi * 3) % 16 * TILE;
-                const targetY = miniGridY + (gi % 4) * TILE;
-                const gobT = Math.min(1, (swarmT - gi * 40) / 120);
-                if (gobT > 0) {
-                    const adx = Math.abs(targetX - startX);
-                    const ady = Math.abs(targetY - startY);
-                    const totalDist = adx + ady;
-                    const hRatio = totalDist > 0 ? adx / totalDist : 0.5;
-                    let gx, gy, gDir;
-                    if (gobT <= hRatio) {
-                        const hProgress = hRatio > 0 ? gobT / hRatio : 1;
-                        gx = startX + (targetX - startX) * hProgress;
-                        gy = startY;
-                        gDir = targetX > startX ? 3 : 2;
-                    } else {
-                        const vProgress = hRatio < 1 ? (gobT - hRatio) / (1 - hRatio) : 1;
-                        gx = targetX;
-                        gy = startY + (targetY - startY) * vProgress;
-                        gDir = targetY > startY ? 0 : 1;
-                    }
-                    drawGoblinSprite(gi === 4 ? "elite" : "normal", gx, gy, gobFrame, { dir: gDir, showShadow: false });
-                }
-            }
-        }
-
         // DJ booth — sparks flying, then explodes on tackle
         const boothX = W / 2 - 24;
         const boothY = GRID_Y * TILE - 8;
@@ -8521,7 +8496,7 @@ function renderIntro() {
             drawSubwoofer(boothX + 44, boothY - 2, 0, 1);
             drawTurntable(boothX + 1, boothY - 2);
             drawMixer(boothX + 18, boothY + 2);
-            if (t > swarmStart) {
+            if (t > 120) {
                 drawRect(boothX + 5, boothY + 6, 10, 6, "#1f240a");
                 drawRect(boothX + 35, boothY + 8, 8, 4, "#1f240a");
                 drawRect(boothX + 18, boothY + 2, 12, 10, "#1f240a");
@@ -8550,17 +8525,14 @@ function renderIntro() {
                     landed: false,
                     carriedBy: -1,
                 }));
-                // Assign 6 theft goblins from the introGoblins that are on screen
-                const caveTargets = [CAVES[0], CAVES[1], CAVES[2], CAVES[0], CAVES[1], CAVES[2]];
-                introTheftGoblins = introBoothDebris.map((d, i) => ({
-                    x: d.x, y: d.y + 40 + Math.random() * 20,
-                    dir: 0, frame: 0, frameTimer: 0,
-                    pieceIndex: i,
-                    targetCave: caveTargets[i],
-                    carrying: false,
-                    gone: false,
-                    waitUntil: knockStart + 60 + i * 15, // staggered grab times
-                }));
+                // Assign each of the 6 introGoblins a debris piece to steal
+                for (let gi = 0; gi < introGoblins.length; gi++) {
+                    const gob = introGoblins[gi];
+                    gob.pieceIndex = gi;
+                    gob.carrying = false;
+                    gob.gone = false;
+                    gob.waitUntil = knockStart + 60 + gi * 15; // staggered grab times
+                }
             }
 
             // Destroyed booth platform (scorch marks)
@@ -8625,27 +8597,38 @@ function renderIntro() {
         const knockLandEnd = 420;   // 60 frames of dust settling
         const aftermathStart = 420;
 
-        // Tackling goblin — charges from right cave, hits DJ, runs back
+        // Tackling goblin — elite (index 5) charges from top cave, hits DJ
+        const tackleGob = introGoblins[5];
         const tackleGobStart = 200;
-        const tackleGobX0 = (COLS - 2) * TILE;
-        const tackleGobY0 = boothY;
+        const topCave = CAVES[tackleGob.caveIdx]; // top cave
+        const tackleGobX0 = topCave.tileX * TILE;
+        const tackleGobY0 = topCave.tileY * TILE;
         const tackleGobXEnd = djStartX + 10;
-        const tackleRetreatEnd = knockFlyEnd + 60;
-        if (t >= tackleGobStart && t < tackleRetreatEnd) {
-            let tgx, tgy = tackleGobY0, tgDir = 2;
+        const tackleGobYEnd = boothY;
+        if (t >= tackleGobStart && !tackleGob.gone) {
+            if (!tackleGob.emerged) tackleGob.emerged = true;
+            let tgx, tgy, tgDir = 0;
             if (t < knockStart) {
+                // Charge from top cave down to booth
                 const tackleT = Math.min(1, (t - tackleGobStart) / (knockStart - tackleGobStart));
                 tgx = tackleGobX0 + (tackleGobXEnd - tackleGobX0) * tackleT;
+                tgy = tackleGobY0 + (tackleGobYEnd - tackleGobY0) * tackleT;
+                tgDir = 0; // facing down
             } else if (t < knockStart + 10) {
                 // Stays at impact point briefly
                 tgx = tackleGobXEnd;
+                tgy = tackleGobYEnd;
             } else {
-                // Retreating back to cave
-                const retreatT = Math.min(1, (t - knockStart - 10) / 60);
-                tgx = tackleGobXEnd + (tackleGobX0 - tackleGobXEnd) * retreatT;
-                tgDir = 3;
+                // After impact, stays near booth (will join theft phase)
+                tgx = tackleGobXEnd;
+                tgy = tackleGobYEnd;
             }
-            drawGoblinSprite("elite", tgx, tgy, Math.floor(t / 6) % 4, { dir: tgDir, showShadow: false });
+            tackleGob.x = tgx;
+            tackleGob.y = tgy;
+            // Only draw if not yet in theft phase
+            if (t < knockStart + 30) {
+                drawGoblinSprite("elite", tgx, tgy, Math.floor(t / 6) % 4, { dir: tgDir, showShadow: false });
+            }
         }
 
         if (t < knockStart) {
@@ -8815,57 +8798,55 @@ function renderIntro() {
             drawPlayerSprite(djEndX, djEndY, 0, 0, {});
         }
 
-        // Aftermath: goblins grab debris pieces and flee to caves
+        // Aftermath: the same 6 goblins grab debris pieces and flee to caves
         if (t >= knockStart + 30) {
             const origOffsets2 = [
                 { x: -12, y: -2 }, { x: 44, y: -2 }, { x: 1, y: -2 },
                 { x: 18, y: 2 }, { x: -8, y: -18 }, { x: 20, y: -30 }
             ];
-            for (let gi = 0; gi < introTheftGoblins.length; gi++) {
-                const tg = introTheftGoblins[gi];
-                if (tg.gone) continue;
-                const d = introBoothDebris[tg.pieceIndex];
+            for (let gi = 0; gi < introGoblins.length; gi++) {
+                const gob = introGoblins[gi];
+                if (gob.gone) continue;
+                const d = introBoothDebris[gob.pieceIndex];
 
-                if (t < tg.waitUntil) {
+                if (t < gob.waitUntil) {
                     // Goblin running toward the fallen piece
-                    const moveT = Math.min(1, (t - knockStart - 30) / (tg.waitUntil - knockStart - 30));
                     const targetX = d.x;
                     const targetY = d.y;
-                    tg.x = tg.x + (targetX - tg.x) * 0.08;
-                    tg.y = tg.y + (targetY - tg.y) * 0.08;
-                    tg.dir = targetX > tg.x ? 3 : 2;
-                } else if (!tg.carrying) {
+                    gob.x = gob.x + (targetX - gob.x) * 0.08;
+                    gob.y = gob.y + (targetY - gob.y) * 0.08;
+                    gob.dir = targetX > gob.x ? 3 : 2;
+                } else if (!gob.carrying) {
                     // Grab the piece
-                    tg.carrying = true;
+                    gob.carrying = true;
                     d.carriedBy = gi;
                 } else {
-                    // Flee toward target cave
-                    const caveX = tg.targetCave.tileX * TILE;
-                    const caveY = tg.targetCave.tileY * TILE;
-                    const dx = caveX - tg.x;
-                    const dy = caveY - tg.y;
+                    // Flee toward home cave
+                    const caveX = gob.targetCave.tileX * TILE;
+                    const caveY = gob.targetCave.tileY * TILE;
+                    const dx = caveX - gob.x;
+                    const dy = caveY - gob.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
                     if (dist < 3) {
-                        tg.gone = true;
+                        gob.gone = true;
                         continue;
                     }
                     const speed = 2.5;
-                    tg.x += (dx / dist) * speed;
-                    tg.y += (dy / dist) * speed;
-                    tg.dir = dx > 0 ? 3 : 2;
+                    gob.x += (dx / dist) * speed;
+                    gob.y += (dy / dist) * speed;
+                    gob.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 3 : 2) : (dy > 0 ? 0 : 1);
                     // Move the carried piece with the goblin
-                    d.x = tg.x;
-                    d.y = tg.y - 8;
+                    d.x = gob.x;
+                    d.y = gob.y - 8;
                 }
 
                 // Draw the goblin
-                tg.frameTimer++;
-                if (tg.frameTimer > 6) { tg.frameTimer = 0; tg.frame = (tg.frame + 1) % 4; }
-                const gobType = gi === 4 ? "elite" : "normal";
-                drawGoblinSprite(gobType, tg.x, tg.y, tg.frame, { dir: tg.dir, showShadow: false });
+                gob.frameTimer++;
+                if (gob.frameTimer > 6) { gob.frameTimer = 0; gob.frame = (gob.frame + 1) % 4; }
+                drawGoblinSprite(gob.isElite ? "elite" : "normal", gob.x, gob.y, gob.frame, { dir: gob.dir, showShadow: false });
 
                 // Draw carried piece above goblin
-                if (tg.carrying && !tg.gone) {
+                if (gob.carrying && !gob.gone) {
                     ctx.save();
                     const ofsX = d.x - (boothX + origOffsets2[d.pieceIndex].x);
                     const ofsY = d.y - (boothY + origOffsets2[d.pieceIndex].y);
