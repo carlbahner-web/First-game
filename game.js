@@ -1961,7 +1961,7 @@ function update(dt) {
             if (p.dir !== wantDir) {
                 // Turn only, don't move
                 p.dir = wantDir;
-                p.turnDelay = 10;
+                p.turnDelay = 3;
             } else if (p.turnDelay > 0) {
                 // Wait after turning before allowing movement
                 p.turnDelay--;
@@ -3259,11 +3259,25 @@ function updateMinigameArena() {
         if (atDest) {
             p.x = p.destX;
             p.y = p.destY;
+            let wantDir = -1;
+            if (keys["ArrowLeft"] || keys["KeyA"]) wantDir = 2;
+            else if (keys["ArrowRight"] || keys["KeyD"]) wantDir = 3;
+            else if (keys["ArrowUp"] || keys["KeyW"]) wantDir = 1;
+            else if (keys["ArrowDown"] || keys["KeyS"]) wantDir = 0;
             let dx = 0, dy = 0;
-            if (keys["ArrowLeft"] || keys["KeyA"]) { dx = -1; p.dir = 2; }
-            else if (keys["ArrowRight"] || keys["KeyD"]) { dx = 1; p.dir = 3; }
-            else if (keys["ArrowUp"] || keys["KeyW"]) { dy = -1; p.dir = 1; }
-            else if (keys["ArrowDown"] || keys["KeyS"]) { dy = 1; p.dir = 0; }
+            if (wantDir >= 0) {
+                if (p.dir !== wantDir) {
+                    p.dir = wantDir;
+                    p.turnDelay = 3;
+                } else if (p.turnDelay > 0) {
+                    p.turnDelay--;
+                } else {
+                    if (wantDir === 2) dx = -1;
+                    else if (wantDir === 3) dx = 1;
+                    else if (wantDir === 1) dy = -1;
+                    else if (wantDir === 0) dy = 1;
+                }
+            }
             if (dx !== 0 || dy !== 0) {
                 const newX = p.x + dx * CAVE_TILE;
                 const newY = p.y + dy * CAVE_TILE;
