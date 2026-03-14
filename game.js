@@ -6103,12 +6103,12 @@ function drawMixer(mx, my) {
     drawRect(mx + 9, my + 8, 2, 1, "#FF4400");
 }
 
+const LIGHT_RIG_COLORS = ["#FF4400", "#efac28", "#00FF88", "#4488FF", "#FF44AA", "#efac28"];
 function drawLightRig(lx, ly, pump) {
     // Two vertical light arrays flanking the stage (left and right)
     // lx, ly is top-left reference (boothX - 8, boothY - 18)
     // pump: 0-1 beat intensity for glow effect
     pump = pump || 0;
-    const colors = ["#FF4400", "#efac28", "#00FF88", "#4488FF", "#FF44AA", "#efac28"];
     const leftX = lx - 4;       // aligned with left speaker outer edge
     const rightX = lx + 66;     // aligned with right speaker outer edge
     const poleTop = ly;
@@ -6126,20 +6126,21 @@ function drawLightRig(lx, ly, pump) {
     const beatGlow = pump * 0.5;
     const glowAlpha = baseGlow + beatGlow;
     const bulbSize = pump > 0.1 ? 4 : 3;
+    // Glow pass (single alpha switch)
+    ctx.globalAlpha = glowAlpha;
     for (let i = 0; i < 3; i++) {
         const by = poleTop + 2 + i * 5;
-        // Left side lights (face inward)
-        drawRect(leftX + 3, by, bulbSize, bulbSize, colors[i]);
-        ctx.globalAlpha = glowAlpha;
-        ctx.fillStyle = colors[i];
+        ctx.fillStyle = LIGHT_RIG_COLORS[i];
         ctx.fillRect((leftX + 1) * SCALE, (by - 2) * SCALE, 7 * SCALE, 7 * SCALE);
-        ctx.globalAlpha = 1;
-        // Right side lights (face inward)
-        drawRect(rightX - 2, by, bulbSize, bulbSize, colors[i + 3]);
-        ctx.globalAlpha = glowAlpha;
-        ctx.fillStyle = colors[i + 3];
+        ctx.fillStyle = LIGHT_RIG_COLORS[i + 3];
         ctx.fillRect((rightX - 4) * SCALE, (by - 2) * SCALE, 7 * SCALE, 7 * SCALE);
-        ctx.globalAlpha = 1;
+    }
+    ctx.globalAlpha = 1;
+    // Bulb pass (on top of glow)
+    for (let i = 0; i < 3; i++) {
+        const by = poleTop + 2 + i * 5;
+        drawRect(leftX + 3, by, bulbSize, bulbSize, LIGHT_RIG_COLORS[i]);
+        drawRect(rightX - 2, by, bulbSize, bulbSize, LIGHT_RIG_COLORS[i + 3]);
     }
 }
 
@@ -6183,7 +6184,7 @@ function drawDJSetupPiece(pieceIndex, boothX, boothY, options) {
             drawMixer(boothX + 18, boothY + 2);
             break;
         case 4: // light rig
-            drawLightRig(boothX - 8, boothY - 18, (options && options.pump) || 0);
+            drawLightRig(boothX - 8, boothY - 18, options && options.pump);
             break;
         case 5: // disco ball
             drawDiscoBall(boothX + 20, boothY - 30);
@@ -8512,7 +8513,7 @@ function renderIntro() {
 
         if (t < knockStart) {
             // Intact booth — full setup (with damage after swarm)
-            drawLightRig(boothX - 8, boothY - 18);
+            drawLightRig(boothX - 8, boothY - 18, introKickPump);
             drawDiscoBall(boothX + 20, boothY - 30);
             drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
             drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
