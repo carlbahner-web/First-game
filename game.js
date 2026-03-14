@@ -9182,7 +9182,7 @@ function renderIntro() {
                     gob.pieceIndex = gi;
                     gob.carrying = false;
                     gob.gone = false;
-                    gob.waitUntil = knockStart + 60 + gi * 15; // staggered grab times
+                    gob.waitUntil = knockStart + 90 + gi * 15; // staggered grab times
                 }
             }
 
@@ -9256,7 +9256,8 @@ function renderIntro() {
         const tackleGobY0 = topCave.tileY * TILE;
         const tackleGobXEnd = djStartX + 10;
         const tackleGobYEnd = boothY;
-        if (t >= tackleGobStart && !tackleGob.gone) {
+        if (t >= tackleGobStart && t < knockStart + 60 && !tackleGob.gone) {
+            // Tackle goblin: charge → impact → idle until theft phase takes over
             if (!tackleGob.emerged) tackleGob.emerged = true;
             let tgx, tgy, tgDir = 0;
             if (t < knockStart) {
@@ -9265,21 +9266,14 @@ function renderIntro() {
                 tgx = tackleGobX0 + (tackleGobXEnd - tackleGobX0) * tackleT;
                 tgy = tackleGobY0 + (tackleGobYEnd - tackleGobY0) * tackleT;
                 tgDir = 0; // facing down
-            } else if (t < knockStart + 10) {
-                // Stays at impact point briefly
-                tgx = tackleGobXEnd;
-                tgy = tackleGobYEnd;
             } else {
-                // After impact, stays near booth (will join theft phase)
+                // Stays at impact point until theft phase
                 tgx = tackleGobXEnd;
                 tgy = tackleGobYEnd;
             }
             tackleGob.x = tgx;
             tackleGob.y = tgy;
-            // Only draw if not yet in theft phase
-            if (t < knockStart + 30) {
-                drawGoblinSprite("elite", tgx, tgy, Math.floor(t / 6) % 4, { dir: tgDir, showShadow: false });
-            }
+            drawGoblinSprite("elite", tgx, tgy, Math.floor(t / 6) % 4, { dir: tgDir, showShadow: false });
         }
 
         if (t < knockStart) {
@@ -9450,7 +9444,8 @@ function renderIntro() {
         }
 
         // Aftermath: the same 6 goblins grab debris pieces and flee to caves
-        if (t >= knockStart + 30) {
+        // (starts at +60 so debris has fully landed before goblins scramble)
+        if (t >= knockStart + 60) {
             const origOffsets2 = [
                 { x: -12, y: -2 }, { x: 44, y: -2 }, { x: 1, y: -2 },
                 { x: 18, y: 2 }, { x: -8, y: -18 }, { x: 20, y: -30 }
