@@ -8390,8 +8390,8 @@ function playEarthquakeRumble() {
     osc.type = "sawtooth";
     osc.frequency.setValueAtTime(30, audioCtx.currentTime);
     osc.frequency.setValueAtTime(25, audioCtx.currentTime + 1);
-    g.gain.setValueAtTime(0.3, audioCtx.currentTime);
-    g.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 1);
+    g.gain.setValueAtTime(0.12, audioCtx.currentTime);
+    g.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 1);
     g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 3);
     osc.connect(g); g.connect(audioCtx.destination);
     osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime + 3);
@@ -8401,8 +8401,8 @@ function playEarthquakeRumble() {
     for (let s = 0; s < d.length; s++) d[s] = (Math.random() * 2 - 1) * Math.exp(-s / (audioCtx.sampleRate * 0.8));
     const n = audioCtx.createBufferSource(); n.buffer = buf;
     const ng = audioCtx.createGain();
-    ng.gain.setValueAtTime(0.15, audioCtx.currentTime);
-    ng.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.5);
+    ng.gain.setValueAtTime(0.06, audioCtx.currentTime);
+    ng.gain.linearRampToValueAtTime(0.12, audioCtx.currentTime + 0.5);
     ng.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2.5);
     const lp = audioCtx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 200;
     n.connect(lp); lp.connect(ng); ng.connect(audioCtx.destination);
