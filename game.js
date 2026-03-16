@@ -976,8 +976,10 @@ let catapultSequenceCount = 0; // how many catapults have fired in current seque
 let tomatoes = []; // { x, y, targetX, targetY, speed, life }
 let tomatoSplats = []; // { x, y, timer }
 
-let gameState = "title"; // "title", "intro", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim", "cave-return", "minigame"
+let gameState = "title"; // "title", "intro", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim", "cave-return", "minigame", "paused"
 let gameMode = "thrill"; // "thrill" = full game with goblins, "chill" = no goblins during gameplay
+let pausedFromState = "playing";   // gameState to restore on unpause
+let pausedFromMinigame = "none";   // minigameState to restore on unpause
 
 // --- Visual Improvement State ---
 // Block toggle animation (pop/glow when punched)
@@ -1009,6 +1011,10 @@ let levelCelebrateDisplayScore = 0; // for count-up animation
 let titleBlink = 0; // blink timer for "PRESS ENTER"
 // Controls overlay — stays visible all of level 1 with per-key light-up on press
 let controlsKeyFlash = {};          // per-key flash timers (key code → frames remaining)
+// Tutorial hint for level 1 — explains pattern matching objective
+let tutorialHintTimer = 0;          // counts up each frame during level 1
+let tutorialFirstToggle = false;    // true once player toggles their first cell
+let tutorialFirstToggleFrame = 0;   // frame when first toggle happened
 
 // ---- Animated Intro Cutscene State ----
 let introScene = 1;         // current scene index (0-3)
@@ -1367,6 +1373,20 @@ window.addEventListener("keydown", (e) => {
         if (flashKeys[e.code]) controlsKeyFlash[flashKeys[e.code]] = 10;
     }
 
+    // Pause toggle (Escape key during gameplay or minigame)
+    if (e.code === "Escape") {
+        if (gameState === "paused") {
+            gameState = pausedFromState;
+            if (pausedFromMinigame !== "none") minigameState = pausedFromMinigame;
+            return;
+        } else if (gameState === "playing" || (gameState === "minigame" && minigameState === "playing")) {
+            pausedFromState = gameState;
+            pausedFromMinigame = gameState === "minigame" ? minigameState : "none";
+            gameState = "paused";
+            return;
+        }
+    }
+
     // High score initials entry input
     if (gameState === "highscore") {
         e.preventDefault();
@@ -1672,8 +1692,39 @@ function update(dt) {
 
     const p = player;
 
-    // Attack (single press only)
-    if (spaceJustPressed && !p.attacking) {
+    // Boulder launch animation — skip all player input during flight
+    if (playerLaunch.active) {
+        playerLaunch.timer++;
+        if (playerLaunch.timer >= playerLaunch.duration) {
+            // Landing — snap to destination and resume control
+            playerLaunch.active = false;
+            p.x = playerLaunch.endX;
+            p.y = playerLaunch.endY;
+            p.destX = p.x;
+            p.destY = p.y;
+            p.attacking = false;
+            p.attackTimer = 0;
+            screenShake = 6;
+            shakeIntensity = 3;
+            // Dust particles on landing
+            for (let i = 0; i < 10; i++) {
+                deathParticles.push({
+                    x: p.x + p.w / 2, y: p.y + p.h,
+                    vx: (Math.random() - 0.5) * 2.5,
+                    vy: -Math.random() * 1.5,
+                    life: 15 + Math.random() * 15,
+                    color: Math.random() > 0.5 ? "#8B7355" : "#6B5335",
+                    size: 2 + Math.random() * 2,
+                    sparkle: false,
+                });
+            }
+        }
+        spaceJustPressed = false;
+        // Still update goblins/sequencer during flight (skip to goblin update below)
+    }
+
+    // Attack (single press only) — skip during boulder launch
+    if (!playerLaunch.active && spaceJustPressed && !p.attacking) {
         p.attacking = true;
         p.attackTimer = p.attackDuration;
         p.punchHit = false;
@@ -1941,6 +1992,10 @@ function update(dt) {
         if (!hitAnyGoblin && row >= 0 && row < getActiveRows() && col >= 0 && col < GRID_COLS) {
             grid[row][col] = !grid[row][col];
             blockToggleAnim[row][col] = 12; // trigger pop animation
+            if (currentLevel === 0 && !tutorialFirstToggle) {
+                tutorialFirstToggle = true;
+                tutorialFirstToggleFrame = tutorialHintTimer;
+            }
             p.punchHit = true;
             // play a toggle blip
             if (audioCtx) {
@@ -1965,10 +2020,10 @@ function update(dt) {
         if (p.attackTimer <= 0) p.attacking = false;
     }
 
-    // Movement (smooth pixel-by-pixel, destination-based)
+    // Movement (smooth pixel-by-pixel, destination-based) — skip during boulder launch
     const atDest = Math.abs(p.x - p.destX) < 0.5 && Math.abs(p.y - p.destY) < 0.5;
 
-    if (atDest && !p.attacking) {
+    if (!playerLaunch.active && atDest && !p.attacking) {
         // Snap to destination
         p.x = p.destX;
         p.y = p.destY;
@@ -2020,8 +2075,8 @@ function update(dt) {
         }
     }
 
-    // Move toward destination smoothly
-    if (!atDest) {
+    // Move toward destination smoothly (skip during launch)
+    if (!playerLaunch.active && !atDest) {
         const dx = p.destX - p.x;
         const dy = p.destY - p.y;
         if (Math.abs(dx) > 0.5) {
@@ -2455,6 +2510,15 @@ function update(dt) {
     tickSequencer();
 }
 
+// ---- Boulder Launch (comical knockback — replaces death) ----
+let playerLaunch = {
+    active: false,
+    timer: 0,           // frame counter for animation
+    duration: 70,       // total frames of flight
+    startX: 0, startY: 0,
+    endX: 0, endY: 0,
+};
+
 // ---- Game Over ----
 let gameOverTimer = 0; // counts up for animation timing
 let sadSongStarted = false;
@@ -2618,8 +2682,11 @@ function resetGame() {
     player.punchHit = false;
     player.blinkTimer = 0;
 
-    // Reset controls overlay
+    // Reset controls overlay and tutorial
     controlsKeyFlash = {};
+    tutorialHintTimer = 0;
+    tutorialFirstToggle = false;
+    tutorialFirstToggleFrame = 0;
 
     // Reset enemies
     killCount = 0;
@@ -2650,6 +2717,7 @@ function resetGame() {
     titleEntrancePhase = 0;
     fireworks = [];
     playerDeathAnim.active = false;
+    playerLaunch.active = false;
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
             cellFlash[r][c] = 0;
@@ -5433,13 +5501,25 @@ function updateCatapultGoblin() {
             }
             cg.boulder = null;
 
-            // Check if player is in the 3x3 impact zone — GAME OVER
+            // Check if player is in the 3x3 impact zone — comical launch!
             const pGridCol = Math.round(player.x / TILE) - GRID_X;
             const pGridRow = tileYToRow(Math.round(player.y / TILE));
-            if (pGridCol >= cc - 1 && pGridCol <= cc + 1 && pGridRow >= cr - 1 && pGridRow <= cr + 1) {
-                // Player crushed by boulder!
-                triggerGameOver();
-                return;
+            if (pGridCol >= cc - 1 && pGridCol <= cc + 1 && pGridRow >= cr - 1 && pGridRow <= cr + 1 && !playerLaunch.active) {
+                // Boulder knocks DJ into the air!
+                playerLaunch.active = true;
+                playerLaunch.timer = 0;
+                playerLaunch.duration = 70;
+                playerLaunch.startX = player.x;
+                playerLaunch.startY = player.y;
+                // Pick a random landing spot on the opposite side of the grid
+                const landCol = GRID_X + (pGridCol < GRID_COLS / 2
+                    ? GRID_COLS - 2 - Math.floor(Math.random() * 3)
+                    : 1 + Math.floor(Math.random() * 3));
+                const landRow = Math.floor(Math.random() * getActiveRows());
+                playerLaunch.endX = landCol * TILE;
+                playerLaunch.endY = rowPixelY(landRow);
+                screenShake = 8;
+                shakeIntensity = 4;
             }
 
             cg.phase = "retreating";
@@ -5583,6 +5663,14 @@ function renderHUD() {
     // Level digits (centered in remaining panel space after icon)
     const lvlDigitArea = lvlPanelW - iconW;
     drawHudPixelDigits(lvlStr, lvlX + iconW + lvlDigitArea / 2, numY, "#efd8a1", p);
+    // Tier subtitle below level panel
+    const tierNames = ["ROCK", "FUNK", "BREAKS"];
+    const tierIdx = currentLevel < 10 ? 0 : currentLevel < 20 ? 1 : 2;
+    hudCtx.font = `${2.5 * SCALE}px monospace`;
+    hudCtx.fillStyle = "#8a7a5a";
+    hudCtx.textAlign = "center";
+    hudCtx.fillText(tierNames[tierIdx], (lvlX + lvlPanelW / 2) * SCALE, (kcY + panelH + 5) * SCALE);
+    hudCtx.textAlign = "start";
 
     // --- Timer counter (right-aligned) ---
     const timerSec = Math.max(0, Math.ceil(levelTimer / 90));
@@ -5652,6 +5740,26 @@ function renderHUD() {
         hudCtx.textAlign = "right";
         hudCtx.fillText("CHILL", cmX * SCALE, (kcY + panelH - 2) * SCALE);
         hudCtx.textAlign = "start";
+    }
+
+    // Equipment recovery tracker (thrill mode only — shows DJ setup piece progress)
+    if (gameMode === "thrill") {
+        const earned = djSetupEarned.length;
+        const total = DJ_SETUP_PIECES.length;
+        if (earned > 0 || currentLevel >= 4) { // show after level 5 (first minigame milestone)
+            const trackerX = (COLS * TILE) / 2 - (total * 5) / 2;
+            const trackerY = kcY + panelH + 2;
+            for (let i = 0; i < total; i++) {
+                const ix = trackerX + i * 5;
+                if (i < earned) {
+                    drawHudRect(ix, trackerY, 4, 4, "#efac28"); // recovered — gold
+                    drawHudRect(ix, trackerY, 4, 1, "#efd8a1"); // highlight
+                } else {
+                    drawHudRect(ix, trackerY, 4, 4, "#3a2a1a"); // missing — dark
+                    drawHudRect(ix, trackerY, 4, 1, "#4a3a2a"); // subtle border
+                }
+            }
+        }
     }
 }
 
@@ -6184,17 +6292,67 @@ function render() {
         ctx.globalAlpha = 1.0;
     }
 
-    // Player shadow
-    drawRect(player.x + 2, player.y + player.h - 2, player.w - 4, 4, PAL.shadow);
+    // Player shadow (hidden during boulder launch — launch draws its own landing shadow)
+    if (!playerLaunch.active) {
+        drawRect(player.x + 2, player.y + player.h - 2, player.w - 4, 4, PAL.shadow);
+    }
 
     // Punch (draw behind player for up-facing, in front otherwise)
-    if (player.attacking && player.dir === 1) drawPunch();
+    if (!playerLaunch.active && player.attacking && player.dir === 1) drawPunch();
 
-    // Player sprite
-    drawPlayer();
+    // Player sprite (or launch animation)
+    if (playerLaunch.active) {
+        const lt = playerLaunch.timer / playerLaunch.duration; // 0→1
+        // Parabolic arc — launches UP then crashes DOWN
+        const launchX = playerLaunch.startX + (playerLaunch.endX - playerLaunch.startX) * lt;
+        const arcHeight = -60 * Math.sin(lt * Math.PI * 0.85);
+        const launchY = playerLaunch.startY + (playerLaunch.endY - playerLaunch.startY) * Math.pow(lt, 1.6) + arcHeight;
+        // Comic perspective scaling — grows at apex
+        const flyScale = 1 + 0.6 * Math.sin(lt * Math.PI);
+        // Tumbling rapidly
+        const tumbleDir = [3, 0, 2, 1][Math.floor(playerLaunch.timer / 3) % 4];
+        const djFrame = Math.floor(playerLaunch.timer / 2) % 4;
+        // Impact flash on first frame
+        if (playerLaunch.timer <= 2) {
+            ctx.globalAlpha = 0.7;
+            drawRect(playerLaunch.startX - 4, playerLaunch.startY - 4, 24, 24, "#FFFFFF");
+            ctx.globalAlpha = 1;
+        }
+        // Draw scaled tumbling DJ
+        ctx.save();
+        const spCX = launchX * SCALE + 8 * SCALE;
+        const spCY = launchY * SCALE + 8 * SCALE;
+        ctx.translate(spCX, spCY);
+        ctx.scale(flyScale, flyScale);
+        ctx.translate(-spCX, -spCY);
+        drawPlayerSprite(launchX, launchY, djFrame, tumbleDir, {});
+        // Flailing arms
+        const flailAngle = playerLaunch.timer * 0.8;
+        const flailLen = (6 + Math.sin(playerLaunch.timer * 0.5) * 3) * SCALE;
+        ctx.strokeStyle = "#efb775";
+        ctx.lineWidth = 2 * SCALE;
+        ctx.lineCap = "round";
+        const armLX = (launchX + 4) * SCALE;
+        const armRX = (launchX + 12) * SCALE;
+        const armY = (launchY + 6) * SCALE;
+        ctx.beginPath(); ctx.moveTo(armLX, armY);
+        ctx.lineTo(armLX + Math.cos(flailAngle) * flailLen, armY + Math.sin(flailAngle) * flailLen);
+        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(armRX, armY);
+        ctx.lineTo(armRX + Math.cos(flailAngle + 2.5) * flailLen, armY + Math.sin(flailAngle + 2.5) * flailLen);
+        ctx.stroke();
+        ctx.restore();
+        // Landing shadow at destination
+        const shadowAlpha = lt * 0.3;
+        ctx.globalAlpha = shadowAlpha;
+        drawRect(playerLaunch.endX + 2, playerLaunch.endY + player.h - 2, player.w - 4, 4, "#000000");
+        ctx.globalAlpha = 1;
+    } else {
+        drawPlayer();
+    }
 
     // Punch (in front for down/left/right)
-    if (player.attacking && player.dir !== 1) drawPunch();
+    if (!playerLaunch.active && player.attacking && player.dir !== 1) drawPunch();
 
     // "SLAY THE GOBLIN!" indicator when pattern is done but goblins remain
     if (patternMatched && !levelComplete && areGoblinsAlive()) {
@@ -6314,6 +6472,36 @@ function render() {
         ctx.fillText("PUNCH", (boxX + 55) * SCALE, (overlayY + 7) * SCALE);
 
         drawKeyCap(boxX + 55, overlayY + 10, "SPACE", "SPACE");
+    }
+
+    // Tutorial objective hint (level 1 only — explains pattern matching)
+    if (currentLevel === 0) {
+        tutorialHintTimer++;
+        // Fade out after player toggles first cell or after ~8 seconds
+        const hintAlpha = tutorialFirstToggle
+            ? Math.max(0, 1 - (tutorialHintTimer - tutorialFirstToggleFrame) / 60)
+            : Math.min(1, tutorialHintTimer / 30); // fade in over 0.5s
+        if (hintAlpha > 0) {
+            const W_t = COLS * TILE;
+            const hintY = (GRID_Y - 1) * TILE + GRID_Y_OFFSET;
+            ctx.globalAlpha = hintAlpha * 0.85;
+            ctx.font = `${3.5 * SCALE}px monospace`;
+            ctx.textAlign = "center";
+            // Line 1: objective
+            ctx.fillStyle = "#000000";
+            ctx.fillText("PUNCH cells to match the beat pattern!", W_t / 2 * SCALE + SCALE, hintY * SCALE + SCALE);
+            ctx.fillStyle = "#efac28";
+            ctx.fillText("PUNCH cells to match the beat pattern!", W_t / 2 * SCALE, hintY * SCALE);
+            // Line 2: hint about indicators
+            if (!tutorialFirstToggle) {
+                ctx.fillStyle = "#000000";
+                ctx.fillText("Dotted outlines show what needs toggling.", W_t / 2 * SCALE + SCALE, (hintY + 7) * SCALE + SCALE);
+                ctx.fillStyle = "#efd8a1";
+                ctx.fillText("Dotted outlines show what needs toggling.", W_t / 2 * SCALE, (hintY + 7) * SCALE);
+            }
+            ctx.textAlign = "start";
+            ctx.globalAlpha = 1;
+        }
     }
 
     // Restore screen shake transform
@@ -9878,6 +10066,31 @@ function renderLevelComplete() {
         ctx.fillStyle = "#efd8a1";
         ctx.fillText(scoreText, (W * SCALE) / 2, sy * SCALE);
 
+        // Narrative breadcrumb — brief one-liner about progress
+        if (levelCelebrateTimer > 90) {
+            const narrativeAlpha = Math.min(1, (levelCelebrateTimer - 90) / 40);
+            ctx.globalAlpha = narrativeAlpha;
+            ctx.font = `${4 * SCALE}px monospace`;
+            let narrative = "";
+            const earned = djSetupEarned.length;
+            const lvl = currentLevel + 1;
+            if (lvl === 1) narrative = "The rhythm returns...";
+            else if (lvl === 2) narrative = "The beat grows stronger.";
+            else if (lvl === 5 || lvl === 10 || lvl === 15 || lvl === 20 || lvl === 25 || lvl === 30)
+                narrative = earned > 0 ? earned + " / 6 pieces recovered." : "Something stirs in the caves...";
+            else if (lvl === 10) narrative = "Rock fundamentals mastered.";
+            else if (lvl === 20) narrative = "Funk and soul reclaimed.";
+            else if (lvl === 30) narrative = "The underground remembers.";
+            else if (earned > 0 && earned < 6) narrative = earned + " / 6 pieces recovered.";
+            if (narrative) {
+                ctx.fillStyle = "#000000";
+                ctx.fillText(narrative, (W * SCALE) / 2 + SCALE, (sy + 18) * SCALE);
+                ctx.fillStyle = "#8a9a6a";
+                ctx.fillText(narrative, (W * SCALE) / 2, (sy + 17) * SCALE);
+            }
+            ctx.globalAlpha = 1.0;
+        }
+
         ctx.textAlign = "start";
 
         ctx.globalAlpha = 1.0;
@@ -10760,6 +10973,30 @@ function gameLoop(timestamp) {
                 renderGameOverScreen();
             } else if (gameState === "highscore") {
                 renderHighScoreEntry();
+            } else if (gameState === "paused") {
+                // Render the frozen game frame + pause overlay
+                if (pausedFromState === "minigame") {
+                    renderMinigameArena();
+                } else {
+                    render();
+                }
+                // Dark overlay
+                const W_p = COLS * TILE * SCALE;
+                const H_p = ROWS * TILE * SCALE;
+                ctx.fillStyle = "rgba(0,0,0,0.6)";
+                ctx.fillRect(0, 0, W_p, H_p);
+                // "PAUSED" text
+                ctx.font = `${10 * SCALE}px monospace`;
+                ctx.textAlign = "center";
+                ctx.fillStyle = "#000000";
+                ctx.fillText("PAUSED", W_p / 2 + 2 * SCALE, H_p / 2 - 6 * SCALE);
+                ctx.fillStyle = "#efac28";
+                ctx.fillText("PAUSED", W_p / 2, H_p / 2 - 8 * SCALE);
+                // Subtitle
+                ctx.font = `${4 * SCALE}px monospace`;
+                ctx.fillStyle = "#efd8a1";
+                ctx.fillText("PRESS ESC TO RESUME", W_p / 2, H_p / 2 + 6 * SCALE);
+                ctx.textAlign = "start";
             } else {
                 update(dt);
                 render();
