@@ -1007,10 +1007,8 @@ let patternMatched = false; // pattern correct but goblins may still be alive
 let levelCelebrateTimer = 0;
 let levelCelebrateDisplayScore = 0; // for count-up animation
 let titleBlink = 0; // blink timer for "PRESS ENTER"
-let controlsOverlayActive = true;   // whether controls overlay should show during level 1
-let controlsMoveConfirmed = false;   // player pressed an arrow key
-let controlsPunchConfirmed = false;  // player pressed spacebar
-let controlsFadeTimer = 0;          // counts up after both confirmed, for fade-out
+// Controls overlay — stays visible all of level 1 with per-key light-up on press
+let controlsKeyFlash = {};          // per-key flash timers (key code → frames remaining)
 
 // ---- Animated Intro Cutscene State ----
 let introScene = 1;         // current scene index (0-3)
@@ -1359,14 +1357,14 @@ window.addEventListener("keydown", (e) => {
     }
     keys[e.code] = true;
 
-    // Controls overlay: track when player first moves/punches during level 1
-    if (controlsOverlayActive && gameState === "playing" && currentLevel === 0) {
-        if (["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","KeyA","KeyD","KeyW","KeyS"].includes(e.code)) {
-            controlsMoveConfirmed = true;
-        }
-        if (e.code === "Space") {
-            controlsPunchConfirmed = true;
-        }
+    // Controls overlay: flash key indicators on press during level 1
+    if (gameState === "playing" && currentLevel === 0) {
+        const flashKeys = {
+            "ArrowUp": "UP", "ArrowDown": "DOWN", "ArrowLeft": "LEFT", "ArrowRight": "RIGHT",
+            "KeyW": "UP", "KeyS": "DOWN", "KeyA": "LEFT", "KeyD": "RIGHT",
+            "Space": "SPACE"
+        };
+        if (flashKeys[e.code]) controlsKeyFlash[flashKeys[e.code]] = 10;
     }
 
     // High score initials entry input
@@ -1636,12 +1634,9 @@ function tickSequencer() {
 
 // ---- Update ----
 function update(dt) {
-    // Controls overlay fade-out after both move and punch confirmed
-    if (controlsOverlayActive && controlsMoveConfirmed && controlsPunchConfirmed) {
-        controlsFadeTimer++;
-        if (controlsFadeTimer > 40) {
-            controlsOverlayActive = false;
-        }
+    // Controls overlay — decay per-key flash timers
+    for (const k in controlsKeyFlash) {
+        if (controlsKeyFlash[k] > 0) controlsKeyFlash[k]--;
     }
 
     // Decay visual effect timers
@@ -2624,10 +2619,7 @@ function resetGame() {
     player.blinkTimer = 0;
 
     // Reset controls overlay
-    controlsOverlayActive = true;
-    controlsMoveConfirmed = false;
-    controlsPunchConfirmed = false;
-    controlsFadeTimer = 0;
+    controlsKeyFlash = {};
 
     // Reset enemies
     killCount = 0;
@@ -6248,47 +6240,80 @@ function render() {
         }
     }
 
-    // Controls overlay (level 1 only — fades after player confirms move + punch)
-    if (controlsOverlayActive && currentLevel === 0) {
-        const alpha = controlsMoveConfirmed && controlsPunchConfirmed
-            ? Math.max(0, 1 - controlsFadeTimer / 40)
-            : 1;
-        if (alpha > 0) {
-            const W = COLS * TILE;
-            const overlayY = (GRID_Y + LEVELS[currentLevel].activeRows + 2) * TILE + GRID_Y_OFFSET;
-            const boxW = 100;
-            const boxH = 28;
-            const boxX = W / 2 - boxW / 2;
+    // Controls overlay (level 1 only — stays visible, keys light up on press)
+    if (currentLevel === 0) {
+        const W = COLS * TILE;
+        const overlayY = (GRID_Y + LEVELS[currentLevel].activeRows + 2) * TILE + GRID_Y_OFFSET;
+        const boxW = 108;
+        const boxH = 36;
+        const boxX = W / 2 - boxW / 2;
 
-            // Semi-transparent background
-            ctx.globalAlpha = alpha * 0.65;
-            drawRect(boxX, overlayY, boxW, boxH, "#1a0e08");
-            // Border
-            ctx.globalAlpha = alpha * 0.4;
-            drawRect(boxX, overlayY, boxW, 1, "#efac28");
-            drawRect(boxX, overlayY + boxH - 1, boxW, 1, "#efac28");
-            drawRect(boxX, overlayY, 1, boxH, "#efac28");
-            drawRect(boxX + boxW - 1, overlayY, 1, boxH, "#efac28");
+        // Semi-transparent background
+        ctx.globalAlpha = 0.65;
+        drawRect(boxX, overlayY, boxW, boxH, "#1a0e08");
+        // Border
+        ctx.globalAlpha = 0.4;
+        drawRect(boxX, overlayY, boxW, 1, "#efac28");
+        drawRect(boxX, overlayY + boxH - 1, boxW, 1, "#efac28");
+        drawRect(boxX, overlayY, 1, boxH, "#efac28");
+        drawRect(boxX + boxW - 1, overlayY, 1, boxH, "#efac28");
+        ctx.globalAlpha = 1;
 
-            ctx.globalAlpha = alpha;
+        // Helper: draw a small key cap that lights up
+        const keySize = 8;
+        const drawKeyCap = (x, y, label, flashKey) => {
+            const flash = controlsKeyFlash[flashKey] || 0;
+            const held = keys["Arrow" + flashKey.charAt(0) + flashKey.slice(1).toLowerCase()] ||
+                         (flashKey === "UP" && keys["KeyW"]) || (flashKey === "DOWN" && keys["KeyS"]) ||
+                         (flashKey === "LEFT" && keys["KeyA"]) || (flashKey === "RIGHT" && keys["KeyD"]) ||
+                         (flashKey === "SPACE" && keys["Space"]);
+            const lit = held || flash > 0;
+            const brightness = held ? 1 : flash / 10;
+
+            // Key background
+            if (lit) {
+                const r = Math.round(239 * brightness + 60 * (1 - brightness));
+                const g = Math.round(172 * brightness + 40 * (1 - brightness));
+                const b = Math.round(40 * brightness + 20 * (1 - brightness));
+                drawRect(x, y, label === "SPACE" ? 30 : keySize, keySize, `rgb(${r},${g},${b})`);
+            } else {
+                drawRect(x, y, label === "SPACE" ? 30 : keySize, keySize, "#2a1a10");
+            }
+            // Key border
+            const borderColor = lit ? "#efac28" : "#5a3a1a";
+            const kw = label === "SPACE" ? 30 : keySize;
+            drawRect(x, y, kw, 1, borderColor);
+            drawRect(x, y + keySize - 1, kw, 1, borderColor);
+            drawRect(x, y, 1, keySize, borderColor);
+            drawRect(x + kw - 1, y, 1, keySize, borderColor);
+
+            // Key label
+            ctx.font = `${3 * SCALE}px monospace`;
             ctx.textAlign = "center";
-
-            // MOVE line
-            const moveColor = controlsMoveConfirmed ? "#5a7a3a" : "#efb775";
-            const moveText = controlsMoveConfirmed ? "MOVE  OK" : "MOVE: ARROW KEYS";
-            ctx.font = `${4 * SCALE}px monospace`;
-            ctx.fillStyle = moveColor;
-            ctx.fillText(moveText, (W / 2) * SCALE, (overlayY + 11) * SCALE);
-
-            // PUNCH line
-            const punchColor = controlsPunchConfirmed ? "#5a7a3a" : "#efb775";
-            const punchText = controlsPunchConfirmed ? "PUNCH  OK" : "PUNCH: SPACEBAR";
-            ctx.fillStyle = punchColor;
-            ctx.fillText(punchText, (W / 2) * SCALE, (overlayY + 22) * SCALE);
-
+            ctx.fillStyle = lit ? "#fff" : "#8a6a4a";
+            const labelX = label === "SPACE" ? x + 15 : x + keySize / 2;
+            ctx.fillText(label === "SPACE" ? "SPACE" : label, labelX * SCALE, (y + 6) * SCALE);
             ctx.textAlign = "start";
-            ctx.globalAlpha = 1;
-        }
+        };
+
+        // "MOVE" label + arrow key layout
+        ctx.font = `${3 * SCALE}px monospace`;
+        ctx.fillStyle = "#8a7a5a";
+        ctx.fillText("MOVE", (boxX + 5) * SCALE, (overlayY + 7) * SCALE);
+
+        const arrowBaseX = boxX + 5;
+        const arrowBaseY = overlayY + 10;
+        drawKeyCap(arrowBaseX + 10, arrowBaseY, "\u2191", "UP");        // ↑ centered
+        drawKeyCap(arrowBaseX,      arrowBaseY + 10, "\u2190", "LEFT"); // ←
+        drawKeyCap(arrowBaseX + 10, arrowBaseY + 10, "\u2193", "DOWN"); // ↓
+        drawKeyCap(arrowBaseX + 20, arrowBaseY + 10, "\u2192", "RIGHT"); // →
+
+        // "PUNCH" label + spacebar
+        ctx.font = `${3 * SCALE}px monospace`;
+        ctx.fillStyle = "#8a7a5a";
+        ctx.fillText("PUNCH", (boxX + 55) * SCALE, (overlayY + 7) * SCALE);
+
+        drawKeyCap(boxX + 55, overlayY + 10, "SPACE", "SPACE");
     }
 
     // Restore screen shake transform
