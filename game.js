@@ -509,7 +509,7 @@ const LEVELS = [
 
 canvas.width = COLS * TILE * SCALE;
 canvas.height = ROWS * TILE * SCALE;
-ctx.imageSmoothingEnabled = true;
+ctx.imageSmoothingEnabled = false;
 
 // ---- HUD canvas (below game canvas) ----
 const hudCanvas = document.getElementById("hud");
@@ -517,56 +517,7 @@ const hudCtx = hudCanvas.getContext("2d");
 const HUD_H = 2 * TILE; // logical height for HUD strip
 hudCanvas.width = COLS * TILE * SCALE;
 hudCanvas.height = HUD_H * SCALE;
-hudCtx.imageSmoothingEnabled = true;
-
-// ---- Grain texture overlay (screen-print / block-print effect) ----
-const grainCanvas = document.createElement('canvas');
-grainCanvas.width = COLS * TILE * SCALE;
-grainCanvas.height = ROWS * TILE * SCALE;
-const grainCtx = grainCanvas.getContext('2d');
-(function generateGrain() {
-    const w = grainCanvas.width, h = grainCanvas.height;
-    const imageData = grainCtx.createImageData(w, h);
-    const data = imageData.data;
-    let seed = 42;
-    for (let i = 0; i < w * h; i++) {
-        seed = (seed * 9301 + 49297) % 233280;
-        if (seed / 233280 < 0.08) { // ~8% of pixels get a grain dot
-            const idx = i * 4;
-            seed = (seed * 9301 + 49297) % 233280;
-            const dark = seed / 233280 > 0.5;
-            data[idx]     = dark ? 0 : 255;
-            data[idx + 1] = dark ? 0 : 255;
-            data[idx + 2] = dark ? 0 : 255;
-            data[idx + 3] = dark ? 18 : 10; // subtle alpha
-        }
-    }
-    grainCtx.putImageData(imageData, 0, 0);
-})();
-
-const hudGrainCanvas = document.createElement('canvas');
-hudGrainCanvas.width = COLS * TILE * SCALE;
-hudGrainCanvas.height = HUD_H * SCALE;
-const hudGrainCtx = hudGrainCanvas.getContext('2d');
-(function generateHudGrain() {
-    const w = hudGrainCanvas.width, h = hudGrainCanvas.height;
-    const imageData = hudGrainCtx.createImageData(w, h);
-    const data = imageData.data;
-    let seed = 7777;
-    for (let i = 0; i < w * h; i++) {
-        seed = (seed * 9301 + 49297) % 233280;
-        if (seed / 233280 < 0.08) {
-            const idx = i * 4;
-            seed = (seed * 9301 + 49297) % 233280;
-            const dark = seed / 233280 > 0.5;
-            data[idx]     = dark ? 0 : 255;
-            data[idx + 1] = dark ? 0 : 255;
-            data[idx + 2] = dark ? 0 : 255;
-            data[idx + 3] = dark ? 18 : 10;
-        }
-    }
-    hudGrainCtx.putImageData(imageData, 0, 0);
-})();
+hudCtx.imageSmoothingEnabled = false;
 
 // ---- Colors (earthy dungeon palette) ----
 // #efd8a1 Pale Cream, #efac28 Amber Gold, #efb775 Peach Buff
@@ -5651,21 +5602,6 @@ function drawText(text, x, y, color, size) {
     ctx.fillText(text, x * SCALE, y * SCALE);
 }
 
-// Rounded rectangle helper for block-print style grid blocks
-function fillRoundRect(context, x, y, w, h, r, color) {
-    context.fillStyle = color;
-    context.beginPath();
-    context.roundRect(x, y, w, h, r);
-    context.fill();
-}
-function strokeRoundRect(context, x, y, w, h, r, color, lineWidth) {
-    context.strokeStyle = color;
-    context.lineWidth = lineWidth || 1;
-    context.beginPath();
-    context.roundRect(x, y, w, h, r);
-    context.stroke();
-}
-
 // ---- HUD Render (separate canvas below game) ----
 function renderHUD() {
     hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
@@ -5825,9 +5761,6 @@ function renderHUD() {
             }
         }
     }
-
-    // Grain texture overlay for HUD
-    hudCtx.drawImage(hudGrainCanvas, 0, 0);
 }
 
 // ---- Minigame HUD (mirrors main HUD style during cave arena) ----
@@ -5928,9 +5861,6 @@ function renderMinigameHUD() {
     drawHudRect(sx + 2 * p, sy + 2 * p, p, p, skullBg);
     drawHudRect(sx + 2 * p, sy + 4 * p, p, p, skullBg);
     drawHudPixelDigits(scoreStr, kcX + skullW + (killPanelW - skullW) / 2, numY, "#efd8a1", p);
-
-    // Grain texture overlay for minigame HUD
-    hudCtx.drawImage(hudGrainCanvas, 0, 0);
 }
 
 // ---- Render ----
@@ -5982,67 +5912,31 @@ function render() {
         drawRect((COLS - 1) * TILE + 2, r * TILE, 2, TILE, "rgba(255,255,255,0.1)");
     }
 
-    // Cave openings (goblin spawn points) — rounded arch style
+    // Cave openings (goblin spawn points)
     for (let ci = 0; ci < CAVES.length; ci++) {
         const cave = CAVES[ci];
         const cx = cave.tileX * TILE;
         const cy = cave.tileY * TILE;
-        // Dark cave hole (rounded)
-        ctx.fillStyle = "#2a1d0d";
-        ctx.beginPath();
-        ctx.roundRect(cx * SCALE, (cy - 2) * SCALE, TILE * SCALE, (TILE + 4) * SCALE, [6, 6, 2, 2]);
-        ctx.fill();
-        // Rocky arch around cave (rounded)
-        ctx.fillStyle = "#684c3c";
-        ctx.beginPath();
-        ctx.roundRect((cx - 2) * SCALE, (cy - 5) * SCALE, (TILE + 4) * SCALE, 4 * SCALE, [4, 4, 0, 0]);
-        ctx.fill();
-        // Bottom rocks
-        ctx.beginPath();
-        ctx.roundRect((cx - 2) * SCALE, (cy + TILE + 1) * SCALE, (TILE + 4) * SCALE, 4 * SCALE, [0, 0, 4, 4]);
-        ctx.fill();
-        // Side edges
-        if (cave.tileX > 0) drawRect(cx - 3, cy - 2, 3, TILE + 4, "#45230d");
-        if (cave.tileX < COLS - 1) drawRect(cx + TILE, cy - 2, 3, TILE + 4, "#45230d");
-        // Stalactites (triangular)
-        ctx.fillStyle = "#724113";
-        ctx.beginPath();
-        ctx.moveTo((cx + 3) * SCALE, (cy - 2) * SCALE);
-        ctx.lineTo((cx + 5) * SCALE, (cy - 2) * SCALE);
-        ctx.lineTo((cx + 4) * SCALE, (cy + 2) * SCALE);
-        ctx.closePath();
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo((cx + 9) * SCALE, (cy - 2) * SCALE);
-        ctx.lineTo((cx + 11) * SCALE, (cy - 2) * SCALE);
-        ctx.lineTo((cx + 10) * SCALE, (cy + 1) * SCALE);
-        ctx.closePath();
-        ctx.fill();
-        // Stalagmites (triangular)
-        ctx.beginPath();
-        ctx.moveTo((cx + 5) * SCALE, (cy + TILE + 2) * SCALE);
-        ctx.lineTo((cx + 7) * SCALE, (cy + TILE + 2) * SCALE);
-        ctx.lineTo((cx + 6) * SCALE, (cy + TILE - 2) * SCALE);
-        ctx.closePath();
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo((cx + 11) * SCALE, (cy + TILE + 2) * SCALE);
-        ctx.lineTo((cx + 13) * SCALE, (cy + TILE + 2) * SCALE);
-        ctx.lineTo((cx + 12) * SCALE, (cy + TILE - 1) * SCALE);
-        ctx.closePath();
-        ctx.fill();
-        // Eye gleam inside cave (glowing circles)
+        // Dark cave hole
+        drawRect(cx, cy - 2, TILE, TILE + 4, "#2a1d0d");
+        // Rocky arch around cave
+        drawRect(cx - 2, cy - 4, TILE + 4, 3, "#684c3c");  // top rocks
+        drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");  // bottom rocks
+        if (cave.tileX > 0) drawRect(cx - 3, cy - 2, 3, TILE + 4, "#45230d"); // left edge
+        if (cave.tileX < COLS - 1) drawRect(cx + TILE, cy - 2, 3, TILE + 4, "#45230d"); // right edge
+        // Stalactites
+        drawRect(cx + 3, cy - 2, 2, 4, "#724113");
+        drawRect(cx + 9, cy - 2, 2, 3, "#724113");
+        // Stalagmites
+        drawRect(cx + 5, cy + TILE - 2, 2, 4, "#724113");
+        drawRect(cx + 11, cy + TILE - 1, 2, 3, "#724113");
+        // Eye gleam inside cave (if any goblin is about to respawn from this cave)
         for (const g of goblins) {
             if (g.dead && g.respawnTimer < 60 && ci === g.spawnCave) {
                 const caveEyeCol = g.elite ? "#00FFFF" : "#FF00FF";
-                ctx.fillStyle = caveEyeCol;
-                ctx.beginPath();
-                ctx.arc((cx + 6) * SCALE, (cy + 6) * SCALE, 2 * SCALE, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.beginPath();
-                ctx.arc((cx + 10) * SCALE, (cy + 6) * SCALE, 2 * SCALE, 0, Math.PI * 2);
-                ctx.fill();
-                break;
+                drawRect(cx + 5, cy + 5, 2, 2, caveEyeCol);
+                drawRect(cx + 9, cy + 5, 2, 2, caveEyeCol);
+                break; // only show one pair of eyes per cave
             }
         }
     }
@@ -6066,43 +5960,34 @@ function render() {
         // Twinkle — individual random-feeling sparkle
         const twinkle = Math.sin(now_lights * 0.005 + c * 2.7) > 0.7 ? 0.3 : 0;
         // Bulb — brighter when triggered, with chase modulation
-        const bulbR = triggered ? 3 : (chaseBright > 0.7 ? 3 : 2.5);
+        const bulbSize = triggered ? 5 : (chaseBright > 0.7 ? 5 : 4);
+        const bulbOffset = triggered ? -1 : 0;
         ctx.globalAlpha = 0.5 + chaseBright * 0.3 + pulseIntensity * 0.2 + twinkle;
-        ctx.fillStyle = bulbCol;
-        ctx.beginPath();
-        ctx.arc(bulbX * SCALE, (bulbY + 2) * SCALE, bulbR * SCALE, 0, Math.PI * 2);
-        ctx.fill();
+        drawRect(bulbX - 2 + bulbOffset, bulbY + bulbOffset, bulbSize, bulbSize, bulbCol);
         ctx.globalAlpha = 1.0;
         // Glow — much stronger when the corresponding drum layer plays
         ctx.fillStyle = bulbCol;
         const baseGlow = 0.08 + chaseBright * 0.08;
         const pulseGlow = pulseIntensity * 0.4;
         ctx.globalAlpha = baseGlow + pulseGlow + twinkle * 0.15;
-        const glowR = triggered ? 6 : (chaseBright > 0.6 ? 5 : 4);
-        ctx.beginPath();
-        ctx.arc(bulbX * SCALE, (bulbY + 2) * SCALE, glowR * SCALE, 0, Math.PI * 2);
-        ctx.fill();
+        const glowSize = triggered ? 12 : (chaseBright > 0.6 ? 10 : 8);
+        ctx.fillRect((bulbX - glowSize / 2) * SCALE, (bulbY - glowSize / 2 + 2) * SCALE, glowSize * SCALE, glowSize * SCALE);
         ctx.globalAlpha = 1.0;
     }
 
-    // Banner lights along bottom wall — also drum-synced (circles)
+    // Banner lights along bottom wall — also drum-synced
     for (let c = 1; c < COLS - 1; c++) {
         const lx = c * TILE + TILE / 2;
         const ly = (ROWS - 1) * TILE + 2;
         const rowIdx = (c + 2) % ar_lights;
         const bulbCol = PAL.gridOn[rowIdx];
         const triggered = rowTrigger[rowIdx] > 0;
-        const bR = triggered ? 2.5 : 2;
-        ctx.fillStyle = bulbCol;
-        ctx.beginPath();
-        ctx.arc(lx * SCALE, (ly + 1) * SCALE, bR * SCALE, 0, Math.PI * 2);
-        ctx.fill();
+        const sz = triggered ? 4 : 3;
+        drawRect(lx - 1, ly, sz, sz, bulbCol);
         if (triggered) {
             ctx.fillStyle = bulbCol;
             ctx.globalAlpha = rowTrigger[rowIdx] / 8 * 0.3;
-            ctx.beginPath();
-            ctx.arc(lx * SCALE, (ly + 1) * SCALE, 5 * SCALE, 0, Math.PI * 2);
-            ctx.fill();
+            ctx.fillRect((lx - 3) * SCALE, (ly - 2) * SCALE, 8 * SCALE, 8 * SCALE);
             ctx.globalAlpha = 1.0;
         }
     }
@@ -6123,24 +6008,16 @@ function render() {
             const by = rowPixelY(r);
             const on = grid[r][c];
 
-            // Block background — rounded rectangles for block-print style
-            const bxs = bx * SCALE, bys = by * SCALE;
-            const ts = TILE * SCALE;
-            const blockR = 4; // corner radius
+            // Block background
+            drawRect(bx, by, TILE, TILE, PAL.gridBorder);
+            drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, on ? PAL.gridOn[r] : PAL.gridOff);
+
+            // 3D highlight for on-blocks
             if (on) {
-                // Filled rounded block with subtle shadow
-                ctx.shadowColor = "rgba(0,0,0,0.4)";
-                ctx.shadowBlur = 3;
-                ctx.shadowOffsetX = 1;
-                ctx.shadowOffsetY = 1;
-                fillRoundRect(ctx, bxs + SCALE, bys + SCALE, ts - 2 * SCALE, ts - 2 * SCALE, blockR, PAL.gridOn[r]);
-                ctx.shadowColor = "transparent";
-                ctx.shadowBlur = 0;
-                ctx.shadowOffsetX = 0;
-                ctx.shadowOffsetY = 0;
-            } else {
-                // Empty block — just a thin rounded outline
-                strokeRoundRect(ctx, bxs + 1.5 * SCALE, bys + 1.5 * SCALE, ts - 3 * SCALE, ts - 3 * SCALE, blockR, PAL.gridBorder, 1);
+                ctx.fillStyle = "rgba(255,255,255,0.2)";
+                ctx.fillRect((bx + 1) * SCALE, (by + 1) * SCALE, (TILE - 2) * SCALE, 2 * SCALE);
+                ctx.fillStyle = "rgba(0,0,0,0.2)";
+                ctx.fillRect((bx + 1) * SCALE, (by + TILE - 3) * SCALE, (TILE - 2) * SCALE, 2 * SCALE);
             }
 
             // Block toggle pop animation (scale + glow burst)
@@ -6211,12 +6088,12 @@ function render() {
     if (playing) {
         const px = (GRID_X + currentStep) * TILE;
         ctx.fillStyle = PAL.playhead;
-        ctx.globalAlpha = 0.2;
+        ctx.globalAlpha = 0.25;
         const playheadH = (gridBottomTileY() - GRID_Y) * TILE;
-        fillRoundRect(ctx, px * SCALE, (GRID_Y * TILE + GRID_Y_OFFSET) * SCALE, TILE * SCALE, playheadH * SCALE, 4, PAL.playhead);
+        ctx.fillRect(px * SCALE, (GRID_Y * TILE + GRID_Y_OFFSET) * SCALE, TILE * SCALE, playheadH * SCALE);
         ctx.globalAlpha = 1.0;
-        // Top marker — rounded
-        fillRoundRect(ctx, (px + 2) * SCALE, ((GRID_Y - 1) * TILE + 10 + GRID_Y_OFFSET) * SCALE, (TILE - 4) * SCALE, 4 * SCALE, 2, PAL.playhead);
+        // Top marker
+        drawRect(px + 2, (GRID_Y - 1) * TILE + 10 + GRID_Y_OFFSET, TILE - 4, 4, PAL.playhead);
         // Beat pulse: brighten blocks under the playhead that are ON
         for (let r = 0; r < ar; r++) {
             if (grid[r][currentStep] && rowTrigger[r] > 0) {
@@ -6634,22 +6511,9 @@ function render() {
 }
 
 // Draw at screen-pixel resolution (1:1) — for high-detail 48x48 sprites
-// Shadow glow makes pixel blocks bleed together into solid block-print shapes
 function drawPx(x, y, w, h, color) {
     ctx.fillStyle = color;
     ctx.fillRect(x, y, w, h);
-}
-
-// Enable/disable block-print shadow glow for sprite drawing
-function spriteGlowOn(color) {
-    ctx.shadowColor = color || "rgba(0,0,0,0.5)";
-    ctx.shadowBlur = 2;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
-}
-function spriteGlowOff() {
-    ctx.shadowColor = "transparent";
-    ctx.shadowBlur = 0;
 }
 
 // Convert a color to a ghostly blue-white tint for soul/ghost effect
@@ -6666,10 +6530,10 @@ function ghostTint(color) {
     return `#${tr.toString(16).padStart(2, '0')}${tg.toString(16).padStart(2, '0')}${tb.toString(16).padStart(2, '0')}`;
 }
 
-// Reusable 48x48 player sprite for all screens — block-print / screen-print style
+// Reusable 48x48 player sprite for all screens
 // gx, gy: top-left position (game coords)
 // frame: animation frame (0-3), dir: facing direction (0-3)
-// options: { isBlinking, punchThrust, ghostMode }
+// options: { isBlinking, punchThrust }
 function drawPlayerSprite(gx, gy, frame, dir, options) {
     const opts = options || {};
     const sx = gx * SCALE;
@@ -6678,204 +6542,107 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
     const ghost = opts.ghostMode || false;
 
     // Punch lean: upper body shifts toward punch direction
-    const punch = opts.punchThrust || 0;
+    const punch = opts.punchThrust || 0; // 0-1, peaks at mid-punch
     let leanX = 0, leanY = 0;
     if (punch > 0) {
         switch (dir) {
-            case 0: leanY = punch * 4; break;
-            case 1: leanY = -punch * 4; break;
-            case 2: leanX = -punch * 5; break;
-            case 3: leanX = punch * 5; break;
+            case 0: leanY = punch * 4; break;  // lean down
+            case 1: leanY = -punch * 4; break; // lean up
+            case 2: leanX = -punch * 5; break; // lean left
+            case 3: leanX = punch * 5; break;  // lean right
         }
     }
 
-    const col = (c) => ghost ? ghostTint(c) : c;
-    const lx = leanX * SCALE, ly = leanY * SCALE;
+    function px(x, y, w, h, color) {
+        drawPx(sx + x, sy + y - bob, w, h, ghost ? ghostTint(color) : color);
+    }
+    // Shifted version for upper body during punch
+    function pxLean(x, y, w, h, color) {
+        drawPx(sx + x + leanX * SCALE, sy + y + leanY * SCALE - bob, w, h, ghost ? ghostTint(color) : color);
+    }
 
-    // Block-print shadow glow
-    spriteGlowOn();
-
-    // === BODY (foggy mint shirt — solid rounded shape) ===
-    // Lower body stays planted
-    ctx.fillStyle = col("#82c48c");
-    ctx.beginPath();
-    ctx.roundRect(sx + 9, sy + 9 - bob, 30, 27, [0, 0, 4, 4]);
-    ctx.fill();
-    // Body shading (left/right edges)
-    ctx.fillStyle = col("#4a8454");
-    ctx.beginPath();
-    ctx.roundRect(sx + 9, sy + 9 - bob, 8, 27, [0, 0, 0, 4]);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.roundRect(sx + 31, sy + 9 - bob, 8, 27, [0, 0, 4, 0]);
-    ctx.fill();
-    // Hem
-    ctx.fillStyle = col("#4a8454");
-    ctx.fillRect(sx + 12, sy + 30 - bob, 24, 3);
-
+    // === BODY (foggy mint shirt — Studioland style) ===
+    // Lower body stays planted (extended upward to fill gap when upper body leans)
+    px(9, 9, 30, 27, "#82c48c");        // Lower torso (stays put)
+    px(9, 9, 6, 27, "#4a8454");          // Lower left dark side
+    px(33, 9, 6, 27, "#4a8454");         // Lower right dark side
+    px(12, 30, 24, 3, "#4a8454");       // Shirt bottom hem
     // Upper body leans into punch
-    ctx.fillStyle = col("#82c48c");
-    ctx.beginPath();
-    ctx.roundRect(sx + 9 + lx, sy + 3 + ly - bob, 30, 21, [6, 6, 0, 0]);
-    ctx.fill();
-    // Upper shading
-    ctx.fillStyle = col("#4a8454");
-    ctx.fillRect(sx + 9 + lx, sy + 3 + ly - bob, 6, 18);
-    ctx.fillRect(sx + 33 + lx, sy + 3 + ly - bob, 6, 18);
-    // Chest highlight
-    ctx.fillStyle = col("#a8e0ae");
-    ctx.fillRect(sx + 15 + lx, sy + 9 + ly - bob, 18, 3);
-    // Collar
-    ctx.fillStyle = col("#392a1c");
-    ctx.beginPath();
-    ctx.roundRect(sx + 15 + lx, sy + 3 + ly - bob, 18, 4, [3, 3, 0, 0]);
-    ctx.fill();
+    pxLean(9, 6, 30, 18, "#82c48c");    // Upper torso
+    pxLean(9, 6, 6, 18, "#4a8454");     // Upper left dark side
+    pxLean(33, 6, 6, 18, "#4a8454");    // Upper right dark side
+    pxLean(15, 9, 18, 3, "#a8e0ae");    // Shirt chest highlight
+    // Collar detail
+    pxLean(15, 6, 18, 3, "#392a1c");
+    pxLean(18, 3, 12, 3, "#392a1c");
 
-    // === HEAD (bald, round dome) — smooth circle ===
-    const headCx = sx + 24 + lx;
-    const headCy = sy - 6 + ly - bob;
-    const headR = 18;
-    // Main head circle
-    ctx.fillStyle = col("#efb775");
-    ctx.beginPath();
-    ctx.arc(headCx, headCy, headR, 0, Math.PI * 2);
-    ctx.fill();
-    // Bald shine highlight (crescent on top)
-    ctx.fillStyle = col("#f5c882");
-    ctx.beginPath();
-    ctx.arc(headCx, headCy - 2, headR - 3, -Math.PI * 0.9, -Math.PI * 0.1);
-    ctx.fill();
-    // Ears (small circles on sides)
-    ctx.fillStyle = col("#a58c27");
-    ctx.beginPath();
-    ctx.arc(headCx - headR + 2, headCy + 4, 4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(headCx + headR - 2, headCy + 4, 4, 0, Math.PI * 2);
-    ctx.fill();
+    // === HEAD (bald, round) — leans with upper body ===
+    pxLean(6, -15, 36, 21, "#efb775");      // Main head block
+    pxLean(9, -18, 30, 3, "#efb775");       // Rounded top
+    pxLean(12, -21, 24, 3, "#efb775");      // More rounding
+    pxLean(15, -24, 18, 3, "#efb775");      // Top of dome
+    // Bald shine highlight (subtle sheen, not white)
+    pxLean(15, -24, 18, 3, "#f5c882");
+    pxLean(12, -21, 24, 3, "#f2c07a");
+    pxLean(15, -18, 18, 3, "#f0bc78");
+    // Ears (flush with head edge — no protrusion)
+    pxLean(6, -6, 3, 6, "#a58c27");
+    pxLean(39, -6, 3, 6, "#a58c27");
 
-    // === EYES & BEARD (direction-aware) ===
+    // === EYES & BEARD (direction-aware — beard only on front of face) ===
     const isBlinking = opts.isBlinking || false;
-    const eyeDir = [[0, 3], [0, -6], [-3, 0], [3, 0]][dir];
+    const eyeDir = [
+        [0, 3],   // down
+        [0, -6],  // up
+        [-3, 0],  // left
+        [3, 0],   // right
+    ][dir];
 
     if (dir === 1) {
-        // Facing UP — back of bald head
-        ctx.fillStyle = col("#e0a860");
-        ctx.beginPath();
-        ctx.arc(headCx, headCy, headR - 3, -Math.PI * 0.8, -Math.PI * 0.2);
-        ctx.fill();
-        // Neck area
-        ctx.fillStyle = col("#efb775");
-        ctx.fillRect(sx + 15 + lx, sy - 3 + ly - bob, 18, 6);
+        // Facing UP — show back of bald head, no eyes, no beard
+        pxLean(12, -18, 24, 6, "#e0a860");
+        pxLean(15, -3, 18, 6, "#efb775");
     } else {
         // Facing DOWN, LEFT, or RIGHT — show beard and eyes
-        // Big bushy beard (rounded bottom)
-        ctx.fillStyle = col("#ab5c1c");
-        ctx.beginPath();
-        ctx.moveTo(headCx - 15, headCy + 2);
-        ctx.lineTo(headCx + 15, headCy + 2);
-        ctx.lineTo(headCx + 15, headCy + 14);
-        ctx.quadraticCurveTo(headCx + 15, headCy + 22, headCx + 6, headCy + 22);
-        ctx.lineTo(headCx - 6, headCy + 22);
-        ctx.quadraticCurveTo(headCx - 15, headCy + 22, headCx - 15, headCy + 14);
-        ctx.closePath();
-        ctx.fill();
-        // Beard side tufts
-        ctx.beginPath();
-        ctx.arc(headCx - 16, headCy + 4, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(headCx + 16, headCy + 4, 5, 0, Math.PI * 2);
-        ctx.fill();
-        // Beard bottom detail
-        ctx.fillStyle = col("#773421");
-        ctx.beginPath();
-        ctx.ellipse(headCx, headCy + 20, 9, 3, 0, 0, Math.PI * 2);
-        ctx.fill();
-        // Eyebrow ridge
-        ctx.fillStyle = col("#773421");
-        ctx.fillRect(sx + 12 + lx + eyeDir[0], sy - 20 + ly - bob + eyeDir[1], 24, 2);
+        pxLean(9, -3, 30, 12, "#ab5c1c");
+        pxLean(6, -3, 6, 9, "#ab5c1c");
+        pxLean(36, -3, 6, 9, "#ab5c1c");
+        pxLean(12, 9, 24, 6, "#ab5c1c");
+        pxLean(15, 15, 18, 3, "#773421");
+        pxLean(12, 0, 3, 3, "#a56243");
+        pxLean(21, 3, 3, 3, "#a56243");
+        pxLean(30, 0, 3, 3, "#a56243");
+        pxLean(12, -6, 24, 3, "#773421");
+        const mouthOfs = dir === 2 ? -3 : dir === 3 ? 3 : 0;
+        pxLean(16 + mouthOfs, 1, 16, 5, "#9b1a0a");        // mouth outline (red)
+        pxLean(17 + mouthOfs, 2, 14, 3, "#300f0a");       // inner mouth (dark)
+        pxLean(18 + mouthOfs, 2, 12, 1, "#efd8a1");       // teeth (white)
+        pxLean(16 + mouthOfs, 0, 16, 1, "#773421");       // upper lip
+        pxLean(16 + mouthOfs, 6, 16, 1, "#773421");       // lower lip
 
-        // Mouth (direction-shifted)
-        const mOfs = dir === 2 ? -3 : dir === 3 ? 3 : 0;
-        // Mouth opening
-        ctx.fillStyle = col("#9b1a0a");
-        ctx.beginPath();
-        ctx.roundRect(sx + 16 + lx + mOfs, sy - 5 + ly - bob, 16, 6, 2);
-        ctx.fill();
-        // Inner mouth
-        ctx.fillStyle = col("#300f0a");
-        ctx.beginPath();
-        ctx.roundRect(sx + 17 + lx + mOfs, sy - 4 + ly - bob, 14, 4, 1);
-        ctx.fill();
-        // Teeth
-        ctx.fillStyle = col("#efd8a1");
-        ctx.fillRect(sx + 18 + lx + mOfs, sy - 4 + ly - bob, 12, 1);
-
-        // Eyes
         if (isBlinking) {
-            ctx.fillStyle = col("#2a1d0d");
-            ctx.fillRect(sx + 12 + lx + eyeDir[0], sy - 13 + ly - bob + eyeDir[1], 8, 2);
-            ctx.fillRect(sx + 28 + lx + eyeDir[0], sy - 13 + ly - bob + eyeDir[1], 8, 2);
+            pxLean(12 + eyeDir[0], -7 + eyeDir[1], 8, 2, "#2a1d0d");
+            pxLean(28 + eyeDir[0], -7 + eyeDir[1], 8, 2, "#2a1d0d");
         } else {
-            // Eye whites (rounded)
-            ctx.fillStyle = col("#efd8a1");
-            ctx.beginPath();
-            ctx.ellipse(sx + 16 + lx + eyeDir[0], sy - 14 + ly - bob + eyeDir[1], 5, 4, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.ellipse(sx + 32 + lx + eyeDir[0], sy - 14 + ly - bob + eyeDir[1], 5, 4, 0, 0, Math.PI * 2);
-            ctx.fill();
-            // Pupils
-            ctx.fillStyle = col("#2a1d0d");
-            ctx.beginPath();
-            ctx.arc(sx + 17 + lx + eyeDir[0], sy - 13 + ly - bob + eyeDir[1], 3, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(sx + 33 + lx + eyeDir[0], sy - 13 + ly - bob + eyeDir[1], 3, 0, Math.PI * 2);
-            ctx.fill();
-            // Pupil highlights
-            ctx.fillStyle = col("#efd8a1");
-            ctx.beginPath();
-            ctx.arc(sx + 16 + lx + eyeDir[0], sy - 14 + ly - bob + eyeDir[1], 1, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(sx + 32 + lx + eyeDir[0], sy - 14 + ly - bob + eyeDir[1], 1, 0, Math.PI * 2);
-            ctx.fill();
-            // Brows
-            ctx.fillStyle = col("#927e6a");
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = col("#927e6a");
-            ctx.beginPath();
-            ctx.moveTo(sx + 10 + lx + eyeDir[0], sy - 19 + ly - bob + eyeDir[1]);
-            ctx.lineTo(sx + 22 + lx + eyeDir[0], sy - 19 + ly - bob + eyeDir[1]);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(sx + 26 + lx + eyeDir[0], sy - 19 + ly - bob + eyeDir[1]);
-            ctx.lineTo(sx + 38 + lx + eyeDir[0], sy - 19 + ly - bob + eyeDir[1]);
-            ctx.stroke();
+            pxLean(11 + eyeDir[0], -12 + eyeDir[1], 10, 8, "#efd8a1");
+            pxLean(27 + eyeDir[0], -12 + eyeDir[1], 10, 8, "#efd8a1");
+            pxLean(14 + eyeDir[0], -10 + eyeDir[1], 5, 5, "#2a1d0d");
+            pxLean(30 + eyeDir[0], -10 + eyeDir[1], 5, 5, "#2a1d0d");
+            pxLean(15 + eyeDir[0], -10 + eyeDir[1], 2, 2, "#efd8a1");
+            pxLean(31 + eyeDir[0], -10 + eyeDir[1], 2, 2, "#efd8a1");
+            pxLean(10 + eyeDir[0], -14 + eyeDir[1], 12, 2, "#927e6a");
+            pxLean(26 + eyeDir[0], -14 + eyeDir[1], 12, 2, "#927e6a");
         }
     }
 
-    // === FEET / SHOES (rounded) — stay planted ===
-    const walkOfs = (frame === 1 ? 2 : frame === 3 ? -2 : 0) * SCALE;
-    ctx.fillStyle = col("#927e6a");
-    ctx.beginPath();
-    ctx.roundRect(sx + 12 + walkOfs, sy + 36 - bob, 9, 6, [0, 0, 3, 3]);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.roundRect(sx + 27 - walkOfs, sy + 36 - bob, 9, 6, [0, 0, 3, 3]);
-    ctx.fill();
-    // Shoe soles
-    ctx.fillStyle = col("#684c3c");
-    ctx.fillRect(sx + 12 + walkOfs, sy + 40 - bob, 9, 2);
-    ctx.fillRect(sx + 27 - walkOfs, sy + 40 - bob, 9, 2);
-    // Shoe tops
-    ctx.fillStyle = col("#45230d");
-    ctx.fillRect(sx + 12 + walkOfs, sy + 34 - bob, 9, 3);
-    ctx.fillRect(sx + 27 - walkOfs, sy + 34 - bob, 9, 3);
-
-    spriteGlowOff();
+    // === FEET / SHOES (tan) — stay planted ===
+    const walkPx = (frame === 1 ? 2 : frame === 3 ? -2 : 0) * SCALE;
+    px(12 + walkPx, 36, 9, 6, "#927e6a");
+    px(27 - walkPx, 36, 9, 6, "#927e6a");
+    px(12 + walkPx, 40, 9, 2, "#684c3c");
+    px(27 - walkPx, 40, 9, 2, "#684c3c");
+    px(12 + walkPx, 34, 9, 3, "#45230d");
+    px(27 - walkPx, 34, 9, 3, "#45230d");
 }
 
 function drawPlayer() {
@@ -7091,42 +6858,30 @@ function drawRuinedVenueBackdrop(t, options) {
     vGrad.addColorStop(1, "rgba(0,0,0,0.6)");
     ctx.fillStyle = vGrad;
     ctx.fillRect(0, 0, W_v, H_v);
-
-    // Grain texture overlay (screen-print effect)
-    ctx.drawImage(grainCanvas, 0, 0);
 }
 
 // Reusable goblin sprite for all screens (story, warnings, gameplay)
 // Draw a subwoofer speaker (replaces turntable)
 // sx, sy: top-left position (game coords), pump: 0-1 kick intensity, side: -1=left, 1=right
 function drawSubwoofer(sx, sy, pump, side) {
-    const pw = pump * 2;
+    const pw = pump * 2; // extra pixels when pumping
     const bx = sx - pw * 0.5;
     const by = sy - pw * 0.5;
     const bw = 16 + pw;
     const bh = 12 + pw;
-    // Cabinet (rounded)
-    fillRoundRect(ctx, bx * SCALE, by * SCALE, bw * SCALE, bh * SCALE, 3, "#45230d");
-    fillRoundRect(ctx, (bx + 1) * SCALE, (by + 1) * SCALE, (bw - 2) * SCALE, (bh - 2) * SCALE, 2, "#392a1c");
-    // Speaker cone (actual circle)
-    const cx = (bx + bw / 2) * SCALE;
-    const cy = (by + bh / 2) * SCALE;
+    // Cabinet
+    drawRect(bx, by, bw, bh, "#45230d");
+    drawRect(bx + 1, by + 1, bw - 2, bh - 2, "#392a1c");
+    // Speaker cone (center circle approximation with rects)
+    const cx = bx + bw / 2;
+    const cy = by + bh / 2;
     // Surround ring
-    ctx.fillStyle = "#2e4a4e";
-    ctx.beginPath();
-    ctx.arc(cx, cy, 5 * SCALE, 0, Math.PI * 2);
-    ctx.fill();
+    drawRect(cx - 5, cy - 4, 10, 8, "#2e4a4e");
     // Cone
     const coneCol = pump > 0.3 ? "#504030" : "#3a3020";
-    ctx.fillStyle = coneCol;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 3 * SCALE, 0, Math.PI * 2);
-    ctx.fill();
+    drawRect(cx - 3, cy - 3, 6, 6, coneCol);
     // Dust cap (center)
-    ctx.fillStyle = "#1a1410";
-    ctx.beginPath();
-    ctx.arc(cx, cy, 1 * SCALE, 0, Math.PI * 2);
-    ctx.fill();
+    drawRect(cx - 1, cy - 1, 2, 2, "#1a1410");
     // Sound lines emanating outward
     if (pump > 0.05) {
         ctx.globalAlpha = pump * 0.6;
@@ -7147,71 +6902,36 @@ function drawSubwoofer(sx, sy, pump, side) {
 // ---- DJ Equipment Sprite Functions ----
 
 function drawTurntable(tx, ty) {
-    // Platter base (rounded)
-    fillRoundRect(ctx, tx * SCALE, (ty + 6) * SCALE, 14 * SCALE, 6 * SCALE, 3, "#45230d");
-    fillRoundRect(ctx, (tx + 1) * SCALE, (ty + 7) * SCALE, 12 * SCALE, 4 * SCALE, 2, "#392a1c");
-    // Platter (actual circle)
-    const pcx = (tx + 7) * SCALE, pcy = (ty + 5) * SCALE;
-    ctx.fillStyle = "#1a1410";
-    ctx.beginPath();
-    ctx.arc(pcx, pcy, 5 * SCALE, 0, Math.PI * 2);
-    ctx.fill();
-    // Vinyl grooves (concentric circles)
-    ctx.strokeStyle = "#2a2018";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(pcx, pcy, 3.5 * SCALE, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(pcx, pcy, 2.5 * SCALE, 0, Math.PI * 2);
-    ctx.stroke();
+    // Platter base
+    drawRect(tx, ty + 6, 14, 6, "#45230d");
+    drawRect(tx + 1, ty + 7, 12, 4, "#392a1c");
+    // Platter (circular disc)
+    drawRect(tx + 2, ty + 1, 10, 8, "#1a1410");
+    drawRect(tx + 3, ty, 8, 10, "#1a1410");
+    // Vinyl grooves
+    drawRect(tx + 4, ty + 2, 6, 6, "#2a2018");
+    drawRect(tx + 5, ty + 3, 4, 4, "#1a1410");
     // Label center
-    ctx.fillStyle = "#efac28";
-    ctx.beginPath();
-    ctx.arc(pcx, pcy, 1.2 * SCALE, 0, Math.PI * 2);
-    ctx.fill();
-    // Tonearm (line with rounded cap)
-    ctx.strokeStyle = "#888";
-    ctx.lineWidth = 1 * SCALE;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo((tx + 12) * SCALE, ty * SCALE);
-    ctx.lineTo((tx + 11) * SCALE, (ty + 5) * SCALE);
-    ctx.stroke();
-    ctx.lineCap = "butt";
-    // Tonearm base
-    ctx.fillStyle = "#666";
-    ctx.beginPath();
-    ctx.arc((tx + 12) * SCALE, ty * SCALE, 1 * SCALE, 0, Math.PI * 2);
-    ctx.fill();
+    drawRect(tx + 6, ty + 4, 2, 2, "#efac28");
+    // Tonearm
+    drawRect(tx + 11, ty, 1, 6, "#888");
+    drawRect(tx + 10, ty + 5, 2, 1, "#aaa");
+    drawRect(tx + 12, ty, 2, 1, "#666");
 }
 
 function drawMixer(mx, my) {
-    // Mixer body (rounded)
-    fillRoundRect(ctx, mx * SCALE, my * SCALE, 12 * SCALE, 10 * SCALE, 3, "#2e4a4e");
-    // Fader slots (rounded)
+    drawRect(mx, my, 12, 10, "#2e4a4e");
+    // Fader slots
     for (let ml = 0; ml < 4; ml++) {
-        fillRoundRect(ctx, (mx + 2 + ml * 2) * SCALE, (my + 1) * SCALE, 1 * SCALE, 2 * SCALE, 1, "#1f240a");
+        drawRect(mx + 2 + ml * 2, my + 1, 1, 2, "#1f240a");
     }
-    // Crossfader track
-    fillRoundRect(ctx, (mx + 3) * SCALE, (my + 5) * SCALE, 6 * SCALE, 2 * SCALE, 1, "#1f240a");
-    // Crossfader knob (circle)
-    ctx.fillStyle = "#efac28";
-    ctx.beginPath();
-    ctx.arc((mx + 6) * SCALE, (my + 6) * SCALE, 1.5 * SCALE, 0, Math.PI * 2);
-    ctx.fill();
-    // Level meters (small circles)
-    ctx.fillStyle = "#00FF88";
-    ctx.beginPath();
-    ctx.arc((mx + 2) * SCALE, (my + 8.5) * SCALE, 1 * SCALE, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc((mx + 6) * SCALE, (my + 8.5) * SCALE, 1 * SCALE, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#FF4400";
-    ctx.beginPath();
-    ctx.arc((mx + 10) * SCALE, (my + 8.5) * SCALE, 1 * SCALE, 0, Math.PI * 2);
-    ctx.fill();
+    // Crossfader
+    drawRect(mx + 3, my + 5, 6, 2, "#1f240a");
+    drawRect(mx + 5, my + 5, 2, 2, "#efac28");
+    // Level meters
+    drawRect(mx + 1, my + 8, 2, 1, "#00FF88");
+    drawRect(mx + 5, my + 8, 2, 1, "#00FF88");
+    drawRect(mx + 9, my + 8, 2, 1, "#FF4400");
 }
 
 const LIGHT_RIG_COLORS = ["#FF4400", "#efac28", "#00FF88", "#4488FF", "#FF44AA", "#efac28"];
@@ -7225,77 +6945,52 @@ function drawLightRig(lx, ly, pump) {
     const poleTop = ly;
     const poleH = 18;           // vertical pole height
 
-    // Left pole (rounded)
-    fillRoundRect(ctx, (leftX + 1) * SCALE, poleTop * SCALE, 2 * SCALE, poleH * SCALE, 1, "#555");
-    // Right pole (rounded)
-    fillRoundRect(ctx, (rightX + 1) * SCALE, poleTop * SCALE, 2 * SCALE, poleH * SCALE, 1, "#555");
+    // Left pole
+    drawRect(leftX + 1, poleTop, 2, poleH, "#555");
+    drawRect(leftX + 1, poleTop, 2, 1, "#777");
+    // Right pole
+    drawRect(rightX + 1, poleTop, 2, poleH, "#555");
+    drawRect(rightX + 1, poleTop, 2, 1, "#777");
 
-    // 3 lights on each pole, evenly spaced (circles)
+    // 3 lights on each pole, evenly spaced
     const baseGlow = 0.2;
     const beatGlow = pump * 0.5;
     const glowAlpha = baseGlow + beatGlow;
-    const bulbR = pump > 0.1 ? 2.5 : 2;
-    // Glow pass
+    const bulbSize = pump > 0.1 ? 4 : 3;
+    // Glow pass (single alpha switch)
     ctx.globalAlpha = glowAlpha;
     for (let i = 0; i < 3; i++) {
         const by = poleTop + 2 + i * 5;
         ctx.fillStyle = LIGHT_RIG_COLORS[i];
-        ctx.beginPath();
-        ctx.arc((leftX + 3) * SCALE, (by + 1) * SCALE, 4 * SCALE, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.fillRect((leftX + 1) * SCALE, (by - 2) * SCALE, 7 * SCALE, 7 * SCALE);
         ctx.fillStyle = LIGHT_RIG_COLORS[i + 3];
-        ctx.beginPath();
-        ctx.arc((rightX) * SCALE, (by + 1) * SCALE, 4 * SCALE, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.fillRect((rightX - 4) * SCALE, (by - 2) * SCALE, 7 * SCALE, 7 * SCALE);
     }
     ctx.globalAlpha = 1;
-    // Bulb pass (circles on top of glow)
+    // Bulb pass (on top of glow)
     for (let i = 0; i < 3; i++) {
         const by = poleTop + 2 + i * 5;
-        ctx.fillStyle = LIGHT_RIG_COLORS[i];
-        ctx.beginPath();
-        ctx.arc((leftX + 3) * SCALE, (by + 1) * SCALE, bulbR * SCALE, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = LIGHT_RIG_COLORS[i + 3];
-        ctx.beginPath();
-        ctx.arc((rightX) * SCALE, (by + 1) * SCALE, bulbR * SCALE, 0, Math.PI * 2);
-        ctx.fill();
+        drawRect(leftX + 3, by, bulbSize, bulbSize, LIGHT_RIG_COLORS[i]);
+        drawRect(rightX - 2, by, bulbSize, bulbSize, LIGHT_RIG_COLORS[i + 3]);
     }
 }
 
 function drawDiscoBall(dx, dy) {
-    const bcx = (dx + 4.5) * SCALE;
-    const bcy = (dy + 4.5) * SCALE;
-    const br = 4.5 * SCALE;
     // String
-    ctx.strokeStyle = "#888";
-    ctx.lineWidth = 1 * SCALE;
-    ctx.beginPath();
-    ctx.moveTo(bcx, (dy - 6) * SCALE);
-    ctx.lineTo(bcx, bcy - br);
-    ctx.stroke();
-    // Ball body (actual circle)
-    ctx.fillStyle = "#aaa";
-    ctx.beginPath();
-    ctx.arc(bcx, bcy, br, 0, Math.PI * 2);
-    ctx.fill();
-    // Mirror facets (small circles arranged in a grid pattern)
+    drawRect(dx + 4, dy - 6, 1, 6, "#888");
+    // Ball body (9x9 approximation of sphere)
+    drawRect(dx + 1, dy + 1, 7, 7, "#aaa");
+    drawRect(dx, dy + 2, 9, 5, "#aaa");
+    drawRect(dx + 2, dy, 5, 9, "#aaa");
+    // Mirror facets (grid pattern)
     const facetCols = ["#ddd", "#fff", "#bbb", "#eee"];
-    for (let fy = -1; fy <= 1; fy++) {
-        for (let fx = -1; fx <= 1; fx++) {
-            ctx.fillStyle = facetCols[(fx + fy + 4) % 4];
-            ctx.beginPath();
-            ctx.arc(bcx + fx * 2.5 * SCALE, bcy + fy * 2.5 * SCALE, 1 * SCALE, 0, Math.PI * 2);
-            ctx.fill();
+    for (let fy = 0; fy < 3; fy++) {
+        for (let fx = 0; fx < 3; fx++) {
+            drawRect(dx + 1 + fx * 3, dy + 1 + fy * 3, 2, 2, facetCols[(fx + fy) % 4]);
         }
     }
-    // Highlight (crescent)
-    ctx.fillStyle = "#fff";
-    ctx.globalAlpha = 0.5;
-    ctx.beginPath();
-    ctx.arc(bcx - 1 * SCALE, bcy - 1.5 * SCALE, 2 * SCALE, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1.0;
+    // Highlight
+    drawRect(dx + 2, dy + 1, 2, 1, "#fff");
 }
 
 // Map DJ_SETUP_PIECES names to draw functions with booth-relative offsets
@@ -7402,170 +7097,72 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
         else if (d === 3) bodyOffX = -15;  // moving right → goblin shifts left (behind)
     }
 
-    // Block-print shadow glow
-    spriteGlowOn();
+    // === BODY (squat, stocky — Studioland style) ===
+    px(12, 9, 24, 27, bodyCol);        // Main torso
+    px(12, 9, 6, 27, darkCol);         // Left dark side
+    px(30, 9, 6, 27, darkCol);         // Right dark side
+    px(18, 12, 12, 3, bodyCol);        // Chest area (lighter)
+    // Tattered vest/tunic edge
+    px(12, 33, 24, 3, darkCol);
 
-    // === BODY (squat, stocky — solid rounded shape) ===
-    ctx.fillStyle = bodyCol;
-    ctx.beginPath();
-    ctx.roundRect(sx + bodyOffX + 12, sy + bodyOffY + 9 - bob, 24, 27, [0, 0, 4, 4]);
-    ctx.fill();
-    // Body shading
-    ctx.fillStyle = darkCol;
-    ctx.fillRect(sx + bodyOffX + 12, sy + bodyOffY + 9 - bob, 6, 27);
-    ctx.fillRect(sx + bodyOffX + 30, sy + bodyOffY + 9 - bob, 6, 27);
-    // Tattered hem
-    ctx.fillStyle = darkCol;
-    ctx.fillRect(sx + bodyOffX + 12, sy + bodyOffY + 33 - bob, 24, 3);
-
-    // === HEAD (round, expressive — smooth circle) ===
-    const ghCx = sx + bodyOffX + 24;
-    const ghCy = sy + bodyOffY - 3 - bob;
-    const ghR = 17;
-    ctx.fillStyle = headCol;
-    ctx.beginPath();
-    ctx.arc(ghCx, ghCy, ghR, 0, Math.PI * 2);
-    ctx.fill();
+    // === HEAD (round, expressive) ===
+    px(6, -12, 36, 21, headCol);       // Main head
+    px(9, -15, 30, 3, headCol);        // Rounded top
+    px(12, -18, 24, 3, headCol);       // More rounding
     // Head shading
-    ctx.fillStyle = darkCol;
-    ctx.beginPath();
-    ctx.arc(ghCx - 12, ghCy - 10, 5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(ghCx + 12, ghCy - 10, 5, 0, Math.PI * 2);
-    ctx.fill();
+    px(9, -15, 6, 3, darkCol);         // Left shadow
+    px(33, -15, 6, 3, darkCol);        // Right shadow
 
-    // === POINTY EARS (triangular, smooth) ===
-    ctx.fillStyle = headCol;
-    // Left ear
-    ctx.beginPath();
-    ctx.moveTo(ghCx - ghR + 2, ghCy - 2);
-    ctx.lineTo(ghCx - ghR - 8, ghCy - 16);
-    ctx.lineTo(ghCx - ghR + 8, ghCy - 6);
-    ctx.closePath();
-    ctx.fill();
-    // Right ear
-    ctx.beginPath();
-    ctx.moveTo(ghCx + ghR - 2, ghCy - 2);
-    ctx.lineTo(ghCx + ghR + 8, ghCy - 16);
-    ctx.lineTo(ghCx + ghR - 8, ghCy - 6);
-    ctx.closePath();
-    ctx.fill();
-    // Inner ear detail
-    ctx.fillStyle = darkCol;
-    ctx.beginPath();
-    ctx.moveTo(ghCx - ghR + 1, ghCy);
-    ctx.lineTo(ghCx - ghR - 4, ghCy - 10);
-    ctx.lineTo(ghCx - ghR + 5, ghCy - 4);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(ghCx + ghR - 1, ghCy);
-    ctx.lineTo(ghCx + ghR + 4, ghCy - 10);
-    ctx.lineTo(ghCx + ghR - 5, ghCy - 4);
-    ctx.closePath();
-    ctx.fill();
+    // === POINTY EARS (iconic goblin feature) ===
+    px(0, -6, 9, 9, headCol);          // Left ear base
+    px(-3, -9, 6, 6, headCol);         // Left ear point
+    px(-6, -12, 3, 3, headCol);        // Left ear tip
+    px(39, -6, 9, 9, headCol);         // Right ear base
+    px(45, -9, 6, 6, headCol);         // Right ear point
+    px(51, -12, 3, 3, headCol);        // Right ear tip
+    // Inner ear
+    px(0, -3, 6, 3, darkCol);
+    px(42, -3, 6, 3, darkCol);
 
     // === EYES (direction-aware) ===
     const eyeOfs = [[0, 3], [0, -6], [-3, 0], [3, 0]][dir];
 
     if (dir !== 1) {
-        // Eye sockets
-        ctx.fillStyle = "#1a2a1a";
-        ctx.beginPath();
-        ctx.ellipse(ghCx - 8 + eyeOfs[0], ghCy - 2 + eyeOfs[1], 6, 5, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.ellipse(ghCx + 8 + eyeOfs[0], ghCy - 2 + eyeOfs[1], 6, 5, 0, 0, Math.PI * 2);
-        ctx.fill();
-        // Glowing eyes
-        ctx.fillStyle = eyeCol;
-        ctx.beginPath();
-        ctx.ellipse(ghCx - 8 + eyeOfs[0], ghCy - 1 + eyeOfs[1], 4, 3, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.ellipse(ghCx + 8 + eyeOfs[0], ghCy - 1 + eyeOfs[1], 4, 3, 0, 0, Math.PI * 2);
-        ctx.fill();
-        // Bright pupils
-        ctx.fillStyle = "#ffffff";
-        ctx.beginPath();
-        ctx.arc(ghCx - 7 + eyeOfs[0], ghCy - 1 + eyeOfs[1], 2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(ghCx + 9 + eyeOfs[0], ghCy - 1 + eyeOfs[1], 2, 0, Math.PI * 2);
-        ctx.fill();
+        // Eye sockets (dark recesses)
+        px(10 + eyeOfs[0], -9 + eyeOfs[1], 10, 8, "#1a2a1a");
+        px(28 + eyeOfs[0], -9 + eyeOfs[1], 10, 8, "#1a2a1a");
+        // Glowing eye color
+        px(12 + eyeOfs[0], -7 + eyeOfs[1], 6, 5, eyeCol);
+        px(30 + eyeOfs[0], -7 + eyeOfs[1], 6, 5, eyeCol);
+        // Bright pupil centers
+        px(13 + eyeOfs[0], -6 + eyeOfs[1], 3, 3, "#ffffff");
+        px(31 + eyeOfs[0], -6 + eyeOfs[1], 3, 3, "#ffffff");
         // Angry brow ridge
-        ctx.strokeStyle = darkCol;
-        ctx.lineWidth = 3;
-        ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo(ghCx - 14 + eyeOfs[0], ghCy - 6 + eyeOfs[1]);
-        ctx.lineTo(ghCx - 3 + eyeOfs[0], ghCy - 8 + eyeOfs[1]);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(ghCx + 3 + eyeOfs[0], ghCy - 8 + eyeOfs[1]);
-        ctx.lineTo(ghCx + 14 + eyeOfs[0], ghCy - 6 + eyeOfs[1]);
-        ctx.stroke();
-        ctx.lineCap = "butt";
+        px(9 + eyeOfs[0], -12 + eyeOfs[1], 12, 3, darkCol);
+        px(27 + eyeOfs[0], -12 + eyeOfs[1], 12, 3, darkCol);
     }
 
     // === MOUTH / FANGS (direction-aware) ===
     if (dir !== 1) {
         const mOfs = dir === 2 ? -3 : dir === 3 ? 3 : 0;
         // Wide grin
-        ctx.fillStyle = "#2a1a1a";
-        ctx.beginPath();
-        ctx.roundRect(sx + bodyOffX + 12 + mOfs, sy + bodyOffY - bob, 24, 9, [0, 0, 4, 4]);
-        ctx.fill();
-        // Fangs (triangular)
-        ctx.fillStyle = "#efd8a1";
-        // Left fang
-        ctx.beginPath();
-        ctx.moveTo(sx + bodyOffX + 14 + mOfs, sy + bodyOffY - bob);
-        ctx.lineTo(sx + bodyOffX + 17 + mOfs, sy + bodyOffY - bob);
-        ctx.lineTo(sx + bodyOffX + 15.5 + mOfs, sy + bodyOffY + 8 - bob);
-        ctx.closePath();
-        ctx.fill();
-        // Center fang
-        ctx.beginPath();
-        ctx.moveTo(sx + bodyOffX + 21 + mOfs, sy + bodyOffY - bob);
-        ctx.lineTo(sx + bodyOffX + 24 + mOfs, sy + bodyOffY - bob);
-        ctx.lineTo(sx + bodyOffX + 22.5 + mOfs, sy + bodyOffY + 7 - bob);
-        ctx.closePath();
-        ctx.fill();
-        // Right fang
-        ctx.beginPath();
-        ctx.moveTo(sx + bodyOffX + 28 + mOfs, sy + bodyOffY - bob);
-        ctx.lineTo(sx + bodyOffX + 31 + mOfs, sy + bodyOffY - bob);
-        ctx.lineTo(sx + bodyOffX + 29.5 + mOfs, sy + bodyOffY + 8 - bob);
-        ctx.closePath();
-        ctx.fill();
+        px(12 + mOfs, 0, 24, 6, "#2a1a1a");
+        px(15 + mOfs, 6, 18, 3, "#2a1a1a");
+        // Fangs (white, pointy)
+        px(14 + mOfs, 0, 3, 6, "#efd8a1");
+        px(21 + mOfs, 0, 3, 6, "#efd8a1");
+        px(28 + mOfs, 0, 3, 6, "#efd8a1");
+        // Fang tips extend below
+        px(15 + mOfs, 6, 2, 3, "#efd8a1");
+        px(29 + mOfs, 6, 2, 3, "#efd8a1");
     }
 
-    // === FEET (clawed — rounded with points) ===
-    const walkOfs = (frame === 1 ? 2 : frame === 3 ? -2 : 0) * SCALE;
-    ctx.fillStyle = darkCol;
-    ctx.beginPath();
-    ctx.roundRect(sx + bodyOffX + 12 + walkOfs, sy + bodyOffY + 36 - bob, 9, 6, [0, 0, 3, 3]);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.roundRect(sx + bodyOffX + 27 - walkOfs, sy + bodyOffY + 36 - bob, 9, 6, [0, 0, 3, 3]);
-    ctx.fill();
-    // Claw tips (small triangles)
-    ctx.beginPath();
-    ctx.moveTo(sx + bodyOffX + 10 + walkOfs, sy + bodyOffY + 40 - bob);
-    ctx.lineTo(sx + bodyOffX + 14 + walkOfs, sy + bodyOffY + 40 - bob);
-    ctx.lineTo(sx + bodyOffX + 10 + walkOfs, sy + bodyOffY + 43 - bob);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(sx + bodyOffX + 33 - walkOfs, sy + bodyOffY + 40 - bob);
-    ctx.lineTo(sx + bodyOffX + 37 - walkOfs, sy + bodyOffY + 40 - bob);
-    ctx.lineTo(sx + bodyOffX + 37 - walkOfs, sy + bodyOffY + 43 - bob);
-    ctx.closePath();
-    ctx.fill();
-
-    spriteGlowOff();
+    // === FEET (clawed) ===
+    const walkPx = (frame === 1 ? 2 : frame === 3 ? -2 : 0) * SCALE;
+    px(12 + walkPx, 36, 9, 6, darkCol);     // Left foot
+    px(27 - walkPx, 36, 9, 6, darkCol);     // Right foot
+    px(10 + walkPx, 40, 4, 3, darkCol);     // Left claws
+    px(33 - walkPx, 40, 4, 3, darkCol);     // Right claws
 
     // Catapult invincibility shimmer
     if (type === "catapult") {
@@ -7731,127 +7328,59 @@ function drawDancerSprite(gx, gy, pal, options) {
         drawPx(sx + x, sy + y - bob, w, h, color);
     }
 
-    // Block-print shadow glow
-    spriteGlowOn();
+    // === BODY (outfit) ===
+    px(9, 12, 18, 21, pal.body);        // Main torso
+    px(9, 12, 3, 21, pal.dark);         // Left dark side
+    px(24, 12, 3, 21, pal.dark);        // Right dark side
+    px(12, 15, 12, 3, pal.body);        // Chest highlight
+    px(9, 30, 18, 3, pal.dark);         // Hem
 
-    // === BODY (outfit — solid rounded shape) ===
-    ctx.fillStyle = pal.body;
-    ctx.beginPath();
-    ctx.roundRect(sx + 9, sy + 12 - bob, 18, 21, [4, 4, 3, 3]);
-    ctx.fill();
-    // Body shading
-    ctx.fillStyle = pal.dark;
-    ctx.fillRect(sx + 9, sy + 12 - bob, 3, 21);
-    ctx.fillRect(sx + 24, sy + 12 - bob, 3, 21);
-    // Hem
-    ctx.fillStyle = pal.dark;
-    ctx.fillRect(sx + 9, sy + 30 - bob, 18, 3);
+    // === HEAD (round, friendly) ===
+    px(6, -6, 24, 18, pal.head);        // Main head
+    px(9, -9, 18, 3, pal.head);         // Rounded top
+    px(12, -12, 12, 3, pal.head);       // More rounding
 
-    // === HEAD (round, friendly — smooth circle) ===
-    const dcx = sx + 18;
-    const dcy = sy + 2 - bob;
-    const dr = 13;
-    ctx.fillStyle = pal.head;
-    ctx.beginPath();
-    ctx.arc(dcx, dcy, dr, 0, Math.PI * 2);
-    ctx.fill();
-
-    // === HAIR (dome cap on top of head) ===
-    ctx.fillStyle = pal.hair;
-    ctx.beginPath();
-    ctx.arc(dcx, dcy - 1, dr + 1, -Math.PI, 0);
-    ctx.fill();
-    // Hair peak on top
-    ctx.beginPath();
-    ctx.arc(dcx, dcy - 4, dr - 2, -Math.PI * 0.85, -Math.PI * 0.15);
-    ctx.fill();
+    // === HAIR ===
+    px(3, -6, 30, 6, pal.hair);         // Main hair
+    px(6, -9, 24, 3, pal.hair);         // Hair top
+    px(9, -12, 18, 3, pal.hair);        // Hair crown
+    px(12, -15, 12, 3, pal.hair);       // Hair peak
     // Side hair tufts
-    ctx.beginPath();
-    ctx.arc(dcx - dr, dcy + 5, 4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(dcx + dr, dcy + 5, 4, 0, Math.PI * 2);
-    ctx.fill();
+    px(3, 0, 3, 6, pal.hair);
+    px(30, 0, 3, 6, pal.hair);
 
     // === FACE ===
     // Eyes (friendly, round)
-    ctx.fillStyle = "#efd8a1";
-    ctx.beginPath();
-    ctx.ellipse(dcx - 5, dcy + 3, 3, 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(dcx + 5, dcy + 3, 3, 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // Pupils
-    ctx.fillStyle = "#2a1d0d";
-    ctx.beginPath();
-    ctx.arc(dcx - 4, dcy + 4, 2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(dcx + 6, dcy + 4, 2, 0, Math.PI * 2);
-    ctx.fill();
-    // Highlights
-    ctx.fillStyle = "#efd8a1";
-    ctx.beginPath();
-    ctx.arc(dcx - 5, dcy + 3, 0.8, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(dcx + 5, dcy + 3, 0.8, 0, Math.PI * 2);
-    ctx.fill();
-    // Friendly smile (curved line)
-    ctx.strokeStyle = "#a56243";
-    ctx.lineWidth = 2;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.arc(dcx, dcy + 7, 6, 0.2, Math.PI - 0.2);
-    ctx.stroke();
-    ctx.lineCap = "butt";
-    // Rosy cheeks
-    ctx.fillStyle = "#a56243";
-    ctx.globalAlpha = 0.6;
-    ctx.beginPath();
-    ctx.arc(dcx - 10, dcy + 6, 3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(dcx + 10, dcy + 6, 3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1.0;
+    px(10, 0, 6, 5, "#efd8a1");         // Left eye white
+    px(20, 0, 6, 5, "#efd8a1");         // Right eye white
+    px(12, 1, 3, 3, "#2a1d0d");         // Left pupil
+    px(22, 1, 3, 3, "#2a1d0d");         // Right pupil
+    px(12, 1, 1, 1, "#efd8a1");         // Left highlight
+    px(22, 1, 1, 1, "#efd8a1");         // Right highlight
+    // Friendly smile
+    px(12, 7, 12, 2, "#a56243");        // Mouth
+    px(14, 9, 8, 1, "#a56243");         // Lower lip
 
-    // === ARMS (position based on armBlend — rounded) ===
+    // Rosy cheeks
+    px(6, 4, 3, 3, "#a56243");
+    px(27, 4, 3, 3, "#a56243");
+
+    // === ARMS (position based on armBlend) ===
     const armDownY = 15;
     const armUpY = 6;
     const armY = armDownY + (armUpY - armDownY) * armBlend;
     const armH = 12 + (9 - 12) * armBlend;
-    ctx.fillStyle = pal.body;
-    ctx.beginPath();
-    ctx.roundRect(sx + 3, sy + armY - bob, 6, armH, 3);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.roundRect(sx + 27, sy + armY - bob, 6, armH, 3);
-    ctx.fill();
-    // Hands (small circles)
-    ctx.fillStyle = pal.head;
-    ctx.beginPath();
-    ctx.arc(sx + 5, sy + armY - bob + 2, 3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(sx + 31, sy + armY - bob + 2, 3, 0, Math.PI * 2);
-    ctx.fill();
+    px(3, armY, 6, armH, pal.body);      // Left arm
+    px(27, armY, 6, armH, pal.body);     // Right arm
+    // Hands
+    px(3, armY, 4, 3, pal.head);         // Left hand (skin)
+    px(29, armY, 4, 3, pal.head);        // Right hand (skin)
 
-    // === FEET (rounded) ===
-    ctx.fillStyle = pal.dark;
-    ctx.beginPath();
-    ctx.roundRect(sx + 9 - footOfs, sy + 33 - bob, 8, 6, [0, 0, 3, 3]);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.roundRect(sx + 19 + footOfs, sy + 33 - bob, 8, 6, [0, 0, 3, 3]);
-    ctx.fill();
-    // Shoe accent
-    ctx.fillStyle = pal.body;
-    ctx.fillRect(sx + 9 - footOfs, sy + 37 - bob, 8, 2);
-    ctx.fillRect(sx + 19 + footOfs, sy + 37 - bob, 8, 2);
-
-    spriteGlowOff();
+    // === FEET (smooth offset) ===
+    px(9 - footOfs, 33, 8, 6, pal.dark);    // Left shoe
+    px(19 + footOfs, 33, 8, 6, pal.dark);   // Right shoe
+    px(9 - footOfs, 37, 8, 2, pal.body);    // Left shoe accent
+    px(19 + footOfs, 37, 8, 2, pal.body);   // Right shoe accent
 
     if (scale !== 1) {
         ctx.restore();
