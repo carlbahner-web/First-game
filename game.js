@@ -6716,10 +6716,10 @@ function render() {
                         ctx.save();
                         ctx.translate(bxs + ts / 2, bys + ts / 2);
                         ctx.rotate(rotAngle);
-                        ctx.drawImage(sprOn, -ts / 2, -ts / 2);
+                        ctx.drawImage(sprOn, -ts / 2, -ts / 2, ts, ts);
                         ctx.restore();
                     } else {
-                        ctx.drawImage(sprOn, bxs, bys);
+                        ctx.drawImage(sprOn, bxs, bys, ts, ts);
                     }
                 } else {
                     ctx.drawImage(TEX_GRID_ON[r][c], bxs, bys);
@@ -6734,10 +6734,10 @@ function render() {
                         ctx.save();
                         ctx.translate(bxs + ts / 2, bys + ts / 2);
                         ctx.rotate(rotAngle);
-                        ctx.drawImage(sprOff, -ts / 2, -ts / 2);
+                        ctx.drawImage(sprOff, -ts / 2, -ts / 2, ts, ts);
                         ctx.restore();
                     } else {
-                        ctx.drawImage(sprOff, bxs, bys);
+                        ctx.drawImage(sprOff, bxs, bys, ts, ts);
                     }
                 } else {
                     ctx.drawImage(TEX_GRID_OFF[r][c], bxs, bys);
@@ -7297,7 +7297,7 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         if (IMAGES[sprKey]) {
             const lx = leanX * SCALE, ly = leanY * SCALE;
             if (ghost) { ctx.globalAlpha = 0.5; ctx.globalCompositeOperation = "lighter"; }
-            ctx.drawImage(IMAGES[sprKey], sx + lx, sy - bob + ly);
+            ctx.drawImage(IMAGES[sprKey], sx + lx, sy - bob + ly, TILE * SCALE, TILE * SCALE);
             if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
             return;
         }
@@ -7984,7 +7984,7 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
             // Hurt flash: overlay white tint
             const isHurt = opts.bodyCol && opts.bodyCol !== "#39FF14" && opts.bodyCol !== "#FF00FF" && opts.bodyCol !== "#FF6600";
             if (isHurt) {
-                ctx.drawImage(IMAGES[sprKey], sx, sy - bob);
+                ctx.drawImage(IMAGES[sprKey], sx, sy - bob, TILE * SCALE, TILE * SCALE);
                 ctx.globalCompositeOperation = "source-atop";
                 ctx.globalAlpha = 0.6;
                 ctx.fillStyle = "#ffffff";
@@ -7992,7 +7992,7 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
                 ctx.globalAlpha = 1;
                 ctx.globalCompositeOperation = "source-over";
             } else {
-                ctx.drawImage(IMAGES[sprKey], sx, sy - bob);
+                ctx.drawImage(IMAGES[sprKey], sx, sy - bob, TILE * SCALE, TILE * SCALE);
             }
             return;
         }
@@ -8394,10 +8394,11 @@ function drawDancerSprite(gx, gy, pal, options) {
                 ctx.translate(-(sx + 18), -(sy + 18));
             }
             // Choose pose based on arm blend threshold
+            // Dancers are 36×40 screen pixels (12×13.3 game pixels × SCALE)
             if (armBlend > 0.5 && IMAGES[keyUp]) {
-                ctx.drawImage(IMAGES[keyUp], sx, drawY);
+                ctx.drawImage(IMAGES[keyUp], sx, drawY, 36, 40);
             } else {
-                ctx.drawImage(IMAGES[keyDown], sx, drawY);
+                ctx.drawImage(IMAGES[keyDown], sx, drawY, 36, 40);
             }
             if (scale !== 1) ctx.restore();
             return;
