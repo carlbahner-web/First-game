@@ -519,29 +519,503 @@ hudCanvas.width = COLS * TILE * SCALE;
 hudCanvas.height = HUD_H * SCALE;
 hudCtx.imageSmoothingEnabled = false;
 
-// ---- Colors (earthy dungeon palette) ----
-// #efd8a1 Pale Cream, #efac28 Amber Gold, #efb775 Peach Buff
-// #276468 Dark Teal, #ab5c1c Burnt Sienna, #927e6a Warm Khaki
+// ============================================================
+// PROCEDURAL TEXTURE GENERATION SYSTEM
+// Pre-renders detailed textures to off-screen canvases at startup
+// ============================================================
+
+// Seeded PRNG for deterministic texture generation
+function texRNG(seed) {
+    let s = seed;
+    return function() {
+        s = (s * 1103515245 + 12345) & 0x7fffffff;
+        return s / 0x7fffffff;
+    };
+}
+
+// Helper: parse hex color to [r,g,b]
+function hexToRGB(hex) {
+    const v = parseInt(hex.slice(1), 16);
+    return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+
+// Helper: blend two colors
+function blendColor(c1, c2, t) {
+    const a = hexToRGB(c1), b = hexToRGB(c2);
+    const r = Math.round(a[0] + (b[0] - a[0]) * t);
+    const g = Math.round(a[1] + (b[1] - a[1]) * t);
+    const bl = Math.round(a[2] + (b[2] - a[2]) * t);
+    return `rgb(${r},${g},${bl})`;
+}
+
+// Generate a single stone tile texture (TILE*SCALE x TILE*SCALE pixels)
+function generateStoneTile(seed, baseColor, darkColor, highlightColor, opts) {
+    const o = opts || {};
+    const size = TILE * SCALE; // 48x48 pixels
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const g = c.getContext('2d');
+    const rng = texRNG(seed);
+
+    // Base fill
+    g.fillStyle = baseColor;
+    g.fillRect(0, 0, size, size);
+
+    // Stone grain — varied patches of slightly different shades
+    for (let i = 0; i < 18; i++) {
+        const px = Math.floor(rng() * (size - 8));
+        const py = Math.floor(rng() * (size - 8));
+        const pw = 4 + Math.floor(rng() * 12);
+        const ph = 4 + Math.floor(rng() * 12);
+        const bright = rng() > 0.5;
+        g.fillStyle = bright ? highlightColor : darkColor;
+        g.globalAlpha = 0.15 + rng() * 0.2;
+        g.fillRect(px, py, pw, ph);
+    }
+    g.globalAlpha = 1;
+
+    // Large stone patches (creates mottled look)
+    for (let i = 0; i < 5; i++) {
+        const cx = rng() * size;
+        const cy = rng() * size;
+        const cr = 6 + rng() * 14;
+        g.fillStyle = rng() > 0.5 ? darkColor : highlightColor;
+        g.globalAlpha = 0.08 + rng() * 0.12;
+        g.beginPath();
+        g.arc(cx, cy, cr, 0, Math.PI * 2);
+        g.fill();
+    }
+    g.globalAlpha = 1;
+
+    // Crack lines (2-5 per tile)
+    const numCracks = 2 + Math.floor(rng() * 4);
+    for (let i = 0; i < numCracks; i++) {
+        const x1 = rng() * size;
+        const y1 = rng() * size;
+        const segments = 2 + Math.floor(rng() * 3);
+        g.strokeStyle = darkColor;
+        g.globalAlpha = 0.3 + rng() * 0.4;
+        g.lineWidth = 0.5 + rng() * 1;
+        g.beginPath();
+        g.moveTo(x1, y1);
+        let cx = x1, cy = y1;
+        for (let s = 0; s < segments; s++) {
+            cx += (rng() - 0.5) * 18;
+            cy += (rng() - 0.5) * 18;
+            g.lineTo(cx, cy);
+        }
+        g.stroke();
+        // Highlight edge along crack (depth effect)
+        g.strokeStyle = highlightColor;
+        g.globalAlpha = 0.15;
+        g.lineWidth = 0.5;
+        g.beginPath();
+        g.moveTo(x1 + 1, y1 + 1);
+        cx = x1 + 1; cy = y1 + 1;
+        for (let s = 0; s < segments; s++) {
+            cx += (rng() - 0.5) * 18;
+            cy += (rng() - 0.5) * 18;
+            g.lineTo(cx, cy);
+        }
+        g.stroke();
+    }
+    g.globalAlpha = 1;
+
+    // Moss / mineral spots
+    if (!o.noMoss) {
+        const numSpots = Math.floor(rng() * 4);
+        for (let i = 0; i < numSpots; i++) {
+            const mx = rng() * size;
+            const my = rng() * size;
+            const mr = 2 + rng() * 4;
+            g.fillStyle = o.mossColor || "#2a4a2a";
+            g.globalAlpha = 0.15 + rng() * 0.2;
+            g.beginPath();
+            g.arc(mx, my, mr, 0, Math.PI * 2);
+            g.fill();
+        }
+        g.globalAlpha = 1;
+    }
+
+    // Edge bevels — subtle 3D effect
+    // Top/left highlight
+    g.fillStyle = highlightColor;
+    g.globalAlpha = 0.12;
+    g.fillRect(0, 0, size, 2);
+    g.fillRect(0, 0, 2, size);
+    // Bottom/right shadow
+    g.fillStyle = darkColor;
+    g.globalAlpha = 0.2;
+    g.fillRect(0, size - 2, size, 2);
+    g.fillRect(size - 2, 0, 2, size);
+    g.globalAlpha = 1;
+
+    // Pixel noise for roughness
+    const imgData = g.getImageData(0, 0, size, size);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+        const noise = (rng() - 0.5) * 12;
+        d[i] = Math.max(0, Math.min(255, d[i] + noise));
+        d[i+1] = Math.max(0, Math.min(255, d[i+1] + noise));
+        d[i+2] = Math.max(0, Math.min(255, d[i+2] + noise));
+    }
+    g.putImageData(imgData, 0, 0);
+
+    return c;
+}
+
+// Generate stone tile for the grid (darker, more uniform)
+function generateGridStoneTile(seed) {
+    return generateStoneTile(seed, "#1a2820", "#0d150d", "#2a3a2a", { mossColor: "#1a3a2a" });
+}
+
+// Generate an active/glowing grid tile overlay
+function generateGlowTile(seed, glowColor) {
+    const size = TILE * SCALE;
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const g = c.getContext('2d');
+    const rng = texRNG(seed);
+    const [gr, gg, gb] = hexToRGB(glowColor);
+
+    // Dark stone base
+    g.fillStyle = "#1a2820";
+    g.fillRect(0, 0, size, size);
+
+    // Glow fill (inner area)
+    const innerPad = 3;
+    g.fillStyle = glowColor;
+    g.globalAlpha = 0.7;
+    g.beginPath();
+    g.roundRect(innerPad, innerPad, size - innerPad * 2, size - innerPad * 2, 3);
+    g.fill();
+    g.globalAlpha = 1;
+
+    // Energy vein network (branching cracks that glow)
+    const numVeins = 4 + Math.floor(rng() * 4);
+    for (let i = 0; i < numVeins; i++) {
+        const x1 = innerPad + rng() * (size - innerPad * 2);
+        const y1 = innerPad + rng() * (size - innerPad * 2);
+        const segments = 2 + Math.floor(rng() * 3);
+        // Bright core
+        g.strokeStyle = `rgba(255,255,255,0.6)`;
+        g.lineWidth = 0.5 + rng() * 1;
+        g.beginPath();
+        g.moveTo(x1, y1);
+        let vx = x1, vy = y1;
+        for (let s = 0; s < segments; s++) {
+            vx += (rng() - 0.5) * 20;
+            vy += (rng() - 0.5) * 20;
+            g.lineTo(vx, vy);
+        }
+        g.stroke();
+        // Outer glow around vein
+        g.strokeStyle = glowColor;
+        g.globalAlpha = 0.4;
+        g.lineWidth = 2 + rng() * 2;
+        g.beginPath();
+        g.moveTo(x1, y1);
+        vx = x1; vy = y1;
+        for (let s = 0; s < segments; s++) {
+            vx += (rng() - 0.5) * 20;
+            vy += (rng() - 0.5) * 20;
+            g.lineTo(vx, vy);
+        }
+        g.stroke();
+        g.globalAlpha = 1;
+    }
+
+    // Hot spots (brighter concentration points)
+    for (let i = 0; i < 3; i++) {
+        const hx = innerPad + rng() * (size - innerPad * 2);
+        const hy = innerPad + rng() * (size - innerPad * 2);
+        const hr = 3 + rng() * 6;
+        const grad = g.createRadialGradient(hx, hy, 0, hx, hy, hr);
+        grad.addColorStop(0, `rgba(255,255,255,0.5)`);
+        grad.addColorStop(0.5, `rgba(${gr},${gg},${gb},0.4)`);
+        grad.addColorStop(1, `rgba(${gr},${gg},${gb},0)`);
+        g.fillStyle = grad;
+        g.fillRect(hx - hr, hy - hr, hr * 2, hr * 2);
+    }
+
+    // Inner highlight (top edge shine)
+    g.fillStyle = "rgba(255,255,255,0.12)";
+    g.fillRect(innerPad, innerPad, size - innerPad * 2, 2);
+
+    // Edge bevel
+    g.fillStyle = "#0d150d";
+    g.globalAlpha = 0.3;
+    g.fillRect(0, size - 2, size, 2);
+    g.fillRect(size - 2, 0, 2, size);
+    g.globalAlpha = 1;
+
+    return c;
+}
+
+// Generate cave wall tile (rougher, more variation)
+function generateCaveWallTile(seed, variant) {
+    const colors = [
+        { base: "#1e2e1e", dark: "#0a0f0a", hi: "#2a3a2a" },
+        { base: "#1a2a1a", dark: "#080d08", hi: "#243024" },
+        { base: "#162616", dark: "#060b06", hi: "#1e3e1e" },
+    ];
+    const pal = colors[variant % 3];
+    return generateStoneTile(seed, pal.base, pal.dark, pal.hi, { mossColor: "#1a3a1a" });
+}
+
+// Generate cave floor tile (dark, with subtle variation)
+function generateFloorTile(seed) {
+    return generateStoneTile(seed, "#0d150d", "#050a05", "#152015", { mossColor: "#0a1a0a" });
+}
+
+// ---- Pre-generate texture atlas at startup ----
+// Floor tiles (ROWS x COLS grid — one per tile position)
+const TEX_FLOOR = [];
+for (let r = 0; r < ROWS; r++) {
+    TEX_FLOOR[r] = [];
+    for (let c = 0; c < COLS; c++) {
+        TEX_FLOOR[r][c] = generateFloorTile(r * 1000 + c * 37 + 5555);
+    }
+}
+
+// Wall tiles (top, bottom, left, right walls)
+const TEX_WALL_TOP = [];
+const TEX_WALL_BOT = [];
+const TEX_WALL_LEFT = [];
+const TEX_WALL_RIGHT = [];
+for (let c = 0; c < COLS; c++) {
+    TEX_WALL_TOP[c] = generateCaveWallTile(c * 73 + 111, (c * 7 + 3) % 3);
+    TEX_WALL_BOT[c] = generateCaveWallTile(c * 91 + 222, (c * 11 + 5) % 3);
+}
+for (let r = 0; r < ROWS; r++) {
+    TEX_WALL_LEFT[r] = generateCaveWallTile(r * 67 + 333, (r * 7) % 3);
+    TEX_WALL_RIGHT[r] = generateCaveWallTile(r * 83 + 444, (r * 11) % 3);
+}
+
+// Grid stone tiles (inactive blocks — unique per cell position)
+const TEX_GRID_OFF = [];
+for (let r = 0; r < 6; r++) {
+    TEX_GRID_OFF[r] = [];
+    for (let c = 0; c < GRID_COLS; c++) {
+        TEX_GRID_OFF[r][c] = generateGridStoneTile(r * 100 + c * 17 + 9999);
+    }
+}
+
+// Grid glow tiles (active blocks — per row color, multiple variants per row)
+const GLOW_COLORS = ["#44ff44", "#88ee22", "#ee8822", "#ff6611", "#ff4400", "#33dd88"];
+const TEX_GRID_ON = [];
+for (let r = 0; r < 6; r++) {
+    TEX_GRID_ON[r] = [];
+    for (let c = 0; c < GRID_COLS; c++) {
+        TEX_GRID_ON[r][c] = generateGlowTile(r * 100 + c * 17 + 7777, GLOW_COLORS[r]);
+    }
+}
+
+// Grid wall background texture (stone slab behind the grid)
+const TEX_GRID_WALL = (function() {
+    // This is a larger texture for the wall behind the grid
+    const maxAR = 6;
+    const w = (GRID_COLS * TILE + 4) * SCALE;
+    const h = (maxAR * TILE + 4) * SCALE;
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d');
+    const rng = texRNG(88888);
+
+    // Base stone slab
+    g.fillStyle = "#1a2820";
+    g.beginPath();
+    g.roundRect(0, 0, w, h, 3);
+    g.fill();
+
+    // Large mottled patches
+    for (let i = 0; i < 30; i++) {
+        const px = rng() * w;
+        const py = rng() * h;
+        const pr = 10 + rng() * 30;
+        g.fillStyle = rng() > 0.5 ? "#0d150d" : "#243024";
+        g.globalAlpha = 0.06 + rng() * 0.1;
+        g.beginPath();
+        g.arc(px, py, pr, 0, Math.PI * 2);
+        g.fill();
+    }
+    g.globalAlpha = 1;
+
+    // Stone texture cracks
+    for (let i = 0; i < 40; i++) {
+        const x1 = 8 + rng() * (w - 16);
+        const y1 = 8 + rng() * (h - 16);
+        const segments = 2 + Math.floor(rng() * 4);
+        g.strokeStyle = "rgba(15,25,15,0.6)";
+        g.lineWidth = 0.5 + rng() * 1;
+        g.beginPath();
+        g.moveTo(x1, y1);
+        let cx = x1, cy = y1;
+        for (let s = 0; s < segments; s++) {
+            cx += (rng() - 0.5) * 25;
+            cy += (rng() - 0.5) * 25;
+            g.lineTo(cx, cy);
+        }
+        g.stroke();
+    }
+
+    // Mortar lines (horizontal and vertical grid)
+    g.strokeStyle = "#0d150d";
+    g.lineWidth = 1;
+    for (let r = 0; r <= maxAR; r++) {
+        const ly = 2 * SCALE + r * TILE * SCALE;
+        g.beginPath();
+        g.moveTo(0, ly);
+        g.lineTo(w, ly);
+        g.stroke();
+    }
+    for (let c = 0; c <= GRID_COLS; c++) {
+        const lx = 2 * SCALE + c * TILE * SCALE;
+        g.beginPath();
+        g.moveTo(lx, 0);
+        g.lineTo(lx, h);
+        g.stroke();
+    }
+
+    // Pixel noise
+    const imgData = g.getImageData(0, 0, w, h);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+        const noise = (rng() - 0.5) * 8;
+        d[i] = Math.max(0, Math.min(255, d[i] + noise));
+        d[i+1] = Math.max(0, Math.min(255, d[i+1] + noise));
+        d[i+2] = Math.max(0, Math.min(255, d[i+2] + noise));
+    }
+    g.putImageData(imgData, 0, 0);
+
+    return c;
+})();
+
+// Pre-render static cave background (floor + walls + stalactites + stalagmites)
+const TEX_CAVE_BG = (function() {
+    const w = COLS * TILE * SCALE;
+    const h = ROWS * TILE * SCALE;
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d');
+
+    // Dark base fill
+    g.fillStyle = "#0a0f0a";
+    g.fillRect(0, 0, w, h);
+
+    // Draw floor tiles
+    for (let r = 0; r < ROWS; r++) {
+        for (let col = 0; col < COLS; col++) {
+            g.drawImage(TEX_FLOOR[r][col], col * TILE * SCALE, r * TILE * SCALE);
+        }
+    }
+
+    // Top wall tiles
+    for (let col = 0; col < COLS; col++) {
+        g.drawImage(TEX_WALL_TOP[col], col * TILE * SCALE, 0);
+    }
+    // Bottom wall tiles
+    for (let col = 0; col < COLS; col++) {
+        g.drawImage(TEX_WALL_BOT[col], col * TILE * SCALE, (ROWS - 1) * TILE * SCALE);
+    }
+    // Left wall tiles
+    for (let r = 0; r < ROWS; r++) {
+        g.drawImage(TEX_WALL_LEFT[r], 0, r * TILE * SCALE);
+    }
+    // Right wall tiles
+    for (let r = 0; r < ROWS; r++) {
+        g.drawImage(TEX_WALL_RIGHT[r], (COLS - 1) * TILE * SCALE, r * TILE * SCALE);
+    }
+
+    // Stalactites (triangular, textured)
+    const stalactitePositions = [2, 4, 7, 9, 12, 14, 17, 19];
+    const stRNG = texRNG(54321);
+    for (const sc of stalactitePositions) {
+        if (sc >= COLS) continue;
+        const stH = 3 + (sc * 7) % 5;
+        const stX = sc * TILE + TILE / 2;
+        const stCol = (sc * 3) % 2 === 0 ? "#1e2e1e" : "#243024";
+        // Main stalactite body
+        g.fillStyle = stCol;
+        g.beginPath();
+        g.moveTo((stX - 4) * SCALE, TILE * SCALE);
+        g.lineTo((stX + 4) * SCALE, TILE * SCALE);
+        g.lineTo((stX + 1) * SCALE, (TILE + stH) * SCALE);
+        g.lineTo((stX - 1) * SCALE, (TILE + stH + 2) * SCALE);
+        g.closePath();
+        g.fill();
+        // Highlight edge
+        g.fillStyle = "#2a4a2a";
+        g.globalAlpha = 0.3;
+        g.beginPath();
+        g.moveTo((stX - 2) * SCALE, TILE * SCALE);
+        g.lineTo((stX) * SCALE, TILE * SCALE);
+        g.lineTo((stX - 0.5) * SCALE, (TILE + stH) * SCALE);
+        g.closePath();
+        g.fill();
+        g.globalAlpha = 1;
+        // Drip highlight
+        g.fillStyle = "rgba(80,180,80,0.2)";
+        g.beginPath();
+        g.arc((stX) * SCALE, (TILE + stH + 2) * SCALE, 1.5 * SCALE, 0, Math.PI * 2);
+        g.fill();
+    }
+
+    // Stalagmites on floor
+    const stalagmitePositions = [3, 6, 10, 15, 18];
+    for (const sm of stalagmitePositions) {
+        if (sm >= COLS) continue;
+        const smH = 2 + (sm * 5) % 4;
+        const smX = sm * TILE + TILE / 2;
+        const smBaseY = (ROWS - 1) * TILE;
+        g.fillStyle = (sm * 3) % 2 === 0 ? "#1e2e1e" : "#1a2a1a";
+        g.beginPath();
+        g.moveTo((smX - 3) * SCALE, smBaseY * SCALE);
+        g.lineTo((smX + 3) * SCALE, smBaseY * SCALE);
+        g.lineTo((smX) * SCALE, (smBaseY - smH) * SCALE);
+        g.closePath();
+        g.fill();
+        // Highlight
+        g.fillStyle = "#2a4a2a";
+        g.globalAlpha = 0.25;
+        g.beginPath();
+        g.moveTo((smX - 1) * SCALE, smBaseY * SCALE);
+        g.lineTo((smX + 1) * SCALE, smBaseY * SCALE);
+        g.lineTo((smX) * SCALE, (smBaseY - smH) * SCALE);
+        g.closePath();
+        g.fill();
+        g.globalAlpha = 1;
+    }
+
+    return c;
+})();
+
+// ============================================================
+// END PROCEDURAL TEXTURE GENERATION
+// ============================================================
+
+// ---- Colors (dark cave palette — bioluminescent greens + lava oranges) ----
+// Cave stone: dark gray-greens. Active grid: green energy / orange lava
 const PAL = {
-    bg:        "#2a1d0d",
-    wall:      "#392a1c",
-    wallTop:   "#45230d",
-    floor:     "#300f0a",
-    floorAlt:  "#36170c",
-    gridOff:   "#2a4a50",
-    gridOn:    ["#efd8a1", "#efac28", "#ef692f", "#276468", "#ef3a0c", "#3c9f9c"], // per-row colors (O,H,S,K,B,T)
-    gridX:     ["#ef3a0c", "#550f0a", "#efd8a1", "#efac28", "#efd8a1", "#ef3a0c"], // bright X indicators visible on colored blocks
-    gridBorder:"#3a5a60",
-    playhead:  "#efac28",
+    bg:        "#0a0f0a",
+    wall:      "#1a2a1a",
+    wallTop:   "#1e2e1e",
+    floor:     "#0d150d",
+    floorAlt:  "#111911",
+    gridOff:   "#1a2820",
+    gridOn:    ["#44ff44", "#88ee22", "#ee8822", "#ff6611", "#ff4400", "#33dd88"], // per-row colors (O,H,S,K,B,T): green→orange→teal
+    gridX:     ["#ff4400", "#331a0a", "#44ff44", "#88ee22", "#44ff44", "#ff4400"], // bright X indicators
+    gridBorder:"#2a3a2a",
+    playhead:  "#44ff44",
     player:    "#efd8a1",
     playerDark:"#927e6a",
-    punch:     "#efac28",
-    punchGlow: "#ab5c1c",
-    shadow:    "rgba(0,0,0,0.3)",
-    startBtn:  "#efb775",
-    stopBtn:   "#9b1a0a",
-    labelText: "#efd8a1",
-    titleText: "#efd8a1",
+    punch:     "#44ff44",
+    punchGlow: "#226622",
+    shadow:    "rgba(0,0,0,0.4)",
+    startBtn:  "#44ff44",
+    stopBtn:   "#661100",
+    labelText: "#88cc88",
+    titleText: "#44ff44",
 };
 
 const DRUM_LABELS = ["OPEN-HH", "HI-HAT", "SNARE", "KICK", "COWBELL", "TOM"];
@@ -3947,7 +4421,7 @@ function renderMinigameArena() {
     }
 
     // Dark cave background
-    drawRect(0, 0, W, H, "#1a0e08");
+    drawRect(0, 0, W, H, "#0a0f0a");
 
     // Stone floor texture
     for (let r = 2; r < CAVE_ROWS - 1; r++) {
@@ -3955,7 +4429,7 @@ function renderMinigameArena() {
             let seed = r * 997 + c * 31;
             seed = (seed * 9301 + 49297) % 233280;
             const bright = (seed / 233280) > 0.6;
-            const floorCol = bright ? "#251a0f" : "#1f1209";
+            const floorCol = bright ? "#152015" : "#111911";
             drawRect(c * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, floorCol);
             // Subtle stone grain
             for (let i = 0; i < 4; i++) {
@@ -3972,36 +4446,36 @@ function renderMinigameArena() {
     // Top wall
     for (let c = 0; c < CAVE_COLS; c++) {
         for (let r = 0; r < 2; r++) {
-            const shade = (c + r) % 2 === 0 ? "#3d2b1f" : "#2e1f14";
+            const shade = (c + r) % 2 === 0 ? "#1e2e1e" : "#1a2a1a";
             drawRect(c * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, shade);
         }
         // Stalactites hanging from ceiling
         if (c % 3 === 1) {
             const stalH = 4 + (c * 7) % 6;
-            drawRect(c * CAVE_TILE + 5, 2 * CAVE_TILE, 3, stalH, "#4a3628");
-            drawRect(c * CAVE_TILE + 6, 2 * CAVE_TILE, 1, stalH + 2, "#5a4638");
+            drawRect(c * CAVE_TILE + 5, 2 * CAVE_TILE, 3, stalH, "#243024");
+            drawRect(c * CAVE_TILE + 6, 2 * CAVE_TILE, 1, stalH + 2, "#2a3a2a");
         }
     }
     // Bottom wall
     for (let c = 0; c < CAVE_COLS; c++) {
-        const shade = c % 2 === 0 ? "#3d2b1f" : "#2e1f14";
+        const shade = c % 2 === 0 ? "#1e2e1e" : "#1a2a1a";
         drawRect(c * CAVE_TILE, (CAVE_ROWS - 1) * CAVE_TILE, CAVE_TILE, CAVE_TILE, shade);
         // Stalagmites
         if (c % 4 === 2) {
             const stalH = 3 + (c * 5) % 5;
-            drawRect(c * CAVE_TILE + 6, (CAVE_ROWS - 1) * CAVE_TILE - stalH, 3, stalH, "#4a3628");
+            drawRect(c * CAVE_TILE + 6, (CAVE_ROWS - 1) * CAVE_TILE - stalH, 3, stalH, "#243024");
         }
     }
     // Right wall
     for (let r = 0; r < CAVE_ROWS; r++) {
-        const shade = r % 2 === 0 ? "#3d2b1f" : "#2e1f14";
+        const shade = r % 2 === 0 ? "#1e2e1e" : "#1a2a1a";
         drawRect((CAVE_COLS - 1) * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, shade);
     }
 
     // Left wall (normal wall — no longer the rescue wall)
     for (let r = 0; r < CAVE_ROWS; r++) {
         for (let c = 0; c < 2; c++) {
-            const shade = r % 2 === 0 ? "#4a3628" : "#3d2b1f";
+            const shade = r % 2 === 0 ? "#243024" : "#1e2e1e";
             drawRect(c * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, shade);
         }
     }
@@ -4127,7 +4601,7 @@ function renderMinigameArena() {
             const sz = Math.round(8 + sizePulse);
             const off = Math.round((8 - sz) / 2);
             drawRect(ck.x + off, ck.y + bobY + off, sz, sz, "#FFD700");
-            drawRect(ck.x + off + 1, ck.y + bobY + off + 1, sz - 2, sz - 2, "#1a0e08");
+            drawRect(ck.x + off + 1, ck.y + bobY + off + 1, sz - 2, sz - 2, "#0a0f0a");
             drawRect(ck.x + 3, ck.y + bobY + 2, 1, 3, "#FFD700"); // minute hand
             drawRect(ck.x + 3, ck.y + bobY + 3, 2, 1, "#FFD700"); // hour hand
             // "+5" text above
@@ -4750,7 +5224,7 @@ function renderMinigameReward() {
     const H = CAVE_ROWS * CAVE_TILE;
 
     // Dark background
-    drawRect(0, 0, W, H, "#1a0e08");
+    drawRect(0, 0, W, H, "#0a0f0a");
 
     // "DJ SETUP PIECE!" header
     const headerAlpha = Math.min(1, minigameRewardTimer / 40);
@@ -4781,8 +5255,8 @@ function renderMinigameReward() {
         const rBoothY = H / 2 - 10;
 
         // Booth platform
-        drawRect(rBoothX - 8, rBoothY + 12, 64, 8, "#45230d");
-        drawRect(rBoothX - 8, rBoothY + 12, 64, 2, "#684c3c");
+        drawRect(rBoothX - 8, rBoothY + 12, 64, 8, "#1e2e1e");
+        drawRect(rBoothX - 8, rBoothY + 12, 64, 2, "#243024");
 
         // Draw all 6 piece slots
         const newPieceIndex = djSetupEarned.length - 1;
@@ -5606,11 +6080,11 @@ function drawText(text, x, y, color, size) {
 function renderHUD() {
     hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
     // Background fill
-    drawHudRect(0, 0, COLS * TILE, HUD_H, "#2a1d0d");
+    drawHudRect(0, 0, COLS * TILE, HUD_H, "#0a0f0a");
 
     // Teal border along top — connects visually to the venue's bottom wall
     for (let c = 0; c < COLS; c++) {
-        drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+        drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#1a2a1a" : "#1e2e1e");
     }
     // Highlight on border edge
     hudCtx.fillStyle = "rgba(255,255,255,0.08)";
@@ -5655,7 +6129,7 @@ function renderHUD() {
     const lvlStr = String(currentLevel + 1).padStart(2, "0");
     const lvlPanelW = iconW + 2 * digitW + 6;
     const lvlX = margin;
-    drawHudPanel(lvlX, kcY, lvlPanelW, panelH, "#2a1d0d", "#392a1c", "#684c3c");
+    drawHudPanel(lvlX, kcY, lvlPanelW, panelH, "#0a0f0a", "#1a2a1a", "#243024");
     // "L" icon
     const fx = lvlX + 2, fy = kcY + 3;
     drawHudRect(fx, fy, p, 5 * p, "#efd8a1");
@@ -5682,9 +6156,9 @@ function renderHUD() {
     const blinkRate = isCritical ? 15 : 30;
     const blinkOn = !isUrgent || Math.floor(levelTimer / blinkRate) % 2 === 0;
     const timerColor = isUrgent ? "#ef3a0c" : "#efd8a1";
-    const timerBorderColor = isUrgent ? "#550f0a" : "#2a1d0d";
-    const timerBgColor = isUrgent ? "#45230d" : "#392a1c";
-    const timerHighlight = isUrgent ? "#9b1a0a" : "#684c3c";
+    const timerBorderColor = isUrgent ? "#550f0a" : "#0a0f0a";
+    const timerBgColor = isUrgent ? "#1e2e1e" : "#1a2a1a";
+    const timerHighlight = isUrgent ? "#661100" : "#243024";
     drawHudPanel(timerX, kcY, timerPanelW, panelH, timerBorderColor, timerBgColor, timerHighlight);
     // "T" icon
     const tx2 = timerX + 2, ty2 = kcY + 3;
@@ -5701,10 +6175,10 @@ function renderHUD() {
     const skullW = 5 * p + 2;
     const killPanelW = skullW + 5 * digitW + 6;
     const kcX = Math.floor((W - killPanelW) / 2);
-    drawHudPanel(kcX, kcY, killPanelW, panelH, "#2a1d0d", "#392a1c", "#684c3c");
+    drawHudPanel(kcX, kcY, killPanelW, panelH, "#0a0f0a", "#1a2a1a", "#243024");
     // Skull icon
     const sx = kcX + 2, sy = kcY + 3;
-    const skullBg = "#392a1c";
+    const skullBg = "#1a2a1a";
     drawHudRect(sx + p, sy, 3 * p, p, "#efd8a1");
     drawHudRect(sx, sy + p, 5 * p, 2 * p, "#efd8a1");
     drawHudRect(sx + p, sy + 3 * p, 3 * p, p, "#efd8a1");
@@ -5768,11 +6242,11 @@ function renderMinigameHUD() {
     hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
 
     // Background fill (same as main HUD)
-    drawHudRect(0, 0, COLS * TILE, HUD_H, "#2a1d0d");
+    drawHudRect(0, 0, COLS * TILE, HUD_H, "#0a0f0a");
 
     // Teal border along top
     for (let c = 0; c < COLS; c++) {
-        drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+        drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#1a2a1a" : "#1e2e1e");
     }
     hudCtx.fillStyle = "rgba(255,255,255,0.08)";
     hudCtx.fillRect(0, 0, COLS * TILE * SCALE, 1 * SCALE);
@@ -5812,7 +6286,7 @@ function renderMinigameHUD() {
     const lvlStr = String(currentLevel + 1).padStart(2, "0");
     const lvlPanelW = iconW + 2 * digitW + 6;
     const lvlX = margin;
-    drawMiniHudPanel(lvlX, kcY, lvlPanelW, panelH, "#2a1d0d", "#392a1c", "#684c3c");
+    drawMiniHudPanel(lvlX, kcY, lvlPanelW, panelH, "#0a0f0a", "#1a2a1a", "#243024");
     // "L" icon
     const fx = lvlX + 2, fy = kcY + 3;
     drawHudRect(fx, fy, p, 5 * p, "#efd8a1");
@@ -5829,9 +6303,9 @@ function renderMinigameHUD() {
     const blinkRate = isCritical ? 15 : 30;
     const blinkOn = !isUrgent || Math.floor(minigameTimer / blinkRate) % 2 === 0;
     const timerColor = isCritical ? "#FF0044" : isUrgent ? "#efac28" : "#00FF88";
-    const timerBorderColor = isUrgent ? "#550f0a" : "#2a1d0d";
-    const timerBgColor = isUrgent ? "#45230d" : "#392a1c";
-    const timerHighlight = isUrgent ? "#9b1a0a" : "#684c3c";
+    const timerBorderColor = isUrgent ? "#550f0a" : "#0a0f0a";
+    const timerBgColor = isUrgent ? "#1e2e1e" : "#1a2a1a";
+    const timerHighlight = isUrgent ? "#661100" : "#243024";
     drawMiniHudPanel(timerX, kcY, timerPanelW, panelH, timerBorderColor, timerBgColor, timerHighlight);
     // "T" icon
     const tx2 = timerX + 2, ty2 = kcY + 3;
@@ -5847,10 +6321,10 @@ function renderMinigameHUD() {
     const skullW = 5 * p + 2;
     const killPanelW = skullW + scoreStr.length * digitW + 6;
     const kcX = Math.floor((W - killPanelW) / 2);
-    drawMiniHudPanel(kcX, kcY, killPanelW, panelH, "#2a1d0d", "#392a1c", "#684c3c");
+    drawMiniHudPanel(kcX, kcY, killPanelW, panelH, "#0a0f0a", "#1a2a1a", "#243024");
     // Skull icon (same as main HUD)
     const sx = kcX + 2, sy = kcY + 3;
-    const skullBg = "#392a1c";
+    const skullBg = "#1a2a1a";
     drawHudRect(sx + p, sy, 3 * p, p, "#efd8a1");
     drawHudRect(sx, sy + p, 5 * p, 2 * p, "#efd8a1");
     drawHudRect(sx + p, sy + 3 * p, 3 * p, p, "#efd8a1");
@@ -5873,123 +6347,189 @@ function render() {
         ctx.translate(sx, sy);
     }
 
-    // Clear
-    drawRect(0, 0, COLS * TILE, ROWS * TILE, PAL.bg);
+    // Clear & draw pre-rendered cave background (floor, walls, stalactites, stalagmites)
+    ctx.drawImage(TEX_CAVE_BG, 0, 0);
 
-    // Solid floor — charcoal
-    drawRect(0, 0, COLS * TILE, ROWS * TILE, "#2C2C2A");
-    // Subtle noise/grain texture
-    for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-            let seed = r * 1000 + c * 37;
-            for (let i = 0; i < 10; i++) {
-                seed = (seed * 9301 + 49297) % 233280;
-                const gx = (seed % TILE);
-                seed = (seed * 9301 + 49297) % 233280;
-                const gy = (seed % (TILE - 1));
-                seed = (seed * 9301 + 49297) % 233280;
-                const bright = seed / 233280 > 0.5;
-                const grainCol = bright ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.10)";
-                drawRect(c * TILE + gx, r * TILE + gy, 1, 1, grainCol);
-            }
-        }
-    }
-
-    // Tent-style walls — striped top border (red/cream carnival stripes)
-    for (let c = 0; c < COLS; c++) {
-        const stripe = c % 2 === 0 ? "#724113" : "#927e6a";
-        drawRect(c * TILE, 0, TILE, TILE, stripe);
-
-        // Bottom wall — ticket booth style
-        drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#2e4a4e" : "#384f54");
-    }
-    // Side walls — booth posts
-    for (let r = 0; r < ROWS; r++) {
-        drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
-        drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
-        // Post highlight
-        drawRect(2, r * TILE, 2, TILE, "rgba(255,255,255,0.1)");
-        drawRect((COLS - 1) * TILE + 2, r * TILE, 2, TILE, "rgba(255,255,255,0.1)");
-    }
-
-    // Cave openings (goblin spawn points)
+    // Cave openings (goblin spawn points) — dark tunnel arches
     for (let ci = 0; ci < CAVES.length; ci++) {
         const cave = CAVES[ci];
         const cx = cave.tileX * TILE;
         const cy = cave.tileY * TILE;
-        // Dark cave hole
-        drawRect(cx, cy - 2, TILE, TILE + 4, "#2a1d0d");
-        // Rocky arch around cave
-        drawRect(cx - 2, cy - 4, TILE + 4, 3, "#684c3c");  // top rocks
-        drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");  // bottom rocks
-        if (cave.tileX > 0) drawRect(cx - 3, cy - 2, 3, TILE + 4, "#45230d"); // left edge
-        if (cave.tileX < COLS - 1) drawRect(cx + TILE, cy - 2, 3, TILE + 4, "#45230d"); // right edge
-        // Stalactites
-        drawRect(cx + 3, cy - 2, 2, 4, "#724113");
-        drawRect(cx + 9, cy - 2, 2, 3, "#724113");
-        // Stalagmites
-        drawRect(cx + 5, cy + TILE - 2, 2, 4, "#724113");
-        drawRect(cx + 11, cy + TILE - 1, 2, 3, "#724113");
-        // Eye gleam inside cave (if any goblin is about to respawn from this cave)
+        // Deep black cave hole
+        ctx.fillStyle = "#050805";
+        ctx.beginPath();
+        ctx.roundRect(cx * SCALE, (cy - 2) * SCALE, TILE * SCALE, (TILE + 4) * SCALE, [6, 6, 2, 2]);
+        ctx.fill();
+        // Stone arch around cave
+        ctx.fillStyle = "#243024";
+        ctx.beginPath();
+        ctx.roundRect((cx - 2) * SCALE, (cy - 5) * SCALE, (TILE + 4) * SCALE, 4 * SCALE, [4, 4, 0, 0]);
+        ctx.fill();
+        // Bottom rocks
+        ctx.beginPath();
+        ctx.roundRect((cx - 2) * SCALE, (cy + TILE + 1) * SCALE, (TILE + 4) * SCALE, 4 * SCALE, [0, 0, 4, 4]);
+        ctx.fill();
+        // Side edges
+        if (cave.tileX > 0) drawRect(cx - 3, cy - 2, 3, TILE + 4, "#1e2e1e");
+        if (cave.tileX < COLS - 1) drawRect(cx + TILE, cy - 2, 3, TILE + 4, "#1e2e1e");
+        // Stalactites (triangular — stone gray-green)
+        ctx.fillStyle = "#243024";
+        ctx.beginPath();
+        ctx.moveTo((cx + 3) * SCALE, (cy - 2) * SCALE);
+        ctx.lineTo((cx + 5) * SCALE, (cy - 2) * SCALE);
+        ctx.lineTo((cx + 4) * SCALE, (cy + 2) * SCALE);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo((cx + 9) * SCALE, (cy - 2) * SCALE);
+        ctx.lineTo((cx + 11) * SCALE, (cy - 2) * SCALE);
+        ctx.lineTo((cx + 10) * SCALE, (cy + 1) * SCALE);
+        ctx.closePath();
+        ctx.fill();
+        // Stalagmites (triangular)
+        ctx.beginPath();
+        ctx.moveTo((cx + 5) * SCALE, (cy + TILE + 2) * SCALE);
+        ctx.lineTo((cx + 7) * SCALE, (cy + TILE + 2) * SCALE);
+        ctx.lineTo((cx + 6) * SCALE, (cy + TILE - 2) * SCALE);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo((cx + 11) * SCALE, (cy + TILE + 2) * SCALE);
+        ctx.lineTo((cx + 13) * SCALE, (cy + TILE + 2) * SCALE);
+        ctx.lineTo((cx + 12) * SCALE, (cy + TILE - 1) * SCALE);
+        ctx.closePath();
+        ctx.fill();
+        // Green glow from inside cave
+        const caveGlow = ctx.createRadialGradient(
+            (cx + TILE / 2) * SCALE, (cy + TILE / 2) * SCALE, 2 * SCALE,
+            (cx + TILE / 2) * SCALE, (cy + TILE / 2) * SCALE, TILE * SCALE
+        );
+        caveGlow.addColorStop(0, "rgba(50,255,50,0.12)");
+        caveGlow.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = caveGlow;
+        ctx.fillRect((cx - 4) * SCALE, (cy - 4) * SCALE, (TILE + 8) * SCALE, (TILE + 8) * SCALE);
+        // Eye gleam inside cave (glowing circles)
         for (const g of goblins) {
             if (g.dead && g.respawnTimer < 60 && ci === g.spawnCave) {
-                const caveEyeCol = g.elite ? "#00FFFF" : "#FF00FF";
-                drawRect(cx + 5, cy + 5, 2, 2, caveEyeCol);
-                drawRect(cx + 9, cy + 5, 2, 2, caveEyeCol);
-                break; // only show one pair of eyes per cave
+                const caveEyeCol = g.elite ? "#00FFFF" : "#39FF14";
+                ctx.fillStyle = caveEyeCol;
+                ctx.beginPath();
+                ctx.arc((cx + 6) * SCALE, (cy + 6) * SCALE, 2 * SCALE, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc((cx + 10) * SCALE, (cy + 6) * SCALE, 2 * SCALE, 0, Math.PI * 2);
+                ctx.fill();
+                break;
             }
         }
     }
 
-    // Carnival string lights along top — drum-synced with chase/twinkle patterns
-    // Colors match the grid row colors: O, H, S, K, B, T
+    // Bioluminescent mushroom & crystal lights along cave ceiling — drum-synced
+    const MUSH_COLORS = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#44ff44"];
     const topCaveCol = Math.floor(COLS / 2);
     const ar_lights = getActiveRows();
     const now_lights = performance.now();
     for (let c = 1; c < COLS - 1; c++) {
         if (c === topCaveCol) continue;
-        const bulbY = TILE + 6;
-        const bulbX = c * TILE + TILE / 2;
-        const rowIdx = c % ar_lights; // cycle through active drum rows
-        const bulbCol = PAL.gridOn[rowIdx];
+        const mushX = c * TILE + TILE / 2;
+        const mushY = TILE + 4;
+        const rowIdx = c % ar_lights;
+        const mushCol = MUSH_COLORS[c % MUSH_COLORS.length];
         const triggered = rowTrigger[rowIdx] > 0;
         const pulseIntensity = triggered ? rowTrigger[rowIdx] / 8 : 0;
-        // Chase pattern — wave of brightness traveling across the lights
         const chasePhase = (now_lights * 0.003 + c * 0.4) % (Math.PI * 2);
         const chaseBright = Math.sin(chasePhase) * 0.5 + 0.5;
-        // Twinkle — individual random-feeling sparkle
         const twinkle = Math.sin(now_lights * 0.005 + c * 2.7) > 0.7 ? 0.3 : 0;
-        // Bulb — brighter when triggered, with chase modulation
-        const bulbSize = triggered ? 5 : (chaseBright > 0.7 ? 5 : 4);
-        const bulbOffset = triggered ? -1 : 0;
-        ctx.globalAlpha = 0.5 + chaseBright * 0.3 + pulseIntensity * 0.2 + twinkle;
-        drawRect(bulbX - 2 + bulbOffset, bulbY + bulbOffset, bulbSize, bulbSize, bulbCol);
-        ctx.globalAlpha = 1.0;
-        // Glow — much stronger when the corresponding drum layer plays
-        ctx.fillStyle = bulbCol;
-        const baseGlow = 0.08 + chaseBright * 0.08;
-        const pulseGlow = pulseIntensity * 0.4;
-        ctx.globalAlpha = baseGlow + pulseGlow + twinkle * 0.15;
-        const glowSize = triggered ? 12 : (chaseBright > 0.6 ? 10 : 8);
-        ctx.fillRect((bulbX - glowSize / 2) * SCALE, (bulbY - glowSize / 2 + 2) * SCALE, glowSize * SCALE, glowSize * SCALE);
+        const isCrystal = c % 4 === 0; // every 4th light is a crystal pendant
+
+        // Stem/chain from ceiling
+        ctx.strokeStyle = "#1e2e1e";
+        ctx.lineWidth = 1 * SCALE;
+        ctx.beginPath();
+        ctx.moveTo(mushX * SCALE, TILE * SCALE);
+        ctx.lineTo(mushX * SCALE, (mushY - 1) * SCALE);
+        ctx.stroke();
+
+        if (isCrystal) {
+            // Crystal pendant — diamond/rhombus shape
+            const cSize = triggered ? 3.5 : 3;
+            ctx.globalAlpha = 0.6 + chaseBright * 0.3 + pulseIntensity * 0.2 + twinkle;
+            ctx.fillStyle = mushCol;
+            ctx.beginPath();
+            ctx.moveTo(mushX * SCALE, (mushY - 1) * SCALE);
+            ctx.lineTo((mushX + cSize) * SCALE, (mushY + 2) * SCALE);
+            ctx.lineTo(mushX * SCALE, (mushY + 5) * SCALE);
+            ctx.lineTo((mushX - cSize) * SCALE, (mushY + 2) * SCALE);
+            ctx.closePath();
+            ctx.fill();
+            // Inner highlight
+            ctx.fillStyle = "#aaffaa";
+            ctx.globalAlpha = 0.3 + pulseIntensity * 0.3;
+            ctx.beginPath();
+            ctx.moveTo(mushX * SCALE, mushY * SCALE);
+            ctx.lineTo((mushX + 1.5) * SCALE, (mushY + 2) * SCALE);
+            ctx.lineTo(mushX * SCALE, (mushY + 4) * SCALE);
+            ctx.lineTo((mushX - 1.5) * SCALE, (mushY + 2) * SCALE);
+            ctx.closePath();
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+        } else {
+            // Mushroom cap — half-circle with stem
+            const capR = triggered ? 3.5 : (chaseBright > 0.7 ? 3 : 2.5);
+            // Thin stem
+            ctx.fillStyle = "#2a4a2a";
+            ctx.fillRect((mushX - 0.5) * SCALE, (mushY - 1) * SCALE, 1 * SCALE, 4 * SCALE);
+            // Cap (half-circle arc facing down)
+            ctx.globalAlpha = 0.5 + chaseBright * 0.3 + pulseIntensity * 0.2 + twinkle;
+            ctx.fillStyle = mushCol;
+            ctx.beginPath();
+            ctx.arc(mushX * SCALE, (mushY + 3) * SCALE, capR * SCALE, Math.PI, 0);
+            ctx.fill();
+            // Cap underside glow (lighter)
+            ctx.fillStyle = "#aaffaa";
+            ctx.globalAlpha = 0.15 + pulseIntensity * 0.2;
+            ctx.beginPath();
+            ctx.arc(mushX * SCALE, (mushY + 3) * SCALE, (capR - 0.5) * SCALE, 0, Math.PI);
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+        }
+        // Glow halo — green-tinted, stronger on drum trigger
+        const baseGlow = 0.06 + chaseBright * 0.06;
+        const pulseGlow = pulseIntensity * 0.35;
+        ctx.globalAlpha = baseGlow + pulseGlow + twinkle * 0.12;
+        ctx.fillStyle = mushCol;
+        const glowR = triggered ? 7 : (chaseBright > 0.6 ? 5.5 : 4.5);
+        ctx.beginPath();
+        ctx.arc(mushX * SCALE, (mushY + 3) * SCALE, glowR * SCALE, 0, Math.PI * 2);
+        ctx.fill();
         ctx.globalAlpha = 1.0;
     }
 
-    // Banner lights along bottom wall — also drum-synced
+    // Floor crystals along bottom wall — drum-synced glowing formations
     for (let c = 1; c < COLS - 1; c++) {
-        const lx = c * TILE + TILE / 2;
-        const ly = (ROWS - 1) * TILE + 2;
+        const crX = c * TILE + TILE / 2;
+        const crBaseY = (ROWS - 1) * TILE + 2;
         const rowIdx = (c + 2) % ar_lights;
-        const bulbCol = PAL.gridOn[rowIdx];
+        const crCol = MUSH_COLORS[(c + 2) % MUSH_COLORS.length];
         const triggered = rowTrigger[rowIdx] > 0;
-        const sz = triggered ? 4 : 3;
-        drawRect(lx - 1, ly, sz, sz, bulbCol);
+        const crH = 2 + (c * 3) % 3;
+        // Small crystal pointing up
+        ctx.fillStyle = crCol;
+        ctx.globalAlpha = triggered ? 0.7 : 0.3;
+        ctx.beginPath();
+        ctx.moveTo((crX - 1.5) * SCALE, (crBaseY + 1) * SCALE);
+        ctx.lineTo((crX + 1.5) * SCALE, (crBaseY + 1) * SCALE);
+        ctx.lineTo(crX * SCALE, (crBaseY - crH) * SCALE);
+        ctx.closePath();
+        ctx.fill();
         if (triggered) {
-            ctx.fillStyle = bulbCol;
-            ctx.globalAlpha = rowTrigger[rowIdx] / 8 * 0.3;
-            ctx.fillRect((lx - 3) * SCALE, (ly - 2) * SCALE, 8 * SCALE, 8 * SCALE);
-            ctx.globalAlpha = 1.0;
+            ctx.fillStyle = crCol;
+            ctx.globalAlpha = rowTrigger[rowIdx] / 8 * 0.25;
+            ctx.beginPath();
+            ctx.arc(crX * SCALE, (crBaseY - crH / 2) * SCALE, 4 * SCALE, 0, Math.PI * 2);
+            ctx.fill();
         }
+        ctx.globalAlpha = 1.0;
     }
 
     // Row labels (O, H, S, K, B, T) in the column just left of the first beat block
@@ -6001,23 +6541,35 @@ function render() {
         drawText(ROW_LETTERS[r], lx, ly, PAL.gridOn[r], 7);
     }
 
-    // Grid blocks
+    // Stone wall background behind grid — pre-rendered texture
+    {
+        const gwX = GRID_X * TILE - 2;
+        const gwY = (GRID_Y * TILE + GRID_Y_OFFSET) - 2;
+        const gwH = ar * TILE + 4;
+        ctx.drawImage(TEX_GRID_WALL, 0, 0, TEX_GRID_WALL.width, gwH * SCALE, gwX * SCALE, gwY * SCALE, TEX_GRID_WALL.width, gwH * SCALE);
+    }
+
+    // Grid blocks — pre-rendered stone textures with glow overlays
     for (let r = 0; r < ar; r++) {
         for (let c = 0; c < GRID_COLS; c++) {
             const bx = (GRID_X + c) * TILE;
             const by = rowPixelY(r);
             const on = grid[r][c];
 
-            // Block background
-            drawRect(bx, by, TILE, TILE, PAL.gridBorder);
-            drawRect(bx + 1, by + 1, TILE - 2, TILE - 2, on ? PAL.gridOn[r] : PAL.gridOff);
-
-            // 3D highlight for on-blocks
+            const bxs = bx * SCALE, bys = by * SCALE;
+            const ts = TILE * SCALE;
             if (on) {
-                ctx.fillStyle = "rgba(255,255,255,0.2)";
-                ctx.fillRect((bx + 1) * SCALE, (by + 1) * SCALE, (TILE - 2) * SCALE, 2 * SCALE);
-                ctx.fillStyle = "rgba(0,0,0,0.2)";
-                ctx.fillRect((bx + 1) * SCALE, (by + TILE - 3) * SCALE, (TILE - 2) * SCALE, 2 * SCALE);
+                // Draw pre-rendered glow tile
+                ctx.shadowColor = PAL.gridOn[r];
+                ctx.shadowBlur = 8;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
+                ctx.drawImage(TEX_GRID_ON[r][c], bxs, bys);
+                ctx.shadowColor = "transparent";
+                ctx.shadowBlur = 0;
+            } else {
+                // Draw pre-rendered dark stone tile
+                ctx.drawImage(TEX_GRID_OFF[r][c], bxs, bys);
             }
 
             // Block toggle pop animation (scale + glow burst)
@@ -6026,12 +6578,10 @@ function render() {
                 const popScale = 1 + animProg * 0.3; // 1.3→1.0
                 const cx_b = (bx + TILE / 2) * SCALE;
                 const cy_b = (by + TILE / 2) * SCALE;
-                // Glow burst in the row's color
                 ctx.fillStyle = PAL.gridOn[r];
                 ctx.globalAlpha = animProg * 0.5;
                 const glowR = TILE * popScale;
                 ctx.fillRect(cx_b - glowR * SCALE / 2, cy_b - glowR * SCALE / 2, glowR * SCALE, glowR * SCALE);
-                // White flash overlay
                 ctx.fillStyle = "#ffffff";
                 ctx.globalAlpha = animProg * 0.4;
                 ctx.fillRect((bx + 1) * SCALE, (by + 1) * SCALE, (TILE - 2) * SCALE, (TILE - 2) * SCALE);
@@ -6368,13 +6918,13 @@ function render() {
         }
     }
 
-    // Ambient vignette — subtle dark edges to focus attention on center
+    // Ambient cave vignette — dark green-tinted edges
     {
         const W_a = COLS * TILE * SCALE;
         const H_a = ROWS * TILE * SCALE;
         const ambGrad = ctx.createRadialGradient(W_a / 2, H_a / 2, W_a * 0.35, W_a / 2, H_a / 2, W_a * 0.72);
         ambGrad.addColorStop(0, "rgba(0,0,0,0)");
-        ambGrad.addColorStop(1, "rgba(0,0,0,0.35)");
+        ambGrad.addColorStop(1, "rgba(0,15,0,0.4)");
         ctx.fillStyle = ambGrad;
         ctx.fillRect(0, 0, W_a, H_a);
     }
@@ -6408,13 +6958,13 @@ function render() {
 
         // Semi-transparent background
         ctx.globalAlpha = 0.65;
-        drawRect(boxX, overlayY, boxW, boxH, "#1a0e08");
+        drawRect(boxX, overlayY, boxW, boxH, "#0a0f0a");
         // Border
         ctx.globalAlpha = 0.4;
-        drawRect(boxX, overlayY, boxW, 1, "#efac28");
-        drawRect(boxX, overlayY + boxH - 1, boxW, 1, "#efac28");
-        drawRect(boxX, overlayY, 1, boxH, "#efac28");
-        drawRect(boxX + boxW - 1, overlayY, 1, boxH, "#efac28");
+        drawRect(boxX, overlayY, boxW, 1, "#44ff44");
+        drawRect(boxX, overlayY + boxH - 1, boxW, 1, "#44ff44");
+        drawRect(boxX, overlayY, 1, boxH, "#44ff44");
+        drawRect(boxX + boxW - 1, overlayY, 1, boxH, "#44ff44");
         ctx.globalAlpha = 1;
 
         // Helper: draw a small key cap that lights up
@@ -6438,7 +6988,7 @@ function render() {
                 drawRect(x, y, label === "SPACE" ? 30 : keySize, keySize, "#2a1a10");
             }
             // Key border
-            const borderColor = lit ? "#efac28" : "#5a3a1a";
+            const borderColor = lit ? "#44ff44" : "#1a3a1a";
             const kw = label === "SPACE" ? 30 : keySize;
             drawRect(x, y, kw, 1, borderColor);
             drawRect(x, y + keySize - 1, kw, 1, borderColor);
@@ -6635,14 +7185,25 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         }
     }
 
-    // === FEET / SHOES (tan) — stay planted ===
-    const walkPx = (frame === 1 ? 2 : frame === 3 ? -2 : 0) * SCALE;
-    px(12 + walkPx, 36, 9, 6, "#927e6a");
-    px(27 - walkPx, 36, 9, 6, "#927e6a");
-    px(12 + walkPx, 40, 9, 2, "#684c3c");
-    px(27 - walkPx, 40, 9, 2, "#684c3c");
-    px(12 + walkPx, 34, 9, 3, "#45230d");
-    px(27 - walkPx, 34, 9, 3, "#45230d");
+    // === FEET / SHOES (rounded) — stay planted ===
+    const walkOfs = (frame === 1 ? 2 : frame === 3 ? -2 : 0) * SCALE;
+    ctx.fillStyle = col("#927e6a");
+    ctx.beginPath();
+    ctx.roundRect(sx + 12 + walkOfs, sy + 36 - bob, 9, 6, [0, 0, 3, 3]);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.roundRect(sx + 27 - walkOfs, sy + 36 - bob, 9, 6, [0, 0, 3, 3]);
+    ctx.fill();
+    // Shoe soles
+    ctx.fillStyle = col("#243024");
+    ctx.fillRect(sx + 12 + walkOfs, sy + 40 - bob, 9, 2);
+    ctx.fillRect(sx + 27 - walkOfs, sy + 40 - bob, 9, 2);
+    // Shoe tops
+    ctx.fillStyle = col("#1e2e1e");
+    ctx.fillRect(sx + 12 + walkOfs, sy + 34 - bob, 9, 3);
+    ctx.fillRect(sx + 27 - walkOfs, sy + 34 - bob, 9, 3);
+
+    spriteGlowOff();
 }
 
 function drawPlayer() {
@@ -6797,35 +7358,37 @@ function drawRuinedVenueBackdrop(t, options) {
     const skipGrid = opts.skipGrid || false;
     const W = COLS * TILE;
     const H = ROWS * TILE;
-    // Dark floor
-    drawRect(0, 0, W, H, "#1a1a18");
-    // Damaged walls (deterministic — no Math.random flickering)
+    // Dark cave floor
+    drawRect(0, 0, W, H, "#0a0f0a");
+    // Damaged cave walls
     for (let c = 0; c < COLS; c++) {
-        const damaged = ((c * 7 + 3) % 10) > 6; // ~30% damaged
-        drawRect(c * TILE, 0, TILE, TILE, damaged ? "#45230d" : (c % 2 === 0 ? "#724113" : "#927e6a"));
-        drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+        const damaged = ((c * 7 + 3) % 10) > 6;
+        drawRect(c * TILE, 0, TILE, TILE, damaged ? "#111911" : ((c * 7 + 3) % 3 === 0 ? "#1e2e1e" : "#1a2a1a"));
+        const botCol = (c * 11 + 5) % 3 === 0 ? "#152015" : "#1a2a1a";
+        drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, botCol);
     }
     for (let r = 0; r < ROWS; r++) {
-        drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
-        drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+        const lCol = (r * 7) % 3 === 0 ? "#152015" : "#1a2a1a";
+        drawRect(0, r * TILE, TILE, TILE, lCol);
+        drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, lCol);
     }
     // Open caves
     for (const cave of CAVES) {
         const cx = cave.tileX * TILE, cy = cave.tileY * TILE;
-        drawRect(cx, cy - 2, TILE, TILE + 4, "#0a0a0a");
-        drawRect(cx - 2, cy - 4, TILE + 4, 3, "#684c3c");
-        drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");
+        drawRect(cx, cy - 2, TILE, TILE + 4, "#050805");
+        drawRect(cx - 2, cy - 4, TILE + 4, 3, "#243024");
+        drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#243024");
     }
-    // Dead string lights
+    // Dead mushroom lights
     for (let c = 1; c < COLS - 1; c++) {
-        drawRect(c * TILE + TILE / 2 - 2, TILE + 6, 4, 4, "#2a1d0d");
+        drawRect(c * TILE + TILE / 2 - 2, TILE + 6, 4, 4, "#0a0f0a");
     }
-    // Destroyed DJ booth
+    // Destroyed DJ booth (stone rubble)
     const boothX = W / 2 - 24;
     const boothY = GRID_Y * TILE - 8;
-    drawRect(boothX - 8, boothY + 12, 64, 8, "#2a1d0d");
-    drawRect(boothX + 5, boothY + 6, 10, 6, "#1f240a");
-    drawRect(boothX + 35, boothY + 8, 8, 4, "#1f240a");
+    drawRect(boothX - 8, boothY + 12, 64, 8, "#0a0f0a");
+    drawRect(boothX + 5, boothY + 6, 10, 6, "#0d150d");
+    drawRect(boothX + 35, boothY + 8, 8, 4, "#0d150d");
     // Smoke wisps
     for (let si = 0; si < 3; si++) {
         const smokeX = boothX + 15 + si * 12;
@@ -6869,12 +7432,12 @@ function drawSubwoofer(sx, sy, pump, side) {
     const by = sy - pw * 0.5;
     const bw = 16 + pw;
     const bh = 12 + pw;
-    // Cabinet
-    drawRect(bx, by, bw, bh, "#45230d");
-    drawRect(bx + 1, by + 1, bw - 2, bh - 2, "#392a1c");
-    // Speaker cone (center circle approximation with rects)
-    const cx = bx + bw / 2;
-    const cy = by + bh / 2;
+    // Cabinet (rounded — stone/metal)
+    fillRoundRect(ctx, bx * SCALE, by * SCALE, bw * SCALE, bh * SCALE, 3, "#2a3a2a");
+    fillRoundRect(ctx, (bx + 1) * SCALE, (by + 1) * SCALE, (bw - 2) * SCALE, (bh - 2) * SCALE, 2, "#1e2e1e");
+    // Speaker cone (actual circle)
+    const cx = (bx + bw / 2) * SCALE;
+    const cy = (by + bh / 2) * SCALE;
     // Surround ring
     drawRect(cx - 5, cy - 4, 10, 8, "#2e4a4e");
     // Cone
@@ -6902,15 +7465,24 @@ function drawSubwoofer(sx, sy, pump, side) {
 // ---- DJ Equipment Sprite Functions ----
 
 function drawTurntable(tx, ty) {
-    // Platter base
-    drawRect(tx, ty + 6, 14, 6, "#45230d");
-    drawRect(tx + 1, ty + 7, 12, 4, "#392a1c");
-    // Platter (circular disc)
-    drawRect(tx + 2, ty + 1, 10, 8, "#1a1410");
-    drawRect(tx + 3, ty, 8, 10, "#1a1410");
-    // Vinyl grooves
-    drawRect(tx + 4, ty + 2, 6, 6, "#2a2018");
-    drawRect(tx + 5, ty + 3, 4, 4, "#1a1410");
+    // Platter base (rounded — stone/metal)
+    fillRoundRect(ctx, tx * SCALE, (ty + 6) * SCALE, 14 * SCALE, 6 * SCALE, 3, "#2a3a2a");
+    fillRoundRect(ctx, (tx + 1) * SCALE, (ty + 7) * SCALE, 12 * SCALE, 4 * SCALE, 2, "#1e2e1e");
+    // Platter (actual circle)
+    const pcx = (tx + 7) * SCALE, pcy = (ty + 5) * SCALE;
+    ctx.fillStyle = "#1a1410";
+    ctx.beginPath();
+    ctx.arc(pcx, pcy, 5 * SCALE, 0, Math.PI * 2);
+    ctx.fill();
+    // Vinyl grooves (concentric circles)
+    ctx.strokeStyle = "#2a2018";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(pcx, pcy, 3.5 * SCALE, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(pcx, pcy, 2.5 * SCALE, 0, Math.PI * 2);
+    ctx.stroke();
     // Label center
     drawRect(tx + 6, ty + 4, 2, 2, "#efac28");
     // Tonearm
@@ -6920,8 +7492,9 @@ function drawTurntable(tx, ty) {
 }
 
 function drawMixer(mx, my) {
-    drawRect(mx, my, 12, 10, "#2e4a4e");
-    // Fader slots
+    // Mixer body (rounded — dark cave metal)
+    fillRoundRect(ctx, mx * SCALE, my * SCALE, 12 * SCALE, 10 * SCALE, 3, "#1e3e2e");
+    // Fader slots (rounded)
     for (let ml = 0; ml < 4; ml++) {
         drawRect(mx + 2 + ml * 2, my + 1, 1, 2, "#1f240a");
     }
@@ -7689,19 +8262,19 @@ function renderEnding() {
         // Dark floor
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
-                const shade = (r + c) % 2 === 0 ? "#2a1d0d" : "#1f1209";
+                const shade = (r + c) % 2 === 0 ? "#0a0f0a" : "#0d150d";
                 drawRect(c * TILE, r * TILE, TILE, TILE, shade);
             }
         }
 
         // Walls
         for (let c = 0; c < COLS; c++) {
-            drawRect(c * TILE, 0, TILE, TILE, c % 2 === 0 ? "#39200a" : "#493f35");
-            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#172527" : "#1c282a");
+            drawRect(c * TILE, 0, TILE, TILE, (c * 7 + 3) % 3 === 0 ? "#1e2e1e" : "#1a2a1a");
+            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, (c * 11 + 5) % 3 === 0 ? "#152015" : "#1a2a1a");
         }
         for (let r = 0; r < ROWS; r++) {
-            drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#172527" : "#1c282a");
-            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#172527" : "#1c282a");
+            drawRect(0, r * TILE, TILE, TILE, (r * 7) % 3 === 0 ? "#152015" : "#1a2a1a");
+            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, (r * 11) % 3 === 0 ? "#152015" : "#1a2a1a");
         }
 
         // String lights (fade in during phase 0)
@@ -7725,8 +8298,8 @@ function renderEnding() {
         const boothY = GRID_Y * TILE - 8;
 
         // Platform
-        drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
-        drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
+        drawRect(boothX - 8, boothY + 12, 64, 8, "#2a3a2a");
+        drawRect(boothX - 8, boothY + 12, 64, 2, "#3a4a3a");
 
         // Equipment pieces (fly in during phase 0)
         for (let i = 0; i < 6; i++) {
@@ -7845,7 +8418,7 @@ function renderEnding() {
         const caveH = CAVE_ROWS * CAVE_TILE;
 
         // Cave background
-        drawRect(0, 0, caveW, caveH, "#1a0e08");
+        drawRect(0, 0, caveW, caveH, "#0a0f0a");
 
         // Stone floor
         for (let r = 3; r < CAVE_ROWS - 1; r++) {
@@ -7853,7 +8426,7 @@ function renderEnding() {
                 let seed = r * 997 + c * 31;
                 seed = (seed * 9301 + 49297) % 233280;
                 const bright = (seed / 233280) > 0.6;
-                const floorCol = bright ? "#251a0f" : "#1f1209";
+                const floorCol = bright ? "#152015" : "#111911";
                 drawRect(c * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, floorCol);
             }
         }
@@ -7862,21 +8435,21 @@ function renderEnding() {
         for (let c = 0; c < CAVE_COLS; c++) {
             // Top wall (3 rows for grand stage area)
             for (let r = 0; r < 3; r++) {
-                drawRect(c * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, (c + r) % 2 === 0 ? "#3d2b1f" : "#2e1f14");
+                drawRect(c * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, (c + r) % 2 === 0 ? "#1e2e1e" : "#1a2a1a");
             }
             // Bottom wall
-            drawRect(c * CAVE_TILE, (CAVE_ROWS - 1) * CAVE_TILE, CAVE_TILE, CAVE_TILE, c % 2 === 0 ? "#3d2b1f" : "#2e1f14");
+            drawRect(c * CAVE_TILE, (CAVE_ROWS - 1) * CAVE_TILE, CAVE_TILE, CAVE_TILE, c % 2 === 0 ? "#1e2e1e" : "#1a2a1a");
             // Stalactites
             if (c % 3 === 1) {
                 const stalH = 4 + (c * 7) % 6;
-                drawRect(c * CAVE_TILE + 5, 3 * CAVE_TILE, 3, stalH, "#4a3628");
-                drawRect(c * CAVE_TILE + 6, 3 * CAVE_TILE, 1, stalH + 2, "#5a4638");
+                drawRect(c * CAVE_TILE + 5, 3 * CAVE_TILE, 3, stalH, "#243024");
+                drawRect(c * CAVE_TILE + 6, 3 * CAVE_TILE, 1, stalH + 2, "#2a3a2a");
             }
         }
         // Side walls
         for (let r = 0; r < CAVE_ROWS; r++) {
-            drawRect(0, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, r % 2 === 0 ? "#3d2b1f" : "#2e1f14");
-            drawRect((CAVE_COLS - 1) * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, r % 2 === 0 ? "#3d2b1f" : "#2e1f14");
+            drawRect(0, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, r % 2 === 0 ? "#1e2e1e" : "#1a2a1a");
+            drawRect((CAVE_COLS - 1) * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, r % 2 === 0 ? "#1e2e1e" : "#1a2a1a");
         }
 
         // Torches on walls
@@ -7897,10 +8470,10 @@ function renderEnding() {
         const stageY = 3 * CAVE_TILE;
 
         // Stage platform (wider than normal booth)
-        drawRect(stageX - 16, stageY + 16, 112, 10, "#45230d");
-        drawRect(stageX - 16, stageY + 16, 112, 2, "#684c3c");
+        drawRect(stageX - 16, stageY + 16, 112, 10, "#1e2e1e");
+        drawRect(stageX - 16, stageY + 16, 112, 2, "#243024");
         // Stage risers
-        drawRect(stageX - 20, stageY + 26, 120, 6, "#392a1c");
+        drawRect(stageX - 20, stageY + 26, 120, 6, "#1a2a1a");
 
         // All 6 equipment pieces on the grand stage
         const sBoothX = caveW / 2 - 24;
@@ -8200,31 +8773,62 @@ function renderTitleScreen() {
 
     const beatOn = titleStep % 4 === 0;
 
-    // === CLUB SCENE BACKGROUND (from Scene 1: The Good Times) ===
-    drawRect(0, 0, W, H, "#2C2C2A"); // floor
+    // === CAVE SCENE BACKGROUND ===
+    drawRect(0, 0, W, H, "#0d150d"); // dark stone floor
 
-    // Walls
+    // Cave rock walls
     for (let c = 0; c < COLS; c++) {
-        const stripe = c % 2 === 0 ? "#724113" : "#927e6a";
-        drawRect(c * TILE, 0, TILE, TILE, stripe);
-        drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+        const stoneCol = (c * 7 + 3) % 3 === 0 ? "#1e2e1e" : ((c * 7 + 3) % 3 === 1 ? "#1a2a1a" : "#162616");
+        drawRect(c * TILE, 0, TILE, TILE, stoneCol);
+        const botCol = (c * 11 + 5) % 3 === 0 ? "#152015" : ((c * 11 + 5) % 3 === 1 ? "#1a2a1a" : "#111911");
+        drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, botCol);
     }
     for (let r = 0; r < ROWS; r++) {
-        drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
-        drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+        const lCol = (r * 7) % 3 === 0 ? "#152015" : ((r * 7) % 3 === 1 ? "#1a2a1a" : "#111911");
+        drawRect(0, r * TILE, TILE, TILE, lCol);
+        const rCol = (r * 11) % 3 === 0 ? "#152015" : ((r * 11) % 3 === 1 ? "#1a2a1a" : "#111911");
+        drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, rCol);
     }
 
-    // String lights (animated, happy)
+    // Mushroom lights (animated, bioluminescent)
+    const TITLE_MUSH_COLORS = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#44ff44"];
     for (let c = 1; c < COLS - 1; c++) {
-        const bulbY = TILE + 6;
-        const bulbX = c * TILE + TILE / 2;
-        const lightCol = PAL.gridOn[c % 4];
+        const mushY = TILE + 4;
+        const mushX = c * TILE + TILE / 2;
+        const mushCol = TITLE_MUSH_COLORS[c % TITLE_MUSH_COLORS.length];
         const chase = Math.sin(titleBlink * 0.05 + c * 0.6) * 0.5 + 0.5;
+        const isCrystal = c % 4 === 0;
+        // Stem
+        ctx.strokeStyle = "#1e2e1e";
+        ctx.lineWidth = 1 * SCALE;
+        ctx.beginPath();
+        ctx.moveTo(mushX * SCALE, TILE * SCALE);
+        ctx.lineTo(mushX * SCALE, (mushY - 1) * SCALE);
+        ctx.stroke();
         ctx.globalAlpha = 0.5 + chase * 0.5;
-        drawRect(bulbX - 2, bulbY, 4, 4, lightCol);
-        ctx.fillStyle = lightCol;
-        ctx.globalAlpha = 0.15 + chase * 0.2;
-        ctx.fillRect((bulbX - 5) * SCALE, (bulbY - 3) * SCALE, 10 * SCALE, 10 * SCALE);
+        if (isCrystal) {
+            ctx.fillStyle = mushCol;
+            ctx.beginPath();
+            ctx.moveTo(mushX * SCALE, (mushY - 1) * SCALE);
+            ctx.lineTo((mushX + 3) * SCALE, (mushY + 2) * SCALE);
+            ctx.lineTo(mushX * SCALE, (mushY + 5) * SCALE);
+            ctx.lineTo((mushX - 3) * SCALE, (mushY + 2) * SCALE);
+            ctx.closePath();
+            ctx.fill();
+        } else {
+            ctx.fillStyle = "#2a4a2a";
+            ctx.fillRect((mushX - 0.5) * SCALE, (mushY - 1) * SCALE, 1 * SCALE, 4 * SCALE);
+            ctx.fillStyle = mushCol;
+            ctx.beginPath();
+            ctx.arc(mushX * SCALE, (mushY + 3) * SCALE, 2.5 * SCALE, Math.PI, 0);
+            ctx.fill();
+        }
+        // Glow
+        ctx.fillStyle = mushCol;
+        ctx.globalAlpha = 0.08 + chase * 0.1;
+        ctx.beginPath();
+        ctx.arc(mushX * SCALE, (mushY + 3) * SCALE, 5 * SCALE, 0, Math.PI * 2);
+        ctx.fill();
     }
     ctx.globalAlpha = 1;
 
@@ -8233,8 +8837,8 @@ function renderTitleScreen() {
     const boothY = GRID_Y * TILE - 8;
     drawLightRig(boothX - 8, boothY - 18, titleKickPump);
     drawDiscoBall(boothX + 20, boothY - 30);
-    drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
-    drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
+    drawRect(boothX - 8, boothY + 12, 64, 8, "#2a3a2a");
+    drawRect(boothX - 8, boothY + 12, 64, 2, "#3a4a3a");
     drawSubwoofer(boothX - 12, boothY - 2, titleKickPump, -1);
     drawSubwoofer(boothX + 44, boothY - 2, titleKickPump, 1);
     drawTurntable(boothX + 1, boothY - 2);
@@ -8260,7 +8864,7 @@ function renderTitleScreen() {
     }
     // Playhead
     const phX = miniGridX + titleStep * TILE;
-    ctx.fillStyle = "#efac28";
+    ctx.fillStyle = PAL.playhead;
     ctx.globalAlpha = 0.35;
     ctx.fillRect(phX * SCALE, miniGridY * SCALE, TILE * SCALE, (4 * TILE) * SCALE);
     ctx.globalAlpha = 1;
@@ -8377,14 +8981,14 @@ function renderTitleScreen() {
     for (let i = 0; i < grooveText.length; i++) {
         const charX = grooveStartX + i * grooveCharW + grooveSlideX;
         const bounce = grooveEntrance >= 1 ? Math.sin(titleBlink * 0.07 + i * 0.9) * 3 : 0;
-        const col = i % 2 === 0 ? "#efac28" : "#ab5c1c";
+        const col = i % 2 === 0 ? "#ff8822" : "#cc5500";
         ctx.globalAlpha = grooveEntrance * titleTextAlpha;
         // Shadow
         drawText(grooveText[i], charX + 1, grooveY + bounce + 2, "#000000", bigFontSize);
         drawText(grooveText[i], charX - 1, grooveY + bounce + 2, "#000000", bigFontSize);
         // Glow layer
         ctx.globalAlpha = 0.3 * grooveEntrance * titleTextAlpha;
-        drawText(grooveText[i], charX, grooveY + bounce - 1, "#efac28", bigFontSize);
+        drawText(grooveText[i], charX, grooveY + bounce - 1, "#ff8822", bigFontSize);
         ctx.globalAlpha = grooveEntrance * titleTextAlpha;
         // Main text
         drawText(grooveText[i], charX, grooveY + bounce, col, bigFontSize);
@@ -8432,10 +9036,10 @@ function renderTitleScreen() {
     if (!titleFadingOut) {
         const modeY = titleBaseY + 58;
         const modeLabel = gameMode === "thrill" ? "THRILL MODE" : "CHILL MODE";
-        const modeCol = gameMode === "thrill" ? "#ef3a0c" : "#3c9f9c";
+        const modeCol = gameMode === "thrill" ? "#ff4400" : "#33dd88";
         const arrowPulse = 0.5 + Math.sin(titleBlink * 0.08) * 0.3;
         ctx.globalAlpha = titleTextAlpha * arrowPulse;
-        drawCentered("<              >", modeY, "#efd8a1", 6);
+        drawCentered("<              >", modeY, "#88cc88", 6);
         ctx.globalAlpha = titleTextAlpha;
         drawCentered(modeLabel, modeY, modeCol, 6);
         ctx.globalAlpha = 1.0;
@@ -8447,7 +9051,7 @@ function renderTitleScreen() {
     // Blink the text with a faster, more urgent rhythm
     if (titleBlink % 45 < 32 && !titleFadingOut) {
         drawCentered("PRESS ENTER", pressY + 1, "#000000", 6);
-        const enterCol = (titleStep % 4 === 0) ? "#efac28" : "#efd8a1";
+        const enterCol = (titleStep % 4 === 0) ? "#44ff44" : "#88cc88";
         drawCentered("PRESS ENTER", pressY, enterCol, 6);
     }
 }
@@ -8795,31 +9399,56 @@ function renderIntro() {
 
     // ==================== SCENE 0: THE GOOD TIMES ====================
     if (introScene === 0) {
-        // Full venue scene: floor, walls, DJ booth, dancers
-        drawRect(0, 0, W, H, "#2C2C2A"); // floor
+        // Full cave venue scene: floor, walls, DJ booth, dancers
+        drawRect(0, 0, W, H, "#0d150d"); // dark stone floor
 
-        // Walls
+        // Cave walls
         for (let c = 0; c < COLS; c++) {
-            const stripe = c % 2 === 0 ? "#724113" : "#927e6a";
-            drawRect(c * TILE, 0, TILE, TILE, stripe);
-            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+            const stoneCol = (c * 7 + 3) % 3 === 0 ? "#1e2e1e" : ((c * 7 + 3) % 3 === 1 ? "#1a2a1a" : "#162616");
+            drawRect(c * TILE, 0, TILE, TILE, stoneCol);
+            const botCol = (c * 11 + 5) % 3 === 0 ? "#152015" : ((c * 11 + 5) % 3 === 1 ? "#1a2a1a" : "#111911");
+            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, botCol);
         }
         for (let r = 0; r < ROWS; r++) {
-            drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
-            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#2e4a4e" : "#384f54");
+            const lCol = (r * 7) % 3 === 0 ? "#152015" : ((r * 7) % 3 === 1 ? "#1a2a1a" : "#111911");
+            drawRect(0, r * TILE, TILE, TILE, lCol);
+            const rCol = (r * 11) % 3 === 0 ? "#152015" : ((r * 11) % 3 === 1 ? "#1a2a1a" : "#111911");
+            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, rCol);
         }
 
-        // String lights (animated, happy)
+        // Mushroom lights (animated)
+        const INTRO_MUSH = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#44ff44"];
         for (let c = 1; c < COLS - 1; c++) {
-            const bulbY = TILE + 6;
-            const bulbX = c * TILE + TILE / 2;
-            const lightCol = PAL.gridOn[c % 4];
+            const mushY = TILE + 4;
+            const mushX = c * TILE + TILE / 2;
+            const mushCol = INTRO_MUSH[c % INTRO_MUSH.length];
             const chase = Math.sin(introGlobalTimer * 0.05 + c * 0.6) * 0.5 + 0.5;
+            ctx.strokeStyle = "#1e2e1e";
+            ctx.lineWidth = 1 * SCALE;
+            ctx.beginPath();
+            ctx.moveTo(mushX * SCALE, TILE * SCALE);
+            ctx.lineTo(mushX * SCALE, (mushY - 1) * SCALE);
+            ctx.stroke();
             ctx.globalAlpha = 0.5 + chase * 0.5;
-            drawRect(bulbX - 2, bulbY, 4, 4, lightCol);
-            ctx.fillStyle = lightCol;
-            ctx.globalAlpha = 0.15 + chase * 0.2;
-            ctx.fillRect((bulbX - 5) * SCALE, (bulbY - 3) * SCALE, 10 * SCALE, 10 * SCALE);
+            ctx.fillStyle = mushCol;
+            if (c % 4 === 0) {
+                ctx.beginPath();
+                ctx.moveTo(mushX * SCALE, (mushY - 1) * SCALE);
+                ctx.lineTo((mushX + 3) * SCALE, (mushY + 2) * SCALE);
+                ctx.lineTo(mushX * SCALE, (mushY + 5) * SCALE);
+                ctx.lineTo((mushX - 3) * SCALE, (mushY + 2) * SCALE);
+                ctx.closePath();
+                ctx.fill();
+            } else {
+                ctx.beginPath();
+                ctx.arc(mushX * SCALE, (mushY + 3) * SCALE, 2.5 * SCALE, Math.PI, 0);
+                ctx.fill();
+            }
+            ctx.fillStyle = mushCol;
+            ctx.globalAlpha = 0.08 + chase * 0.1;
+            ctx.beginPath();
+            ctx.arc(mushX * SCALE, (mushY + 3) * SCALE, 5 * SCALE, 0, Math.PI * 2);
+            ctx.fill();
         }
         ctx.globalAlpha = 1;
 
@@ -8828,8 +9457,8 @@ function renderIntro() {
         const boothY = GRID_Y * TILE - 8;
         drawLightRig(boothX - 8, boothY - 18, introKickPump);
         drawDiscoBall(boothX + 20, boothY - 30);
-        drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
-        drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
+        drawRect(boothX - 8, boothY + 12, 64, 8, "#2a3a2a");
+        drawRect(boothX - 8, boothY + 12, 64, 2, "#3a4a3a");
         drawSubwoofer(boothX - 12, boothY - 2, introKickPump, -1);
         drawSubwoofer(boothX + 44, boothY - 2, introKickPump, 1);
         drawTurntable(boothX + 1, boothY - 2);
@@ -8912,9 +9541,9 @@ function renderIntro() {
         if (t > 60) {
             const capAlpha = Math.min(1, (t - 60) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("EVERY FRIDAY NIGHT, THE UNDERGROUND CAME ALIVE.", H - 60, "#efac28", 5);
-            drawCentered("THE DJ SPUN BEATS THAT MADE THE WALLS SHAKE", H - 50, "#efac28", 5);
-            drawCentered("AND THE FLOOR PULSE.", H - 40, "#efac28", 5);
+            drawCentered("EVERY FRIDAY NIGHT, THE UNDERGROUND CAME ALIVE.", H - 60, "#44ff44", 5);
+            drawCentered("THE DJ SPUN BEATS THAT MADE THE WALLS SHAKE", H - 50, "#44ff44", 5);
+            drawCentered("AND THE FLOOR PULSE.", H - 40, "#44ff44", 5);
             ctx.globalAlpha = 1;
         }
     }
@@ -8933,63 +9562,82 @@ function renderIntro() {
         ctx.save();
         ctx.translate(shX, shY);
 
-        // Venue darkens as power fades — floor color dims over time
+        // Cave darkens as power fades — floor dims over time
         const powerFade = Math.min(1, t / 180); // 0→1 over first 3 seconds
-        const floorR = Math.round(0x2C * (1 - powerFade * 0.5));
-        const floorG = Math.round(0x2C * (1 - powerFade * 0.5));
-        const floorB = Math.round(0x2A * (1 - powerFade * 0.5));
+        const floorR = Math.round(0x0d * (1 - powerFade * 0.5));
+        const floorG = Math.round(0x15 * (1 - powerFade * 0.5));
+        const floorB = Math.round(0x0d * (1 - powerFade * 0.5));
         drawRect(0, 0, W, H, `rgb(${floorR},${floorG},${floorB})`);
 
-        // Walls (dim with power like the floor)
+        // Cave walls (dim with power)
         for (let c = 0; c < COLS; c++) {
-            const topR = c % 2 === 0 ? 0x72 : 0x92, topG = c % 2 === 0 ? 0x41 : 0x7e, topB = c % 2 === 0 ? 0x13 : 0x6a;
-            const botR = c % 2 === 0 ? 0x2e : 0x38, botG = c % 2 === 0 ? 0x4a : 0x4f, botB = c % 2 === 0 ? 0x4e : 0x54;
+            const topR = (c * 7 + 3) % 3 === 0 ? 0x1e : 0x1a, topG = (c * 7 + 3) % 3 === 0 ? 0x2e : 0x2a, topB = (c * 7 + 3) % 3 === 0 ? 0x1e : 0x1a;
+            const botR = 0x15, botG = 0x20, botB = 0x15;
             const dim = 1 - powerFade * 0.5;
             drawRect(c * TILE, 0, TILE, TILE, `rgb(${Math.round(topR*dim)},${Math.round(topG*dim)},${Math.round(topB*dim)})`);
             drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, `rgb(${Math.round(botR*dim)},${Math.round(botG*dim)},${Math.round(botB*dim)})`);
         }
         for (let r = 0; r < ROWS; r++) {
-            const sR = r % 2 === 0 ? 0x2e : 0x38, sG = r % 2 === 0 ? 0x4a : 0x4f, sB = r % 2 === 0 ? 0x4e : 0x54;
+            const sR = 0x15, sG = 0x20, sB = 0x15;
             const dim = 1 - powerFade * 0.5;
             drawRect(0, r * TILE, TILE, TILE, `rgb(${Math.round(sR*dim)},${Math.round(sG*dim)},${Math.round(sB*dim)})`);
             drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, `rgb(${Math.round(sR*dim)},${Math.round(sG*dim)},${Math.round(sB*dim)})`);
         }
 
-        // String lights — flicker like losing power, then go dark
-        // They stay on at first, start sputtering, then die one by one
+        // Mushroom lights — flicker like losing power, then go dark
+        const QUAKE_MUSH = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#44ff44"];
         for (let c = 1; c < COLS - 1; c++) {
-            const bulbX = c * TILE + TILE / 2;
-            const bulbY = TILE + 6;
-            const lightCol = PAL.gridOn[c % 4];
+            const mushX = c * TILE + TILE / 2;
+            const mushY = TILE + 4;
+            const mushCol = QUAKE_MUSH[c % QUAKE_MUSH.length];
 
-            // Each light has its own "die time" — outer lights die first, center last
+            // Each mushroom dims at different times — outer first, center last
             const distFromCenter = Math.abs(c - COLS / 2) / (COLS / 2);
-            const dieFrame = 60 + (1 - distFromCenter) * 120; // outer die at ~60f, center at ~180f
-            const flickerZone = dieFrame - 40; // starts sputtering 40 frames before dying
+            const dieFrame = 60 + (1 - distFromCenter) * 120;
+            const flickerZone = dieFrame - 40;
+
+            // Stem always visible
+            ctx.strokeStyle = "#1e2e1e";
+            ctx.lineWidth = 1 * SCALE;
+            ctx.beginPath();
+            ctx.moveTo(mushX * SCALE, TILE * SCALE);
+            ctx.lineTo(mushX * SCALE, (mushY - 1) * SCALE);
+            ctx.stroke();
 
             if (t < flickerZone) {
-                // Still on — normal happy chase from Scene 1
                 const chase = Math.sin(introGlobalTimer * 0.05 + c * 0.6) * 0.5 + 0.5;
                 ctx.globalAlpha = 0.5 + chase * 0.5;
-                drawRect(bulbX - 2, bulbY, 4, 4, lightCol);
-                ctx.fillStyle = lightCol;
-                ctx.globalAlpha = 0.15 + chase * 0.2;
-                ctx.fillRect((bulbX - 5) * SCALE, (bulbY - 3) * SCALE, 10 * SCALE, 10 * SCALE);
+                ctx.fillStyle = mushCol;
+                ctx.beginPath();
+                ctx.arc(mushX * SCALE, (mushY + 3) * SCALE, 2.5 * SCALE, Math.PI, 0);
+                ctx.fill();
+                ctx.fillStyle = mushCol;
+                ctx.globalAlpha = 0.08 + chase * 0.1;
+                ctx.beginPath();
+                ctx.arc(mushX * SCALE, (mushY + 3) * SCALE, 5 * SCALE, 0, Math.PI * 2);
+                ctx.fill();
             } else if (t < dieFrame) {
-                // Sputtering — irregular on/off, dimming
-                const sputter = (t - flickerZone) / (dieFrame - flickerZone); // 0→1
+                const sputter = (t - flickerZone) / (dieFrame - flickerZone);
                 const dimming = 1 - sputter * 0.7;
-                // Irregular flicker using sin waves at different frequencies
                 const flick = Math.sin(t * 0.7 + c * 3.1) * Math.sin(t * 1.3 + c * 1.7) > -0.2;
                 if (flick) {
-                    ctx.globalAlpha = dimming;
-                    drawRect(bulbX - 2, bulbY, 4, 4, lightCol);
+                    ctx.globalAlpha = dimming * 0.5;
+                    ctx.fillStyle = mushCol;
+                    ctx.beginPath();
+                    ctx.arc(mushX * SCALE, (mushY + 3) * SCALE, 2.5 * SCALE, Math.PI, 0);
+                    ctx.fill();
                 } else {
-                    drawRect(bulbX - 2, bulbY, 4, 4, "#392a1c");
+                    ctx.fillStyle = "#0d150d";
+                    ctx.beginPath();
+                    ctx.arc(mushX * SCALE, (mushY + 3) * SCALE, 2.5 * SCALE, Math.PI, 0);
+                    ctx.fill();
                 }
             } else {
-                // Dead — dark bulb (matches Scene 2+ dead lights)
-                drawRect(bulbX - 2, bulbY, 4, 4, "#2a1d0d");
+                // Dead mushroom — dark
+                ctx.fillStyle = "#0a0f0a";
+                ctx.beginPath();
+                ctx.arc(mushX * SCALE, (mushY + 3) * SCALE, 2.5 * SCALE, Math.PI, 0);
+                ctx.fill();
             }
         }
         ctx.globalAlpha = 1;
@@ -8999,8 +9647,8 @@ function renderIntro() {
         const boothY = GRID_Y * TILE - 8;
         drawLightRig(boothX - 8, boothY - 18, introKickPump);
         drawDiscoBall(boothX + 20, boothY - 30);
-        drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
-        drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
+        drawRect(boothX - 8, boothY + 12, 64, 8, "#2a3a2a");
+        drawRect(boothX - 8, boothY + 12, 64, 2, "#3a4a3a");
         drawSubwoofer(boothX - 12, boothY - 2, introKickPump, -1);
         drawSubwoofer(boothX + 44, boothY - 2, introKickPump, 1);
         drawTurntable(boothX + 1, boothY - 2);
@@ -9129,17 +9777,17 @@ function renderIntro() {
                 // Cave opens
                 if (caveReveal > 0) {
                     const holeSize = caveReveal * TILE;
-                    drawRect(cx + (TILE - holeSize) / 2, cy + (TILE - holeSize) / 2, holeSize, holeSize + 4, "#0a0a0a");
+                    drawRect(cx + (TILE - holeSize) / 2, cy + (TILE - holeSize) / 2, holeSize, holeSize + 4, "#050805");
                     if (caveReveal > 0.5) {
-                        drawRect(cx - 2, cy - 4, TILE + 4, 3, "#684c3c");
-                        drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");
+                        drawRect(cx - 2, cy - 4, TILE + 4, 3, "#243024");
+                        drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#243024");
                     }
                     // Falling rubble
                     if (caveReveal < 0.8) {
                         for (let ri = 0; ri < 5; ri++) {
                             const rx = cx + (ri * 7 + t) % TILE;
                             const ry = cy + TILE + (t * 0.5 + ri * 11) % 20;
-                            drawRect(rx, ry, 2, 2, "#684c3c");
+                            drawRect(rx, ry, 2, 2, "#243024");
                         }
                     }
                     // Glowing eyes in darkness — no goblins emerge in this scene
@@ -9198,20 +9846,20 @@ function renderIntro() {
         drawRect(0, 0, W, H, "#161615");
         // Walls with caves now open (dimmed — power died in Scene 1A)
         for (let c = 0; c < COLS; c++) {
-            drawRect(c * TILE, 0, TILE, TILE, c % 2 === 0 ? "#39200a" : "#493f35");
-            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, c % 2 === 0 ? "#172527" : "#1c282a");
+            drawRect(c * TILE, 0, TILE, TILE, (c * 7 + 3) % 3 === 0 ? "#1e2e1e" : "#1a2a1a");
+            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, (c * 11 + 5) % 3 === 0 ? "#152015" : "#1a2a1a");
         }
         for (let r = 0; r < ROWS; r++) {
-            drawRect(0, r * TILE, TILE, TILE, r % 2 === 0 ? "#172527" : "#1c282a");
-            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, r % 2 === 0 ? "#172527" : "#1c282a");
+            drawRect(0, r * TILE, TILE, TILE, (r * 7) % 3 === 0 ? "#152015" : "#1a2a1a");
+            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, (r * 11) % 3 === 0 ? "#152015" : "#1a2a1a");
         }
         // Open caves with glowing eyes (eyes fade as goblins emerge)
         for (let ci = 0; ci < CAVES.length; ci++) {
             const cave = CAVES[ci];
             const cx = cave.tileX * TILE, cy = cave.tileY * TILE;
-            drawRect(cx, cy - 2, TILE, TILE + 4, "#0a0a0a");
-            drawRect(cx - 2, cy - 4, TILE + 4, 3, "#684c3c");
-            drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#684c3c");
+            drawRect(cx, cy - 2, TILE, TILE + 4, "#050805");
+            drawRect(cx - 2, cy - 4, TILE + 4, 3, "#243024");
+            drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#243024");
             // Eyes glow until first goblin from this cave emerges
             const gobEmerged = introGoblins.some(g => g.caveIdx === ci && g.emerged);
             if (!gobEmerged) {
@@ -9223,9 +9871,9 @@ function renderIntro() {
             }
         }
 
-        // Dead string lights (all off — power died in earthquake)
+        // Dead mushroom lights (all dark — power died in earthquake)
         for (let c = 1; c < COLS - 1; c++) {
-            drawRect(c * TILE + TILE / 2 - 2, TILE + 6, 4, 4, "#2a1d0d");
+            drawRect(c * TILE + TILE / 2 - 2, TILE + 6, 4, 4, "#0a0f0a");
         }
 
         // Beat grid — corruption starts after goblins reach it (~frame 120)
@@ -9354,16 +10002,16 @@ function renderIntro() {
             // Intact booth — full setup (with damage after swarm)
             drawLightRig(boothX - 8, boothY - 18, introKickPump);
             drawDiscoBall(boothX + 20, boothY - 30);
-            drawRect(boothX - 8, boothY + 12, 64, 8, "#45230d");
-            drawRect(boothX - 8, boothY + 12, 64, 2, "#684c3c");
+            drawRect(boothX - 8, boothY + 12, 64, 8, "#2a3a2a");
+            drawRect(boothX - 8, boothY + 12, 64, 2, "#3a4a3a");
             drawSubwoofer(boothX - 12, boothY - 2, 0, -1);
             drawSubwoofer(boothX + 44, boothY - 2, 0, 1);
             drawTurntable(boothX + 1, boothY - 2);
             drawMixer(boothX + 18, boothY + 2);
             if (t > 120) {
-                drawRect(boothX + 5, boothY + 6, 10, 6, "#1f240a");
-                drawRect(boothX + 35, boothY + 8, 8, 4, "#1f240a");
-                drawRect(boothX + 18, boothY + 2, 12, 10, "#1f240a");
+                drawRect(boothX + 5, boothY + 6, 10, 6, "#0d150d");
+                drawRect(boothX + 35, boothY + 8, 8, 4, "#0d150d");
+                drawRect(boothX + 18, boothY + 2, 12, 10, "#0d150d");
                 if (t % 8 < 2) {
                     drawRect(boothX + 10 + Math.random() * 30, boothY + Math.random() * 10, 2, 3, "#efac28");
                 }
@@ -9403,8 +10051,8 @@ function renderIntro() {
             drawRect(boothX - 8, boothY + 12, 64, 8, "#2a1a0a");
             drawRect(boothX - 8, boothY + 12, 64, 2, "#3a2a1a");
             // Scorch marks
-            drawRect(boothX + 5, boothY + 4, 15, 8, "#1a0e08");
-            drawRect(boothX + 25, boothY + 6, 12, 6, "#1a0e08");
+            drawRect(boothX + 5, boothY + 4, 15, 8, "#0a0f0a");
+            drawRect(boothX + 25, boothY + 6, 12, 6, "#0a0f0a");
 
             // Update and draw debris pieces
             const gravity = 0.12;
@@ -9784,16 +10432,16 @@ function renderIntro() {
             djFrame = riseProgress < 0.5 ? 0 : Math.floor((rt - 45) / 8) % 4;
         }
 
-        drawRect(0, 0, W, H, "#0a0a0a");
+        drawRect(0, 0, W, H, "#050805");
 
-        // Spotlight follows DJ position
+        // Spotlight follows DJ position — green-tinted cave glow
         const spotW = W * SCALE;
         const spotH = H * SCALE;
-        const spotCX = (djX + 8) * SCALE; // center on DJ
+        const spotCX = (djX + 8) * SCALE;
         const spotCY = (djY + 8) * SCALE;
         const spotGrad = ctx.createRadialGradient(spotCX, spotCY, 10, spotCX, spotCY, spotW * 0.3);
-        spotGrad.addColorStop(0, "#2a1d0d");
-        spotGrad.addColorStop(1, "#0a0a0a");
+        spotGrad.addColorStop(0, "#0d1a0d");
+        spotGrad.addColorStop(1, "#050805");
         ctx.fillStyle = spotGrad;
         ctx.fillRect(0, 0, spotW, spotH);
 
@@ -9822,7 +10470,7 @@ function renderIntro() {
                     const dist = 15 + Math.sin(t * 0.1 + si) * 5;
                     const sx = (djX + 8 + Math.cos(angle) * dist) * SCALE;
                     const sy = (djY - 4 + Math.sin(angle) * dist) * SCALE;
-                    ctx.fillStyle = si % 2 === 0 ? "#efac28" : "#efd8a1";
+                    ctx.fillStyle = si % 2 === 0 ? "#44ff44" : "#88ee88";
                     ctx.globalAlpha = 0.6 + Math.sin(t * 0.2 + si) * 0.4;
                     ctx.fillRect(sx - SCALE, sy - SCALE, 2 * SCALE, 2 * SCALE);
                 }
@@ -9834,15 +10482,15 @@ function renderIntro() {
         if (t > CRAWL_FRAMES + 60) {
             const txtAlpha = Math.min(1, (t - CRAWL_FRAMES - 60) / 30);
             ctx.globalAlpha = txtAlpha;
-            drawCentered("BUT THE DJ DIDN'T RUN.", 20, "#efac28", 5);
-            drawCentered("ALONE IN THE WRECKAGE, SOMETHING STIRRED.", 30, "#efac28", 5);
-            drawCentered("A RHYTHM, DEEP IN THE CHEST, THAT REFUSED TO DIE.", 40, "#efac28", 5);
+            drawCentered("BUT THE DJ DIDN'T RUN.", 20, "#44ff44", 5);
+            drawCentered("ALONE IN THE WRECKAGE, SOMETHING STIRRED.", 30, "#44ff44", 5);
+            drawCentered("A RHYTHM, DEEP IN THE CHEST, THAT REFUSED TO DIE.", 40, "#44ff44", 5);
         }
         if (t > CRAWL_FRAMES + 150) {
             const txtAlpha2 = Math.min(1, (t - CRAWL_FRAMES - 150) / 30);
             ctx.globalAlpha = txtAlpha2;
-            drawCentered("TWO FISTS. ONE BEAT.", H - 36, "#ef3a0c", 8);
-            drawCentered("THAT'S ALL IT WOULD TAKE.", H - 24, "#ef3a0c", 6);
+            drawCentered("TWO FISTS. ONE BEAT.", H - 36, "#ff6611", 8);
+            drawCentered("THAT'S ALL IT WOULD TAKE.", H - 24, "#ff6611", 6);
         }
         ctx.globalAlpha = 1;
 
@@ -9854,11 +10502,11 @@ function renderIntro() {
     const hudPromptDelay = lastBeatFrame + 60;
     if (t > hudPromptDelay) {
         const promptText = introScene >= 3 ? "PRESS ENTER TO BEGIN" : "PRESS ENTER";
-        // Draw HUD background (matches gameplay HUD style)
-        drawHudRect(0, 0, COLS * TILE, HUD_H, "#2a1d0d");
-        // Teal border along top
+        // Draw HUD background (matches cave style)
+        drawHudRect(0, 0, COLS * TILE, HUD_H, "#0a0f0a");
+        // Stone border along top
         for (let c = 0; c < COLS; c++) {
-            drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#2e4a4e" : "#384f54");
+            drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#1a2a1a" : "#1e2e1e");
         }
         hudCtx.fillStyle = "rgba(255,255,255,0.08)";
         hudCtx.fillRect(0, 0, COLS * TILE * SCALE, 1 * SCALE);
@@ -9893,14 +10541,14 @@ function renderHighScoreEntry() {
     const H = ROWS * TILE;
 
     // Dark background with starfield
-    drawRect(0, 0, W, H, "#1f240a");
+    drawRect(0, 0, W, H, "#050805");
     for (let i = 0; i < 60; i++) {
         const sx = ((i * 137 + 50) % W);
         const sy = ((i * 97 + 30) % H);
         const twinkle = Math.sin(initialsBlink * 0.05 + i) * 0.5 + 0.5;
         ctx.globalAlpha = 0.3 + twinkle * 0.7;
         const starSize = (i % 3 === 0) ? 2 : 1;
-        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#efac28" : "#efd8a1");
+        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#44ff44" : "#88cc88");
     }
     ctx.globalAlpha = 1;
 
@@ -9952,12 +10600,12 @@ function renderHighScoreEntry() {
         }
 
         // Draw the letter
-        const color = i < initialsPos ? "#a58c27" : (i === initialsPos ? "#efac28" : "#392a1c");
+        const color = i < initialsPos ? "#44aa44" : (i === initialsPos ? "#44ff44" : "#1a2a1a");
         drawText(initialsEntry[i], lx, ly, color, letterScale);
         ctx.globalAlpha = 1;
 
         // Underline
-        drawRect(lx, ly + letterScale + 4, letterScale, 2, i === initialsPos ? "#efac28" : "#392a1c");
+        drawRect(lx, ly + letterScale + 4, letterScale, 2, i === initialsPos ? "#44ff44" : "#1a2a1a");
     }
 
     // Existing high scores list
@@ -9987,7 +10635,7 @@ function renderHighScoreEntry() {
     const hint = "UP/DOWN: LETTER   ENTER: CONFIRM";
     ctx.textAlign = "center";
     ctx.font = `${3 * SCALE}px monospace`;
-    ctx.fillStyle = "#684c3c";
+    ctx.fillStyle = "#243024";
     ctx.fillText(hint, (W / 2) * SCALE, (H - 12) * SCALE);
     ctx.textAlign = "start";
 }
@@ -10007,7 +10655,7 @@ function renderLevelComplete() {
     render();
     const fadeAlpha = Math.min(1, levelCelebrateTimer / 90);
     ctx.globalAlpha = fadeAlpha;
-    drawRect(0, 0, COLS * TILE, ROWS * TILE, "#1f240a");
+    drawRect(0, 0, COLS * TILE, ROWS * TILE, "#050805");
     ctx.globalAlpha = 1.0;
 
     // Keep dancers dancing on top of the dark overlay
@@ -10549,7 +11197,7 @@ function renderEnemyWarningIntro() {
     const H = ROWS * TILE;
 
     // Dark background
-    drawRect(0, 0, W, H, "#1f240a");
+    drawRect(0, 0, W, H, "#050805");
 
     // Dramatic flash effect — bright flash that fades
     if (progress < 0.4) {
@@ -10573,7 +11221,7 @@ function renderEnemyWarning() {
     const H = ROWS * TILE;
 
     // Dark background with threat color tint by enemy type
-    drawRect(0, 0, W, H, "#1f240a");
+    drawRect(0, 0, W, H, "#050805");
     // Threat color tint — subtle background hue based on enemy type
     const threatCol = enemyWarningType === "normal" ? "#39FF14" : (enemyWarningType === "elite" ? "#FF00FF" : "#00FFFF");
     const threatPulse = 0.03 + Math.sin(t * 0.06) * 0.02;
@@ -10589,7 +11237,7 @@ function renderEnemyWarning() {
         const twinkle = Math.sin(t * 0.05 + i) * 0.5 + 0.5;
         ctx.globalAlpha = 0.3 + twinkle * 0.7;
         const starSize = (i % 3 === 0) ? 2 : 1;
-        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#efac28" : "#efd8a1");
+        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#44ff44" : "#88cc88");
     }
     ctx.globalAlpha = 1;
 
@@ -10686,7 +11334,7 @@ function renderEnemyWarning() {
 
     // Blinking "PRESS ENTER TO CONTINUE"
     if (t > 60 && t % 60 < 40) {
-        drawCenteredText("PRESS ENTER TO CONTINUE", H - 12, "#efd8a1", 5);
+        drawCenteredText("PRESS ENTER TO CONTINUE", H - 12, "#88cc88", 5);
     }
 
 }
@@ -10699,7 +11347,7 @@ function renderNewInstrument() {
     const H = ROWS * TILE;
 
     // Dark background (same as tutorial)
-    drawRect(0, 0, W, H, "#1f240a");
+    drawRect(0, 0, W, H, "#050805");
 
     // Starfield
     for (let i = 0; i < 60; i++) {
@@ -10708,7 +11356,7 @@ function renderNewInstrument() {
         const twinkle = Math.sin(t * 0.05 + i) * 0.5 + 0.5;
         ctx.globalAlpha = 0.3 + twinkle * 0.7;
         const starSize = (i % 3 === 0) ? 2 : 1;
-        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#efac28" : "#efd8a1");
+        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#44ff44" : "#88cc88");
     }
     ctx.globalAlpha = 1;
 
@@ -10724,7 +11372,7 @@ function renderNewInstrument() {
         // Title with entrance animation
         const titleAlpha = Math.min(1, t / 30);
         ctx.globalAlpha = titleAlpha;
-        drawCenteredText("NEW INSTRUMENT!", 28, "#efac28", 8);
+        drawCenteredText("NEW INSTRUMENT!", 28, "#44ff44", 8);
         ctx.globalAlpha = 1;
 
         // Instrument name
@@ -10814,7 +11462,7 @@ function renderNewInstrument() {
         // Title with entrance animation
         const titleAlpha = Math.min(1, t / 30);
         ctx.globalAlpha = titleAlpha;
-        drawCenteredText("NEW INSTRUMENT!", 28, "#efac28", 8);
+        drawCenteredText("NEW INSTRUMENT!", 28, "#44ff44", 8);
         ctx.globalAlpha = 1;
 
         // Instrument name
@@ -10897,7 +11545,7 @@ function renderNewInstrument() {
 
     // Blinking "PRESS ENTER TO CONTINUE"
     if (t > 80 && t % 60 < 40) {
-        drawCenteredText("PRESS ENTER TO CONTINUE", H - 12, "#efd8a1", 5);
+        drawCenteredText("PRESS ENTER TO CONTINUE", H - 12, "#88cc88", 5);
     }
 }
 
