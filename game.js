@@ -519,6 +519,481 @@ hudCanvas.width = COLS * TILE * SCALE;
 hudCanvas.height = HUD_H * SCALE;
 hudCtx.imageSmoothingEnabled = false;
 
+// ============================================================
+// PROCEDURAL TEXTURE GENERATION SYSTEM
+// Pre-renders detailed textures to off-screen canvases at startup
+// ============================================================
+
+// Seeded PRNG for deterministic texture generation
+function texRNG(seed) {
+    let s = seed;
+    return function() {
+        s = (s * 1103515245 + 12345) & 0x7fffffff;
+        return s / 0x7fffffff;
+    };
+}
+
+// Helper: parse hex color to [r,g,b]
+function hexToRGB(hex) {
+    const v = parseInt(hex.slice(1), 16);
+    return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+
+// Helper: blend two colors
+function blendColor(c1, c2, t) {
+    const a = hexToRGB(c1), b = hexToRGB(c2);
+    const r = Math.round(a[0] + (b[0] - a[0]) * t);
+    const g = Math.round(a[1] + (b[1] - a[1]) * t);
+    const bl = Math.round(a[2] + (b[2] - a[2]) * t);
+    return `rgb(${r},${g},${bl})`;
+}
+
+// Generate a single stone tile texture (TILE*SCALE x TILE*SCALE pixels)
+function generateStoneTile(seed, baseColor, darkColor, highlightColor, opts) {
+    const o = opts || {};
+    const size = TILE * SCALE; // 48x48 pixels
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const g = c.getContext('2d');
+    const rng = texRNG(seed);
+
+    // Base fill
+    g.fillStyle = baseColor;
+    g.fillRect(0, 0, size, size);
+
+    // Stone grain — varied patches of slightly different shades
+    for (let i = 0; i < 18; i++) {
+        const px = Math.floor(rng() * (size - 8));
+        const py = Math.floor(rng() * (size - 8));
+        const pw = 4 + Math.floor(rng() * 12);
+        const ph = 4 + Math.floor(rng() * 12);
+        const bright = rng() > 0.5;
+        g.fillStyle = bright ? highlightColor : darkColor;
+        g.globalAlpha = 0.15 + rng() * 0.2;
+        g.fillRect(px, py, pw, ph);
+    }
+    g.globalAlpha = 1;
+
+    // Large stone patches (creates mottled look)
+    for (let i = 0; i < 5; i++) {
+        const cx = rng() * size;
+        const cy = rng() * size;
+        const cr = 6 + rng() * 14;
+        g.fillStyle = rng() > 0.5 ? darkColor : highlightColor;
+        g.globalAlpha = 0.08 + rng() * 0.12;
+        g.beginPath();
+        g.arc(cx, cy, cr, 0, Math.PI * 2);
+        g.fill();
+    }
+    g.globalAlpha = 1;
+
+    // Crack lines (2-5 per tile)
+    const numCracks = 2 + Math.floor(rng() * 4);
+    for (let i = 0; i < numCracks; i++) {
+        const x1 = rng() * size;
+        const y1 = rng() * size;
+        const segments = 2 + Math.floor(rng() * 3);
+        g.strokeStyle = darkColor;
+        g.globalAlpha = 0.3 + rng() * 0.4;
+        g.lineWidth = 0.5 + rng() * 1;
+        g.beginPath();
+        g.moveTo(x1, y1);
+        let cx = x1, cy = y1;
+        for (let s = 0; s < segments; s++) {
+            cx += (rng() - 0.5) * 18;
+            cy += (rng() - 0.5) * 18;
+            g.lineTo(cx, cy);
+        }
+        g.stroke();
+        // Highlight edge along crack (depth effect)
+        g.strokeStyle = highlightColor;
+        g.globalAlpha = 0.15;
+        g.lineWidth = 0.5;
+        g.beginPath();
+        g.moveTo(x1 + 1, y1 + 1);
+        cx = x1 + 1; cy = y1 + 1;
+        for (let s = 0; s < segments; s++) {
+            cx += (rng() - 0.5) * 18;
+            cy += (rng() - 0.5) * 18;
+            g.lineTo(cx, cy);
+        }
+        g.stroke();
+    }
+    g.globalAlpha = 1;
+
+    // Moss / mineral spots
+    if (!o.noMoss) {
+        const numSpots = Math.floor(rng() * 4);
+        for (let i = 0; i < numSpots; i++) {
+            const mx = rng() * size;
+            const my = rng() * size;
+            const mr = 2 + rng() * 4;
+            g.fillStyle = o.mossColor || "#2a4a2a";
+            g.globalAlpha = 0.15 + rng() * 0.2;
+            g.beginPath();
+            g.arc(mx, my, mr, 0, Math.PI * 2);
+            g.fill();
+        }
+        g.globalAlpha = 1;
+    }
+
+    // Edge bevels — subtle 3D effect
+    // Top/left highlight
+    g.fillStyle = highlightColor;
+    g.globalAlpha = 0.12;
+    g.fillRect(0, 0, size, 2);
+    g.fillRect(0, 0, 2, size);
+    // Bottom/right shadow
+    g.fillStyle = darkColor;
+    g.globalAlpha = 0.2;
+    g.fillRect(0, size - 2, size, 2);
+    g.fillRect(size - 2, 0, 2, size);
+    g.globalAlpha = 1;
+
+    // Pixel noise for roughness
+    const imgData = g.getImageData(0, 0, size, size);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+        const noise = (rng() - 0.5) * 12;
+        d[i] = Math.max(0, Math.min(255, d[i] + noise));
+        d[i+1] = Math.max(0, Math.min(255, d[i+1] + noise));
+        d[i+2] = Math.max(0, Math.min(255, d[i+2] + noise));
+    }
+    g.putImageData(imgData, 0, 0);
+
+    return c;
+}
+
+// Generate stone tile for the grid (darker, more uniform)
+function generateGridStoneTile(seed) {
+    return generateStoneTile(seed, "#1a2820", "#0d150d", "#2a3a2a", { mossColor: "#1a3a2a" });
+}
+
+// Generate an active/glowing grid tile overlay
+function generateGlowTile(seed, glowColor) {
+    const size = TILE * SCALE;
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const g = c.getContext('2d');
+    const rng = texRNG(seed);
+    const [gr, gg, gb] = hexToRGB(glowColor);
+
+    // Dark stone base
+    g.fillStyle = "#1a2820";
+    g.fillRect(0, 0, size, size);
+
+    // Glow fill (inner area)
+    const innerPad = 3;
+    g.fillStyle = glowColor;
+    g.globalAlpha = 0.7;
+    g.beginPath();
+    g.roundRect(innerPad, innerPad, size - innerPad * 2, size - innerPad * 2, 3);
+    g.fill();
+    g.globalAlpha = 1;
+
+    // Energy vein network (branching cracks that glow)
+    const numVeins = 4 + Math.floor(rng() * 4);
+    for (let i = 0; i < numVeins; i++) {
+        const x1 = innerPad + rng() * (size - innerPad * 2);
+        const y1 = innerPad + rng() * (size - innerPad * 2);
+        const segments = 2 + Math.floor(rng() * 3);
+        // Bright core
+        g.strokeStyle = `rgba(255,255,255,0.6)`;
+        g.lineWidth = 0.5 + rng() * 1;
+        g.beginPath();
+        g.moveTo(x1, y1);
+        let vx = x1, vy = y1;
+        for (let s = 0; s < segments; s++) {
+            vx += (rng() - 0.5) * 20;
+            vy += (rng() - 0.5) * 20;
+            g.lineTo(vx, vy);
+        }
+        g.stroke();
+        // Outer glow around vein
+        g.strokeStyle = glowColor;
+        g.globalAlpha = 0.4;
+        g.lineWidth = 2 + rng() * 2;
+        g.beginPath();
+        g.moveTo(x1, y1);
+        vx = x1; vy = y1;
+        for (let s = 0; s < segments; s++) {
+            vx += (rng() - 0.5) * 20;
+            vy += (rng() - 0.5) * 20;
+            g.lineTo(vx, vy);
+        }
+        g.stroke();
+        g.globalAlpha = 1;
+    }
+
+    // Hot spots (brighter concentration points)
+    for (let i = 0; i < 3; i++) {
+        const hx = innerPad + rng() * (size - innerPad * 2);
+        const hy = innerPad + rng() * (size - innerPad * 2);
+        const hr = 3 + rng() * 6;
+        const grad = g.createRadialGradient(hx, hy, 0, hx, hy, hr);
+        grad.addColorStop(0, `rgba(255,255,255,0.5)`);
+        grad.addColorStop(0.5, `rgba(${gr},${gg},${gb},0.4)`);
+        grad.addColorStop(1, `rgba(${gr},${gg},${gb},0)`);
+        g.fillStyle = grad;
+        g.fillRect(hx - hr, hy - hr, hr * 2, hr * 2);
+    }
+
+    // Inner highlight (top edge shine)
+    g.fillStyle = "rgba(255,255,255,0.12)";
+    g.fillRect(innerPad, innerPad, size - innerPad * 2, 2);
+
+    // Edge bevel
+    g.fillStyle = "#0d150d";
+    g.globalAlpha = 0.3;
+    g.fillRect(0, size - 2, size, 2);
+    g.fillRect(size - 2, 0, 2, size);
+    g.globalAlpha = 1;
+
+    return c;
+}
+
+// Generate cave wall tile (rougher, more variation)
+function generateCaveWallTile(seed, variant) {
+    const colors = [
+        { base: "#1e2e1e", dark: "#0a0f0a", hi: "#2a3a2a" },
+        { base: "#1a2a1a", dark: "#080d08", hi: "#243024" },
+        { base: "#162616", dark: "#060b06", hi: "#1e3e1e" },
+    ];
+    const pal = colors[variant % 3];
+    return generateStoneTile(seed, pal.base, pal.dark, pal.hi, { mossColor: "#1a3a1a" });
+}
+
+// Generate cave floor tile (dark, with subtle variation)
+function generateFloorTile(seed) {
+    return generateStoneTile(seed, "#0d150d", "#050a05", "#152015", { mossColor: "#0a1a0a" });
+}
+
+// ---- Pre-generate texture atlas at startup ----
+// Floor tiles (ROWS x COLS grid — one per tile position)
+const TEX_FLOOR = [];
+for (let r = 0; r < ROWS; r++) {
+    TEX_FLOOR[r] = [];
+    for (let c = 0; c < COLS; c++) {
+        TEX_FLOOR[r][c] = generateFloorTile(r * 1000 + c * 37 + 5555);
+    }
+}
+
+// Wall tiles (top, bottom, left, right walls)
+const TEX_WALL_TOP = [];
+const TEX_WALL_BOT = [];
+const TEX_WALL_LEFT = [];
+const TEX_WALL_RIGHT = [];
+for (let c = 0; c < COLS; c++) {
+    TEX_WALL_TOP[c] = generateCaveWallTile(c * 73 + 111, (c * 7 + 3) % 3);
+    TEX_WALL_BOT[c] = generateCaveWallTile(c * 91 + 222, (c * 11 + 5) % 3);
+}
+for (let r = 0; r < ROWS; r++) {
+    TEX_WALL_LEFT[r] = generateCaveWallTile(r * 67 + 333, (r * 7) % 3);
+    TEX_WALL_RIGHT[r] = generateCaveWallTile(r * 83 + 444, (r * 11) % 3);
+}
+
+// Grid stone tiles (inactive blocks — unique per cell position)
+const TEX_GRID_OFF = [];
+for (let r = 0; r < 6; r++) {
+    TEX_GRID_OFF[r] = [];
+    for (let c = 0; c < GRID_COLS; c++) {
+        TEX_GRID_OFF[r][c] = generateGridStoneTile(r * 100 + c * 17 + 9999);
+    }
+}
+
+// Grid glow tiles (active blocks — per row color, multiple variants per row)
+const GLOW_COLORS = ["#44ff44", "#88ee22", "#ee8822", "#ff6611", "#ff4400", "#33dd88"];
+const TEX_GRID_ON = [];
+for (let r = 0; r < 6; r++) {
+    TEX_GRID_ON[r] = [];
+    for (let c = 0; c < GRID_COLS; c++) {
+        TEX_GRID_ON[r][c] = generateGlowTile(r * 100 + c * 17 + 7777, GLOW_COLORS[r]);
+    }
+}
+
+// Grid wall background texture (stone slab behind the grid)
+const TEX_GRID_WALL = (function() {
+    // This is a larger texture for the wall behind the grid
+    const maxAR = 6;
+    const w = (GRID_COLS * TILE + 4) * SCALE;
+    const h = (maxAR * TILE + 4) * SCALE;
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d');
+    const rng = texRNG(88888);
+
+    // Base stone slab
+    g.fillStyle = "#1a2820";
+    g.beginPath();
+    g.roundRect(0, 0, w, h, 3);
+    g.fill();
+
+    // Large mottled patches
+    for (let i = 0; i < 30; i++) {
+        const px = rng() * w;
+        const py = rng() * h;
+        const pr = 10 + rng() * 30;
+        g.fillStyle = rng() > 0.5 ? "#0d150d" : "#243024";
+        g.globalAlpha = 0.06 + rng() * 0.1;
+        g.beginPath();
+        g.arc(px, py, pr, 0, Math.PI * 2);
+        g.fill();
+    }
+    g.globalAlpha = 1;
+
+    // Stone texture cracks
+    for (let i = 0; i < 40; i++) {
+        const x1 = 8 + rng() * (w - 16);
+        const y1 = 8 + rng() * (h - 16);
+        const segments = 2 + Math.floor(rng() * 4);
+        g.strokeStyle = "rgba(15,25,15,0.6)";
+        g.lineWidth = 0.5 + rng() * 1;
+        g.beginPath();
+        g.moveTo(x1, y1);
+        let cx = x1, cy = y1;
+        for (let s = 0; s < segments; s++) {
+            cx += (rng() - 0.5) * 25;
+            cy += (rng() - 0.5) * 25;
+            g.lineTo(cx, cy);
+        }
+        g.stroke();
+    }
+
+    // Mortar lines (horizontal and vertical grid)
+    g.strokeStyle = "#0d150d";
+    g.lineWidth = 1;
+    for (let r = 0; r <= maxAR; r++) {
+        const ly = 2 * SCALE + r * TILE * SCALE;
+        g.beginPath();
+        g.moveTo(0, ly);
+        g.lineTo(w, ly);
+        g.stroke();
+    }
+    for (let c = 0; c <= GRID_COLS; c++) {
+        const lx = 2 * SCALE + c * TILE * SCALE;
+        g.beginPath();
+        g.moveTo(lx, 0);
+        g.lineTo(lx, h);
+        g.stroke();
+    }
+
+    // Pixel noise
+    const imgData = g.getImageData(0, 0, w, h);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+        const noise = (rng() - 0.5) * 8;
+        d[i] = Math.max(0, Math.min(255, d[i] + noise));
+        d[i+1] = Math.max(0, Math.min(255, d[i+1] + noise));
+        d[i+2] = Math.max(0, Math.min(255, d[i+2] + noise));
+    }
+    g.putImageData(imgData, 0, 0);
+
+    return c;
+})();
+
+// Pre-render static cave background (floor + walls + stalactites + stalagmites)
+const TEX_CAVE_BG = (function() {
+    const w = COLS * TILE * SCALE;
+    const h = ROWS * TILE * SCALE;
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d');
+
+    // Dark base fill
+    g.fillStyle = "#0a0f0a";
+    g.fillRect(0, 0, w, h);
+
+    // Draw floor tiles
+    for (let r = 0; r < ROWS; r++) {
+        for (let col = 0; col < COLS; col++) {
+            g.drawImage(TEX_FLOOR[r][col], col * TILE * SCALE, r * TILE * SCALE);
+        }
+    }
+
+    // Top wall tiles
+    for (let col = 0; col < COLS; col++) {
+        g.drawImage(TEX_WALL_TOP[col], col * TILE * SCALE, 0);
+    }
+    // Bottom wall tiles
+    for (let col = 0; col < COLS; col++) {
+        g.drawImage(TEX_WALL_BOT[col], col * TILE * SCALE, (ROWS - 1) * TILE * SCALE);
+    }
+    // Left wall tiles
+    for (let r = 0; r < ROWS; r++) {
+        g.drawImage(TEX_WALL_LEFT[r], 0, r * TILE * SCALE);
+    }
+    // Right wall tiles
+    for (let r = 0; r < ROWS; r++) {
+        g.drawImage(TEX_WALL_RIGHT[r], (COLS - 1) * TILE * SCALE, r * TILE * SCALE);
+    }
+
+    // Stalactites (triangular, textured)
+    const stalactitePositions = [2, 4, 7, 9, 12, 14, 17, 19];
+    const stRNG = texRNG(54321);
+    for (const sc of stalactitePositions) {
+        if (sc >= COLS) continue;
+        const stH = 3 + (sc * 7) % 5;
+        const stX = sc * TILE + TILE / 2;
+        const stCol = (sc * 3) % 2 === 0 ? "#1e2e1e" : "#243024";
+        // Main stalactite body
+        g.fillStyle = stCol;
+        g.beginPath();
+        g.moveTo((stX - 4) * SCALE, TILE * SCALE);
+        g.lineTo((stX + 4) * SCALE, TILE * SCALE);
+        g.lineTo((stX + 1) * SCALE, (TILE + stH) * SCALE);
+        g.lineTo((stX - 1) * SCALE, (TILE + stH + 2) * SCALE);
+        g.closePath();
+        g.fill();
+        // Highlight edge
+        g.fillStyle = "#2a4a2a";
+        g.globalAlpha = 0.3;
+        g.beginPath();
+        g.moveTo((stX - 2) * SCALE, TILE * SCALE);
+        g.lineTo((stX) * SCALE, TILE * SCALE);
+        g.lineTo((stX - 0.5) * SCALE, (TILE + stH) * SCALE);
+        g.closePath();
+        g.fill();
+        g.globalAlpha = 1;
+        // Drip highlight
+        g.fillStyle = "rgba(80,180,80,0.2)";
+        g.beginPath();
+        g.arc((stX) * SCALE, (TILE + stH + 2) * SCALE, 1.5 * SCALE, 0, Math.PI * 2);
+        g.fill();
+    }
+
+    // Stalagmites on floor
+    const stalagmitePositions = [3, 6, 10, 15, 18];
+    for (const sm of stalagmitePositions) {
+        if (sm >= COLS) continue;
+        const smH = 2 + (sm * 5) % 4;
+        const smX = sm * TILE + TILE / 2;
+        const smBaseY = (ROWS - 1) * TILE;
+        g.fillStyle = (sm * 3) % 2 === 0 ? "#1e2e1e" : "#1a2a1a";
+        g.beginPath();
+        g.moveTo((smX - 3) * SCALE, smBaseY * SCALE);
+        g.lineTo((smX + 3) * SCALE, smBaseY * SCALE);
+        g.lineTo((smX) * SCALE, (smBaseY - smH) * SCALE);
+        g.closePath();
+        g.fill();
+        // Highlight
+        g.fillStyle = "#2a4a2a";
+        g.globalAlpha = 0.25;
+        g.beginPath();
+        g.moveTo((smX - 1) * SCALE, smBaseY * SCALE);
+        g.lineTo((smX + 1) * SCALE, smBaseY * SCALE);
+        g.lineTo((smX) * SCALE, (smBaseY - smH) * SCALE);
+        g.closePath();
+        g.fill();
+        g.globalAlpha = 1;
+    }
+
+    return c;
+})();
+
+// ============================================================
+// END PROCEDURAL TEXTURE GENERATION
+// ============================================================
+
 // ---- Colors (dark cave palette — bioluminescent greens + lava oranges) ----
 // Cave stone: dark gray-greens. Active grid: green energy / orange lava
 const PAL = {
@@ -5872,102 +6347,8 @@ function render() {
         ctx.translate(sx, sy);
     }
 
-    // Clear
-    drawRect(0, 0, COLS * TILE, ROWS * TILE, PAL.bg);
-
-    // Dark stone cave floor
-    drawRect(0, 0, COLS * TILE, ROWS * TILE, "#0d150d");
-    // Stone grain texture — subtle cracks and color variation
-    for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-            let seed = r * 1000 + c * 37;
-            for (let i = 0; i < 12; i++) {
-                seed = (seed * 9301 + 49297) % 233280;
-                const gx = (seed % TILE);
-                seed = (seed * 9301 + 49297) % 233280;
-                const gy = (seed % (TILE - 1));
-                seed = (seed * 9301 + 49297) % 233280;
-                const bright = seed / 233280 > 0.5;
-                const grainCol = bright ? "rgba(80,140,80,0.04)" : "rgba(0,0,0,0.12)";
-                drawRect(c * TILE + gx, r * TILE + gy, 1, 1, grainCol);
-            }
-            // Stone crack lines (1-2 per tile, deterministic)
-            seed = (seed * 9301 + 49297) % 233280;
-            if (seed / 233280 > 0.6) {
-                const crX = c * TILE + (seed % 12) + 2;
-                seed = (seed * 9301 + 49297) % 233280;
-                const crY = r * TILE + (seed % 10) + 2;
-                seed = (seed * 9301 + 49297) % 233280;
-                const crLen = 3 + seed % 6;
-                const crAngle = (seed % 4) * 0.8;
-                ctx.strokeStyle = "rgba(30,50,30,0.5)";
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.moveTo((crX) * SCALE, (crY) * SCALE);
-                ctx.lineTo((crX + Math.cos(crAngle) * crLen) * SCALE, (crY + Math.sin(crAngle) * crLen) * SCALE);
-                ctx.stroke();
-            }
-        }
-    }
-
-    // Cave rock walls — rough stone with irregular texture
-    for (let c = 0; c < COLS; c++) {
-        // Top wall — cave ceiling with stone blocks
-        const stoneCol = (c * 7 + 3) % 3 === 0 ? "#1e2e1e" : ((c * 7 + 3) % 3 === 1 ? "#1a2a1a" : "#162616");
-        drawRect(c * TILE, 0, TILE, TILE, stoneCol);
-        // Stone block edge detail
-        drawRect(c * TILE, TILE - 1, TILE, 1, "#0a0f0a");
-        drawRect(c * TILE + TILE - 1, 0, 1, TILE, "rgba(0,0,0,0.2)");
-
-        // Bottom wall — cave floor rocks
-        const botCol = (c * 11 + 5) % 3 === 0 ? "#152015" : ((c * 11 + 5) % 3 === 1 ? "#1a2a1a" : "#111911");
-        drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, botCol);
-        drawRect(c * TILE, (ROWS - 1) * TILE, TILE, 1, "#0a0f0a");
-    }
-    // Stalactites hanging from ceiling (between cave openings)
-    const stalactitePositions = [2, 4, 7, 9, 12, 14, 17, 19];
-    for (const sc of stalactitePositions) {
-        if (sc >= COLS) continue;
-        const stH = 3 + (sc * 7) % 5; // varying heights
-        const stX = sc * TILE + TILE / 2;
-        ctx.fillStyle = (sc * 3) % 2 === 0 ? "#1e2e1e" : "#243024";
-        ctx.beginPath();
-        ctx.moveTo((stX - 3) * SCALE, TILE * SCALE);
-        ctx.lineTo((stX + 3) * SCALE, TILE * SCALE);
-        ctx.lineTo((stX + 1) * SCALE, (TILE + stH) * SCALE);
-        ctx.lineTo((stX - 1) * SCALE, (TILE + stH + 1) * SCALE);
-        ctx.closePath();
-        ctx.fill();
-        // Drip highlight
-        ctx.fillStyle = "rgba(80,180,80,0.15)";
-        ctx.beginPath();
-        ctx.arc((stX) * SCALE, (TILE + stH + 1) * SCALE, 1 * SCALE, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    // Stalagmites on floor
-    const stalagmitePositions = [3, 6, 10, 15, 18];
-    for (const sm of stalagmitePositions) {
-        if (sm >= COLS) continue;
-        const smH = 2 + (sm * 5) % 4;
-        const smX = sm * TILE + TILE / 2;
-        const smBaseY = (ROWS - 1) * TILE;
-        ctx.fillStyle = (sm * 3) % 2 === 0 ? "#1e2e1e" : "#1a2a1a";
-        ctx.beginPath();
-        ctx.moveTo((smX - 2) * SCALE, smBaseY * SCALE);
-        ctx.lineTo((smX + 2) * SCALE, smBaseY * SCALE);
-        ctx.lineTo((smX) * SCALE, (smBaseY - smH) * SCALE);
-        ctx.closePath();
-        ctx.fill();
-    }
-    // Side walls — rough cave rock
-    for (let r = 0; r < ROWS; r++) {
-        const lCol = (r * 7) % 3 === 0 ? "#152015" : ((r * 7) % 3 === 1 ? "#1a2a1a" : "#111911");
-        drawRect(0, r * TILE, TILE, TILE, lCol);
-        drawRect(TILE - 1, r * TILE, 1, TILE, "rgba(0,0,0,0.25)");
-        const rCol = (r * 11) % 3 === 0 ? "#152015" : ((r * 11) % 3 === 1 ? "#1a2a1a" : "#111911");
-        drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, rCol);
-        drawRect((COLS - 1) * TILE, r * TILE, 1, TILE, "rgba(0,0,0,0.25)");
-    }
+    // Clear & draw pre-rendered cave background (floor, walls, stalactites, stalagmites)
+    ctx.drawImage(TEX_CAVE_BG, 0, 0);
 
     // Cave openings (goblin spawn points) — dark tunnel arches
     for (let ci = 0; ci < CAVES.length; ci++) {
@@ -6160,48 +6541,15 @@ function render() {
         drawText(ROW_LETTERS[r], lx, ly, PAL.gridOn[r], 7);
     }
 
-    // Stone wall background behind grid
+    // Stone wall background behind grid — pre-rendered texture
     {
         const gwX = GRID_X * TILE - 2;
         const gwY = (GRID_Y * TILE + GRID_Y_OFFSET) - 2;
-        const gwW = GRID_COLS * TILE + 4;
         const gwH = ar * TILE + 4;
-        // Main stone slab
-        fillRoundRect(ctx, gwX * SCALE, gwY * SCALE, gwW * SCALE, gwH * SCALE, 3, "#1a2820");
-        // Stone texture cracks on the wall
-        for (let si = 0; si < 20; si++) {
-            const cseed = si * 7919 + 1327;
-            const crx = gwX + 4 + (cseed % (gwW - 8));
-            const cry = gwY + 4 + ((cseed * 31) % (gwH - 8));
-            const crl = 3 + (cseed * 13) % 8;
-            const cra = ((cseed * 7) % 6) * 0.5;
-            ctx.strokeStyle = "rgba(15,25,15,0.6)";
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(crx * SCALE, cry * SCALE);
-            ctx.lineTo((crx + Math.cos(cra) * crl) * SCALE, (cry + Math.sin(cra) * crl) * SCALE);
-            ctx.stroke();
-        }
-        // Mortar lines between blocks (horizontal and vertical grid lines)
-        ctx.strokeStyle = "#0d150d";
-        ctx.lineWidth = 1;
-        for (let r = 0; r <= ar; r++) {
-            const ly = rowPixelY(r < ar ? r : ar - 1) + (r < ar ? 0 : TILE);
-            ctx.beginPath();
-            ctx.moveTo(gwX * SCALE, ly * SCALE);
-            ctx.lineTo((gwX + gwW) * SCALE, ly * SCALE);
-            ctx.stroke();
-        }
-        for (let c = 0; c <= GRID_COLS; c++) {
-            const lx = (GRID_X + c) * TILE;
-            ctx.beginPath();
-            ctx.moveTo(lx * SCALE, gwY * SCALE);
-            ctx.lineTo(lx * SCALE, (gwY + gwH) * SCALE);
-            ctx.stroke();
-        }
+        ctx.drawImage(TEX_GRID_WALL, 0, 0, TEX_GRID_WALL.width, gwH * SCALE, gwX * SCALE, gwY * SCALE, TEX_GRID_WALL.width, gwH * SCALE);
     }
 
-    // Grid blocks — stone cells with glowing energy when active
+    // Grid blocks — pre-rendered stone textures with glow overlays
     for (let r = 0; r < ar; r++) {
         for (let c = 0; c < GRID_COLS; c++) {
             const bx = (GRID_X + c) * TILE;
@@ -6210,55 +6558,18 @@ function render() {
 
             const bxs = bx * SCALE, bys = by * SCALE;
             const ts = TILE * SCALE;
-            const blockR = 2;
             if (on) {
-                // Stone block base
-                fillRoundRect(ctx, bxs + SCALE, bys + SCALE, ts - 2 * SCALE, ts - 2 * SCALE, blockR, "#1a2820");
-                // Glowing energy overlay
+                // Draw pre-rendered glow tile
                 ctx.shadowColor = PAL.gridOn[r];
                 ctx.shadowBlur = 8;
                 ctx.shadowOffsetX = 0;
                 ctx.shadowOffsetY = 0;
-                fillRoundRect(ctx, bxs + 1.5 * SCALE, bys + 1.5 * SCALE, ts - 3 * SCALE, ts - 3 * SCALE, blockR, PAL.gridOn[r]);
+                ctx.drawImage(TEX_GRID_ON[r][c], bxs, bys);
                 ctx.shadowColor = "transparent";
                 ctx.shadowBlur = 0;
-                // Energy crack pattern — 2-3 bright lines within the cell
-                const cellSeed = r * 100 + c * 17;
-                ctx.strokeStyle = "#ffffff";
-                ctx.globalAlpha = 0.35;
-                ctx.lineWidth = 1;
-                for (let ck = 0; ck < 3; ck++) {
-                    const ckSeed = cellSeed + ck * 331;
-                    const x1 = bx + 2 + (ckSeed % 10);
-                    const y1 = by + 2 + ((ckSeed * 7) % 10);
-                    const x2 = bx + 4 + ((ckSeed * 13) % 8);
-                    const y2 = by + 4 + ((ckSeed * 3) % 8);
-                    ctx.beginPath();
-                    ctx.moveTo(x1 * SCALE, y1 * SCALE);
-                    ctx.lineTo(x2 * SCALE, y2 * SCALE);
-                    ctx.stroke();
-                }
-                ctx.globalAlpha = 1.0;
-                // Subtle inner highlight
-                ctx.fillStyle = "rgba(255,255,255,0.08)";
-                ctx.fillRect(bxs + 2 * SCALE, bys + 2 * SCALE, (ts - 4 * SCALE) * 0.5, 2 * SCALE);
             } else {
-                // Dark stone block — filled with texture
-                fillRoundRect(ctx, bxs + SCALE, bys + SCALE, ts - 2 * SCALE, ts - 2 * SCALE, blockR, "#1a2820");
-                // Subtle crack detail on inactive stone
-                const cellSeed = r * 100 + c * 17;
-                if ((cellSeed * 7) % 5 > 1) {
-                    ctx.strokeStyle = "rgba(30,50,30,0.4)";
-                    ctx.lineWidth = 1;
-                    const crx1 = bx + 3 + (cellSeed % 8);
-                    const cry1 = by + 3 + ((cellSeed * 3) % 8);
-                    const crx2 = bx + 6 + ((cellSeed * 11) % 6);
-                    const cry2 = by + 6 + ((cellSeed * 5) % 6);
-                    ctx.beginPath();
-                    ctx.moveTo(crx1 * SCALE, cry1 * SCALE);
-                    ctx.lineTo(crx2 * SCALE, cry2 * SCALE);
-                    ctx.stroke();
-                }
+                // Draw pre-rendered dark stone tile
+                ctx.drawImage(TEX_GRID_OFF[r][c], bxs, bys);
             }
 
             // Block toggle pop animation (scale + glow burst)
