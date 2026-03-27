@@ -519,6 +519,64 @@ hudCanvas.width = COLS * TILE * SCALE;
 hudCanvas.height = HUD_H * SCALE;
 hudCtx.imageSmoothingEnabled = true;
 
+// ---- Image Asset Preloader (hybrid sprite system) ----
+// Loads PNG sprites from assets/ folder. If a PNG is missing, IMAGES[key] = null
+// and the original procedural drawing code runs as fallback.
+const IMAGES = {};
+const _ROW_IDS = ["O", "H", "S", "K", "B", "T"];
+const _DIR_NAMES = ["down", "up", "left", "right"];
+
+function loadImage(key, src) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => { IMAGES[key] = img; resolve(); };
+        img.onerror = () => { IMAGES[key] = null; resolve(); }; // graceful fallback
+        img.src = src;
+    });
+}
+
+const ASSET_LIST = [
+    // Backgrounds
+    ["cave_bg",    "assets/bg/cave-bg.png"],
+    ["grid_wall",  "assets/grid/grid-wall.png"],
+    ["hud_bg",     "assets/hud/hud-bg.png"],
+    // Grid cells (1 off + 6 on colors)
+    ["grid_off",   "assets/grid/grid-off.png"],
+    ..._ROW_IDS.map(r => ["grid_on_" + r, "assets/grid/grid-on-" + r + ".png"]),
+    // Player (4 dirs × 2 walk frames + 4 punch poses = 12)
+    ..._DIR_NAMES.flatMap(d => [0, 1].map(f =>
+        ["player_" + d + "_" + f, "assets/player/player-" + d + "-" + f + ".png"]
+    )),
+    ..._DIR_NAMES.map(d => ["player_punch_" + d, "assets/player/player-punch-" + d + ".png"]),
+    // Goblins (3 types × 4 dirs × 2 frames = 24 + 1 catapult frame)
+    ...["goblin", "elite", "catapult"].flatMap(t =>
+        _DIR_NAMES.flatMap(d => [0, 1].map(f =>
+            [t + "_" + d + "_" + f, "assets/goblins/" + t + "-" + d + "-" + f + ".png"]
+        ))
+    ),
+    ["catapult_frame", "assets/goblins/catapult-frame.png"],
+    // Dancers (6 color variants × 2 poses = 12)
+    ...[0,1,2,3,4,5].flatMap(i => [
+        ["dancer_" + i,          "assets/dancers/dancer-" + i + ".png"],
+        ["dancer_" + i + "_up",  "assets/dancers/dancer-" + i + "-up.png"],
+    ]),
+    // DJ equipment (6 pieces)
+    ["speaker_left",  "assets/dj/speaker-left.png"],
+    ["speaker_right", "assets/dj/speaker-right.png"],
+    ["turntable",     "assets/dj/turntable.png"],
+    ["mixer",         "assets/dj/mixer.png"],
+    ["light_rig",     "assets/dj/light-rig.png"],
+    ["disco_ball",    "assets/dj/disco-ball.png"],
+    // Cave entrance
+    ["cave_entrance", "assets/cave/cave-entrance.png"],
+];
+
+let assetsReady = false;
+Promise.all(ASSET_LIST.map(([key, src]) => loadImage(key, src))).then(() => {
+    assetsReady = true;
+    if (typeof startGame === "function") startGame();
+});
+
 // ---- Grain texture overlay (screen-print / block-print effect) ----
 const grainCanvas = document.createElement('canvas');
 grainCanvas.width = COLS * TILE * SCALE;
@@ -1382,12 +1440,12 @@ let score = 0;
 let lastTimeBonus = 0;
 const dancers = [];
 const DANCER_PALETTES = [
-    { body: "#ef3a0c", dark: "#9b1a0a", head: "#efb775", hair: "#724113" },
-    { body: "#3c9f9c", dark: "#276468", head: "#efb775", hair: "#2a1d0d" },
-    { body: "#efac28", dark: "#a58c27", head: "#efb775", hair: "#ab5c1c" },
-    { body: "#39571c", dark: "#1f240a", head: "#efb775", hair: "#efac28" },
-    { body: "#ab5c1c", dark: "#773421", head: "#efb775", hair: "#2a1d0d" },
-    { body: "#ef692f", dark: "#a56243", head: "#efb775", hair: "#392a1c" },
+    { _index: 0, body: "#ef3a0c", dark: "#9b1a0a", head: "#efb775", hair: "#724113" },
+    { _index: 1, body: "#3c9f9c", dark: "#276468", head: "#efb775", hair: "#2a1d0d" },
+    { _index: 2, body: "#efac28", dark: "#a58c27", head: "#efb775", hair: "#ab5c1c" },
+    { _index: 3, body: "#39571c", dark: "#1f240a", head: "#efb775", hair: "#efac28" },
+    { _index: 4, body: "#ab5c1c", dark: "#773421", head: "#efb775", hair: "#2a1d0d" },
+    { _index: 5, body: "#ef692f", dark: "#a56243", head: "#efb775", hair: "#392a1c" },
 ];
 
 // ---- Player State ----
@@ -6143,28 +6201,34 @@ function strokeRoundRect(context, x, y, w, h, r, color, lineWidth) {
 // ---- HUD Render (separate canvas below game) ----
 function renderHUD() {
     hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
-    // Background fill
-    drawHudRect(0, 0, COLS * TILE, HUD_H, "#0a0f0a");
 
-    // Teal border along top — connects visually to the venue's bottom wall
-    for (let c = 0; c < COLS; c++) {
-        drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#1a2a1a" : "#1e2e1e");
-    }
-    // Highlight on border edge
-    hudCtx.fillStyle = "rgba(255,255,255,0.08)";
-    hudCtx.fillRect(0, 0, COLS * TILE * SCALE, 1 * SCALE);
+    if (IMAGES.hud_bg) {
+        // Sprite-based HUD background
+        hudCtx.drawImage(IMAGES.hud_bg, 0, 0);
+    } else {
+        // Procedural fallback — background fill
+        drawHudRect(0, 0, COLS * TILE, HUD_H, "#0a0f0a");
 
-    // Subtle grain texture (matches venue floor grain)
-    for (let c = 0; c < COLS; c++) {
-        let seed = c * 37 + 7;
-        for (let i = 0; i < 4; i++) {
-            seed = (seed * 9301 + 49297) % 233280;
-            const gx = c * TILE + (seed % TILE);
-            seed = (seed * 9301 + 49297) % 233280;
-            const gy = 3 + (seed % (HUD_H - 4));
-            const bright = (seed % 2) === 0;
-            hudCtx.fillStyle = bright ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.08)";
-            hudCtx.fillRect(gx * SCALE, gy * SCALE, SCALE, SCALE);
+        // Teal border along top — connects visually to the venue's bottom wall
+        for (let c = 0; c < COLS; c++) {
+            drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#1a2a1a" : "#1e2e1e");
+        }
+        // Highlight on border edge
+        hudCtx.fillStyle = "rgba(255,255,255,0.08)";
+        hudCtx.fillRect(0, 0, COLS * TILE * SCALE, 1 * SCALE);
+
+        // Subtle grain texture (matches venue floor grain)
+        for (let c = 0; c < COLS; c++) {
+            let seed = c * 37 + 7;
+            for (let i = 0; i < 4; i++) {
+                seed = (seed * 9301 + 49297) % 233280;
+                const gx = c * TILE + (seed % TILE);
+                seed = (seed * 9301 + 49297) % 233280;
+                const gy = 3 + (seed % (HUD_H - 4));
+                const bright = (seed % 2) === 0;
+                hudCtx.fillStyle = bright ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.08)";
+                hudCtx.fillRect(gx * SCALE, gy * SCALE, SCALE, SCALE);
+            }
         }
     }
 
@@ -6417,59 +6481,65 @@ function render() {
         ctx.translate(sx, sy);
     }
 
-    // Clear & draw pre-rendered cave background (floor, walls, stalactites, stalagmites)
-    ctx.drawImage(TEX_CAVE_BG, 0, 0);
+    // Clear & draw cave background (sprite or pre-rendered fallback)
+    ctx.drawImage(IMAGES.cave_bg || TEX_CAVE_BG, 0, 0);
 
     // Cave openings (goblin spawn points) — dark tunnel arches
     for (let ci = 0; ci < CAVES.length; ci++) {
         const cave = CAVES[ci];
         const cx = cave.tileX * TILE;
         const cy = cave.tileY * TILE;
-        // Deep black cave hole
-        ctx.fillStyle = "#050805";
-        ctx.beginPath();
-        ctx.roundRect(cx * SCALE, (cy - 2) * SCALE, TILE * SCALE, (TILE + 4) * SCALE, [6, 6, 2, 2]);
-        ctx.fill();
-        // Stone arch around cave
-        ctx.fillStyle = "#243024";
-        ctx.beginPath();
-        ctx.roundRect((cx - 2) * SCALE, (cy - 5) * SCALE, (TILE + 4) * SCALE, 4 * SCALE, [4, 4, 0, 0]);
-        ctx.fill();
-        // Bottom rocks
-        ctx.beginPath();
-        ctx.roundRect((cx - 2) * SCALE, (cy + TILE + 1) * SCALE, (TILE + 4) * SCALE, 4 * SCALE, [0, 0, 4, 4]);
-        ctx.fill();
-        // Side edges
-        if (cave.tileX > 0) drawRect(cx - 3, cy - 2, 3, TILE + 4, "#1e2e1e");
-        if (cave.tileX < COLS - 1) drawRect(cx + TILE, cy - 2, 3, TILE + 4, "#1e2e1e");
-        // Stalactites (triangular — stone gray-green)
-        ctx.fillStyle = "#243024";
-        ctx.beginPath();
-        ctx.moveTo((cx + 3) * SCALE, (cy - 2) * SCALE);
-        ctx.lineTo((cx + 5) * SCALE, (cy - 2) * SCALE);
-        ctx.lineTo((cx + 4) * SCALE, (cy + 2) * SCALE);
-        ctx.closePath();
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo((cx + 9) * SCALE, (cy - 2) * SCALE);
-        ctx.lineTo((cx + 11) * SCALE, (cy - 2) * SCALE);
-        ctx.lineTo((cx + 10) * SCALE, (cy + 1) * SCALE);
-        ctx.closePath();
-        ctx.fill();
-        // Stalagmites (triangular)
-        ctx.beginPath();
-        ctx.moveTo((cx + 5) * SCALE, (cy + TILE + 2) * SCALE);
-        ctx.lineTo((cx + 7) * SCALE, (cy + TILE + 2) * SCALE);
-        ctx.lineTo((cx + 6) * SCALE, (cy + TILE - 2) * SCALE);
-        ctx.closePath();
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo((cx + 11) * SCALE, (cy + TILE + 2) * SCALE);
-        ctx.lineTo((cx + 13) * SCALE, (cy + TILE + 2) * SCALE);
-        ctx.lineTo((cx + 12) * SCALE, (cy + TILE - 1) * SCALE);
-        ctx.closePath();
-        ctx.fill();
-        // Green glow from inside cave
+
+        if (IMAGES.cave_entrance) {
+            // Sprite-based cave entrance
+            ctx.drawImage(IMAGES.cave_entrance, (cx - 2) * SCALE, (cy - 5) * SCALE);
+        } else {
+            // Procedural fallback — deep black cave hole
+            ctx.fillStyle = "#050805";
+            ctx.beginPath();
+            ctx.roundRect(cx * SCALE, (cy - 2) * SCALE, TILE * SCALE, (TILE + 4) * SCALE, [6, 6, 2, 2]);
+            ctx.fill();
+            // Stone arch around cave
+            ctx.fillStyle = "#243024";
+            ctx.beginPath();
+            ctx.roundRect((cx - 2) * SCALE, (cy - 5) * SCALE, (TILE + 4) * SCALE, 4 * SCALE, [4, 4, 0, 0]);
+            ctx.fill();
+            // Bottom rocks
+            ctx.beginPath();
+            ctx.roundRect((cx - 2) * SCALE, (cy + TILE + 1) * SCALE, (TILE + 4) * SCALE, 4 * SCALE, [0, 0, 4, 4]);
+            ctx.fill();
+            // Side edges
+            if (cave.tileX > 0) drawRect(cx - 3, cy - 2, 3, TILE + 4, "#1e2e1e");
+            if (cave.tileX < COLS - 1) drawRect(cx + TILE, cy - 2, 3, TILE + 4, "#1e2e1e");
+            // Stalactites (triangular — stone gray-green)
+            ctx.fillStyle = "#243024";
+            ctx.beginPath();
+            ctx.moveTo((cx + 3) * SCALE, (cy - 2) * SCALE);
+            ctx.lineTo((cx + 5) * SCALE, (cy - 2) * SCALE);
+            ctx.lineTo((cx + 4) * SCALE, (cy + 2) * SCALE);
+            ctx.closePath();
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo((cx + 9) * SCALE, (cy - 2) * SCALE);
+            ctx.lineTo((cx + 11) * SCALE, (cy - 2) * SCALE);
+            ctx.lineTo((cx + 10) * SCALE, (cy + 1) * SCALE);
+            ctx.closePath();
+            ctx.fill();
+            // Stalagmites (triangular)
+            ctx.beginPath();
+            ctx.moveTo((cx + 5) * SCALE, (cy + TILE + 2) * SCALE);
+            ctx.lineTo((cx + 7) * SCALE, (cy + TILE + 2) * SCALE);
+            ctx.lineTo((cx + 6) * SCALE, (cy + TILE - 2) * SCALE);
+            ctx.closePath();
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo((cx + 11) * SCALE, (cy + TILE + 2) * SCALE);
+            ctx.lineTo((cx + 13) * SCALE, (cy + TILE + 2) * SCALE);
+            ctx.lineTo((cx + 12) * SCALE, (cy + TILE - 1) * SCALE);
+            ctx.closePath();
+            ctx.fill();
+        }
+        // Green glow from inside cave (always procedural — beat-synced effect)
         const caveGlow = ctx.createRadialGradient(
             (cx + TILE / 2) * SCALE, (cy + TILE / 2) * SCALE, 2 * SCALE,
             (cx + TILE / 2) * SCALE, (cy + TILE / 2) * SCALE, TILE * SCALE
@@ -6611,12 +6681,13 @@ function render() {
         drawText(ROW_LETTERS[r], lx, ly, PAL.gridOn[r], 7);
     }
 
-    // Stone wall background behind grid — pre-rendered texture
+    // Stone wall background behind grid (sprite or pre-rendered fallback)
     {
         const gwX = GRID_X * TILE - 2;
         const gwY = (GRID_Y * TILE + GRID_Y_OFFSET) - 2;
         const gwH = ar * TILE + 4;
-        ctx.drawImage(TEX_GRID_WALL, 0, 0, TEX_GRID_WALL.width, gwH * SCALE, gwX * SCALE, gwY * SCALE, TEX_GRID_WALL.width, gwH * SCALE);
+        const gwSrc = IMAGES.grid_wall || TEX_GRID_WALL;
+        ctx.drawImage(gwSrc, 0, 0, gwSrc.width, gwH * SCALE, gwX * SCALE, gwY * SCALE, gwSrc.width, gwH * SCALE);
     }
 
     // Grid blocks — pre-rendered stone textures with glow overlays
@@ -6629,17 +6700,17 @@ function render() {
             const bxs = bx * SCALE, bys = by * SCALE;
             const ts = TILE * SCALE;
             if (on) {
-                // Draw pre-rendered glow tile
+                // Draw glow tile (sprite or pre-rendered fallback)
                 ctx.shadowColor = PAL.gridOn[r];
                 ctx.shadowBlur = 8;
                 ctx.shadowOffsetX = 0;
                 ctx.shadowOffsetY = 0;
-                ctx.drawImage(TEX_GRID_ON[r][c], bxs, bys);
+                ctx.drawImage(IMAGES["grid_on_" + ROW_LETTERS[r]] || TEX_GRID_ON[r][c], bxs, bys);
                 ctx.shadowColor = "transparent";
                 ctx.shadowBlur = 0;
             } else {
-                // Draw pre-rendered dark stone tile
-                ctx.drawImage(TEX_GRID_OFF[r][c], bxs, bys);
+                // Draw dark stone tile (sprite or pre-rendered fallback)
+                ctx.drawImage(IMAGES.grid_off || TEX_GRID_OFF[r][c], bxs, bys);
             }
 
             // Block toggle pop animation (scale + glow burst)
@@ -7186,6 +7257,22 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         }
     }
 
+    // ---- Sprite-based path (early return if PNG loaded) ----
+    {
+        const dirName = ["down", "up", "left", "right"][dir];
+        const sprKey = punch > 0
+            ? "player_punch_" + dirName
+            : "player_" + dirName + "_" + (frame % 2);
+        if (IMAGES[sprKey]) {
+            const lx = leanX * SCALE, ly = leanY * SCALE;
+            if (ghost) { ctx.globalAlpha = 0.5; ctx.globalCompositeOperation = "lighter"; }
+            ctx.drawImage(IMAGES[sprKey], sx + lx, sy - bob + ly);
+            if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
+            return;
+        }
+    }
+
+    // ---- Procedural fallback ----
     const col = (c) => ghost ? ghostTint(c) : c;
     const lx = leanX * SCALE, ly = leanY * SCALE;
 
@@ -7805,6 +7892,19 @@ function drawDJSetupPiece(pieceIndex, boothX, boothY, options) {
     const prevAlpha = ctx.globalAlpha;
     ctx.globalAlpha = prevAlpha * alpha;
     if (silhouette) ctx.globalAlpha = prevAlpha * 0.15;
+
+    // Sprite-based path — offsets match the procedural positions below
+    const _djKeys = ["speaker_left", "speaker_right", "turntable", "mixer", "light_rig", "disco_ball"];
+    const _djOffsets = [[-12, -2], [44, -2], [1, -2], [18, 2], [-8, -18], [20, -30]];
+    const djSpr = IMAGES[_djKeys[pieceIndex]];
+    if (djSpr) {
+        const [ox, oy] = _djOffsets[pieceIndex];
+        ctx.drawImage(djSpr, (boothX + ox) * SCALE, (boothY + oy) * SCALE);
+        ctx.globalAlpha = prevAlpha;
+        return;
+    }
+
+    // Procedural fallback
     switch (pieceIndex) {
         case 0: // left speaker
             drawSubwoofer(boothX - 12, boothY - 2, 0, -1);
@@ -7838,6 +7938,36 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
     const showShadow = opts.showShadow !== false;
     const bob = (frame % 2 === 1 ? 1 : 0) * SCALE;
 
+    // ---- Sprite-based path (early return if PNG loaded) ----
+    {
+        const dirName = ["down", "up", "left", "right"][dir];
+        const prefix = type === "elite" ? "elite" : type === "catapult" ? "catapult" : "goblin";
+        const sprKey = prefix + "_" + dirName + "_" + (frame % 2);
+        if (IMAGES[sprKey]) {
+            const sx = gx * SCALE;
+            const sy = gy * SCALE;
+            // Draw catapult frame behind goblin
+            if (type === "catapult" && IMAGES.catapult_frame) {
+                ctx.drawImage(IMAGES.catapult_frame, sx - 12 * SCALE, sy - 6 * SCALE);
+            }
+            // Hurt flash: overlay white tint
+            const isHurt = opts.bodyCol && opts.bodyCol !== "#39FF14" && opts.bodyCol !== "#FF00FF" && opts.bodyCol !== "#FF6600";
+            if (isHurt) {
+                ctx.drawImage(IMAGES[sprKey], sx, sy - bob);
+                ctx.globalCompositeOperation = "source-atop";
+                ctx.globalAlpha = 0.6;
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(sx, sy - bob, TILE * SCALE, TILE * SCALE);
+                ctx.globalAlpha = 1;
+                ctx.globalCompositeOperation = "source-over";
+            } else {
+                ctx.drawImage(IMAGES[sprKey], sx, sy - bob);
+            }
+            return;
+        }
+    }
+
+    // ---- Procedural fallback ----
     // Colors — allow overrides (for hurt flash, HP changes)
     let bodyCol, darkCol, headCol, eyeCol;
     if (opts.bodyCol) {
@@ -8219,6 +8349,31 @@ function drawDancerSprite(gx, gy, pal, options) {
     const sx = gx * SCALE;
     const sy = gy * SCALE;
 
+    // ---- Sprite-based path (early return if PNG loaded) ----
+    {
+        const palIdx = pal._index !== undefined ? pal._index : 0;
+        const keyDown = "dancer_" + palIdx;
+        const keyUp = "dancer_" + palIdx + "_up";
+        if (IMAGES[keyDown]) {
+            const drawY = sy - bob;
+            if (scale !== 1) {
+                ctx.save();
+                ctx.translate(sx + 18, sy + 18);
+                ctx.scale(scale, scale);
+                ctx.translate(-(sx + 18), -(sy + 18));
+            }
+            // Choose pose based on arm blend threshold
+            if (armBlend > 0.5 && IMAGES[keyUp]) {
+                ctx.drawImage(IMAGES[keyUp], sx, drawY);
+            } else {
+                ctx.drawImage(IMAGES[keyDown], sx, drawY);
+            }
+            if (scale !== 1) ctx.restore();
+            return;
+        }
+    }
+
+    // ---- Procedural fallback ----
     if (scale !== 1) {
         ctx.save();
         ctx.translate(sx + 18, sy + 18);
@@ -12088,4 +12243,5 @@ function gameLoop(timestamp) {
 }
 
 loadHighScores();
-requestAnimationFrame(gameLoop);
+function startGame() { requestAnimationFrame(gameLoop); }
+if (assetsReady) startGame(); // if assets loaded before we got here
