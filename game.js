@@ -6699,18 +6699,49 @@ function render() {
 
             const bxs = bx * SCALE, bys = by * SCALE;
             const ts = TILE * SCALE;
+
+            // Rotation for sprite variety: 0°, 90°, 180°, 270° based on cell position
+            const rotIndex = (r + c) % 4;
+            const rotAngle = rotIndex * Math.PI / 2;
+
             if (on) {
-                // Draw glow tile (sprite or pre-rendered fallback)
+                // Draw glow tile (sprite with rotation, or pre-rendered fallback)
                 ctx.shadowColor = PAL.gridOn[r];
                 ctx.shadowBlur = 8;
                 ctx.shadowOffsetX = 0;
                 ctx.shadowOffsetY = 0;
-                ctx.drawImage(IMAGES["grid_on_" + ROW_LETTERS[r]] || TEX_GRID_ON[r][c], bxs, bys);
+                const sprOn = IMAGES["grid_on_" + ROW_LETTERS[r]];
+                if (sprOn) {
+                    if (rotAngle !== 0) {
+                        ctx.save();
+                        ctx.translate(bxs + ts / 2, bys + ts / 2);
+                        ctx.rotate(rotAngle);
+                        ctx.drawImage(sprOn, -ts / 2, -ts / 2);
+                        ctx.restore();
+                    } else {
+                        ctx.drawImage(sprOn, bxs, bys);
+                    }
+                } else {
+                    ctx.drawImage(TEX_GRID_ON[r][c], bxs, bys);
+                }
                 ctx.shadowColor = "transparent";
                 ctx.shadowBlur = 0;
             } else {
-                // Draw dark stone tile (sprite or pre-rendered fallback)
-                ctx.drawImage(IMAGES.grid_off || TEX_GRID_OFF[r][c], bxs, bys);
+                // Draw dark stone tile (sprite with rotation, or pre-rendered fallback)
+                const sprOff = IMAGES.grid_off;
+                if (sprOff) {
+                    if (rotAngle !== 0) {
+                        ctx.save();
+                        ctx.translate(bxs + ts / 2, bys + ts / 2);
+                        ctx.rotate(rotAngle);
+                        ctx.drawImage(sprOff, -ts / 2, -ts / 2);
+                        ctx.restore();
+                    } else {
+                        ctx.drawImage(sprOff, bxs, bys);
+                    }
+                } else {
+                    ctx.drawImage(TEX_GRID_OFF[r][c], bxs, bys);
+                }
             }
 
             // Block toggle pop animation (scale + glow burst)
