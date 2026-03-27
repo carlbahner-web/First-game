@@ -537,12 +537,14 @@ function loadImage(key, src) {
 
 const ASSET_LIST = [
     // Backgrounds
-    ["cave_bg",    "assets/bg/cave-bg.png"],
+    ["cave_bg",    "assets/bg/cavebg.PNG"],
     ["grid_wall",  "assets/grid/grid-wall.png"],
     ["hud_bg",     "assets/hud/hud-bg.png"],
-    // Grid cells (1 off + 6 on colors)
+    // Grid cells (1 off + 6 on colors + 6 hint + 6 x-indicator)
     ["grid_off",   "assets/grid/grid-off.png"],
     ..._ROW_IDS.map(r => ["grid_on_" + r, "assets/grid/grid-on-" + r + ".png"]),
+    ..._ROW_IDS.map(r => ["grid_hint_" + r, "assets/grid/grid-on-" + r + "-hint.png"]),
+    ..._ROW_IDS.map(r => ["grid_x_" + r, "assets/grid/grid-on-" + r + "-x.png"]),
     // Player (4 dirs × 2 walk frames + 4 punch poses = 12)
     ..._DIR_NAMES.flatMap(d => [0, 1].map(f =>
         ["player_" + d + "_" + f, "assets/player/player-" + d + "-" + f + ".png"]
@@ -6481,74 +6483,71 @@ function render() {
         ctx.translate(sx, sy);
     }
 
-    // Clear & draw cave background (sprite or pre-rendered fallback)
-    ctx.drawImage(IMAGES.cave_bg || TEX_CAVE_BG, 0, 0);
+    // Clear & draw cave background (sprite scaled to canvas, or pre-rendered fallback)
+    if (IMAGES.cave_bg) {
+        ctx.drawImage(IMAGES.cave_bg, 0, 0, canvas.width, canvas.height);
+    } else {
+        ctx.drawImage(TEX_CAVE_BG, 0, 0);
+    }
 
-    // Cave openings (goblin spawn points) — dark tunnel arches
+    // Cave openings (goblin spawn points) — skip structure if bg sprite has them painted in
     for (let ci = 0; ci < CAVES.length; ci++) {
         const cave = CAVES[ci];
         const cx = cave.tileX * TILE;
         const cy = cave.tileY * TILE;
 
-        if (IMAGES.cave_entrance) {
-            // Sprite-based cave entrance
-            ctx.drawImage(IMAGES.cave_entrance, (cx - 2) * SCALE, (cy - 5) * SCALE);
-        } else {
-            // Procedural fallback — deep black cave hole
-            ctx.fillStyle = "#050805";
-            ctx.beginPath();
-            ctx.roundRect(cx * SCALE, (cy - 2) * SCALE, TILE * SCALE, (TILE + 4) * SCALE, [6, 6, 2, 2]);
-            ctx.fill();
-            // Stone arch around cave
-            ctx.fillStyle = "#243024";
-            ctx.beginPath();
-            ctx.roundRect((cx - 2) * SCALE, (cy - 5) * SCALE, (TILE + 4) * SCALE, 4 * SCALE, [4, 4, 0, 0]);
-            ctx.fill();
-            // Bottom rocks
-            ctx.beginPath();
-            ctx.roundRect((cx - 2) * SCALE, (cy + TILE + 1) * SCALE, (TILE + 4) * SCALE, 4 * SCALE, [0, 0, 4, 4]);
-            ctx.fill();
-            // Side edges
-            if (cave.tileX > 0) drawRect(cx - 3, cy - 2, 3, TILE + 4, "#1e2e1e");
-            if (cave.tileX < COLS - 1) drawRect(cx + TILE, cy - 2, 3, TILE + 4, "#1e2e1e");
-            // Stalactites (triangular — stone gray-green)
-            ctx.fillStyle = "#243024";
-            ctx.beginPath();
-            ctx.moveTo((cx + 3) * SCALE, (cy - 2) * SCALE);
-            ctx.lineTo((cx + 5) * SCALE, (cy - 2) * SCALE);
-            ctx.lineTo((cx + 4) * SCALE, (cy + 2) * SCALE);
-            ctx.closePath();
-            ctx.fill();
-            ctx.beginPath();
-            ctx.moveTo((cx + 9) * SCALE, (cy - 2) * SCALE);
-            ctx.lineTo((cx + 11) * SCALE, (cy - 2) * SCALE);
-            ctx.lineTo((cx + 10) * SCALE, (cy + 1) * SCALE);
-            ctx.closePath();
-            ctx.fill();
-            // Stalagmites (triangular)
-            ctx.beginPath();
-            ctx.moveTo((cx + 5) * SCALE, (cy + TILE + 2) * SCALE);
-            ctx.lineTo((cx + 7) * SCALE, (cy + TILE + 2) * SCALE);
-            ctx.lineTo((cx + 6) * SCALE, (cy + TILE - 2) * SCALE);
-            ctx.closePath();
-            ctx.fill();
-            ctx.beginPath();
-            ctx.moveTo((cx + 11) * SCALE, (cy + TILE + 2) * SCALE);
-            ctx.lineTo((cx + 13) * SCALE, (cy + TILE + 2) * SCALE);
-            ctx.lineTo((cx + 12) * SCALE, (cy + TILE - 1) * SCALE);
-            ctx.closePath();
-            ctx.fill();
+        if (!IMAGES.cave_bg) {
+            // Only draw cave structures when using procedural background
+            if (IMAGES.cave_entrance) {
+                ctx.drawImage(IMAGES.cave_entrance, (cx - 2) * SCALE, (cy - 5) * SCALE);
+            } else {
+                // Procedural fallback — deep black cave hole
+                ctx.fillStyle = "#050805";
+                ctx.beginPath();
+                ctx.roundRect(cx * SCALE, (cy - 2) * SCALE, TILE * SCALE, (TILE + 4) * SCALE, [6, 6, 2, 2]);
+                ctx.fill();
+                ctx.fillStyle = "#243024";
+                ctx.beginPath();
+                ctx.roundRect((cx - 2) * SCALE, (cy - 5) * SCALE, (TILE + 4) * SCALE, 4 * SCALE, [4, 4, 0, 0]);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.roundRect((cx - 2) * SCALE, (cy + TILE + 1) * SCALE, (TILE + 4) * SCALE, 4 * SCALE, [0, 0, 4, 4]);
+                ctx.fill();
+                if (cave.tileX > 0) drawRect(cx - 3, cy - 2, 3, TILE + 4, "#1e2e1e");
+                if (cave.tileX < COLS - 1) drawRect(cx + TILE, cy - 2, 3, TILE + 4, "#1e2e1e");
+                ctx.fillStyle = "#243024";
+                ctx.beginPath();
+                ctx.moveTo((cx + 3) * SCALE, (cy - 2) * SCALE);
+                ctx.lineTo((cx + 5) * SCALE, (cy - 2) * SCALE);
+                ctx.lineTo((cx + 4) * SCALE, (cy + 2) * SCALE);
+                ctx.closePath(); ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo((cx + 9) * SCALE, (cy - 2) * SCALE);
+                ctx.lineTo((cx + 11) * SCALE, (cy - 2) * SCALE);
+                ctx.lineTo((cx + 10) * SCALE, (cy + 1) * SCALE);
+                ctx.closePath(); ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo((cx + 5) * SCALE, (cy + TILE + 2) * SCALE);
+                ctx.lineTo((cx + 7) * SCALE, (cy + TILE + 2) * SCALE);
+                ctx.lineTo((cx + 6) * SCALE, (cy + TILE - 2) * SCALE);
+                ctx.closePath(); ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo((cx + 11) * SCALE, (cy + TILE + 2) * SCALE);
+                ctx.lineTo((cx + 13) * SCALE, (cy + TILE + 2) * SCALE);
+                ctx.lineTo((cx + 12) * SCALE, (cy + TILE - 1) * SCALE);
+                ctx.closePath(); ctx.fill();
+            }
+            // Green glow from inside cave
+            const caveGlow = ctx.createRadialGradient(
+                (cx + TILE / 2) * SCALE, (cy + TILE / 2) * SCALE, 2 * SCALE,
+                (cx + TILE / 2) * SCALE, (cy + TILE / 2) * SCALE, TILE * SCALE
+            );
+            caveGlow.addColorStop(0, "rgba(50,255,50,0.12)");
+            caveGlow.addColorStop(1, "rgba(0,0,0,0)");
+            ctx.fillStyle = caveGlow;
+            ctx.fillRect((cx - 4) * SCALE, (cy - 4) * SCALE, (TILE + 8) * SCALE, (TILE + 8) * SCALE);
         }
-        // Green glow from inside cave (always procedural — beat-synced effect)
-        const caveGlow = ctx.createRadialGradient(
-            (cx + TILE / 2) * SCALE, (cy + TILE / 2) * SCALE, 2 * SCALE,
-            (cx + TILE / 2) * SCALE, (cy + TILE / 2) * SCALE, TILE * SCALE
-        );
-        caveGlow.addColorStop(0, "rgba(50,255,50,0.12)");
-        caveGlow.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.fillStyle = caveGlow;
-        ctx.fillRect((cx - 4) * SCALE, (cy - 4) * SCALE, (TILE + 8) * SCALE, (TILE + 8) * SCALE);
-        // Eye gleam inside cave (glowing circles)
+        // Eye gleam inside cave — always draw (gameplay indicator for goblin respawn)
         for (const g of goblins) {
             if (g.dead && g.respawnTimer < 60 && ci === g.spawnCave) {
                 const caveEyeCol = g.elite ? "#00FFFF" : "#39FF14";
@@ -6565,7 +6564,9 @@ function render() {
     }
 
     // Bioluminescent mushroom & crystal lights along cave ceiling — drum-synced
+    // Skip when cave bg sprite is loaded (lights are painted into the background)
     const MUSH_COLORS = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#44ff44"];
+    if (!IMAGES.cave_bg) {
     const topCaveCol = Math.floor(COLS / 2);
     const ar_lights = getActiveRows();
     const now_lights = performance.now();
@@ -6644,9 +6645,11 @@ function render() {
         ctx.fill();
         ctx.globalAlpha = 1.0;
     }
+    } // end if (!IMAGES.cave_bg) — skip ceiling lights
 
     // Floor crystals along bottom wall — drum-synced glowing formations
     for (let c = 1; c < COLS - 1; c++) {
+        if (IMAGES.cave_bg) continue; // skip when bg sprite is loaded
         const crX = c * TILE + TILE / 2;
         const crBaseY = (ROWS - 1) * TILE + 2;
         const rowIdx = (c + 2) % ar_lights;
@@ -6777,30 +6780,61 @@ function render() {
             if (currentLevel < LEVELS.length) {
                 const target = LEVELS[currentLevel].pattern[r][c];
                 if (target && !on) {
-                    // Needs to be ON — draw pulsing outline
-                    const pulse = 0.5 + Math.sin(performance.now() * 0.003) * 0.25;
-                    ctx.globalAlpha = pulse;
-                    const rowCol = PAL.gridOn[r];
-                    drawRect(bx + 1, by + 1, TILE - 2, 1, rowCol);
-                    drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, rowCol);
-                    drawRect(bx + 1, by + 1, 1, TILE - 2, rowCol);
-                    drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, rowCol);
-                    // Small dot in center
-                    drawRect(bx + 6, by + 6, 4, 4, rowCol);
-                    ctx.globalAlpha = 1.0;
+                    // Needs to be ON — sprite hint tile or pulsing outline fallback
+                    const hintSpr = IMAGES["grid_hint_" + ROW_LETTERS[r]];
+                    if (hintSpr) {
+                        const pulse = 0.5 + Math.sin(performance.now() * 0.003) * 0.25;
+                        ctx.globalAlpha = pulse;
+                        if (rotAngle !== 0) {
+                            ctx.save();
+                            ctx.translate(bxs + ts / 2, bys + ts / 2);
+                            ctx.rotate(rotAngle);
+                            ctx.drawImage(hintSpr, -ts / 2, -ts / 2, ts, ts);
+                            ctx.restore();
+                        } else {
+                            ctx.drawImage(hintSpr, bxs, bys, ts, ts);
+                        }
+                        ctx.globalAlpha = 1.0;
+                    } else {
+                        const pulse = 0.5 + Math.sin(performance.now() * 0.003) * 0.25;
+                        ctx.globalAlpha = pulse;
+                        const rowCol = PAL.gridOn[r];
+                        drawRect(bx + 1, by + 1, TILE - 2, 1, rowCol);
+                        drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, rowCol);
+                        drawRect(bx + 1, by + 1, 1, TILE - 2, rowCol);
+                        drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, rowCol);
+                        drawRect(bx + 6, by + 6, 4, 4, rowCol);
+                        ctx.globalAlpha = 1.0;
+                    }
                 } else if (!target && on) {
-                    // Needs to be OFF — draw X indicator in complementary color
-                    const xCol = PAL.gridX[r];
-                    ctx.globalAlpha = 0.8 + Math.sin(performance.now() * 0.004) * 0.2;
-                    drawRect(bx + 4, by + 4, 2, 2, xCol);
-                    drawRect(bx + 6, by + 6, 2, 2, xCol);
-                    drawRect(bx + 8, by + 8, 2, 2, xCol);
-                    drawRect(bx + 10, by + 10, 2, 2, xCol);
-                    drawRect(bx + 10, by + 4, 2, 2, xCol);
-                    drawRect(bx + 8, by + 6, 2, 2, xCol);
-                    drawRect(bx + 6, by + 8, 2, 2, xCol);
-                    drawRect(bx + 4, by + 10, 2, 2, xCol);
-                    ctx.globalAlpha = 1.0;
+                    // Needs to be OFF — sprite X tile or procedural X fallback
+                    const xSpr = IMAGES["grid_x_" + ROW_LETTERS[r]];
+                    if (xSpr) {
+                        const xPulse = 0.8 + Math.sin(performance.now() * 0.004) * 0.2;
+                        ctx.globalAlpha = xPulse;
+                        if (rotAngle !== 0) {
+                            ctx.save();
+                            ctx.translate(bxs + ts / 2, bys + ts / 2);
+                            ctx.rotate(rotAngle);
+                            ctx.drawImage(xSpr, -ts / 2, -ts / 2, ts, ts);
+                            ctx.restore();
+                        } else {
+                            ctx.drawImage(xSpr, bxs, bys, ts, ts);
+                        }
+                        ctx.globalAlpha = 1.0;
+                    } else {
+                        const xCol = PAL.gridX[r];
+                        ctx.globalAlpha = 0.8 + Math.sin(performance.now() * 0.004) * 0.2;
+                        drawRect(bx + 4, by + 4, 2, 2, xCol);
+                        drawRect(bx + 6, by + 6, 2, 2, xCol);
+                        drawRect(bx + 8, by + 8, 2, 2, xCol);
+                        drawRect(bx + 10, by + 10, 2, 2, xCol);
+                        drawRect(bx + 10, by + 4, 2, 2, xCol);
+                        drawRect(bx + 8, by + 6, 2, 2, xCol);
+                        drawRect(bx + 6, by + 8, 2, 2, xCol);
+                        drawRect(bx + 4, by + 10, 2, 2, xCol);
+                        ctx.globalAlpha = 1.0;
+                    }
                 }
             }
         }
