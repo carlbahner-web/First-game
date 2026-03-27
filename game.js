@@ -540,9 +540,11 @@ const ASSET_LIST = [
     ["cave_bg",    "assets/bg/cave-bg.png"],
     ["grid_wall",  "assets/grid/grid-wall.png"],
     ["hud_bg",     "assets/hud/hud-bg.png"],
-    // Grid cells (1 off + 6 on colors)
+    // Grid cells (1 off + 6 on colors + 6 hint + 6 x-indicator)
     ["grid_off",   "assets/grid/grid-off.png"],
     ..._ROW_IDS.map(r => ["grid_on_" + r, "assets/grid/grid-on-" + r + ".png"]),
+    ..._ROW_IDS.map(r => ["grid_hint_" + r, "assets/grid/grid-on-" + r + "-hint.png"]),
+    ..._ROW_IDS.map(r => ["grid_x_" + r, "assets/grid/grid-on-" + r + "-x.png"]),
     // Player (4 dirs × 2 walk frames + 4 punch poses = 12)
     ..._DIR_NAMES.flatMap(d => [0, 1].map(f =>
         ["player_" + d + "_" + f, "assets/player/player-" + d + "-" + f + ".png"]
@@ -6777,30 +6779,61 @@ function render() {
             if (currentLevel < LEVELS.length) {
                 const target = LEVELS[currentLevel].pattern[r][c];
                 if (target && !on) {
-                    // Needs to be ON — draw pulsing outline
-                    const pulse = 0.5 + Math.sin(performance.now() * 0.003) * 0.25;
-                    ctx.globalAlpha = pulse;
-                    const rowCol = PAL.gridOn[r];
-                    drawRect(bx + 1, by + 1, TILE - 2, 1, rowCol);
-                    drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, rowCol);
-                    drawRect(bx + 1, by + 1, 1, TILE - 2, rowCol);
-                    drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, rowCol);
-                    // Small dot in center
-                    drawRect(bx + 6, by + 6, 4, 4, rowCol);
-                    ctx.globalAlpha = 1.0;
+                    // Needs to be ON — sprite hint tile or pulsing outline fallback
+                    const hintSpr = IMAGES["grid_hint_" + ROW_LETTERS[r]];
+                    if (hintSpr) {
+                        const pulse = 0.5 + Math.sin(performance.now() * 0.003) * 0.25;
+                        ctx.globalAlpha = pulse;
+                        if (rotAngle !== 0) {
+                            ctx.save();
+                            ctx.translate(bxs + ts / 2, bys + ts / 2);
+                            ctx.rotate(rotAngle);
+                            ctx.drawImage(hintSpr, -ts / 2, -ts / 2, ts, ts);
+                            ctx.restore();
+                        } else {
+                            ctx.drawImage(hintSpr, bxs, bys, ts, ts);
+                        }
+                        ctx.globalAlpha = 1.0;
+                    } else {
+                        const pulse = 0.5 + Math.sin(performance.now() * 0.003) * 0.25;
+                        ctx.globalAlpha = pulse;
+                        const rowCol = PAL.gridOn[r];
+                        drawRect(bx + 1, by + 1, TILE - 2, 1, rowCol);
+                        drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, rowCol);
+                        drawRect(bx + 1, by + 1, 1, TILE - 2, rowCol);
+                        drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, rowCol);
+                        drawRect(bx + 6, by + 6, 4, 4, rowCol);
+                        ctx.globalAlpha = 1.0;
+                    }
                 } else if (!target && on) {
-                    // Needs to be OFF — draw X indicator in complementary color
-                    const xCol = PAL.gridX[r];
-                    ctx.globalAlpha = 0.8 + Math.sin(performance.now() * 0.004) * 0.2;
-                    drawRect(bx + 4, by + 4, 2, 2, xCol);
-                    drawRect(bx + 6, by + 6, 2, 2, xCol);
-                    drawRect(bx + 8, by + 8, 2, 2, xCol);
-                    drawRect(bx + 10, by + 10, 2, 2, xCol);
-                    drawRect(bx + 10, by + 4, 2, 2, xCol);
-                    drawRect(bx + 8, by + 6, 2, 2, xCol);
-                    drawRect(bx + 6, by + 8, 2, 2, xCol);
-                    drawRect(bx + 4, by + 10, 2, 2, xCol);
-                    ctx.globalAlpha = 1.0;
+                    // Needs to be OFF — sprite X tile or procedural X fallback
+                    const xSpr = IMAGES["grid_x_" + ROW_LETTERS[r]];
+                    if (xSpr) {
+                        const xPulse = 0.8 + Math.sin(performance.now() * 0.004) * 0.2;
+                        ctx.globalAlpha = xPulse;
+                        if (rotAngle !== 0) {
+                            ctx.save();
+                            ctx.translate(bxs + ts / 2, bys + ts / 2);
+                            ctx.rotate(rotAngle);
+                            ctx.drawImage(xSpr, -ts / 2, -ts / 2, ts, ts);
+                            ctx.restore();
+                        } else {
+                            ctx.drawImage(xSpr, bxs, bys, ts, ts);
+                        }
+                        ctx.globalAlpha = 1.0;
+                    } else {
+                        const xCol = PAL.gridX[r];
+                        ctx.globalAlpha = 0.8 + Math.sin(performance.now() * 0.004) * 0.2;
+                        drawRect(bx + 4, by + 4, 2, 2, xCol);
+                        drawRect(bx + 6, by + 6, 2, 2, xCol);
+                        drawRect(bx + 8, by + 8, 2, 2, xCol);
+                        drawRect(bx + 10, by + 10, 2, 2, xCol);
+                        drawRect(bx + 10, by + 4, 2, 2, xCol);
+                        drawRect(bx + 8, by + 6, 2, 2, xCol);
+                        drawRect(bx + 6, by + 8, 2, 2, xCol);
+                        drawRect(bx + 4, by + 10, 2, 2, xCol);
+                        ctx.globalAlpha = 1.0;
+                    }
                 }
             }
         }
