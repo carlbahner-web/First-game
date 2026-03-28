@@ -1472,9 +1472,8 @@ const player = {
 
 // ---- Caves (goblin spawn points) ----
 const CAVES = [
-    { tileX: COLS - 1, tileY: GRID_Y + 3 },   // right wall
-    { tileX: Math.floor(COLS / 2), tileY: 0 }, // top wall (moved from bottom)
-    { tileX: 0, tileY: GRID_Y + 1 },           // left wall
+    { tileX: 0, tileY: 4 },          // upper-left corner cave
+    { tileX: COLS - 1, tileY: 4 },   // upper-right corner cave
 ];
 
 // ---- Multiple Goblin System ----
