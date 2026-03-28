@@ -573,8 +573,65 @@ const ASSET_LIST = [
     ["cave_entrance", "assets/cave/cave-entrance.png"],
 ];
 
+// ---- Audio Sample Preloader ----
+// Loads MP3/WAV drum samples. Falls back to synthesized sounds if missing.
+const AUDIO_BUFFERS = {};
+const AUDIO_SAMPLES = [
+    ["openhat",  "assets/audio/openhat.mp3"],
+    ["hihat",    "assets/audio/hihat.mp3"],
+    ["snare",    "assets/audio/snare.mp3"],
+    ["kick",     "assets/audio/kick.mp3"],
+    ["cowbell",  "assets/audio/cowbell.mp3"],
+    ["tom",      "assets/audio/tom.mp3"],
+];
+
+function loadAudioSample(key, src) {
+    return fetch(src)
+        .then(response => {
+            if (!response.ok) throw new Error("Not found");
+            return response.arrayBuffer();
+        })
+        .then(arrayBuffer => {
+            // Defer decoding until audioCtx exists
+            AUDIO_BUFFERS[key] = arrayBuffer;
+        })
+        .catch(() => {
+            AUDIO_BUFFERS[key] = null; // fallback to synthesized
+        });
+}
+
+// Decode raw array buffers into AudioBuffers (must happen after audioCtx is created)
+function decodeAudioSamples() {
+    if (!audioCtx) return Promise.resolve();
+    const promises = AUDIO_SAMPLES.map(([key]) => {
+        if (AUDIO_BUFFERS[key] && !(AUDIO_BUFFERS[key] instanceof AudioBuffer)) {
+            return audioCtx.decodeAudioData(AUDIO_BUFFERS[key].slice(0))
+                .then(decoded => { AUDIO_BUFFERS[key] = decoded; })
+                .catch(() => { AUDIO_BUFFERS[key] = null; });
+        }
+        return Promise.resolve();
+    });
+    return Promise.all(promises);
+}
+
+// Play a loaded audio sample at a specific time
+function playSample(key, time, volume) {
+    if (!AUDIO_BUFFERS[key] || !(AUDIO_BUFFERS[key] instanceof AudioBuffer)) return false;
+    const source = audioCtx.createBufferSource();
+    const gain = audioCtx.createGain();
+    source.buffer = AUDIO_BUFFERS[key];
+    gain.gain.setValueAtTime(volume || 1.0, time);
+    source.connect(gain);
+    gain.connect(audioCtx.destination);
+    source.start(time);
+    return true; // sample played successfully
+}
+
 let assetsReady = false;
-Promise.all(ASSET_LIST.map(([key, src]) => loadImage(key, src))).then(() => {
+Promise.all([
+    ...ASSET_LIST.map(([key, src]) => loadImage(key, src)),
+    ...AUDIO_SAMPLES.map(([key, src]) => loadAudioSample(key, src)),
+]).then(() => {
     assetsReady = true;
     if (typeof startGame === "function") startGame();
 });
@@ -1135,11 +1192,13 @@ let audioCtx = null;
 function ensureAudio() {
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        decodeAudioSamples(); // decode loaded audio files now that context exists
     }
     if (audioCtx.state === "suspended") audioCtx.resume();
 }
 
 function playKick(time) {
+    if (playSample("kick", time)) return;
     const ctx = audioCtx;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -1155,6 +1214,7 @@ function playKick(time) {
 }
 
 function playSnare(time) {
+    if (playSample("snare", time)) return;
     const ctx = audioCtx;
     // noise burst
     const bufferSize = ctx.sampleRate * 0.15;
@@ -1188,6 +1248,7 @@ function playSnare(time) {
 }
 
 function playHihat(time, open) {
+    if (playSample(open ? "openhat" : "hihat", time)) return;
     const ctx = audioCtx;
     const bufferSize = ctx.sampleRate * (open ? 0.25 : 0.06);
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
@@ -1210,6 +1271,7 @@ function playHihat(time, open) {
 }
 
 function playCowbell(time) {
+    if (playSample("cowbell", time)) return;
     const ctx = audioCtx;
     // Two detuned square oscillators for metallic tone
     const osc1 = ctx.createOscillator();
@@ -1234,6 +1296,7 @@ function playCowbell(time) {
 }
 
 function playTom(time) {
+    if (playSample("tom", time)) return;
     const ctx = audioCtx;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
