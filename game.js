@@ -685,13 +685,13 @@ function stopBGM() {
 }
 
 let assetsReady = false;
-Promise.all([
-    ...ASSET_LIST.map(([key, src]) => loadImage(key, src)),
-    ...AUDIO_SAMPLES.map(([key, src]) => loadAudioSample(key, src)),
-]).then(() => {
+// Start game as soon as images load — audio loads in background (non-blocking)
+Promise.all(ASSET_LIST.map(([key, src]) => loadImage(key, src))).then(() => {
     assetsReady = true;
     if (typeof startGame === "function") startGame();
 });
+// Load audio samples in background — they'll be available when ready
+Promise.all(AUDIO_SAMPLES.map(([key, src]) => loadAudioSample(key, src))).catch(() => {});
 
 // ---- Grain texture overlay (screen-print / block-print effect) ----
 const grainCanvas = document.createElement('canvas');
