@@ -1112,8 +1112,8 @@ const PAL = {
     floor:     "#0d150d",
     floorAlt:  "#111911",
     gridOff:   "#1a2820",
-    gridOn:    ["#44ff44", "#88ee22", "#ee8822", "#ff6611", "#ff4400", "#33dd88"], // per-row colors (O,H,S,K,B,T): green→orange→teal
-    gridX:     ["#ff4400", "#331a0a", "#44ff44", "#88ee22", "#44ff44", "#ff4400"], // bright X indicators
+    gridOn:    ["#44ff44", "#ddcc22", "#aa44ff", "#ee8822", "#4488ff", "#ff4400"], // per-row colors (O,H,S,K,B,T): green, yellow, purple, orange, blue, red
+    gridX:     ["#ff4400", "#6633aa", "#ee8822", "#aa44ff", "#ff4400", "#44ff44"], // bright X indicators (contrasting)
     gridBorder:"#2a3a2a",
     playhead:  "#44ff44",
     player:    "#efd8a1",
@@ -1472,9 +1472,8 @@ const player = {
 
 // ---- Caves (goblin spawn points) ----
 const CAVES = [
-    { tileX: COLS - 1, tileY: GRID_Y + 3 },   // right wall
-    { tileX: Math.floor(COLS / 2), tileY: 0 }, // top wall (moved from bottom)
-    { tileX: 0, tileY: GRID_Y + 1 },           // left wall
+    { tileX: 0, tileY: 4 },          // upper-left corner cave
+    { tileX: COLS - 1, tileY: 4 },   // upper-right corner cave
 ];
 
 // ---- Multiple Goblin System ----
@@ -1559,8 +1558,8 @@ let catapultSequenceCount = 0; // how many catapults have fired in current seque
 let tomatoes = []; // { x, y, targetX, targetY, speed, life }
 let tomatoSplats = []; // { x, y, timer }
 
-let gameState = "title"; // "title", "intro", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim", "cave-return", "minigame", "paused"
-const SKIP_INTRO = true; // Set to false to re-enable intro/story scenes
+const SKIP_INTRO = true; // Set to false to re-enable title screen and intro/story scenes
+let gameState = SKIP_INTRO ? "playing" : "title";
 let gameMode = "thrill"; // "thrill" = full game with goblins, "chill" = no goblins during gameplay
 let pausedFromState = "playing";   // gameState to restore on unpause
 let pausedFromMinigame = "none";   // minigameState to restore on unpause
