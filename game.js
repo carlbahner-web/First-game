@@ -1560,6 +1560,7 @@ let tomatoes = []; // { x, y, targetX, targetY, speed, life }
 let tomatoSplats = []; // { x, y, timer }
 
 let gameState = "title"; // "title", "intro", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim", "cave-return", "minigame", "paused"
+const SKIP_INTRO = true; // Set to false to re-enable intro/story scenes
 let gameMode = "thrill"; // "thrill" = full game with goblins, "chill" = no goblins during gameplay
 let pausedFromState = "playing";   // gameState to restore on unpause
 let pausedFromMinigame = "none";   // minigameState to restore on unpause
@@ -9537,8 +9538,15 @@ function renderTitleScreen() {
         if (titleFadeTimer >= TITLE_FADE_DURATION) {
             titleFadingOut = false;
             titleFadeTimer = 0;
-            // Now switch to intro
             stopTitleDrums();
+            if (SKIP_INTRO) {
+                // Skip straight to gameplay
+                gameState = "playing";
+                currentStep = 0;
+                lastStepTime = performance.now();
+                return;
+            }
+            // Normal intro sequence
             gameState = "intro";
             introScene = 0;
             introTimer = 0;
