@@ -1112,8 +1112,8 @@ const PAL = {
     floor:     "#0d150d",
     floorAlt:  "#111911",
     gridOff:   "#1a2820",
-    gridOn:    ["#44ff44", "#88ee22", "#ee8822", "#ff6611", "#ff4400", "#33dd88"], // per-row colors (O,H,S,K,B,T): green→orange→teal
-    gridX:     ["#ff4400", "#331a0a", "#44ff44", "#88ee22", "#44ff44", "#ff4400"], // bright X indicators
+    gridOn:    ["#44ff44", "#ddcc22", "#aa44ff", "#ee8822", "#4488ff", "#ff4400"], // per-row colors (O,H,S,K,B,T): green, yellow, purple, orange, blue, red
+    gridX:     ["#ff4400", "#6633aa", "#ee8822", "#aa44ff", "#ff4400", "#44ff44"], // bright X indicators (contrasting)
     gridBorder:"#2a3a2a",
     playhead:  "#44ff44",
     player:    "#efd8a1",
