@@ -548,8 +548,8 @@ const ASSET_LIST = [
     ..._ROW_IDS.map(r => ["grid_on_" + r, "assets/grid/grid-on-" + r + ".png"]),
     ..._ROW_IDS.map(r => ["grid_hint_" + r, "assets/grid/grid-on-" + r + "-hint.png"]),
     ..._ROW_IDS.map(r => ["grid_x_" + r, "assets/grid/grid-on-" + r + "-x.png"]),
-    // Player (4 dirs × 2 walk frames + 4 punch poses = 12)
-    ..._DIR_NAMES.flatMap(d => [0, 1].map(f =>
+    // Player (4 dirs × 3 frames: idle + 2 walk + 4 punch poses)
+    ..._DIR_NAMES.flatMap(d => [0, 1, 2].map(f =>
         ["player_" + d + "_" + f, "assets/player/player-" + d + "-" + f + ".png"]
     )),
     ..._DIR_NAMES.map(d => ["player_punch_" + d, "assets/player/player-punch-" + d + ".png"]),
@@ -7447,9 +7447,15 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
     // ---- Sprite-based path (early return if PNG loaded) ----
     {
         const dirName = ["down", "up", "left", "right"][dir];
-        const sprKey = punch > 0
-            ? "player_punch_" + dirName
-            : "player_" + dirName + "_" + (frame % 2);
+        const punchKey = "player_punch_" + dirName;
+        // Frame 0 = idle, frames 1-3 = walking (alternate between sprite 1 and 2)
+        const walkFrame = frame === 0 ? 0 : ((frame % 2) + 1);
+        const walkKey = "player_" + dirName + "_" + walkFrame;
+        // Fall back to frame 0 if the specific walk frame doesn't exist
+        const walkFallback = "player_" + dirName + "_0";
+        // Try punch sprite first, fall back to walk sprite
+        const sprKey = (punch > 0 && IMAGES[punchKey]) ? punchKey
+            : IMAGES[walkKey] ? walkKey : walkFallback;
         if (IMAGES[sprKey]) {
             const lx = leanX * SCALE, ly = leanY * SCALE;
             if (ghost) { ctx.globalAlpha = 0.5; ctx.globalCompositeOperation = "lighter"; }
