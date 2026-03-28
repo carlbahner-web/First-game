@@ -1559,8 +1559,8 @@ let catapultSequenceCount = 0; // how many catapults have fired in current seque
 let tomatoes = []; // { x, y, targetX, targetY, speed, life }
 let tomatoSplats = []; // { x, y, timer }
 
-let gameState = "title"; // "title", "intro", "playing", "gameover", "highscore", "levelcomplete", "enemywarning-intro", "enemywarning", "newinstrument", "sabotage-anim", "cave-return", "minigame", "paused"
-const SKIP_INTRO = true; // Set to false to re-enable intro/story scenes
+const SKIP_INTRO = true; // Set to false to re-enable title screen and intro/story scenes
+let gameState = SKIP_INTRO ? "playing" : "title";
 let gameMode = "thrill"; // "thrill" = full game with goblins, "chill" = no goblins during gameplay
 let pausedFromState = "playing";   // gameState to restore on unpause
 let pausedFromMinigame = "none";   // minigameState to restore on unpause
