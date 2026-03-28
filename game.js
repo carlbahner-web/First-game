@@ -34,6 +34,8 @@ function setLevelTempo(levelIndex) {
          5, 5,           // L29-30: 180 BPM — maximum
     ][levelIndex] || 7;
     stepMs = framesPerSixteenth * (1000 / 60);
+    // Start/switch background music to match the new tempo
+    if (typeof startBGM === "function") startBGM(framesPerSixteenth);
 }
 
 // ---- Level Definitions (30 levels) ----
@@ -583,6 +585,13 @@ const AUDIO_SAMPLES = [
     ["kick",     "assets/audio/kick.mp3"],
     ["cowbell",  "assets/audio/cowbell.mp3"],
     ["tom",      "assets/audio/tom.mp3"],
+    // Background music loops (1 bar per tempo tier)
+    ["bgm_90",     "assets/audio/bgm-90.mp3"],
+    ["bgm_100",    "assets/audio/bgm-100.mp3"],
+    ["bgm_112p5",  "assets/audio/bgm-112p5.mp3"],
+    ["bgm_128p6",  "assets/audio/bgm-128p6.mp3"],
+    ["bgm_150",    "assets/audio/bgm-150.mp3"],
+    ["bgm_180",    "assets/audio/bgm-180.mp3"],
 ];
 
 function loadAudioSample(key, src) {
@@ -625,6 +634,54 @@ function playSample(key, time, volume) {
     gain.connect(audioCtx.destination);
     source.start(time);
     return true; // sample played successfully
+}
+
+// ---- Background Music System ----
+// Maps frames-per-16th values to BGM buffer keys
+const BGM_TEMPO_MAP = {
+    10: "bgm_90",      // 90 BPM
+    9:  "bgm_100",     // 100 BPM
+    8:  "bgm_112p5",   // 112.5 BPM
+    7:  "bgm_128p6",   // 128.6 BPM
+    6:  "bgm_150",     // 150 BPM
+    5:  "bgm_180",     // 180 BPM
+};
+let bgmSource = null;    // current AudioBufferSourceNode
+let bgmGain = null;      // gain node for volume control
+let bgmCurrentKey = null; // which BGM is currently playing
+const BGM_VOLUME = 0.35;  // background music volume (0-1)
+
+function startBGM(framesPerSixteenth) {
+    if (!audioCtx) return;
+    const key = BGM_TEMPO_MAP[framesPerSixteenth];
+    if (!key) return;
+    // Don't restart if already playing the same track
+    if (bgmCurrentKey === key && bgmSource) return;
+    stopBGM();
+    const buffer = AUDIO_BUFFERS[key];
+    if (!buffer || !(buffer instanceof AudioBuffer)) return;
+    bgmSource = audioCtx.createBufferSource();
+    bgmGain = audioCtx.createGain();
+    bgmSource.buffer = buffer;
+    bgmSource.loop = true; // seamless looping
+    bgmGain.gain.setValueAtTime(BGM_VOLUME, audioCtx.currentTime);
+    bgmSource.connect(bgmGain);
+    bgmGain.connect(audioCtx.destination);
+    bgmSource.start(audioCtx.currentTime);
+    bgmCurrentKey = key;
+}
+
+function stopBGM() {
+    if (bgmSource) {
+        try { bgmSource.stop(); } catch (e) {}
+        bgmSource.disconnect();
+        bgmSource = null;
+    }
+    if (bgmGain) {
+        bgmGain.disconnect();
+        bgmGain = null;
+    }
+    bgmCurrentKey = null;
 }
 
 let assetsReady = false;
@@ -3181,6 +3238,7 @@ let playerDeathAnim = {
 };
 
 function triggerGameOver() {
+    stopBGM();
     gameState = "gameover";
     gameOverTimer = 0;
     sadSongStarted = false;
