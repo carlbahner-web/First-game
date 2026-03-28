@@ -12316,5 +12316,13 @@ function gameLoop(timestamp) {
 }
 
 loadHighScores();
-function startGame() { requestAnimationFrame(gameLoop); }
-if (assetsReady) startGame(); // if assets loaded before we got here
+function startGame() {
+    if (SKIP_INTRO) {
+        ensureAudio();
+        resetGame();
+        spawnDancers(6);
+        lastStepTime = performance.now();
+    }
+    requestAnimationFrame(gameLoop);
+}
+if (assetsReady) startGame();
