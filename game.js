@@ -531,8 +531,9 @@ const _DIR_NAMES = ["down", "up", "left", "right"];
 function loadImage(key, src) {
     return new Promise((resolve) => {
         const img = new Image();
-        img.onload = () => { IMAGES[key] = img; resolve(); };
-        img.onerror = () => { IMAGES[key] = null; resolve(); }; // graceful fallback
+        const timeout = setTimeout(() => { IMAGES[key] = null; resolve(); }, 5000);
+        img.onload = () => { clearTimeout(timeout); IMAGES[key] = img; resolve(); };
+        img.onerror = () => { clearTimeout(timeout); IMAGES[key] = null; resolve(); };
         img.src = src;
     });
 }
@@ -12438,11 +12439,15 @@ function gameLoop(timestamp) {
 
 loadHighScores();
 function startGame() {
-    if (SKIP_INTRO) {
-        ensureAudio();
-        resetGame();
-        spawnDancers(6);
-        lastStepTime = performance.now();
+    try {
+        if (SKIP_INTRO) {
+            ensureAudio();
+            resetGame();
+            spawnDancers(6);
+            lastStepTime = performance.now();
+        }
+    } catch (e) {
+        console.error("startGame init error:", e);
     }
     requestAnimationFrame(gameLoop);
 }
