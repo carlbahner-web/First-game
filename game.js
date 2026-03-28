@@ -1649,7 +1649,7 @@ function createGoblin(caveIndex) {
 }
 
 // Goblins array — up to 5 concurrent goblins
-let goblins = [createGoblin(0), createGoblin(2), createGoblin(1), createGoblin(0), createGoblin(2)];
+let goblins = [createGoblin(0), createGoblin(1), createGoblin(0), createGoblin(1), createGoblin(0)];
 // Backward compat: `goblin` is an alias for goblins[0] (used by legacy rendering code)
 let goblin = goblins[0];
 
