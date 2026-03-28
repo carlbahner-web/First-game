@@ -7447,9 +7447,10 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
     // ---- Sprite-based path (early return if PNG loaded) ----
     {
         const dirName = ["down", "up", "left", "right"][dir];
-        const sprKey = punch > 0
-            ? "player_punch_" + dirName
-            : "player_" + dirName + "_" + (frame % 2);
+        const punchKey = "player_punch_" + dirName;
+        const walkKey = "player_" + dirName + "_" + (frame % 2);
+        // Try punch sprite first, fall back to walk sprite
+        const sprKey = (punch > 0 && IMAGES[punchKey]) ? punchKey : walkKey;
         if (IMAGES[sprKey]) {
             const lx = leanX * SCALE, ly = leanY * SCALE;
             if (ghost) { ctx.globalAlpha = 0.5; ctx.globalCompositeOperation = "lighter"; }
