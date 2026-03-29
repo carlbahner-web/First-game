@@ -8154,9 +8154,9 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
             const cellW = 64, cellH = 64;
             const cols = sheet.width / cellW;
             const col = frame % cols;
-            // Destination size: 1.5×1.5 tiles, centered and bottom-aligned
-            const sprW = TILE * SCALE * 1.5;
-            const sprH = TILE * SCALE * 1.5;
+            // Destination size: 2×2 tiles, centered and bottom-aligned
+            const sprW = TILE * SCALE * 2;
+            const sprH = TILE * SCALE * 2;
             const sprX = sx - (sprW - TILE * SCALE) / 2;
             const sprY = sy - bob - (sprH - TILE * SCALE);
             // Hurt flash: overlay white tint
