@@ -1250,7 +1250,13 @@ let audioCtx = null;
 function ensureAudio() {
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        decodeAudioSamples(); // decode loaded audio files now that context exists
+        decodeAudioSamples().then(() => {
+            // Retry BGM start after samples are decoded
+            if (typeof startBGM === "function" && typeof stepMs !== "undefined") {
+                const fps = stepMs / (1000 / 60);
+                startBGM(Math.round(fps));
+            }
+        });
     }
     if (audioCtx.state === "suspended") audioCtx.resume();
 }
