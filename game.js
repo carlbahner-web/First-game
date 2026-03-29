@@ -2742,7 +2742,7 @@ function update(dt) {
             if (p.dir !== wantDir) {
                 // Turn only, don't move
                 p.dir = wantDir;
-                p.turnDelay = 3;
+                p.turnDelay = 5;
             } else if (p.turnDelay > 0) {
                 // Wait after turning before allowing movement
                 p.turnDelay--;
@@ -4176,7 +4176,7 @@ function updateMinigameArena() {
             if (wantDir >= 0) {
                 if (p.dir !== wantDir) {
                     p.dir = wantDir;
-                    p.turnDelay = 3;
+                    p.turnDelay = 5;
                 } else if (p.turnDelay > 0) {
                     p.turnDelay--;
                 } else {
