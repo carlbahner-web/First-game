@@ -553,13 +553,13 @@ const ASSET_LIST = [
         ["player_" + d + "_" + f, "assets/player/player-" + d + "-" + f + ".png"]
     )),
     ..._DIR_NAMES.map(d => ["player_punch_" + d, "assets/player/player-punch-" + d + ".png"]),
-    // Goblins (3 types × 4 dirs × 2 frames = 24 + 1 catapult frame)
-    ...["goblin", "elite", "catapult"].flatMap(t =>
-        _DIR_NAMES.flatMap(d => [0, 1].map(f =>
-            [t + "_" + d + "_" + f, "assets/goblins/" + t + "-" + d + "-" + f + ".png"]
-        ))
-    ),
-    ["catapult_frame", "assets/goblins/catapult-frame.png"],
+    // Goblin sprite sheets (3 types × walk + idle sheets)
+    ["goblin_walk",   "assets/goblins/Goblin1/Walk/Walk0_full.png"],
+    ["goblin_idle",   "assets/goblins/Goblin1/Idle/Idle0_full.png"],
+    ["elite_walk",    "assets/goblins/Goblin2/Walk/Walk0_full.png"],
+    ["elite_idle",    "assets/goblins/Goblin2/Idle/Idle0_full.png"],
+    ["catapult_walk", "assets/goblins/Goblin3/Walk/Walk0_full.png"],
+    ["catapult_idle", "assets/goblins/Goblin3/Idle/Idle0_full.png"],
     // Dancers (6 color variants × 2 poses = 12)
     ...[0,1,2,3,4,5].flatMap(i => [
         ["dancer_" + i,          "assets/dancers/dancer-" + i + ".png"],
@@ -8137,30 +8137,41 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
     const showShadow = opts.showShadow !== false;
     const bob = (frame % 2 === 1 ? 1 : 0) * SCALE;
 
-    // ---- Sprite-based path (early return if PNG loaded) ----
+    // ---- Sprite sheet path (early return if sheet loaded) ----
     {
-        const dirName = ["down", "up", "left", "right"][dir];
         const prefix = type === "elite" ? "elite" : type === "catapult" ? "catapult" : "goblin";
-        const sprKey = prefix + "_" + dirName + "_" + (frame % 2);
-        if (IMAGES[sprKey]) {
+        const walkSheet = IMAGES[prefix + "_walk"];
+        const idleSheet = IMAGES[prefix + "_idle"];
+        // Use walk sheet when moving, idle when standing (fall back to walk if idle missing)
+        const sheet = walkSheet || idleSheet;
+        if (sheet) {
             const sx = gx * SCALE;
             const sy = gy * SCALE;
-            // Draw catapult frame behind goblin
-            if (type === "catapult" && IMAGES.catapult_frame) {
-                ctx.drawImage(IMAGES.catapult_frame, sx - 12 * SCALE, sy - 6 * SCALE);
-            }
+            // Sprite sheet layout: 64×64 cells
+            // Rows: 0=down, 1=left, 2=right, 3=up
+            // Game dirs: 0=down, 1=up, 2=left, 3=right
+            const sheetRow = [0, 3, 1, 2][dir];
+            const cellW = 64, cellH = 64;
+            const cols = sheet.width / cellW;
+            const col = frame % cols;
+            // Destination size: 1.5×1.5 tiles, centered and bottom-aligned
+            const sprW = TILE * SCALE * 1.5;
+            const sprH = TILE * SCALE * 1.5;
+            const sprX = sx - (sprW - TILE * SCALE) / 2;
+            const sprY = sy - bob - (sprH - TILE * SCALE);
             // Hurt flash: overlay white tint
             const isHurt = opts.bodyCol && opts.bodyCol !== "#39FF14" && opts.bodyCol !== "#FF00FF" && opts.bodyCol !== "#FF6600";
+            ctx.drawImage(sheet,
+                col * cellW, sheetRow * cellH, cellW, cellH, // source crop
+                sprX, sprY, sprW, sprH                        // destination
+            );
             if (isHurt) {
-                ctx.drawImage(IMAGES[sprKey], sx, sy - bob, TILE * SCALE, TILE * SCALE);
                 ctx.globalCompositeOperation = "source-atop";
                 ctx.globalAlpha = 0.6;
                 ctx.fillStyle = "#ffffff";
-                ctx.fillRect(sx, sy - bob, TILE * SCALE, TILE * SCALE);
+                ctx.fillRect(sprX, sprY, sprW, sprH);
                 ctx.globalAlpha = 1;
                 ctx.globalCompositeOperation = "source-over";
-            } else {
-                ctx.drawImage(IMAGES[sprKey], sx, sy - bob, TILE * SCALE, TILE * SCALE);
             }
             return;
         }
