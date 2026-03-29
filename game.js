@@ -2742,7 +2742,7 @@ function update(dt) {
             if (p.dir !== wantDir) {
                 // Turn only, don't move
                 p.dir = wantDir;
-                p.turnDelay = 3;
+                p.turnDelay = 5;
             } else if (p.turnDelay > 0) {
                 // Wait after turning before allowing movement
                 p.turnDelay--;
@@ -4176,7 +4176,7 @@ function updateMinigameArena() {
             if (wantDir >= 0) {
                 if (p.dir !== wantDir) {
                     p.dir = wantDir;
-                    p.turnDelay = 3;
+                    p.turnDelay = 5;
                 } else if (p.turnDelay > 0) {
                     p.turnDelay--;
                 } else {
@@ -8148,17 +8148,17 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
             const sx = gx * SCALE;
             const sy = gy * SCALE;
             // Sprite sheet layout: 64×64 cells
-            // Rows: 0=down, 1=left, 2=right, 3=up
-            // Game dirs: 0=down, 1=up, 2=left, 3=right
-            const sheetRow = [0, 3, 1, 2][dir];
+            // Rows: 0=down, 1=up, 2=left, 3=right (matches game dir codes)
+            const sheetRow = dir;
             const cellW = 64, cellH = 64;
             const cols = sheet.width / cellW;
             const col = frame % cols;
-            // Destination size: 3.5×3.5 tiles, centered and bottom-aligned
+            // Destination size: 3.5×3.5 tiles
+            // Center sprite on the goblin's collision tile (1×1 tile at gx,gy)
             const sprW = TILE * SCALE * 3.5;
             const sprH = TILE * SCALE * 3.5;
-            const sprX = sx - (sprW - TILE * SCALE) / 2;
-            const sprY = sy - bob - (sprH - TILE * SCALE);
+            const sprX = sx + (TILE * SCALE) / 2 - sprW / 2;
+            const sprY = sy + (TILE * SCALE) / 2 - sprH / 2;
             // Hurt flash: overlay white tint
             const isHurt = opts.bodyCol && opts.bodyCol !== "#39FF14" && opts.bodyCol !== "#FF00FF" && opts.bodyCol !== "#FF6600";
             ctx.drawImage(sheet,
