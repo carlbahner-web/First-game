@@ -580,19 +580,19 @@ const ASSET_LIST = [
 // Loads MP3/WAV drum samples. Falls back to synthesized sounds if missing.
 const AUDIO_BUFFERS = {};
 const AUDIO_SAMPLES = [
-    ["openhat",  "assets/audio/openhat.mp3"],
-    ["hihat",    "assets/audio/hihat.mp3"],
-    ["snare",    "assets/audio/snare.mp3"],
-    ["kick",     "assets/audio/kick.mp3"],
-    ["cowbell",  "assets/audio/cowbell.mp3"],
-    ["tom",      "assets/audio/tom.mp3"],
+    ["openhat",  "assets/audio/openhat.wav"],
+    ["hihat",    "assets/audio/closedhat.wav"],
+    ["snare",    "assets/audio/snare.wav"],
+    ["kick",     "assets/audio/kick.wav"],
+    ["cowbell",  "assets/audio/cowbell.wav"],
+    ["tom",      "assets/audio/tom.wav"],
     // Background music loops (1 bar per tempo tier)
-    ["bgm_90",     "assets/audio/bgm-90.mp3"],
-    ["bgm_100",    "assets/audio/bgm-100.mp3"],
-    ["bgm_112p5",  "assets/audio/bgm-112p5.mp3"],
-    ["bgm_128p6",  "assets/audio/bgm-128p6.mp3"],
-    ["bgm_150",    "assets/audio/bgm-150.mp3"],
-    ["bgm_180",    "assets/audio/bgm-180.mp3"],
+    ["bgm_90",     "assets/audio/bgm-90.wav"],
+    ["bgm_100",    "assets/audio/bgm-100.wav"],
+    ["bgm_112p5",  "assets/audio/bgm-112p5.wav"],
+    ["bgm_128p6",  "assets/audio/bgm-128p6.wav"],
+    ["bgm_150",    "assets/audio/bgm-150.wav"],
+    ["bgm_180",    "assets/audio/bgm-180.wav"],
 ];
 
 function loadAudioSample(key, src) {
