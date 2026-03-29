@@ -2259,6 +2259,7 @@ function aabb(a, b) {
 
 // ---- Helper: spawn dancer fans from the edges ----
 function spawnDancers(count) {
+    return; // Temporarily disabled — dancers bog down performance
     const edges = [0, 1, 2]; // left, right, bottom
     for (let i = edges.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -7457,7 +7458,8 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         const sprKey = (punch > 0 && IMAGES[punchKey]) ? punchKey
             : IMAGES[walkKey] ? walkKey : walkFallback;
         if (IMAGES[sprKey]) {
-            const lx = leanX * SCALE, ly = leanY * SCALE;
+            // No punch lunge when using sprites — keep Carl in place
+            const lx = 0, ly = 0;
             // Player sprite drawn larger than 1 tile (1.5 tiles wide, 1.5 tiles tall)
             const sprW = TILE * SCALE * 1.5;
             const sprH = TILE * SCALE * 1.5;
