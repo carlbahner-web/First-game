@@ -7458,9 +7458,9 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
             : IMAGES[walkKey] ? walkKey : walkFallback;
         if (IMAGES[sprKey]) {
             const lx = leanX * SCALE, ly = leanY * SCALE;
-            // Player sprite drawn larger than 1 tile (2 tiles wide, 2.5 tiles tall)
-            const sprW = TILE * SCALE * 2;
-            const sprH = TILE * SCALE * 2.5;
+            // Player sprite drawn larger than 1 tile (1.2 tiles wide, 1.5 tiles tall)
+            const sprW = TILE * SCALE * 1.2;
+            const sprH = TILE * SCALE * 1.5;
             // Center horizontally on tile, align bottom to tile bottom
             const sprX = sx + lx - (sprW - TILE * SCALE) / 2;
             const sprY = sy - bob + ly - (sprH - TILE * SCALE);
