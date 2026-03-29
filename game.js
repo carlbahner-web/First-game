@@ -2259,6 +2259,7 @@ function aabb(a, b) {
 
 // ---- Helper: spawn dancer fans from the edges ----
 function spawnDancers(count) {
+    return; // Temporarily disabled — dancers bog down performance
     const edges = [0, 1, 2]; // left, right, bottom
     for (let i = edges.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
