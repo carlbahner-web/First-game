@@ -7458,8 +7458,14 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
             : IMAGES[walkKey] ? walkKey : walkFallback;
         if (IMAGES[sprKey]) {
             const lx = leanX * SCALE, ly = leanY * SCALE;
+            // Player sprite drawn larger than 1 tile (2 tiles wide, 2.5 tiles tall)
+            const sprW = TILE * SCALE * 2;
+            const sprH = TILE * SCALE * 2.5;
+            // Center horizontally on tile, align bottom to tile bottom
+            const sprX = sx + lx - (sprW - TILE * SCALE) / 2;
+            const sprY = sy - bob + ly - (sprH - TILE * SCALE);
             if (ghost) { ctx.globalAlpha = 0.5; ctx.globalCompositeOperation = "lighter"; }
-            ctx.drawImage(IMAGES[sprKey], sx + lx, sy - bob + ly, TILE * SCALE, TILE * SCALE);
+            ctx.drawImage(IMAGES[sprKey], sprX, sprY, sprW, sprH);
             if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
             return;
         }
