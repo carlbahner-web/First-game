@@ -650,6 +650,8 @@ const BGM_TEMPO_MAP = {
 let bgmSource = null;    // current AudioBufferSourceNode
 let bgmGain = null;      // gain node for volume control
 let bgmCurrentKey = null; // which BGM is currently playing
+let bgmBarCount = 0;      // counts bars for 4-bar loop sync
+const BGM_BARS = 4;       // how many bars per BGM loop
 const BGM_VOLUME = 0.35;  // background music volume (0-1)
 
 function startBGM(framesPerSixteenth) {
@@ -657,7 +659,9 @@ function startBGM(framesPerSixteenth) {
     const key = BGM_TEMPO_MAP[framesPerSixteenth];
     if (!key) return;
     bgmCurrentKey = key;
-    // Don't play immediately — triggerBGMLoop() handles playback synced to beat 1
+    bgmBarCount = 0;
+    // Play immediately and let the sequencer retrigger every 4 bars
+    triggerBGMLoop();
 }
 
 // Called by the sequencer on step 0 to play BGM in sync
@@ -2368,9 +2372,12 @@ function tickSequencer() {
                 }
             }
             currentStep = (currentStep + 1) % GRID_COLS;
-            // Trigger BGM loop on beat 1 (step 0) to stay synced
-            if (currentStep === 0 && typeof triggerBGMLoop === "function") {
-                triggerBGMLoop();
+            // Trigger BGM loop every BGM_BARS bars to stay synced
+            if (currentStep === 0) {
+                bgmBarCount = (bgmBarCount + 1) % BGM_BARS;
+                if (bgmBarCount === 0 && typeof triggerBGMLoop === "function") {
+                    triggerBGMLoop();
+                }
             }
         }
     }
