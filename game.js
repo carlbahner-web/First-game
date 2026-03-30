@@ -656,20 +656,29 @@ function startBGM(framesPerSixteenth) {
     if (!audioCtx) return;
     const key = BGM_TEMPO_MAP[framesPerSixteenth];
     if (!key) return;
-    // Don't restart if already playing the same track
-    if (bgmCurrentKey === key && bgmSource) return;
-    stopBGM();
-    const buffer = AUDIO_BUFFERS[key];
+    bgmCurrentKey = key;
+    // Don't play immediately — triggerBGMLoop() handles playback synced to beat 1
+}
+
+// Called by the sequencer on step 0 to play BGM in sync
+function triggerBGMLoop() {
+    if (!audioCtx || !bgmCurrentKey) return;
+    const buffer = AUDIO_BUFFERS[bgmCurrentKey];
     if (!buffer || !(buffer instanceof AudioBuffer)) return;
+    // Stop previous loop if still playing
+    if (bgmSource) {
+        try { bgmSource.stop(); } catch (e) {}
+        bgmSource.disconnect();
+    }
     bgmSource = audioCtx.createBufferSource();
-    bgmGain = audioCtx.createGain();
+    if (!bgmGain) {
+        bgmGain = audioCtx.createGain();
+        bgmGain.connect(audioCtx.destination);
+    }
     bgmSource.buffer = buffer;
-    bgmSource.loop = true; // seamless looping
     bgmGain.gain.setValueAtTime(BGM_VOLUME, audioCtx.currentTime);
     bgmSource.connect(bgmGain);
-    bgmGain.connect(audioCtx.destination);
     bgmSource.start(audioCtx.currentTime);
-    bgmCurrentKey = key;
 }
 
 function stopBGM() {
@@ -1250,7 +1259,13 @@ let audioCtx = null;
 function ensureAudio() {
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        decodeAudioSamples(); // decode loaded audio files now that context exists
+        decodeAudioSamples().then(() => {
+            // Retry BGM start after samples are decoded
+            if (typeof startBGM === "function" && typeof stepMs !== "undefined") {
+                const fps = stepMs / (1000 / 60);
+                startBGM(Math.round(fps));
+            }
+        });
     }
     if (audioCtx.state === "suspended") audioCtx.resume();
 }
@@ -2353,6 +2368,10 @@ function tickSequencer() {
                 }
             }
             currentStep = (currentStep + 1) % GRID_COLS;
+            // Trigger BGM loop on beat 1 (step 0) to stay synced
+            if (currentStep === 0 && typeof triggerBGMLoop === "function") {
+                triggerBGMLoop();
+            }
         }
     }
 }
