@@ -659,8 +659,9 @@ function startBGM(framesPerSixteenth) {
     const key = BGM_TEMPO_MAP[framesPerSixteenth];
     if (!key) return;
     bgmCurrentKey = key;
-    bgmBarCount = BGM_BARS; // force trigger on next step 0
-    // Don't play immediately — triggerBGMLoop() handles playback synced to beat 1
+    bgmBarCount = 0;
+    // Play immediately and let the sequencer retrigger every 4 bars
+    triggerBGMLoop();
 }
 
 // Called by the sequencer on step 0 to play BGM in sync
@@ -2371,11 +2372,10 @@ function tickSequencer() {
                 }
             }
             currentStep = (currentStep + 1) % GRID_COLS;
-            // Trigger BGM loop every 4 bars to stay synced
-            if (currentStep === 0 && typeof triggerBGMLoop === "function") {
-                bgmBarCount++;
-                if (bgmBarCount >= BGM_BARS) {
-                    bgmBarCount = 0;
+            // Trigger BGM loop every BGM_BARS bars to stay synced
+            if (currentStep === 0) {
+                bgmBarCount = (bgmBarCount + 1) % BGM_BARS;
+                if (bgmBarCount === 0 && typeof triggerBGMLoop === "function") {
                     triggerBGMLoop();
                 }
             }
