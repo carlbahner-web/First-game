@@ -34,8 +34,8 @@ function setLevelTempo(levelIndex) {
          5, 5,           // L29-30: 180 BPM — maximum
     ][levelIndex] || 7;
     stepMs = framesPerSixteenth * (1000 / 60);
-    // Start/switch background music to match the new tempo
-    if (typeof startBGM === "function") startBGM(framesPerSixteenth);
+    // BGM disabled for now — sync issues to resolve later
+    // if (typeof startBGM === "function") startBGM(framesPerSixteenth);
 }
 
 // ---- Level Definitions (30 levels) ----
