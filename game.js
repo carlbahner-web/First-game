@@ -7,14 +7,14 @@ const ctx = canvas.getContext("2d");
 
 // ---- Constants ----
 const TILE = 16;
-const SCALE = 3;
-const COLS = 22;           // room width in tiles
-const ROWS = 18;           // room height in tiles
+const SCALE = 4;
+const COLS = 24;           // room width in tiles (16:9 layout)
+const ROWS = 14;           // room height in tiles
 const GRID_COLS = 16;      // sequencer steps
 const GRID_ROWS = 6;       // max drum channels (O, H, S, K, B, T)
-const GRID_X = 3;          // grid start tile-x
-const GRID_Y = 5;          // grid start tile-y
-const GRID_Y_OFFSET = 14;  // pixel offset to push grid below booth (matches intro scenes)
+const GRID_X = 4;          // grid start tile-x (centered: 4 + 16 + 4 = 24)
+const GRID_Y = 4;          // grid start tile-y (centered vertically)
+const GRID_Y_OFFSET = 0;   // no offset needed with centered layout
 // (gap row after kick removed)
 // Tempo is set per level using frames-per-16th-note at 60fps
 // Gradual curve across 30 levels:
@@ -1612,8 +1612,8 @@ const player = {
 
 // ---- Caves (goblin spawn points) ----
 const CAVES = [
-    { tileX: 0, tileY: 4 },          // upper-left corner cave
-    { tileX: COLS - 1, tileY: 4 },   // upper-right corner cave
+    { tileX: 0, tileY: 1 },          // upper-left corner cave
+    { tileX: COLS - 1, tileY: 1 },   // upper-right corner cave
 ];
 
 // ---- Multiple Goblin System ----
