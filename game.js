@@ -7836,12 +7836,15 @@ function drawPunch() {
     const p = player;
     const px = p.x;
     const py = p.y;
-    const cx = px + p.w / 2;
-    const cy = py + p.h * 0.35; // shoulder height
+    // Sprite is 2.0x tiles, centered on the 1-tile hitbox
+    // Shoulder position relative to the sprite center, not the hitbox
+    const sprW = p.w * 2.0;
+    const sprH = p.w * 2.0;
+    const sprCX = px + p.w / 2;                    // sprite center X (game coords)
+    const sprCY = py - (sprH - p.h) / 2 + sprH * 0.3; // shoulder height (~30% down from sprite top)
     const progress = 1 - (p.attackTimer / p.attackDuration);
 
     ctx.save();
-    const sbox = getPunchBox();
 
     // Punch thrust: arm extends outward, peaks at progress=0.5
     const thrust = Math.sin(progress * Math.PI); // 0→1→0
@@ -7855,37 +7858,34 @@ function drawPunch() {
         case 3: dx = 1; break;  // right
     }
 
-    // Body lean (must match drawPlayerSprite lean values)
-    const leanX = dx !== 0 ? dx * thrust * 5 : 0;
-    const leanY = dy !== 0 ? dy * thrust * 4 : 0;
-
-    // Arm starts from edge of leaned body, extends a short distance to fist
+    // Shoulder offset from sprite center — pushed out to the edge of the body
     let shoulderOffX, shoulderOffY;
     switch (p.dir) {
-        case 0: shoulderOffX = -5; shoulderOffY = 2; break;  // down — character's right arm, at shoulder height
-        case 1: shoulderOffX = 5; shoulderOffY = -8; break;   // up
-        case 2: shoulderOffX = -8; shoulderOffY = -2; break;  // left
-        case 3: shoulderOffX = 8; shoulderOffY = -2; break;   // right
+        case 0: shoulderOffX = -3; shoulderOffY = 6; break;   // down
+        case 1: shoulderOffX = 3; shoulderOffY = -4; break;    // up
+        case 2: shoulderOffX = -6; shoulderOffY = 1; break;    // left
+        case 3: shoulderOffX = 6; shoulderOffY = 1; break;     // right
     }
-    const armLen = 3 + thrust * 6; // short arm from body edge to fist
-    const shoulderX = (cx + leanX + shoulderOffX) * SCALE;
-    const shoulderY = (cy + leanY + shoulderOffY) * SCALE;
-    const fistX = (cx + leanX + shoulderOffX + dx * armLen) * SCALE;
-    const fistY = (cy + leanY + shoulderOffY + dy * armLen) * SCALE;
+    const armLen = 5 + thrust * 10; // longer arm to match bigger sprite
+    const shoulderX = (sprCX + shoulderOffX) * SCALE;
+    const shoulderY = (sprCY + shoulderOffY) * SCALE;
+    const fistX = (sprCX + shoulderOffX + dx * armLen) * SCALE;
+    const fistY = (sprCY + shoulderOffY + dy * armLen) * SCALE;
 
     // === ARM ===
-    ctx.strokeStyle = "#efb775"; // skin color
-    ctx.lineWidth = 4 * SCALE;
+    // Match Carl's skin tone from the sprite
+    ctx.strokeStyle = "#e8ad6a"; // warm peach skin
+    ctx.lineWidth = 5 * SCALE;
     ctx.lineCap = "round";
     ctx.beginPath();
     ctx.moveTo(shoulderX, shoulderY);
     ctx.lineTo(fistX, fistY);
     ctx.stroke();
 
-    // Arm outline
-    ctx.strokeStyle = "#927e6a";
-    ctx.lineWidth = 5 * SCALE;
-    ctx.globalAlpha = 0.3;
+    // Arm shading (subtle darker outline)
+    ctx.strokeStyle = "#c48a4a";
+    ctx.lineWidth = 6 * SCALE;
+    ctx.globalAlpha = 0.2;
     ctx.beginPath();
     ctx.moveTo(shoulderX, shoulderY);
     ctx.lineTo(fistX, fistY);
@@ -7893,25 +7893,25 @@ function drawPunch() {
     ctx.globalAlpha = 1.0;
 
     // === FIST ===
-    const fistSize = 3.5;
+    const fistSize = 4.5; // bigger fist to match bigger sprite
     // Fist shadow
-    ctx.fillStyle = "#a58c27";
+    ctx.fillStyle = "#c48a4a";
     ctx.beginPath();
     ctx.arc(fistX + SCALE, fistY + SCALE, fistSize * SCALE, 0, Math.PI * 2);
     ctx.fill();
     // Main fist
-    ctx.fillStyle = "#efb775";
+    ctx.fillStyle = "#e8ad6a";
     ctx.beginPath();
     ctx.arc(fistX, fistY, fistSize * SCALE, 0, Math.PI * 2);
     ctx.fill();
     // Knuckle highlights
-    ctx.fillStyle = "#F0D8B8";
-    const knucklePerp = dx === 0 ? 1 : 0; // perpendicular axis
+    ctx.fillStyle = "#f5ccaa";
+    const knucklePerp = dx === 0 ? 1 : 0;
     for (let i = -1; i <= 1; i++) {
-        const kx = fistX + (knucklePerp === 1 ? i * 1.8 * SCALE : dx * 2.5 * SCALE);
-        const ky = fistY + (knucklePerp === 0 ? i * 1.8 * SCALE : dy * 2.5 * SCALE);
+        const kx = fistX + (knucklePerp === 1 ? i * 2.2 * SCALE : dx * 3 * SCALE);
+        const ky = fistY + (knucklePerp === 0 ? i * 2.2 * SCALE : dy * 3 * SCALE);
         ctx.beginPath();
-        ctx.arc(kx, ky, 1.0 * SCALE, 0, Math.PI * 2);
+        ctx.arc(kx, ky, 1.2 * SCALE, 0, Math.PI * 2);
         ctx.fill();
     }
 
@@ -7956,8 +7956,8 @@ function drawPunch() {
 
     // === MOTION LINES (whoosh trail) ===
     if (thrust > 0.3) {
-        ctx.strokeStyle = "#efb775";
-        ctx.lineWidth = 1.5 * SCALE;
+        ctx.strokeStyle = "#e8ad6a";
+        ctx.lineWidth = 2 * SCALE;
         ctx.globalAlpha = thrust * 0.55;
         for (let i = 1; i <= 3; i++) {
             const trailLen = i * 3;
