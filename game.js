@@ -7342,6 +7342,25 @@ function render() {
         ctx.globalAlpha = 1.0;
     }
 
+    // Persistent amber/gold glow under Carl's feet
+    {
+        const glowCX = (player.x + player.w / 2) * SCALE;
+        const glowCY = (player.y + player.h) * SCALE;
+        const glowRX = TILE * SCALE * 0.9;
+        const glowRY = TILE * SCALE * 0.35;
+        const glowPulse = 0.25 + Math.sin(performance.now() * 0.002) * 0.08;
+        ctx.globalAlpha = glowPulse;
+        const glowGrad = ctx.createRadialGradient(glowCX, glowCY, 0, glowCX, glowCY, glowRX);
+        glowGrad.addColorStop(0, "rgba(239,172,40,0.5)");
+        glowGrad.addColorStop(0.6, "rgba(239,172,40,0.15)");
+        glowGrad.addColorStop(1, "rgba(239,172,40,0)");
+        ctx.fillStyle = glowGrad;
+        ctx.beginPath();
+        ctx.ellipse(glowCX, glowCY, glowRX, glowRY, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+    }
+
     // Player shadow
     drawRect(player.x + 2, player.y + player.h - 2, player.w - 4, 4, PAL.shadow);
 
@@ -7596,8 +7615,8 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
             // No punch lunge when using sprites — keep Carl in place
             const lx = 0, ly = 0;
             // Player sprite drawn larger than 1 tile (1.5 tiles wide, 1.5 tiles tall)
-            const sprW = TILE * SCALE * 1.5;
-            const sprH = TILE * SCALE * 1.5;
+            const sprW = TILE * SCALE * 2.0;
+            const sprH = TILE * SCALE * 2.0;
             // Center horizontally on tile, align bottom to tile bottom
             const sprX = sx + lx - (sprW - TILE * SCALE) / 2;
             const sprY = sy - bob + ly - (sprH - TILE * SCALE);
@@ -7896,28 +7915,42 @@ function drawPunch() {
         ctx.fill();
     }
 
-    // === IMPACT EFFECT on hit ===
+    // === IMPACT SHOCKWAVE on hit — radiates outward from fist ===
     if (thrust > 0.5 && p.punchHit) {
-        // Impact burst lines — larger, more visible
-        const burstCount = 8;
+        // Shockwave center extends outward from Carl in punch direction
+        const shockDist = thrust * 12 * SCALE;
+        const shockX = fistX + dx * shockDist;
+        const shockY = fistY + dy * shockDist;
+        // Burst lines — 2.5x larger, directed outward from Carl
+        const burstCount = 12;
+        const punchAngle = Math.atan2(dy, dx);
         for (let i = 0; i < burstCount; i++) {
-            const angle = (i / burstCount) * Math.PI * 2 + progress * 2;
-            const innerR = 5 * SCALE;
-            const outerR = (10 + thrust * 5) * SCALE;
+            // Spread lines in a 180° arc in the punch direction
+            const spread = (i / (burstCount - 1) - 0.5) * Math.PI;
+            const angle = punchAngle + spread;
+            const innerR = 8 * SCALE;
+            const outerR = (25 + thrust * 12) * SCALE;
             ctx.strokeStyle = "#efd8a1";
-            ctx.lineWidth = 2.5 * SCALE;
+            ctx.lineWidth = 3 * SCALE;
             ctx.globalAlpha = thrust * 0.85;
             ctx.beginPath();
-            ctx.moveTo(fistX + Math.cos(angle) * innerR, fistY + Math.sin(angle) * innerR);
-            ctx.lineTo(fistX + Math.cos(angle) * outerR, fistY + Math.sin(angle) * outerR);
+            ctx.moveTo(shockX + Math.cos(angle) * innerR, shockY + Math.sin(angle) * innerR);
+            ctx.lineTo(shockX + Math.cos(angle) * outerR, shockY + Math.sin(angle) * outerR);
             ctx.stroke();
         }
-        // Impact flash — larger
+        // Impact flash — 2.5x larger, centered on shockwave
         ctx.fillStyle = "#FFF";
         ctx.globalAlpha = thrust * 0.5;
         ctx.beginPath();
-        ctx.arc(fistX, fistY, 9 * SCALE, 0, Math.PI * 2);
+        ctx.arc(shockX, shockY, 22 * SCALE, 0, Math.PI * 2);
         ctx.fill();
+        // Amber/gold ring at the edge
+        ctx.strokeStyle = "#efac28";
+        ctx.lineWidth = 3 * SCALE;
+        ctx.globalAlpha = thrust * 0.6;
+        ctx.beginPath();
+        ctx.arc(shockX, shockY, 22 * SCALE, 0, Math.PI * 2);
+        ctx.stroke();
         ctx.globalAlpha = 1.0;
     }
 
