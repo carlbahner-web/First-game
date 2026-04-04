@@ -1658,6 +1658,7 @@ function createGoblin(caveIndex) {
         targetRow: -1, targetCol: -1,
         sabotageTimer: 0,
         moveSteps: 0,
+        stalkTimer: 0,
         elite: false,
         hp: 1,
         hurtTimer: 0,
@@ -2513,7 +2514,7 @@ function update(dt) {
                 if (hitGob.hp > 0) {
                     hitGob.hurtTimer = 12;
                     const baseSpd = currentLevel < LEVELS.length ? LEVELS[currentLevel].goblinSpeed : 0.5;
-                    hitGob.speed = baseSpd * (hitGob.hp === 2 ? 1.3 : 1.4);
+                    hitGob.speed = baseSpd * 1.0;
 
                     hitFreeze = 2;
                     pendingShake = true;
@@ -2866,7 +2867,7 @@ function update(dt) {
             gob.elite = shouldBeElite();
             gob.hp = gob.elite ? 3 : 1;
             const baseSpeed = currentLevel < LEVELS.length ? LEVELS[currentLevel].goblinSpeed : 0.5;
-            gob.speed = gob.elite ? baseSpeed * 1.25 : baseSpeed;
+            gob.speed = gob.elite ? baseSpeed * 0.85 : baseSpeed;
             // Spawn from any cave — pick one not occupied by another alive goblin
             const availableCaves = [0, 1, 2].filter(ci => {
                 for (const og of goblins) {
@@ -2956,10 +2957,25 @@ function update(dt) {
 
             // Pick next destination tile
             gob.moveSteps++;
-            if (gob.targetRow < 0 || gob.moveSteps > 5) {
-                gob.targetRow = Math.floor(Math.random() * getActiveRows());
-                gob.targetCol = Math.floor(Math.random() * GRID_COLS);
-                gob.moveSteps = 0;
+            if (gob.elite) {
+                // Elite stalking: re-evaluate player position every 30 frames
+                gob.stalkTimer++;
+                if (gob.targetRow < 0 || gob.stalkTimer >= 30) {
+                    const ptx = Math.round(p.x / TILE);
+                    const pty = Math.round(p.y / TILE);
+                    gob.targetRow = Math.max(0, Math.min(getActiveRows() - 1,
+                        Math.round((pty - GRID_Y) - GRID_Y_OFFSET / TILE)));
+                    gob.targetCol = Math.max(0, Math.min(GRID_COLS - 1, ptx - GRID_X));
+                    gob.stalkTimer = 0;
+                    gob.moveSteps = 0;
+                }
+            } else {
+                // Normal goblins: wander to random grid cells
+                if (gob.targetRow < 0 || gob.moveSteps > 5) {
+                    gob.targetRow = Math.floor(Math.random() * getActiveRows());
+                    gob.targetCol = Math.floor(Math.random() * GRID_COLS);
+                    gob.moveSteps = 0;
+                }
             }
 
             const goalX = (GRID_X + gob.targetCol) * TILE;
