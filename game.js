@@ -1609,6 +1609,7 @@ const player = {
     speed: 2.0, // pixels per frame at 60fps — snappy tile-to-tile glide
     blinkTimer: 0, // counts up each frame, blinks at 180
     stunTimer: 0, // frames remaining in stun (can't move or punch)
+    freezeTimer: 0, // frames remaining in boulder freeze (direct hit, with countdown)
 };
 
 // ---- Caves (goblin spawn points) ----
@@ -1691,7 +1692,6 @@ const cellFlash = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).f
 // ---- Catapult Goblin State ----
 let catapultGoblin = null; // null when inactive
 let catapultSpawnedThisCycle = false; // prevents re-spawning catapult after it finishes
-let catapultSequenceCount = 0; // how many catapults have fired in current sequence (max 3)
 // When active: { x, y, destX, destY, dir, frame, frameTimer, speed,
 //   phase, phaseTimer, caveIndex, targetRow, targetCol,
 //   boulder: null | { startX, startY, targetX, targetY, progress } }
@@ -2426,38 +2426,15 @@ function update(dt) {
     const p = player;
 
     // Boulder launch animation — skip all player input during flight
-    if (playerLaunch.active) {
-        playerLaunch.timer++;
-        if (playerLaunch.timer >= playerLaunch.duration) {
-            // Landing — snap to destination and resume control
-            playerLaunch.active = false;
-            p.x = playerLaunch.endX;
-            p.y = playerLaunch.endY;
-            p.destX = p.x;
-            p.destY = p.y;
-            p.attacking = false;
-            p.attackTimer = 0;
-            screenShake = 6;
-            shakeIntensity = 3;
-            // Dust particles on landing
-            for (let i = 0; i < 10; i++) {
-                deathParticles.push({
-                    x: p.x + p.w / 2, y: p.y + p.h,
-                    vx: (Math.random() - 0.5) * 2.5,
-                    vy: -Math.random() * 1.5,
-                    life: 15 + Math.random() * 15,
-                    color: Math.random() > 0.5 ? "#8B7355" : "#6B5335",
-                    size: 2 + Math.random() * 2,
-                    sparkle: false,
-                });
-            }
-        }
+    // Boulder freeze countdown (direct hit — 10 second freeze)
+    if (p.freezeTimer > 0) {
+        p.freezeTimer--;
         spaceJustPressed = false;
-        // Still update goblins/sequencer during flight (skip to goblin update below)
+        // Game continues normally around frozen Carl — goblins, sequencer all keep running
     }
 
     // Attack (single press only) — skip during boulder launch or stun
-    if (!playerLaunch.active && spaceJustPressed && !p.attacking && p.stunTimer <= 0) {
+    if (spaceJustPressed && !p.attacking && p.stunTimer <= 0 && p.freezeTimer <= 0) {
         p.attacking = true;
         p.attackTimer = p.attackDuration;
         p.punchHit = false;
@@ -2761,7 +2738,7 @@ function update(dt) {
     // Movement (smooth pixel-by-pixel, destination-based) — skip during boulder launch or stun
     const atDest = Math.abs(p.x - p.destX) < 0.5 && Math.abs(p.y - p.destY) < 0.5;
 
-    if (!playerLaunch.active && atDest && !p.attacking && p.stunTimer <= 0) {
+    if (atDest && !p.attacking && p.stunTimer <= 0 && p.freezeTimer <= 0) {
         // Snap to destination
         p.x = p.destX;
         p.y = p.destY;
@@ -2813,8 +2790,8 @@ function update(dt) {
         }
     }
 
-    // Move toward destination smoothly (skip during launch)
-    if (!playerLaunch.active && !atDest) {
+    // Move toward destination smoothly
+    if (!atDest) {
         const dx = p.destX - p.x;
         const dy = p.destY - p.y;
         if (Math.abs(dx) > 0.5) {
@@ -2859,7 +2836,6 @@ function update(dt) {
         if (gob.respawnTimer <= 0) {
             // Every 6th goblin is a catapult goblin instead of normal/elite (from L15+)
             if (killCount % 6 === 5 && !catapultGoblin && !catapultSpawnedThisCycle && currentLevel >= 14) {
-                catapultSequenceCount = 0;
                 spawnCatapultGoblin();
                 catapultSpawnedThisCycle = true;
                 gob.respawnTimer = 300; // wait until catapult goblin finishes
@@ -3317,14 +3293,7 @@ function update(dt) {
     tickSequencer();
 }
 
-// ---- Boulder Launch (comical knockback — replaces death) ----
-let playerLaunch = {
-    active: false,
-    timer: 0,           // frame counter for animation
-    duration: 70,       // total frames of flight
-    startX: 0, startY: 0,
-    endX: 0, endY: 0,
-};
+// (playerLaunch removed — replaced by near miss stun / direct hit freeze)
 
 // ---- Game Over ----
 let gameOverTimer = 0; // counts up for animation timing
@@ -3490,6 +3459,7 @@ function resetGame() {
     player.punchHit = false;
     player.blinkTimer = 0;
     player.stunTimer = 0;
+    player.freezeTimer = 0;
 
     // Reset controls overlay and tutorial
     controlsKeyFlash = {};
@@ -3509,7 +3479,6 @@ function resetGame() {
     }
     catapultGoblin = null;
     catapultSpawnedThisCycle = false;
-    catapultSequenceCount = 0;
     enemyWarningShown = { normal: false, elite: false, catapult: false };
     newInstrumentShown = { cowbell: false, tom: false };
     levelTimer = LEVELS[0].timerSeconds * 90;
@@ -3526,7 +3495,6 @@ function resetGame() {
     titleEntrancePhase = 0;
     fireworks = [];
     playerDeathAnim.active = false;
-    playerLaunch.active = false;
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
             cellFlash[r][c] = 0;
@@ -5774,7 +5742,6 @@ function startCaveReturn() {
     }
     catapultGoblin = null;
     catapultSpawnedThisCycle = false;
-    catapultSequenceCount = 0;
 
     // Reset effects
     deathParticles = [];
@@ -6114,7 +6081,6 @@ function advanceLevel() {
     }
     catapultGoblin = null;
     catapultSpawnedThisCycle = false;
-    catapultSequenceCount = 0;
 
     // DON'T reset: dancers, killCount (persist across levels)
 
@@ -6159,7 +6125,6 @@ function advanceLevel() {
 
 // ---- Catapult Goblin Logic ----
 function spawnCatapultGoblin() {
-    catapultSequenceCount++;
     const caveIdx = Math.floor(Math.random() * CAVES.length);
     const cave = CAVES[caveIdx];
     const spawnX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
@@ -6310,25 +6275,25 @@ function updateCatapultGoblin() {
             }
             cg.boulder = null;
 
-            // Check if player is in the 3x3 impact zone — comical launch!
+            // Boulder impact on Carl — direct hit or near miss
             const pGridCol = Math.round(player.x / TILE) - GRID_X;
             const pGridRow = tileYToRow(Math.round(player.y / TILE));
-            if (pGridCol >= cc - 1 && pGridCol <= cc + 1 && pGridRow >= cr - 1 && pGridRow <= cr + 1 && !playerLaunch.active) {
-                // Boulder knocks DJ into the air!
-                playerLaunch.active = true;
-                playerLaunch.timer = 0;
-                playerLaunch.duration = 70;
-                playerLaunch.startX = player.x;
-                playerLaunch.startY = player.y;
-                // Pick a random landing spot on the opposite side of the grid
-                const landCol = GRID_X + (pGridCol < GRID_COLS / 2
-                    ? GRID_COLS - 2 - Math.floor(Math.random() * 3)
-                    : 1 + Math.floor(Math.random() * 3));
-                const landRow = Math.floor(Math.random() * getActiveRows());
-                playerLaunch.endX = landCol * TILE;
-                playerLaunch.endY = rowPixelY(landRow);
-                screenShake = 8;
-                shakeIntensity = 4;
+            if (pGridCol === cc && pGridRow === cr) {
+                // Direct hit — 10 second freeze with visible countdown
+                player.freezeTimer = 600;
+                player.stunTimer = 0; // freeze overrides stun
+                screenShake = 12;
+                shakeIntensity = 5;
+                screenFlash = 20;
+                deathText = { x: player.x - 20, y: player.y - 14, timer: 60, text: "FROZEN!", color: "#44CCFF", scale: 6 };
+            } else {
+                // Near miss — psychological stun (any boulder landing stuns Carl)
+                if (player.freezeTimer <= 0) {
+                    player.stunTimer = 90;
+                    screenShake = 6;
+                    shakeIntensity = 2;
+                    deathText = { x: player.x - 8, y: player.y - 14, timer: 40, text: "...", color: "#AAAAAA", scale: 5 };
+                }
             }
 
             cg.phase = "retreating";
@@ -6352,10 +6317,7 @@ function updateCatapultGoblin() {
                 triggerLevelComplete();
                 return;
             }
-            // Chain next catapult if sequence not complete (3 total)
-            if (catapultSequenceCount < 3) {
-                spawnCatapultGoblin();
-            }
+            // Single catapult only — no chain spawning
             return;
         }
         if (Math.abs(dx) > Math.abs(dy)) {
@@ -7274,67 +7236,31 @@ function render() {
         ctx.globalAlpha = 1.0;
     }
 
-    // Player shadow (hidden during boulder launch — launch draws its own landing shadow)
-    if (!playerLaunch.active) {
-        drawRect(player.x + 2, player.y + player.h - 2, player.w - 4, 4, PAL.shadow);
-    }
+    // Player shadow
+    drawRect(player.x + 2, player.y + player.h - 2, player.w - 4, 4, PAL.shadow);
 
     // Punch (draw behind player for up-facing, in front otherwise)
-    if (!playerLaunch.active && player.attacking && player.dir === 1) drawPunch();
+    if (player.attacking && player.dir === 1) drawPunch();
 
-    // Player sprite (or launch animation)
-    if (playerLaunch.active) {
-        const lt = playerLaunch.timer / playerLaunch.duration; // 0→1
-        // Parabolic arc — launches UP then crashes DOWN
-        const launchX = playerLaunch.startX + (playerLaunch.endX - playerLaunch.startX) * lt;
-        const arcHeight = -60 * Math.sin(lt * Math.PI * 0.85);
-        const launchY = playerLaunch.startY + (playerLaunch.endY - playerLaunch.startY) * Math.pow(lt, 1.6) + arcHeight;
-        // Comic perspective scaling — grows at apex
-        const flyScale = 1 + 0.6 * Math.sin(lt * Math.PI);
-        // Tumbling rapidly
-        const tumbleDir = [3, 0, 2, 1][Math.floor(playerLaunch.timer / 3) % 4];
-        const djFrame = Math.floor(playerLaunch.timer / 2) % 4;
-        // Impact flash on first frame
-        if (playerLaunch.timer <= 2) {
-            ctx.globalAlpha = 0.7;
-            drawRect(playerLaunch.startX - 4, playerLaunch.startY - 4, 24, 24, "#FFFFFF");
-            ctx.globalAlpha = 1;
-        }
-        // Draw scaled tumbling DJ
-        ctx.save();
-        const spCX = launchX * SCALE + 8 * SCALE;
-        const spCY = launchY * SCALE + 8 * SCALE;
-        ctx.translate(spCX, spCY);
-        ctx.scale(flyScale, flyScale);
-        ctx.translate(-spCX, -spCY);
-        drawPlayerSprite(launchX, launchY, djFrame, tumbleDir, {});
-        // Flailing arms
-        const flailAngle = playerLaunch.timer * 0.8;
-        const flailLen = (6 + Math.sin(playerLaunch.timer * 0.5) * 3) * SCALE;
-        ctx.strokeStyle = "#efb775";
-        ctx.lineWidth = 2 * SCALE;
-        ctx.lineCap = "round";
-        const armLX = (launchX + 4) * SCALE;
-        const armRX = (launchX + 12) * SCALE;
-        const armY = (launchY + 6) * SCALE;
-        ctx.beginPath(); ctx.moveTo(armLX, armY);
-        ctx.lineTo(armLX + Math.cos(flailAngle) * flailLen, armY + Math.sin(flailAngle) * flailLen);
-        ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(armRX, armY);
-        ctx.lineTo(armRX + Math.cos(flailAngle + 2.5) * flailLen, armY + Math.sin(flailAngle + 2.5) * flailLen);
-        ctx.stroke();
-        ctx.restore();
-        // Landing shadow at destination
-        const shadowAlpha = lt * 0.3;
-        ctx.globalAlpha = shadowAlpha;
-        drawRect(playerLaunch.endX + 2, playerLaunch.endY + player.h - 2, player.w - 4, 4, "#000000");
-        ctx.globalAlpha = 1;
-    } else {
-        drawPlayer();
+    // Player sprite
+    drawPlayer();
+
+    // Boulder freeze countdown display (large seconds above Carl)
+    if (player.freezeTimer > 0) {
+        const freezeSecs = Math.ceil(player.freezeTimer / 60);
+        const countX = player.x + player.w / 2;
+        const countY = player.y - 12;
+        ctx.font = `${8 * SCALE}px monospace`;
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#000000";
+        ctx.fillText(freezeSecs + "s", countX * SCALE + 2, countY * SCALE + 2);
+        ctx.fillStyle = "#44CCFF";
+        ctx.fillText(freezeSecs + "s", countX * SCALE, countY * SCALE);
+        ctx.textAlign = "left";
     }
 
     // Punch (in front for down/left/right)
-    if (!playerLaunch.active && player.attacking && player.dir !== 1) drawPunch();
+    if (player.attacking && player.dir !== 1) drawPunch();
 
     // "SLAY THE GOBLIN!" indicator when pattern is done but goblins remain
     if (patternMatched && !levelComplete && areGoblinsAlive()) {
