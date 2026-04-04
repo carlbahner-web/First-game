@@ -492,20 +492,21 @@ const LEVELS = [
         goblinSpeed: 0.80,
         timerSeconds: 75,
     },
-    // L30: Grand finale — syncopated chaos, everything locks in
+    // L30: Endless mode — no target pattern, survive until timer expires
     {
         name: "Level 30",
         activeRows: 6,
+        noPattern: true, // special flag: no win condition, no hints
         pattern: [
-            [false,false,false,false, false,false,true, false, false,false,false,false, false,false,true, false], // O — offbeat open hats
-            [true, false,true, false, true, false,false,false, true, false,true, false, true, false,false,false], // H — gaps for O
-            [false,false,false,true,  true, false,false,false, false,false,false,true,  true, false,false,false], // S — ghost + backbeat
-            [true, false,false,false, false,false,false,true,  false,false,true, false, false,false,false,true ], // K — displaced syncopation
-            [false,true, false,false, false,true, false,false, false,true, false,false, false,true, false,false], // B — offbeat cowbell pulse
-            [false,false,false,false, false,false,false,false, false,false,false,false, true, false,true, false], // T — tom break at end
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
+            [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.82,
-        timerSeconds: 75,
+        timerSeconds: 999,
     },
 ];
 
@@ -1689,6 +1690,93 @@ let pendingShakeElite = false;
 
 // Sabotage flash — per-cell timer for red flash overlay
 const cellFlash = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).fill(0));
+// ---- Friend NPC (Level 30 only) ----
+let friendNPC = null; // { x, y, destX, destY, moveTimer, highlightGoblin, highlightTimer }
+
+function spawnFriendNPC() {
+    friendNPC = {
+        x: (GRID_X + 8) * TILE, y: (GRID_Y + 3) * TILE,
+        destX: (GRID_X + 8) * TILE, destY: (GRID_Y + 3) * TILE,
+        speed: 0.4,
+        moveTimer: 0,
+        highlightGoblin: null,
+        highlightTimer: 0,
+        frame: 0, frameTimer: 0,
+        palIndex: 2, // dancer palette
+    };
+}
+
+function updateFriendNPC() {
+    if (!friendNPC) return;
+    const f = friendNPC;
+    // Wander slowly
+    f.moveTimer++;
+    const atDest = Math.abs(f.x - f.destX) < 0.5 && Math.abs(f.y - f.destY) < 0.5;
+    if (atDest && f.moveTimer > 60) {
+        // Pick random grid tile near Carl
+        const ar = getActiveRows();
+        f.destX = (GRID_X + Math.floor(Math.random() * GRID_COLS)) * TILE;
+        f.destY = rowPixelY(Math.floor(Math.random() * ar));
+        f.moveTimer = 0;
+    }
+    // Move toward destination
+    if (!atDest) {
+        const dx = f.destX - f.x;
+        const dy = f.destY - f.y;
+        if (Math.abs(dx) > 0.5) f.x += Math.sign(dx) * Math.min(f.speed, Math.abs(dx));
+        if (Math.abs(dy) > 0.5) f.y += Math.sign(dy) * Math.min(f.speed, Math.abs(dy));
+        f.frameTimer++;
+        if (f.frameTimer >= 8) { f.frameTimer = 0; f.frame = (f.frame + 1) % 4; }
+    } else {
+        f.frame = 0;
+    }
+    // Occasionally highlight a goblin near Carl
+    f.highlightTimer--;
+    if (f.highlightTimer <= 0) {
+        f.highlightGoblin = null;
+        // Every 3-5 seconds, pick a nearby goblin to highlight
+        if (Math.random() < 0.005) {
+            const nearGoblins = goblins.filter(g => !g.dead && !g.elite &&
+                Math.abs(g.x - player.x) < TILE * 5 && Math.abs(g.y - player.y) < TILE * 5);
+            if (nearGoblins.length > 0) {
+                f.highlightGoblin = nearGoblins[Math.floor(Math.random() * nearGoblins.length)];
+                f.highlightTimer = 120; // 2 seconds
+            }
+        }
+    }
+}
+
+function renderFriendNPC() {
+    if (!friendNPC) return;
+    const f = friendNPC;
+    // Draw using dancer sprite
+    const pal = DANCER_PALETTES[f.palIndex];
+    drawDancerSprite(f.x, f.y, pal, { bob: 0, armBlend: 0, footOffset: 0 });
+    // Draw gold bracket indicator on highlighted goblin
+    if (f.highlightGoblin && !f.highlightGoblin.dead && f.highlightTimer > 0) {
+        const hg = f.highlightGoblin;
+        const hx = hg.x * SCALE, hy = hg.y * SCALE;
+        const hs = TILE * SCALE;
+        const L = 6, s = 2;
+        const pulse = 0.6 + Math.sin(performance.now() * 0.005) * 0.3;
+        ctx.globalAlpha = pulse;
+        const c = "#efac28"; // gold
+        // Top-left corner
+        drawRect(hg.x, hg.y, L, s, c);
+        drawRect(hg.x, hg.y, s, L, c);
+        // Top-right corner
+        drawRect(hg.x + TILE - L, hg.y, L, s, c);
+        drawRect(hg.x + TILE - s, hg.y, s, L, c);
+        // Bottom-left corner
+        drawRect(hg.x, hg.y + TILE - s, L, s, c);
+        drawRect(hg.x, hg.y + TILE - L, s, L, c);
+        // Bottom-right corner
+        drawRect(hg.x + TILE - L, hg.y + TILE - s, L, s, c);
+        drawRect(hg.x + TILE - s, hg.y + TILE - L, s, L, c);
+        ctx.globalAlpha = 1.0;
+    }
+}
+
 // ---- Catapult Goblin State ----
 let catapultGoblin = null; // null when inactive
 let catapultSpawnedThisCycle = false; // prevents re-spawning catapult after it finishes
@@ -2404,6 +2492,13 @@ function update(dt) {
     if (levelTimer > 0) {
         levelTimer--;
         if (levelTimer <= 0) {
+            // Level 30: timer expiry triggers ending, not game over
+            if (currentLevel < LEVELS.length && LEVELS[currentLevel].noPattern) {
+                finalScore = score;
+                gameState = "ending";
+                if (typeof startEnding === "function") startEnding();
+                return;
+            }
             triggerGameOver();
             return;
         }
@@ -3185,6 +3280,7 @@ function update(dt) {
 
     // Update catapult goblin
     if (catapultGoblin) updateCatapultGoblin();
+    updateFriendNPC();
 
     // Update death particles
     deathParticles = deathParticles.filter(p => {
@@ -3533,6 +3629,7 @@ function resetGame() {
 // ---- Level Progression ----
 function checkLevelComplete() {
     if (currentLevel >= LEVELS.length) return false;
+    if (LEVELS[currentLevel].noPattern) return false; // L30: no win condition
     const target = LEVELS[currentLevel].pattern;
     const ar = getActiveRows();
     for (let r = 0; r < ar; r++)
@@ -6045,6 +6142,12 @@ function advanceLevel() {
         spawnDancers(3);
     }
     levelTimer = LEVELS[currentLevel].timerSeconds * 90;
+    // Spawn friend NPC for level 30 (noPattern mode)
+    if (LEVELS[currentLevel].noPattern) {
+        spawnFriendNPC();
+    } else {
+        friendNPC = null;
+    }
     // Start with previous level's completed pattern (each level builds on the last)
     const prevPattern = LEVELS[currentLevel - 1].pattern;
     for (let r = 0; r < GRID_ROWS; r++)
@@ -6964,8 +7067,8 @@ function render() {
                 cellFlash[r][c]--;
             }
 
-            // Target pattern indicator
-            if (currentLevel < LEVELS.length) {
+            // Target pattern indicator (skip for noPattern levels like L30)
+            if (currentLevel < LEVELS.length && !LEVELS[currentLevel].noPattern) {
                 const target = LEVELS[currentLevel].pattern[r][c];
                 if (target && !on) {
                     // Needs to be ON — sprite hint tile or pulsing outline fallback
@@ -7101,6 +7204,9 @@ function render() {
     if (catapultGoblin) {
         drawCatapultGoblin();
     }
+
+    // Friend NPC (Level 30)
+    renderFriendNPC();
 
     // Death particles
     for (const p of deathParticles) {
