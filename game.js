@@ -1608,6 +1608,7 @@ const player = {
     punchHit: false, // did this swing already toggle a block?
     speed: 2.0, // pixels per frame at 60fps — snappy tile-to-tile glide
     blinkTimer: 0, // counts up each frame, blinks at 180
+    stunTimer: 0, // frames remaining in stun (can't move or punch)
 };
 
 // ---- Caves (goblin spawn points) ----
@@ -1658,6 +1659,7 @@ function createGoblin(caveIndex) {
         sabotageTimer: 0,
         moveSteps: 0,
         stalkTimer: 0,
+        gloatTimer: 0,     // elite gloating phase after punching Carl
         elite: false,
         hp: 1,
         hurtTimer: 0,
@@ -2454,8 +2456,8 @@ function update(dt) {
         // Still update goblins/sequencer during flight (skip to goblin update below)
     }
 
-    // Attack (single press only) — skip during boulder launch
-    if (!playerLaunch.active && spaceJustPressed && !p.attacking) {
+    // Attack (single press only) — skip during boulder launch or stun
+    if (!playerLaunch.active && spaceJustPressed && !p.attacking && p.stunTimer <= 0) {
         p.attacking = true;
         p.attackTimer = p.attackDuration;
         p.punchHit = false;
@@ -2751,10 +2753,15 @@ function update(dt) {
         if (p.attackTimer <= 0) p.attacking = false;
     }
 
-    // Movement (smooth pixel-by-pixel, destination-based) — skip during boulder launch
+    // Stun timer countdown
+    if (p.stunTimer > 0) {
+        p.stunTimer--;
+    }
+
+    // Movement (smooth pixel-by-pixel, destination-based) — skip during boulder launch or stun
     const atDest = Math.abs(p.x - p.destX) < 0.5 && Math.abs(p.y - p.destY) < 0.5;
 
-    if (!playerLaunch.active && atDest && !p.attacking) {
+    if (!playerLaunch.active && atDest && !p.attacking && p.stunTimer <= 0) {
         // Snap to destination
         p.x = p.destX;
         p.y = p.destY;
@@ -2938,25 +2945,79 @@ function update(dt) {
             gob.x = gob.destX;
             gob.y = gob.destY;
 
-            // Check if on a grid cell to sabotage
-            const gc = Math.round(gob.x / TILE) - GRID_X;
-            const gr = tileYToRow(Math.round(gob.y / TILE));
-            if (gr >= 0 && gr < getActiveRows() && gc >= 0 && gc < GRID_COLS) {
-                if (gc === gob.targetCol && gr === gob.targetRow) {
-                    grid[gr][gc] = !grid[gr][gc];
-                    cellFlash[gr][gc] = 30;
-                    if (audioCtx) playSabotageSound(audioCtx.currentTime);
-                    gob.targetRow = -1;
-                    if (patternMatched && !checkLevelComplete()) {
-                        patternMatched = false;
+            // Elite goblins don't sabotage — they hunt Carl instead
+            if (!gob.elite) {
+                // Check if on a grid cell to sabotage
+                const gc = Math.round(gob.x / TILE) - GRID_X;
+                const gr = tileYToRow(Math.round(gob.y / TILE));
+                if (gr >= 0 && gr < getActiveRows() && gc >= 0 && gc < GRID_COLS) {
+                    if (gc === gob.targetCol && gr === gob.targetRow) {
+                        grid[gr][gc] = !grid[gr][gc];
+                        cellFlash[gr][gc] = 30;
+                        if (audioCtx) playSabotageSound(audioCtx.currentTime);
+                        gob.targetRow = -1;
+                        if (patternMatched && !checkLevelComplete()) {
+                            patternMatched = false;
+                        }
+                        tryCompleteLevelOrWait();
                     }
-                    tryCompleteLevelOrWait();
+                }
+            }
+
+            // Elite goblin punch: stun Carl when reaching his tile
+            if (gob.elite && gob.gloatTimer <= 0 && p.stunTimer <= 0) {
+                const gobTX = Math.round(gob.x / TILE);
+                const gobTY = Math.round(gob.y / TILE);
+                const plrTX = Math.round(p.x / TILE);
+                const plrTY = Math.round(p.y / TILE);
+                if (gobTX === plrTX && gobTY === plrTY) {
+                    // Stun Carl
+                    p.stunTimer = 60;
+                    screenFlash = 15;
+                    screenShake = 8;
+                    shakeIntensity = 3;
+                    deathText = { x: p.x - 16, y: p.y - 14, timer: 50, text: "STUNNED!", color: "#FF4444", scale: 5 };
+                    // Knock Carl back 2 tiles away from the elite
+                    const kdx = plrTX - gobTX;
+                    const kdy = plrTY - gobTY;
+                    // If on same tile, knock in player's facing direction (reversed)
+                    const knockDirX = kdx !== 0 ? Math.sign(kdx) : (p.dir === 2 ? -1 : p.dir === 3 ? 1 : 0);
+                    const knockDirY = kdy !== 0 ? Math.sign(kdy) : (p.dir === 0 ? 1 : p.dir === 1 ? -1 : 0);
+                    const knockDist = 2;
+                    let newPX = p.x + knockDirX * TILE * knockDist;
+                    let newPY = p.y + knockDirY * TILE * knockDist;
+                    // Clamp to boundaries
+                    newPX = Math.max(TILE, Math.min((COLS - 2) * TILE, newPX));
+                    newPY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, newPY));
+                    p.x = newPX; p.destX = newPX;
+                    p.y = newPY; p.destY = newPY;
+                    // Elite enters gloating phase
+                    gob.gloatTimer = 180;
+                    gob.targetRow = -1;
+                }
+            }
+
+            // Elite gloating: walk away slowly, then return to stalking
+            if (gob.elite && gob.gloatTimer > 0) {
+                gob.gloatTimer--;
+                // Walk away from Carl at half speed
+                if (gob.gloatTimer > 0) {
+                    const awayX = gob.x < p.x ? -1 : 1;
+                    const awayY = gob.y < p.y ? -1 : 1;
+                    const gloatSpd = gob.speed * 0.5;
+                    gob.destX = Math.max(TILE, Math.min((COLS - 2) * TILE, gob.x + awayX * TILE));
+                    gob.destY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, gob.y + awayY * TILE));
+                }
+                if (gob.gloatTimer <= 0) {
+                    // Resume stalking
+                    gob.stalkTimer = 0;
+                    gob.targetRow = -1;
                 }
             }
 
             // Pick next destination tile
             gob.moveSteps++;
-            if (gob.elite) {
+            if (gob.elite && gob.gloatTimer <= 0) {
                 // Elite stalking: re-evaluate player position every 30 frames
                 gob.stalkTimer++;
                 if (gob.targetRow < 0 || gob.stalkTimer >= 30) {
@@ -2968,7 +3029,7 @@ function update(dt) {
                     gob.stalkTimer = 0;
                     gob.moveSteps = 0;
                 }
-            } else {
+            } else if (!gob.elite) {
                 // Normal goblins: wander to random grid cells
                 if (gob.targetRow < 0 || gob.moveSteps > 5) {
                     gob.targetRow = Math.floor(Math.random() * getActiveRows());
@@ -3428,6 +3489,7 @@ function resetGame() {
     player.attackTimer = 0;
     player.punchHit = false;
     player.blinkTimer = 0;
+    player.stunTimer = 0;
 
     // Reset controls overlay and tutorial
     controlsKeyFlash = {};
@@ -7711,7 +7773,12 @@ function drawPlayer() {
         const progress = 1 - (p.attackTimer / p.attackDuration);
         punchThrust = Math.sin(progress * Math.PI);
     }
-    drawPlayerSprite(p.x, p.y, p.frame, p.dir, { isBlinking: p.blinkTimer >= 180, punchThrust: punchThrust });
+    // Flash sprite on/off every 6 frames when stunned
+    if (p.stunTimer > 0 && Math.floor(p.stunTimer / 6) % 2 === 0) {
+        // Skip drawing — sprite is "off" this cycle
+    } else {
+        drawPlayerSprite(p.x, p.y, p.frame, p.dir, { isBlinking: p.blinkTimer >= 180, punchThrust: punchThrust });
+    }
 }
 
 function drawPunch() {
