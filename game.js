@@ -1621,14 +1621,13 @@ const CAVES = [
 function getMaxGoblins() {
     if (currentLevel < 6) return 2;   // L3-6
     if (currentLevel < 13) return 3;  // L7-13
-    if (currentLevel < 19) return 4;  // L14-19
-    return 5;                         // L20-30
+    return 3;                         // L14-30: fewer but more dangerous
 }
 
 // Sabotage flip chance scales with level (used during level-start scramble)
 function getSabotageFlipChance() {
-    // Starts at 12%, gradually increases to 30% by level 30
-    return 0.12 + (currentLevel / LEVELS.length) * 0.18;
+    // Starts at 12%, scales to 65% by level 30
+    return 0.12 + (currentLevel / LEVELS.length) * 0.53;
 }
 
 // Elite weighting: random chance that increases with level (max 1 elite alive at a time)
