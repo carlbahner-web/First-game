@@ -541,7 +541,7 @@ function loadImage(key, src) {
 
 const ASSET_LIST = [
     // Backgrounds
-    ["cave_bg",    "assets/bg/cavebg.PNG"],
+    ["cave_bg",    "assets/bg/themeparkbg.PNG"],
     ["grid_wall",  "assets/grid/grid-wall.png"],
     ["hud_bg",     "assets/hud/hud-bg.png"],
     // Grid cells (1 off + 6 on colors + 6 hint + 6 x-indicator)
@@ -554,6 +554,8 @@ const ASSET_LIST = [
         ["player_" + d + "_" + f, "assets/player/player-" + d + "-" + f + ".png"]
     )),
     ..._DIR_NAMES.map(d => ["player_punch_" + d, "assets/player/player-punch-" + d + ".png"]),
+    // Player sprite sheet (walk-down animation, 5 cols × 4 rows, 308×464 per cell)
+    ["player_sheet_down", "assets/player/sorceress-f30c8976-1775409570906.mp4_308x464_sheet.png"],
     // Goblin sprite sheets (3 types × walk + idle sheets)
     ["goblin_walk",   "assets/goblins/Goblin1/Walk/Walk0_full.png"],
     ["goblin_idle",   "assets/goblins/Goblin1/Idle/Idle0_full.png"],
@@ -7599,7 +7601,26 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         }
     }
 
-    // ---- Sprite-based path (early return if PNG loaded) ----
+    // ---- Sprite sheet path for walk-down (20-frame animation) ----
+    if (dir === 0 && IMAGES.player_sheet_down && punch <= 0) {
+        const sheet = IMAGES.player_sheet_down;
+        const cellW = 308, cellH = 464;
+        const sheetCols = 5, totalFrames = 20;
+        // Frame 0 = idle (sheet frame 0), frames 1+ = walk cycle through all 20
+        const sheetFrame = frame === 0 ? 0 : frame % totalFrames;
+        const col = sheetFrame % sheetCols;
+        const row = Math.floor(sheetFrame / sheetCols);
+        const sprW = TILE * SCALE * 2.0;
+        const sprH = TILE * SCALE * 2.0;
+        const sprX = sx - (sprW - TILE * SCALE) / 2;
+        const sprY = sy - bob - (sprH - TILE * SCALE);
+        if (ghost) { ctx.globalAlpha = 0.5; ctx.globalCompositeOperation = "lighter"; }
+        ctx.drawImage(sheet, col * cellW, row * cellH, cellW, cellH, sprX, sprY, sprW, sprH);
+        if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
+        return;
+    }
+
+    // ---- Sprite-based path for individual files (other directions + fallback) ----
     {
         const dirName = ["down", "up", "left", "right"][dir];
         const punchKey = "player_punch_" + dirName;
@@ -7614,10 +7635,8 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         if (IMAGES[sprKey]) {
             // No punch lunge when using sprites — keep Carl in place
             const lx = 0, ly = 0;
-            // Player sprite drawn larger than 1 tile (1.5 tiles wide, 1.5 tiles tall)
             const sprW = TILE * SCALE * 2.0;
             const sprH = TILE * SCALE * 2.0;
-            // Center horizontally on tile, align bottom to tile bottom
             const sprX = sx + lx - (sprW - TILE * SCALE) / 2;
             const sprY = sy - bob + ly - (sprH - TILE * SCALE);
             if (ghost) { ctx.globalAlpha = 0.5; ctx.globalCompositeOperation = "lighter"; }
