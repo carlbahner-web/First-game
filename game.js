@@ -7602,7 +7602,8 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
     }
 
     // ---- Sprite sheet path for walk-down (20-frame animation) ----
-    if (dir === 0 && IMAGES.player_sheet_down && punch <= 0) {
+    // TEMPORARILY DISABLED — falling back to procedural rendering
+    if (false && dir === 0 && IMAGES.player_sheet_down && punch <= 0) {
         const sheet = IMAGES.player_sheet_down;
         const cellW = 308, cellH = 464;
         const sheetCols = 5, totalFrames = 20;
@@ -7621,7 +7622,8 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
     }
 
     // ---- Sprite-based path for individual files (other directions + fallback) ----
-    {
+    // TEMPORARILY DISABLED — falling back to procedural rendering
+    if (false) {
         const dirName = ["down", "up", "left", "right"][dir];
         const punchKey = "player_punch_" + dirName;
         // Frame 0 = idle, frames 1-3 = walking (alternate between sprite 1 and 2)
