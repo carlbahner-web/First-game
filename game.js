@@ -7511,9 +7511,13 @@ function render() {
         }
     }
 
-    // Playhead with beat pulse on active blocks
+    // Playhead with beat pulse on active blocks.
+    // currentStep is the NEXT column to play (tickSequencer advances it right
+    // after triggering), so the column currently SOUNDING is one behind —
+    // draw the playhead there so audio and visuals line up.
     if (playing) {
-        const px = (GRID_X + currentStep) * TILE;
+        const playheadCol = (currentStep + GRID_COLS - 1) % GRID_COLS;
+        const px = (GRID_X + playheadCol) * TILE;
         ctx.fillStyle = PAL.playhead;
         ctx.globalAlpha = 0.2;
         const playheadH = (gridBottomTileY() - GRID_Y) * TILE;
@@ -7523,7 +7527,7 @@ function render() {
         fillRoundRect(ctx, (px + 2) * SCALE, ((GRID_Y - 1) * TILE + 10 + GRID_Y_OFFSET) * SCALE, (TILE - 4) * SCALE, 4 * SCALE, 2, PAL.playhead);
         // Beat pulse: brighten blocks under the playhead that are ON
         for (let r = 0; r < ar; r++) {
-            if (grid[r][currentStep] && rowTrigger[r] > 0) {
+            if (grid[r][playheadCol] && rowTrigger[r] > 0) {
                 const by = rowPixelY(r);
                 const pulseAlpha = rowTrigger[r] / 8 * 0.45;
                 ctx.fillStyle = "#ffffff";
@@ -7538,7 +7542,8 @@ function render() {
     for (let c = 0; c < GRID_COLS; c++) {
         const num = String(c + 1);
         const tx = (GRID_X + c) * TILE + (c < 9 ? 4 : 1);
-        drawText(num, tx, gridBottomTileY() * TILE + 8 + GRID_Y_OFFSET, c === currentStep && playing ? PAL.playhead : "#5a8a8f", 3);
+        const soundingCol = (currentStep + GRID_COLS - 1) % GRID_COLS;
+        drawText(num, tx, gridBottomTileY() * TILE + 8 + GRID_Y_OFFSET, c === soundingCol && playing ? PAL.playhead : "#5a8a8f", 3);
     }
 
     // Pattern-progress counter (above grid, right-aligned) — "PATTERN 18/22"
