@@ -1266,13 +1266,7 @@ let audioCtx = null;
 function ensureAudio() {
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        decodeAudioSamples().then(() => {
-            // Retry BGM start after samples are decoded
-            if (typeof startBGM === "function" && typeof stepMs !== "undefined") {
-                const fps = stepMs / (1000 / 60);
-                startBGM(Math.round(fps));
-            }
-        });
+        decodeAudioSamples(); // BGM disabled — samples decode for drum hits only
     }
     if (audioCtx.state === "suspended") audioCtx.resume();
 }
@@ -1648,7 +1642,7 @@ function shouldBeElite() {
 function createGoblin(caveIndex) {
     const cave = CAVES[caveIndex];
     const spawnX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
-    const spawnY = cave.tileY === 0 ? TILE * 2 : cave.tileY === ROWS - 1 ? (ROWS - 2) * TILE : cave.tileY * TILE;
+    const spawnY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, cave.tileY * TILE));
     return {
         x: spawnX, y: spawnY,
         destX: spawnX, destY: spawnY,
@@ -1757,8 +1751,6 @@ function renderFriendNPC() {
     // Draw gold bracket indicator on highlighted goblin
     if (f.highlightGoblin && !f.highlightGoblin.dead && f.highlightTimer > 0) {
         const hg = f.highlightGoblin;
-        const hx = hg.x * SCALE, hy = hg.y * SCALE;
-        const hs = TILE * SCALE;
         const L = 6, s = 2;
         const pulse = 0.6 + Math.sin(performance.now() * 0.005) * 0.3;
         ctx.globalAlpha = pulse;
@@ -1818,7 +1810,7 @@ let enemyWarningShown = { normal: false, elite: false, catapult: false }; // tra
 let enemyWarningBlink = 0;     // blink timer for "PRESS ENTER"
 let enemyWarningIntroTimer = 0; // transition timer before warning popup
 let currentLevel = 0;
-let levelTimer = LEVELS[0].timerSeconds * 90; // countdown in frames (seconds * 90)
+let levelTimer = LEVELS[0].timerSeconds * 60; // countdown in frames (seconds * 60 at 60fps)
 let levelComplete = false;
 let patternMatched = false; // pattern correct but goblins may still be alive
 let levelCelebrateTimer = 0;
@@ -1885,8 +1877,8 @@ let finalScore = 0;        // killCount captured at game over
 // ---- Minigame (Cave Beat 'Em Up) State ----
 const MINIGAME_LEVELS = [4, 9, 14, 19, 24, 29]; // trigger after levels 5,10,15,20,25,30 (0-indexed)
 const MINIGAME_BASE_TIME = 20 * 60; // 20 seconds at 60fps
-const CAVE_COLS = 22; // same as world
-const CAVE_ROWS = 18;
+const CAVE_COLS = COLS; // same as world (follows the 24x14 layout)
+const CAVE_ROWS = ROWS;
 const CAVE_TILE = TILE;
 
 // DJ Setup pieces earned from minigames (6 total)
@@ -2152,7 +2144,7 @@ function handleCheatCode(key) {
                     for (let c = 0; c < GRID_COLS; c++)
                         grid[r][c] = startPat[r][c];
             }
-            levelTimer = LEVELS[currentLevel].timerSeconds * 90;
+            levelTimer = LEVELS[currentLevel].timerSeconds * 60;
             player.y = (gridBottomTileY() + 1) * TILE + GRID_Y_OFFSET;
             player.destY = player.y;
             setLevelTempo(currentLevel);
@@ -2165,6 +2157,10 @@ function handleCheatCode(key) {
 }
 
 window.addEventListener("keydown", (e) => {
+    // Unlock/resume audio on any key press — browsers only allow
+    // AudioContext.resume() inside a real user gesture
+    ensureAudio();
+
     // Feed single-char keys into cheat code buffer
     if (e.key.length === 1) handleCheatCode(e.key);
 
@@ -2589,12 +2585,17 @@ function update(dt) {
                 if (hitGob.hp > 0) {
                     hitGob.hurtTimer = 12;
                     const baseSpd = currentLevel < LEVELS.length ? LEVELS[currentLevel].goblinSpeed : 0.5;
-                    hitGob.speed = baseSpd * 1.0;
+                    // No speed boost on hurt — elites keep their stalking (or gloating) speed
+                    hitGob.speed = hitGob.elite
+                        ? baseSpd * 0.85 * (hitGob.gloatTimer > 0 ? 0.5 : 1)
+                        : baseSpd;
 
                     hitFreeze = 2;
                     pendingShake = true;
                     pendingShakeElite = false;
 
+                    const gobTileX = Math.round(hitGob.x / TILE);
+                    const gobTileY = Math.round(hitGob.y / TILE);
                     const knockDx = gobTileX - Math.round(p.x / TILE);
                     const knockDy = gobTileY - Math.round(p.y / TILE);
                     const knockX = hitGob.x + Math.sign(knockDx) * TILE;
@@ -2947,8 +2948,13 @@ function update(dt) {
             gob.hp = gob.elite ? 3 : 1;
             const baseSpeed = currentLevel < LEVELS.length ? LEVELS[currentLevel].goblinSpeed : 0.5;
             gob.speed = gob.elite ? baseSpeed * 0.85 : baseSpeed;
+            // Reset elite AI state from any previous life
+            gob.gloatTimer = 0;
+            gob.stalkTimer = 0;
+            gob.huntX = undefined;
+            gob.huntY = undefined;
             // Spawn from any cave — pick one not occupied by another alive goblin
-            const availableCaves = [0, 1, 2].filter(ci => {
+            const availableCaves = CAVES.map((_, ci) => ci).filter(ci => {
                 for (const og of goblins) {
                     if (og !== gob && !og.dead && og.spawnCave === ci) return false;
                 }
@@ -2956,10 +2962,10 @@ function update(dt) {
             });
             gob.spawnCave = availableCaves.length > 0
                 ? availableCaves[Math.floor(Math.random() * availableCaves.length)]
-                : Math.floor(Math.random() * 3);
+                : Math.floor(Math.random() * CAVES.length);
             const cave = CAVES[gob.spawnCave];
             const spawnX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
-            const spawnY = cave.tileY === 0 ? TILE * 2 : cave.tileY === ROWS - 1 ? (ROWS - 2) * TILE : cave.tileY * TILE;
+            const spawnY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, cave.tileY * TILE));
             gob.x = spawnX;
             gob.y = spawnY;
             gob.destX = spawnX;
@@ -3037,13 +3043,15 @@ function update(dt) {
                 }
             }
 
-            // Elite goblin punch: stun Carl when reaching his tile
-            if (gob.elite && gob.gloatTimer <= 0 && p.stunTimer <= 0) {
+            // Elite goblin punch: stun Carl when adjacent (goblins can't share
+            // Carl's tile — movement blocks it — so trigger on neighboring tiles)
+            if (gob.elite && gob.gloatTimer <= 0 && p.stunTimer <= 0 && p.freezeTimer <= 0) {
                 const gobTX = Math.round(gob.x / TILE);
                 const gobTY = Math.round(gob.y / TILE);
                 const plrTX = Math.round(p.x / TILE);
                 const plrTY = Math.round(p.y / TILE);
-                if (gobTX === plrTX && gobTY === plrTY) {
+                const manhattan = Math.abs(gobTX - plrTX) + Math.abs(gobTY - plrTY);
+                if (manhattan <= 1) {
                     // Stun Carl
                     p.stunTimer = 60;
                     screenFlash = 15;
@@ -3053,66 +3061,79 @@ function update(dt) {
                     // Knock Carl back 2 tiles away from the elite
                     const kdx = plrTX - gobTX;
                     const kdy = plrTY - gobTY;
-                    // If on same tile, knock in player's facing direction (reversed)
-                    const knockDirX = kdx !== 0 ? Math.sign(kdx) : (p.dir === 2 ? -1 : p.dir === 3 ? 1 : 0);
-                    const knockDirY = kdy !== 0 ? Math.sign(kdy) : (p.dir === 0 ? 1 : p.dir === 1 ? -1 : 0);
-                    const knockDist = 2;
-                    let newPX = p.x + knockDirX * TILE * knockDist;
-                    let newPY = p.y + knockDirY * TILE * knockDist;
-                    // Clamp to boundaries
-                    newPX = Math.max(TILE, Math.min((COLS - 2) * TILE, newPX));
-                    newPY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, newPY));
-                    p.x = newPX; p.destX = newPX;
-                    p.y = newPY; p.destY = newPY;
-                    // Elite enters gloating phase
+                    // Same tile shouldn't happen, but fall back to elite's facing direction
+                    const knockDirX = kdx !== 0 ? Math.sign(kdx) : (gob.dir === 2 ? -1 : gob.dir === 3 ? 1 : 0);
+                    const knockDirY = kdy !== 0 ? Math.sign(kdy) : (gob.dir === 0 ? 1 : gob.dir === 1 ? -1 : 0);
+                    // Try 2 tiles, then 1, skipping tiles occupied by goblins
+                    const landingClear = (lx, ly) => {
+                        for (const og of goblins) {
+                            if (og.dead) continue;
+                            if (Math.round(og.x / TILE) * TILE === lx && Math.round(og.y / TILE) * TILE === ly) return false;
+                        }
+                        return true;
+                    };
+                    for (let dist = 2; dist >= 1; dist--) {
+                        let newPX = Math.max(TILE, Math.min((COLS - 2) * TILE, p.x + knockDirX * TILE * dist));
+                        let newPY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, p.y + knockDirY * TILE * dist));
+                        if (landingClear(newPX, newPY)) {
+                            p.x = newPX; p.destX = newPX;
+                            p.y = newPY; p.destY = newPY;
+                            break;
+                        }
+                    }
+                    // Elite enters gloating phase: pick a flee spot away from Carl
                     gob.gloatTimer = 180;
-                    gob.targetRow = -1;
+                    const fleeDirX = Math.sign(gob.x - p.x) || (gob.dir === 3 ? -1 : 1);
+                    const fleeDirY = Math.sign(gob.y - p.y) || (gob.dir === 0 ? -1 : 1);
+                    gob.gloatX = Math.max(TILE, Math.min((COLS - 2) * TILE,
+                        Math.round(gob.x / TILE) * TILE + fleeDirX * TILE * 4));
+                    gob.gloatY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE,
+                        Math.round(gob.y / TILE) * TILE + fleeDirY * TILE * 4));
+                    // Gloat at half speed
+                    const gloatBase = currentLevel < LEVELS.length ? LEVELS[currentLevel].goblinSpeed : 0.5;
+                    gob.speed = gloatBase * 0.85 * 0.5;
                 }
             }
 
-            // Elite gloating: walk away slowly, then return to stalking
+            // Elite gloating countdown — restore stalking speed when done
             if (gob.elite && gob.gloatTimer > 0) {
                 gob.gloatTimer--;
-                // Walk away from Carl at half speed
-                if (gob.gloatTimer > 0) {
-                    const awayX = gob.x < p.x ? -1 : 1;
-                    const awayY = gob.y < p.y ? -1 : 1;
-                    const gloatSpd = gob.speed * 0.5;
-                    gob.destX = Math.max(TILE, Math.min((COLS - 2) * TILE, gob.x + awayX * TILE));
-                    gob.destY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, gob.y + awayY * TILE));
-                }
                 if (gob.gloatTimer <= 0) {
-                    // Resume stalking
-                    gob.stalkTimer = 0;
-                    gob.targetRow = -1;
+                    gob.stalkTimer = 999; // force immediate re-target
+                    const stalkBase = currentLevel < LEVELS.length ? LEVELS[currentLevel].goblinSpeed : 0.5;
+                    gob.speed = stalkBase * 0.85;
                 }
             }
 
-            // Pick next destination tile
+            // Pick next goal position
             gob.moveSteps++;
-            if (gob.elite && gob.gloatTimer <= 0) {
-                // Elite stalking: re-evaluate player position every 30 frames
-                gob.stalkTimer++;
-                if (gob.targetRow < 0 || gob.stalkTimer >= 30) {
-                    const ptx = Math.round(p.x / TILE);
-                    const pty = Math.round(p.y / TILE);
-                    gob.targetRow = Math.max(0, Math.min(getActiveRows() - 1,
-                        Math.round((pty - GRID_Y) - GRID_Y_OFFSET / TILE)));
-                    gob.targetCol = Math.max(0, Math.min(GRID_COLS - 1, ptx - GRID_X));
-                    gob.stalkTimer = 0;
-                    gob.moveSteps = 0;
+            let goalX, goalY;
+            if (gob.elite) {
+                if (gob.gloatTimer > 0) {
+                    // Gloating: retreat toward the flee spot
+                    goalX = gob.gloatX;
+                    goalY = gob.gloatY;
+                } else {
+                    // Stalking: lock onto Carl's actual tile, re-evaluate every 30 frames
+                    gob.stalkTimer++;
+                    if (gob.huntX === undefined || gob.stalkTimer >= 30) {
+                        gob.huntX = Math.round(p.x / TILE) * TILE;
+                        gob.huntY = Math.round(p.y / TILE) * TILE;
+                        gob.stalkTimer = 0;
+                    }
+                    goalX = gob.huntX;
+                    goalY = gob.huntY;
                 }
-            } else if (!gob.elite) {
+            } else {
                 // Normal goblins: wander to random grid cells
                 if (gob.targetRow < 0 || gob.moveSteps > 5) {
                     gob.targetRow = Math.floor(Math.random() * getActiveRows());
                     gob.targetCol = Math.floor(Math.random() * GRID_COLS);
                     gob.moveSteps = 0;
                 }
+                goalX = (GRID_X + gob.targetCol) * TILE;
+                goalY = rowPixelY(gob.targetRow);
             }
-
-            const goalX = (GRID_X + gob.targetCol) * TILE;
-            const goalY = rowPixelY(gob.targetRow);
             const gdx = goalX - gob.x;
             const gdy = goalY - gob.y;
 
@@ -3579,7 +3600,7 @@ function resetGame() {
     catapultSpawnedThisCycle = false;
     enemyWarningShown = { normal: false, elite: false, catapult: false };
     newInstrumentShown = { cowbell: false, tom: false };
-    levelTimer = LEVELS[0].timerSeconds * 90;
+    levelTimer = LEVELS[0].timerSeconds * 60;
 
     // Clear dancers and effects
     dancers.length = 0;
@@ -3776,7 +3797,7 @@ function triggerLevelComplete() {
     // Kill catapult goblin too
     catapultGoblin = null;
     // Award time bonus
-    lastTimeBonus = Math.ceil(levelTimer / 90) * 10;
+    lastTimeBonus = Math.ceil(levelTimer / 60) * 10;
     score += lastTimeBonus;
     // Screen flash for celebration
     screenFlash = 20;
@@ -5803,7 +5824,7 @@ function startCaveReturn() {
         return;
     }
 
-    levelTimer = LEVELS[currentLevel].timerSeconds * 90;
+    levelTimer = LEVELS[currentLevel].timerSeconds * 60;
     const prevPattern = LEVELS[currentLevel - 1].pattern;
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
@@ -6143,7 +6164,7 @@ function advanceLevel() {
         // Normal level start: 3 new dancer fans join the crowd
         spawnDancers(3);
     }
-    levelTimer = LEVELS[currentLevel].timerSeconds * 90;
+    levelTimer = LEVELS[currentLevel].timerSeconds * 60;
     // Spawn friend NPC for level 30 (noPattern mode)
     if (LEVELS[currentLevel].noPattern) {
         spawnFriendNPC();
@@ -6233,7 +6254,7 @@ function spawnCatapultGoblin() {
     const caveIdx = Math.floor(Math.random() * CAVES.length);
     const cave = CAVES[caveIdx];
     const spawnX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
-    const spawnY = cave.tileY === 0 ? TILE * 2 : cave.tileY === ROWS - 1 ? (ROWS - 2) * TILE : cave.tileY * TILE;
+    const spawnY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, cave.tileY * TILE));
 
     // Pick a random grid cell as boulder target
     const tRow = Math.floor(Math.random() * getActiveRows());
@@ -6405,7 +6426,7 @@ function updateCatapultGoblin() {
             // Set retreat destination back to cave
             const cave = CAVES[cg.caveIndex];
             const retreatX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
-            const retreatY = cave.tileY === 0 ? TILE * 2 : cave.tileY === ROWS - 1 ? (ROWS - 2) * TILE : cave.tileY * TILE;
+            const retreatY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, cave.tileY * TILE));
             cg.destX = retreatX;
             cg.destY = retreatY;
         }
@@ -6570,7 +6591,7 @@ function renderHUD() {
     hudCtx.textAlign = "start";
 
     // --- Timer counter (right-aligned) ---
-    const timerSec = Math.max(0, Math.ceil(levelTimer / 90));
+    const timerSec = Math.max(0, Math.ceil(levelTimer / 60));
     const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
     const timerPanelW = iconW + timerStr.length * digitW + 6;
     const timerX = W - margin - timerPanelW;
@@ -6616,7 +6637,7 @@ function renderHUD() {
     drawHudPixelDigits(scoreStr, kcX + skullW + scoreDigitArea / 2, numY, "#efd8a1", p);
 
     // Tick sound during last 10 seconds (once per second)
-    if (isCritical && timerSec > 0 && levelTimer % 90 === 0 && audioCtx) {
+    if (isCritical && timerSec > 0 && levelTimer % 60 === 0 && audioCtx) {
         const now = audioCtx.currentTime;
         const tick = audioCtx.createOscillator();
         const tg = audioCtx.createGain();
@@ -7416,7 +7437,7 @@ function render() {
 
     // Timer urgency vignette (pulsing red edges when ≤10 seconds)
     {
-        const timerSec_v = Math.max(0, Math.ceil(levelTimer / 90));
+        const timerSec_v = Math.max(0, Math.ceil(levelTimer / 60));
         if (timerSec_v <= 10 && timerSec_v > 0 && !levelComplete) {
             const urgency = 1 - timerSec_v / 10; // 0→1 as timer approaches 0
             const pulse = 0.3 + Math.sin(performance.now() * 0.008) * 0.2;
@@ -7652,6 +7673,14 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
     const col = (c) => ghost ? ghostTint(c) : c;
     const lx = leanX * SCALE, ly = leanY * SCALE;
 
+    // The procedural art below was authored in raw pixels for 48px tiles
+    // (SCALE 3). Scale it around the tile origin to match the current tile size.
+    ctx.save();
+    const PK = (TILE * SCALE) / 48;
+    ctx.translate(sx, sy);
+    ctx.scale(PK, PK);
+    ctx.translate(-sx, -sy);
+
     // Block-print shadow glow
     spriteGlowOn();
 
@@ -7836,6 +7865,7 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
     ctx.fillRect(sx + 27 - walkOfs, sy + 34 - bob, 9, 3);
 
     spriteGlowOff();
+    ctx.restore(); // undo procedural-scale transform
 }
 
 function drawPlayer() {
@@ -7857,12 +7887,11 @@ function drawPunch() {
     const p = player;
     const px = p.x;
     const py = p.y;
-    // Sprite is 2.0x tiles, centered on the 1-tile hitbox
-    // Shoulder position relative to the sprite center, not the hitbox
-    const sprW = p.w * 2.0;
-    const sprH = p.w * 2.0;
-    const sprCX = px + p.w / 2;                    // sprite center X (game coords)
-    const sprCY = py - (sprH - p.h) / 2 + sprH * 0.3; // shoulder height (~30% down from sprite top)
+    // Anchor matches the procedural sprite: game-unit offsets from the tile,
+    // multiplied by SCALE (equivalent to the procedural block's 48px-tile art
+    // scaled by (TILE*SCALE)/48 around the tile origin)
+    const cx = px + p.w / 2;
+    const cy = py + p.h * 0.35; // shoulder height
     const progress = 1 - (p.attackTimer / p.attackDuration);
 
     ctx.save();
@@ -7879,34 +7908,37 @@ function drawPunch() {
         case 3: dx = 1; break;  // right
     }
 
-    // Shoulder offset from sprite center — pushed out to the edge of the body
+    // Body lean (must match drawPlayerSprite lean values)
+    const leanX = dx !== 0 ? dx * thrust * 5 : 0;
+    const leanY = dy !== 0 ? dy * thrust * 4 : 0;
+
+    // Arm starts from edge of leaned body, extends a short distance to fist
     let shoulderOffX, shoulderOffY;
     switch (p.dir) {
-        case 0: shoulderOffX = -3; shoulderOffY = 6; break;   // down
-        case 1: shoulderOffX = 3; shoulderOffY = -4; break;    // up
-        case 2: shoulderOffX = -6; shoulderOffY = 1; break;    // left
-        case 3: shoulderOffX = 6; shoulderOffY = 1; break;     // right
+        case 0: shoulderOffX = -5; shoulderOffY = 2; break;   // down
+        case 1: shoulderOffX = 5; shoulderOffY = -8; break;    // up
+        case 2: shoulderOffX = -8; shoulderOffY = -2; break;   // left
+        case 3: shoulderOffX = 8; shoulderOffY = -2; break;    // right
     }
-    const armLen = 5 + thrust * 10; // longer arm to match bigger sprite
-    const shoulderX = (sprCX + shoulderOffX) * SCALE;
-    const shoulderY = (sprCY + shoulderOffY) * SCALE;
-    const fistX = (sprCX + shoulderOffX + dx * armLen) * SCALE;
-    const fistY = (sprCY + shoulderOffY + dy * armLen) * SCALE;
+    const armLen = 3 + thrust * 6; // short arm from body edge to fist
+    const shoulderX = (cx + leanX + shoulderOffX) * SCALE;
+    const shoulderY = (cy + leanY + shoulderOffY) * SCALE;
+    const fistX = (cx + leanX + shoulderOffX + dx * armLen) * SCALE;
+    const fistY = (cy + leanY + shoulderOffY + dy * armLen) * SCALE;
 
-    // === ARM ===
-    // Match Carl's skin tone from the sprite
-    ctx.strokeStyle = "#e8ad6a"; // warm peach skin
-    ctx.lineWidth = 5 * SCALE;
+    // === ARM === (procedural Carl's skin palette)
+    ctx.strokeStyle = "#efb775";
+    ctx.lineWidth = 4 * SCALE;
     ctx.lineCap = "round";
     ctx.beginPath();
     ctx.moveTo(shoulderX, shoulderY);
     ctx.lineTo(fistX, fistY);
     ctx.stroke();
 
-    // Arm shading (subtle darker outline)
-    ctx.strokeStyle = "#c48a4a";
-    ctx.lineWidth = 6 * SCALE;
-    ctx.globalAlpha = 0.2;
+    // Arm outline
+    ctx.strokeStyle = "#927e6a";
+    ctx.lineWidth = 5 * SCALE;
+    ctx.globalAlpha = 0.3;
     ctx.beginPath();
     ctx.moveTo(shoulderX, shoulderY);
     ctx.lineTo(fistX, fistY);
@@ -7914,25 +7946,25 @@ function drawPunch() {
     ctx.globalAlpha = 1.0;
 
     // === FIST ===
-    const fistSize = 4.5; // bigger fist to match bigger sprite
+    const fistSize = 3.5;
     // Fist shadow
-    ctx.fillStyle = "#c48a4a";
+    ctx.fillStyle = "#a58c27";
     ctx.beginPath();
     ctx.arc(fistX + SCALE, fistY + SCALE, fistSize * SCALE, 0, Math.PI * 2);
     ctx.fill();
     // Main fist
-    ctx.fillStyle = "#e8ad6a";
+    ctx.fillStyle = "#efb775";
     ctx.beginPath();
     ctx.arc(fistX, fistY, fistSize * SCALE, 0, Math.PI * 2);
     ctx.fill();
     // Knuckle highlights
-    ctx.fillStyle = "#f5ccaa";
+    ctx.fillStyle = "#F0D8B8";
     const knucklePerp = dx === 0 ? 1 : 0;
     for (let i = -1; i <= 1; i++) {
-        const kx = fistX + (knucklePerp === 1 ? i * 2.2 * SCALE : dx * 3 * SCALE);
-        const ky = fistY + (knucklePerp === 0 ? i * 2.2 * SCALE : dy * 3 * SCALE);
+        const kx = fistX + (knucklePerp === 1 ? i * 1.8 * SCALE : dx * 2.5 * SCALE);
+        const ky = fistY + (knucklePerp === 0 ? i * 1.8 * SCALE : dy * 2.5 * SCALE);
         ctx.beginPath();
-        ctx.arc(kx, ky, 1.2 * SCALE, 0, Math.PI * 2);
+        ctx.arc(kx, ky, 1.0 * SCALE, 0, Math.PI * 2);
         ctx.fill();
     }
 
@@ -7977,8 +8009,8 @@ function drawPunch() {
 
     // === MOTION LINES (whoosh trail) ===
     if (thrust > 0.3) {
-        ctx.strokeStyle = "#e8ad6a";
-        ctx.lineWidth = 2 * SCALE;
+        ctx.strokeStyle = "#efb775";
+        ctx.lineWidth = 1.5 * SCALE;
         ctx.globalAlpha = thrust * 0.55;
         for (let i = 1; i <= 3; i++) {
             const trailLen = i * 3;
