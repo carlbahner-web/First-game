@@ -15,6 +15,7 @@ const GRID_ROWS = 6;       // max drum channels (O, H, S, K, B, T)
 const GRID_X = 4;          // grid start tile-x (centered: 4 + 16 + 4 = 24)
 const GRID_Y = 4;          // grid start tile-y (centered vertically)
 const GRID_Y_OFFSET = 0;   // no offset needed with centered layout
+const DOOR_TILE_Y = Math.floor(ROWS / 2); // exit door on the right wall
 // (gap row after kick removed)
 // Tempo is set per level using frames-per-16th-note at 60fps
 // Gradual curve across 30 levels:
@@ -1702,6 +1703,13 @@ let pocketRing = null;    // { x, y, timer } — expanding gold ring on a pocket
 let entourageCheer = 0;   // frames the fan entourage throws its arms up
 let carlGlowBoost = 0;    // frames of amplified amber glow after a YEAH
 
+// ---- Room progression: exit door + fan entourage ----
+let doorOpen = false;         // pattern restored — right-wall door unbarred
+let entourageSize = 0;        // fans following Carl between rooms (+2 per room)
+const ENTOURAGE_MAX = 10;
+const ENTOURAGE_SPACING = 12; // trail frames between followers
+const playerTrail = [];       // recent player positions for the conga line
+
 // Tier 1: correct toggle on the quarter-note beat — the crowd answers back
 function triggerYeah() {
     score = Math.min(99999, score + 25);
@@ -2587,7 +2595,7 @@ function update(dt) {
     }
 
     // Level countdown timer
-    if (levelTimer > 0) {
+    if (levelTimer > 0 && !doorOpen) { // clock stops once the beat is restored
         levelTimer--;
         if (levelTimer <= 0) {
             // Level 30: timer expiry triggers ending, not game over
@@ -3046,6 +3054,20 @@ function update(dt) {
     p.blinkTimer++;
     if (p.blinkTimer >= 186) p.blinkTimer = 0; // 180 open + 6 closed
 
+    // Fan entourage: record Carl's trail for the conga line
+    playerTrail.unshift({ x: p.x, y: p.y });
+    const maxTrail = entourageSize * ENTOURAGE_SPACING + 24;
+    if (playerTrail.length > maxTrail) playerTrail.length = maxTrail;
+    if (entourageCheer > 0) entourageCheer--;
+
+    // Walk through the open door to finish the level
+    if (doorOpen && !levelComplete &&
+        Math.round(p.x / TILE) === COLS - 2 &&
+        Math.round(p.y / TILE) === DOOR_TILE_Y) {
+        triggerLevelComplete();
+        return;
+    }
+
     // Update all goblins (multiple concurrent)
     const maxGobs = getMaxGoblins();
     for (let gi = 0; gi < goblins.length; gi++) {
@@ -3066,6 +3088,7 @@ function update(dt) {
         else if (patternMatched) {
             gob.respawnTimer = 300;
         }
+        if (doorOpen) continue; // no respawns once the door is open
         gob.respawnTimer--;
         if (gob.respawnTimer <= 0) {
             // Every 6th goblin is a catapult goblin instead of normal/elite (from L15+)
@@ -3172,7 +3195,8 @@ function update(dt) {
             gob.y = gob.destY;
 
             // Elite goblins don't sabotage — they hunt Carl instead
-            if (!gob.elite) {
+            // (and nobody sabotages while fleeing a restored beat)
+            if (!gob.elite && !gob.fleeing) {
                 // Check if on a grid cell to sabotage
                 const gc = Math.round(gob.x / TILE) - GRID_X;
                 const gr = tileYToRow(Math.round(gob.y / TILE));
@@ -3211,7 +3235,7 @@ function update(dt) {
                         gob.punchNow = true;
                     }
                 }
-            } else if (gob.elite && gob.gloatTimer <= 0 && p.stunTimer <= 0 && p.freezeTimer <= 0) {
+            } else if (gob.elite && !gob.fleeing && gob.gloatTimer <= 0 && p.stunTimer <= 0 && p.freezeTimer <= 0) {
                 // Adjacent? Start the wind-up telegraph instead of punching instantly
                 const gobTX = Math.round(gob.x / TILE);
                 const gobTY = Math.round(gob.y / TILE);
@@ -3303,7 +3327,18 @@ function update(dt) {
             // Pick next goal position
             gob.moveSteps++;
             let goalX, goalY;
-            if (gob.elite) {
+            if (gob.fleeing) {
+                // Sprint home to the spawn cave; vanish on arrival
+                const fleeCave = CAVES[gob.spawnCave];
+                const fleeX = fleeCave.tileX === 0 ? TILE : fleeCave.tileX === COLS - 1 ? (COLS - 2) * TILE : fleeCave.tileX * TILE;
+                const fleeY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, fleeCave.tileY * TILE));
+                if (gob.x === fleeX && gob.y === fleeY) {
+                    gob.dead = true;
+                    gob.respawnTimer = 999999; // gone for the rest of the level
+                }
+                goalX = fleeX;
+                goalY = fleeY;
+            } else if (gob.elite) {
                 if (gob.windupTimer > 0) {
                     // Hold position during the punch wind-up
                     goalX = Math.round(gob.x / TILE) * TILE;
@@ -3795,9 +3830,21 @@ function resetGame() {
         g.deathAnimActive = false;
         g.deathAnimTimer = 0;
         g.respawnTimer = 300;
+        g.fleeing = false;
+        g.danceTimer = 0;
+        g.windupTimer = 0;
+        g.gloatTimer = 0;
     }
     catapultGoblin = null;
     catapultSpawnedThisCycle = false;
+
+    // Reset room progression + entourage
+    doorOpen = false;
+    entourageSize = 0;
+    playerTrail.length = 0;
+    entourageCheer = 0;
+    pocketRing = null;
+    carlGlowBoost = 0;
     enemyWarningShown = { normal: false, elite: false, catapult: false };
     newInstrumentShown = { cowbell: false, tom: false };
     levelTimer = LEVELS[0].timerSeconds * 60;
@@ -3876,9 +3923,37 @@ function tryCompleteLevelOrWait() {
         patternMatched = false;
         return;
     }
-    patternMatched = true;
-    if (!areGoblinsAlive()) {
-        triggerLevelComplete();
+    // Pattern restored — the goblins flee in terror and the exit door opens.
+    // The level completes when Carl walks through it.
+    openDoor();
+}
+
+function openDoor() {
+    if (doorOpen) return;
+    doorOpen = true;
+    entourageCheer = 120;
+    deathText = { x: player.x - 28, y: player.y - 18, timer: 90, text: "BEAT RESTORED!", color: "#44ff44", scale: 5 };
+    playLevelFanfare();
+    // Goblins can't stand the finished groove — they bolt for their caves
+    for (const g of goblins) {
+        if (!g.dead) {
+            g.fleeing = true;
+            g.danceTimer = 0;
+            g.windupTimer = 0;
+            g.gloatTimer = 0;
+            g.targetRow = -1;
+            const fleeBase = currentLevel < LEVELS.length ? LEVELS[currentLevel].goblinSpeed : 0.5;
+            g.speed = fleeBase * 1.8; // panic sprint
+        }
+    }
+    // Catapult crew packs up too (unless a boulder is already mid-air —
+    // the firing branch handles its own retreat after impact)
+    if (catapultGoblin && catapultGoblin.phase !== "firing" && catapultGoblin.phase !== "retreating") {
+        catapultGoblin.danceTimer = 0;
+        catapultGoblin.phase = "retreating";
+        const cgCave = CAVES[catapultGoblin.caveIndex];
+        catapultGoblin.destX = cgCave.tileX === 0 ? TILE : cgCave.tileX === COLS - 1 ? (COLS - 2) * TILE : cgCave.tileX * TILE;
+        catapultGoblin.destY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, cgCave.tileY * TILE));
     }
 }
 
@@ -6387,14 +6462,24 @@ function advanceLevel() {
         }
     }
 
-    // Reset player position (below the active grid)
-    player.x = (GRID_X + 7) * TILE;
-    player.y = (gridBottomTileY() + 1) * TILE + GRID_Y_OFFSET;
+    // Enter the new room through the left-side archway (we exited the
+    // previous room through the right door)
+    doorOpen = false;
+    player.x = TILE * 2;
+    player.y = DOOR_TILE_Y * TILE;
     player.destX = player.x;
     player.destY = player.y;
+    player.dir = 3; // facing into the room
     player.attacking = false;
     player.attackTimer = 0;
     player.punchHit = false;
+
+    // The entourage grows — fans from the cleared room join the crew
+    entourageSize = Math.min(ENTOURAGE_MAX, entourageSize + 2);
+    playerTrail.length = 0;
+    for (let k = 0; k < entourageSize * ENTOURAGE_SPACING + 24; k++) {
+        playerTrail.push({ x: Math.max(TILE, player.x - k * 1.5), y: player.y });
+    }
 
     // Reset all goblins with staggered respawn timers
     for (let i = 0; i < goblins.length; i++) {
@@ -6402,6 +6487,10 @@ function advanceLevel() {
         g.dead = true;
         g.deathAnimActive = false;
         g.deathAnimTimer = 0;
+        g.fleeing = false;
+        g.danceTimer = 0;
+        g.windupTimer = 0;
+        g.gloatTimer = 0;
         const staggerGap = Math.round(600 - (currentLevel / 29) * 360); // 10s apart early → 4s apart late
         g.respawnTimer = 180 + i * staggerGap;
     }
@@ -7013,6 +7102,13 @@ function render() {
         ctx.drawImage(TEX_CAVE_BG, 0, 0);
     }
 
+    // Per-room ambient tint — each level's room gets its own subtle color cast
+    {
+        const roomHue = (currentLevel * 47) % 360;
+        ctx.fillStyle = `hsla(${roomHue}, 60%, 45%, 0.07)`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
     // Cave openings (goblin spawn points) — skip structure if bg sprite has them painted in
     for (let ci = 0; ci < CAVES.length; ci++) {
         const cave = CAVES[ci];
@@ -7083,6 +7179,47 @@ function render() {
                 ctx.fill();
                 break;
             }
+        }
+    }
+
+    // ---- Level-exit door (right wall) — barred until the beat is restored ----
+    {
+        const dX = (COLS - 1) * TILE;
+        const dY = (DOOR_TILE_Y - 1) * TILE + 6;
+        const dH = TILE * 2 - 8;
+        // Doorway recess
+        ctx.fillStyle = doorOpen ? "#0a3a1a" : "#0a0d0a";
+        ctx.beginPath();
+        ctx.roundRect(dX * SCALE, dY * SCALE, (TILE - 2) * SCALE, dH * SCALE, [8 , 0, 0, 8]);
+        ctx.fill();
+        ctx.strokeStyle = "#2a3a2a";
+        ctx.lineWidth = 2 * SCALE;
+        ctx.stroke();
+        if (doorOpen) {
+            // Glowing green interior
+            const doorPulse = 0.4 + Math.sin(performance.now() * 0.006) * 0.25;
+            ctx.globalAlpha = doorPulse;
+            ctx.fillStyle = "#44ff44";
+            ctx.beginPath();
+            ctx.roundRect((dX + 2) * SCALE, (dY + 3) * SCALE, (TILE - 6) * SCALE, (dH - 6) * SCALE, [6, 0, 0, 6]);
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+            // Pulsing arrow pointing the way out
+            ctx.font = `${7 * SCALE}px monospace`;
+            ctx.textAlign = "center";
+            ctx.globalAlpha = 0.6 + Math.sin(performance.now() * 0.008) * 0.4;
+            ctx.fillStyle = "#44ff44";
+            ctx.fillText("→", (dX - 7) * SCALE, (DOOR_TILE_Y * TILE + 6) * SCALE);
+            ctx.globalAlpha = 1.0;
+            ctx.textAlign = "left";
+        } else {
+            // Wooden bars + padlock
+            ctx.fillStyle = "#5C3A1E";
+            for (let bi = 0; bi < 3; bi++) {
+                ctx.fillRect((dX + 1) * SCALE, (dY + 4 + bi * 8) * SCALE, (TILE - 4) * SCALE, 2.5 * SCALE);
+            }
+            ctx.fillStyle = "#efac28";
+            ctx.fillRect((dX + 5) * SCALE, (dY + dH / 2 - 1) * SCALE, 4 * SCALE, 5 * SCALE);
         }
     }
 
@@ -7428,6 +7565,20 @@ function render() {
         drawDancer(d);
     }
 
+    // Fan entourage — conga line trailing Carl between rooms.
+    // Stateless followers: each reads a point from the player's trail.
+    for (let ei = 0; ei < entourageSize; ei++) {
+        const ti = Math.min((ei + 1) * ENTOURAGE_SPACING, playerTrail.length - 1);
+        if (ti < 0) break;
+        const tp = playerTrail[ti];
+        const bobWave = Math.sin(performance.now() * 0.006 + ei * 1.3);
+        const eBob = Math.abs(bobWave) * 2;
+        const eArm = entourageCheer > 0 ? 1 : Math.max(0, bobWave) * 0.3;
+        drawDancerSprite(tp.x - 2, tp.y - 8, DANCER_PALETTES[ei % DANCER_PALETTES.length], {
+            bob: eBob, armBlend: eArm, footOffset: bobWave * 1.5,
+        });
+    }
+
     // Goblins (all active ones)
     for (const g of goblins) {
         if (!g.dead) {
@@ -7669,16 +7820,16 @@ function render() {
     // Punch (in front for down/left/right)
     if (player.attacking && player.dir !== 1) drawPunch();
 
-    // "SLAY THE GOBLIN!" indicator when pattern is done but goblins remain
-    if (patternMatched && !levelComplete && areGoblinsAlive()) {
+    // Door prompt when the beat is restored
+    if (doorOpen && !levelComplete) {
         const blink = Math.floor(performance.now() / 400) % 2 === 0;
         if (blink) {
             ctx.font = `${6 * SCALE}px monospace`;
             ctx.textAlign = "center";
             ctx.fillStyle = "#000000";
-            ctx.fillText("SLAY THE GOBLIN!", (COLS * TILE * SCALE) / 2 + SCALE, 14 * SCALE + SCALE);
-            ctx.fillStyle = "#ef3a0c";
-            ctx.fillText("SLAY THE GOBLIN!", (COLS * TILE * SCALE) / 2, 14 * SCALE);
+            ctx.fillText("THE DOOR IS OPEN! →", (COLS * TILE * SCALE) / 2 + SCALE, 14 * SCALE + SCALE);
+            ctx.fillStyle = "#44ff44";
+            ctx.fillText("THE DOOR IS OPEN! →", (COLS * TILE * SCALE) / 2, 14 * SCALE);
             ctx.textAlign = "start";
         }
     }
