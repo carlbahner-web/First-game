@@ -589,6 +589,9 @@ const AUDIO_SAMPLES = [
     ["kick",     "assets/audio/kick.wav"],
     ["cowbell",  "assets/audio/cowbell.wav"],
     ["tom",      "assets/audio/tom.wav"],
+    // Optional crowd call-and-response samples (synth fallback if missing)
+    ["yeah",     "assets/audio/yeah.wav"],
+    ["crowd",    "assets/audio/crowd.wav"],
     // Background music loops (1 bar per tempo tier)
     ["bgm_90",     "assets/audio/bgm-90.wav"],
     ["bgm_100",    "assets/audio/bgm-100.wav"],
@@ -1661,6 +1664,8 @@ function createGoblin(caveIndex) {
         gloatTimer: 0,     // elite gloating phase after punching Carl
         windupTimer: 0,    // elite punch telegraph before the stun lands
         punchNow: false,
+        danceTimer: 0,     // involuntary groove — can't move or sabotage
+        fleeing: false,    // running home after the pattern is restored
         elite: false,
         hp: 1,
         hurtTimer: 0,
@@ -1691,6 +1696,69 @@ let pendingShakeElite = false;
 const cellFlash = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).fill(0));
 // Longer-lived "recently sabotaged" marker (~3s fade) so flipped cells stay findable
 const cellRecent = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).fill(0));
+
+// ---- Groove bonus state (on-beat punches) ----
+let pocketRing = null;    // { x, y, timer } — expanding gold ring on a pocket hit
+let entourageCheer = 0;   // frames the fan entourage throws its arms up
+let carlGlowBoost = 0;    // frames of amplified amber glow after a YEAH
+
+// Tier 1: correct toggle on the quarter-note beat — the crowd answers back
+function triggerYeah() {
+    score = Math.min(99999, score + 25);
+    entourageCheer = 40;
+    carlGlowBoost = 25;
+    deathText = { x: player.x - 10, y: player.y - 16, timer: 35, text: "YEAH!", color: "#efac28", scale: 5 };
+    if (audioCtx && !playSample("yeah", audioCtx.currentTime)) playYeahStab(audioCtx.currentTime);
+}
+
+// Tier 2: correct toggle at the block's own musical moment — the goblins
+// can't resist the groove and break into an involuntary dance
+function triggerPocketHit(row, col) {
+    score = Math.min(99999, score + 100);
+    entourageCheer = 90;
+    carlGlowBoost = 45;
+    pocketRing = { x: (GRID_X + col) * TILE + TILE / 2, y: rowPixelY(row) + TILE / 2, timer: 30 };
+    deathText = { x: player.x - 26, y: player.y - 16, timer: 60, text: "IN THE POCKET!", color: "#FFD700", scale: 5 };
+    screenShake = 5;
+    shakeIntensity = 2;
+    for (const g of goblins) {
+        if (!g.dead) {
+            g.danceTimer = 180;
+            g.windupTimer = 0; // an elite mid-windup loses the plot and dances
+        }
+    }
+    if (catapultGoblin) catapultGoblin.danceTimer = 180;
+    if (audioCtx && !playSample("crowd", audioCtx.currentTime)) playPocketStab(audioCtx.currentTime);
+}
+
+// Funky stab chord — synth fallback for the "YEAH!" call-and-response
+function playYeahStab(time) {
+    const freqs = [294, 370, 440, 523]; // D F# A C — dominant 7 stab
+    freqs.forEach((f, i) => {
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(f, time);
+        g.gain.setValueAtTime(0.06, time + i * 0.008);
+        g.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
+        osc.connect(g); g.connect(audioCtx.destination);
+        osc.start(time + i * 0.008); osc.stop(time + 0.2);
+    });
+}
+
+// Bigger hit for IN THE POCKET — chord stab plus an upward gliss
+function playPocketStab(time) {
+    playYeahStab(time);
+    const gliss = audioCtx.createOscillator();
+    const gg = audioCtx.createGain();
+    gliss.type = "square";
+    gliss.frequency.setValueAtTime(440, time);
+    gliss.frequency.exponentialRampToValueAtTime(1760, time + 0.35);
+    gg.gain.setValueAtTime(0.08, time);
+    gg.gain.exponentialRampToValueAtTime(0.001, time + 0.4);
+    gliss.connect(gg); gg.connect(audioCtx.destination);
+    gliss.start(time); gliss.stop(time + 0.4);
+}
 // ---- Friend NPC (Level 30 only) ----
 let friendNPC = null; // { x, y, destX, destY, moveTimer, highlightGoblin, highlightTimer }
 
@@ -2863,6 +2931,28 @@ function update(dt) {
                 osc.connect(g); g.connect(audioCtx.destination);
                 osc.start(now); osc.stop(now + 0.06);
             }
+
+            // ---- Groove timing bonuses ----
+            // Only toggles that move the pattern TOWARD the goal count
+            const lvlDef = currentLevel < LEVELS.length ? LEVELS[currentLevel] : null;
+            const madeCorrect = lvlDef && !lvlDef.noPattern &&
+                grid[row][col] === lvlDef.pattern[row][col];
+            if (madeCorrect && playing) {
+                const sinceTick = performance.now() - lastStepTime;
+                const playedCol = (currentStep + GRID_COLS - 1) % GRID_COLS;
+                if (col === playedCol) {
+                    // Punched the block at its own musical moment
+                    triggerPocketHit(row, col);
+                } else {
+                    // Landed on the quarter-note beat? The crowd answers
+                    const BEAT_WINDOW_MS = 67;
+                    const onBeat =
+                        (playedCol % 4 === 0 && sinceTick <= BEAT_WINDOW_MS) ||
+                        (currentStep % 4 === 0 && (stepMs - sinceTick) <= BEAT_WINDOW_MS);
+                    if (onBeat) triggerYeah();
+                }
+            }
+
             // Check if level pattern is now complete
             tryCompleteLevelOrWait();
         }
@@ -2999,6 +3089,8 @@ function update(dt) {
             gob.stalkTimer = 0;
             gob.windupTimer = 0;
             gob.punchNow = false;
+            gob.danceTimer = 0;
+            gob.fleeing = false;
             gob.huntX = undefined;
             gob.huntY = undefined;
             // Spawn from any cave — pick one not occupied by another alive goblin
@@ -3062,6 +3154,13 @@ function update(dt) {
             }
         }
         } // end else (non-catapult spawn)
+    } else if (gob.danceTimer > 0) {
+        // GROOVED! Involuntary dance break — can't move, sabotage, or punch
+        gob.danceTimer--;
+        if (gob.danceTimer <= 0) {
+            gob.windupTimer = 0;
+            gob.stalkTimer = 999; // elites re-acquire Carl immediately
+        }
     } else {
         // Smooth pixel movement toward destination
         const dx = gob.destX - gob.x;
@@ -6420,6 +6519,13 @@ function updateCatapultGoblin() {
     const cg = catapultGoblin;
     if (!cg) return;
 
+    // GROOVED! Dance break pauses the catapult — unless a boulder is already
+    // mid-air (physics doesn't dance)
+    if (cg.danceTimer > 0 && !(cg.phase === "firing" && cg.boulder)) {
+        cg.danceTimer--;
+        return;
+    }
+
     if (cg.phase === "entering") {
         // Walk toward stop position
         const dx = cg.destX - cg.x;
@@ -7450,6 +7556,27 @@ function render() {
         ctx.globalAlpha = 1.0;
     }
 
+    // IN THE POCKET — expanding gold groove ring from the punched cell
+    if (pocketRing) {
+        pocketRing.timer--;
+        const prT = 1 - pocketRing.timer / 30; // 0→1
+        const prX = pocketRing.x * SCALE;
+        const prY = pocketRing.y * SCALE;
+        ctx.strokeStyle = "#FFD700";
+        ctx.lineWidth = 3 * SCALE;
+        ctx.globalAlpha = (1 - prT) * 0.8;
+        ctx.beginPath();
+        ctx.arc(prX, prY, (4 + prT * 180) * SCALE, 0, Math.PI * 2);
+        ctx.stroke();
+        // Trailing inner ring
+        ctx.globalAlpha = (1 - prT) * 0.4;
+        ctx.beginPath();
+        ctx.arc(prX, prY, (4 + prT * 130) * SCALE, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1.0;
+        if (pocketRing.timer <= 0) pocketRing = null;
+    }
+
     // Screen flash (elite kill)
     if (screenFlash > 0) {
         ctx.fillStyle = "#fff";
@@ -7495,13 +7622,15 @@ function render() {
         ctx.globalAlpha = 1.0;
     }
 
-    // Persistent amber/gold glow under Carl's feet
+    // Persistent amber/gold glow under Carl's feet — flares up on groove hits
     {
+        const boost = carlGlowBoost > 0 ? (carlGlowBoost / 45) * 0.3 : 0;
+        if (carlGlowBoost > 0) carlGlowBoost--;
         const glowCX = (player.x + player.w / 2) * SCALE;
         const glowCY = (player.y + player.h) * SCALE;
-        const glowRX = TILE * SCALE * 0.9;
-        const glowRY = TILE * SCALE * 0.35;
-        const glowPulse = 0.25 + Math.sin(performance.now() * 0.002) * 0.08;
+        const glowRX = TILE * SCALE * (0.9 + boost);
+        const glowRY = TILE * SCALE * (0.35 + boost * 0.4);
+        const glowPulse = 0.25 + Math.sin(performance.now() * 0.002) * 0.08 + boost;
         ctx.globalAlpha = glowPulse;
         const glowGrad = ctx.createRadialGradient(glowCX, glowCY, 0, glowCX, glowCY, glowRX);
         glowGrad.addColorStop(0, "rgba(239,172,40,0.5)");
@@ -8793,9 +8922,38 @@ function drawGoblinFor(g) {
         bodyCol = "#FF0044"; darkCol = "#CC0033"; headCol = "#FF3366"; eyeCol = "#00FFFF";
     }
 
-    drawGoblinSprite(g.elite ? "elite" : "normal", g.x, g.y, g.frame, {
-        dir: g.dir, bodyCol, darkCol, headCol, eyeCol
+    // GROOVED! Silly involuntary dance — hip-wobble, fast footwork, music notes
+    const dancing = g.danceTimer > 0;
+    if (dancing) {
+        ctx.save();
+        const dcx = (g.x + g.w / 2) * SCALE;
+        const dcy = (g.y + g.h) * SCALE; // pivot at the feet for a hip wiggle
+        ctx.translate(dcx, dcy);
+        ctx.rotate(Math.sin(g.danceTimer * 0.35) * 0.28);
+        // Little bounce on the off-wobble
+        ctx.scale(1, 1 + Math.abs(Math.sin(g.danceTimer * 0.35)) * 0.08);
+        ctx.translate(-dcx, -dcy);
+    }
+
+    drawGoblinSprite(g.elite ? "elite" : "normal", g.x, g.y,
+        dancing ? Math.floor(g.danceTimer / 4) % 4 : g.frame, {
+        dir: dancing ? 0 : g.dir, bodyCol, darkCol, headCol, eyeCol
     });
+
+    if (dancing) {
+        ctx.restore();
+        // Rising music notes
+        for (let ni = 0; ni < 2; ni++) {
+            const nPhase = (180 - g.danceTimer + ni * 30) % 60;
+            ctx.globalAlpha = (1 - nPhase / 60) * 0.9;
+            ctx.font = `${5 * SCALE}px monospace`;
+            ctx.fillStyle = ni === 0 ? "#44ff44" : "#FFD700";
+            ctx.fillText(ni === 0 ? "♪" : "♫",
+                (g.x + (ni === 0 ? 1 : 11)) * SCALE,
+                (g.y - 6 - nPhase * 0.3) * SCALE);
+        }
+        ctx.globalAlpha = 1.0;
+    }
 
     // Damage flash: bright white burst when hurt
     if (g.hurtTimer > 8) {
@@ -8840,7 +8998,23 @@ function drawCatapultGoblin() {
     const cg = catapultGoblin;
     if (!cg) return;
 
-    drawGoblinSprite("catapult", cg.x, cg.y, cg.frame, { dir: cg.dir });
+    drawGoblinSprite("catapult", cg.x, cg.y,
+        cg.danceTimer > 0 ? Math.floor(cg.danceTimer / 4) % 4 : cg.frame,
+        { dir: cg.danceTimer > 0 ? 0 : cg.dir });
+
+    // GROOVED! Music notes while the catapult crew dances
+    if (cg.danceTimer > 0) {
+        for (let ni = 0; ni < 2; ni++) {
+            const nPhase = (180 - cg.danceTimer + ni * 30) % 60;
+            ctx.globalAlpha = (1 - nPhase / 60) * 0.9;
+            ctx.font = `${5 * SCALE}px monospace`;
+            ctx.fillStyle = ni === 0 ? "#44ff44" : "#FFD700";
+            ctx.fillText(ni === 0 ? "♪" : "♫",
+                (cg.x + (ni === 0 ? 1 : 11)) * SCALE,
+                (cg.y - 6 - nPhase * 0.3) * SCALE);
+        }
+        ctx.globalAlpha = 1.0;
+    }
 
     // Landing warning: mark the 3x3 blast zone from aiming through impact
     // so the direct-hit freeze is dodgeable
