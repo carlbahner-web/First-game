@@ -540,12 +540,13 @@ function loadImage(key, src) {
     });
 }
 
+// MASTER SWITCH: false = all-procedural rendering (no PNGs loaded at all).
+// Flip to true to load and use every image asset again.
+const USE_IMAGE_ASSETS = false;
+
 const ASSET_LIST = [
     // Backgrounds
-    // Background image disabled — using the procedural 8-bit cave.
-    // Re-enable by uncommenting (also restores the image-based skips
-    // for ceiling lights / floor crystals / cave arches):
-    // ["cave_bg",    "assets/bg/themeparkbg.PNG"],
+    ["cave_bg",    "assets/bg/themeparkbg.PNG"],
     ["grid_wall",  "assets/grid/grid-wall.png"],
     ["hud_bg",     "assets/hud/hud-bg.png"],
     // Grid cells (1 off + 6 on colors + 6 hint + 6 x-indicator)
@@ -710,7 +711,8 @@ function stopBGM() {
 
 let assetsReady = false;
 // Start game as soon as images load — audio loads in background (non-blocking)
-Promise.all(ASSET_LIST.map(([key, src]) => loadImage(key, src))).then(() => {
+// (with USE_IMAGE_ASSETS off, the list is empty and the game starts immediately)
+Promise.all((USE_IMAGE_ASSETS ? ASSET_LIST : []).map(([key, src]) => loadImage(key, src))).then(() => {
     assetsReady = true;
     if (typeof startGame === "function") startGame();
 });
@@ -8070,8 +8072,7 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
     }
 
     // ---- Sprite sheet path for walk-down (20-frame animation) ----
-    // TEMPORARILY DISABLED — falling back to procedural rendering
-    if (false && dir === 0 && IMAGES.player_sheet_down && punch <= 0) {
+    if (dir === 0 && IMAGES.player_sheet_down && punch <= 0) {
         const sheet = IMAGES.player_sheet_down;
         const cellW = 308, cellH = 464;
         const sheetCols = 5, totalFrames = 20;
@@ -8090,8 +8091,7 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
     }
 
     // ---- Sprite-based path for individual files (other directions + fallback) ----
-    // TEMPORARILY DISABLED — falling back to procedural rendering
-    if (false) {
+    {
         const dirName = ["down", "up", "left", "right"][dir];
         const punchKey = "player_punch_" + dirName;
         // Frame 0 = idle, frames 1-3 = walking (alternate between sprite 1 and 2)
