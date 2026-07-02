@@ -542,7 +542,10 @@ function loadImage(key, src) {
 
 const ASSET_LIST = [
     // Backgrounds
-    ["cave_bg",    "assets/bg/themeparkbg.PNG"],
+    // Background image disabled — using the procedural 8-bit cave.
+    // Re-enable by uncommenting (also restores the image-based skips
+    // for ceiling lights / floor crystals / cave arches):
+    // ["cave_bg",    "assets/bg/themeparkbg.PNG"],
     ["grid_wall",  "assets/grid/grid-wall.png"],
     ["hud_bg",     "assets/hud/hud-bg.png"],
     // Grid cells (1 off + 6 on colors + 6 hint + 6 x-indicator)
