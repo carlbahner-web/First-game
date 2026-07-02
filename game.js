@@ -64,7 +64,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0,
-        timerSeconds: 99,
+        timerSeconds: 150,
     },
     // L2: Pop variation — add open hat accent, kick gets syncopated
     {
@@ -79,7 +79,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0,
-        timerSeconds: 99,
+        timerSeconds: 150,
     },
     // L3: Driving rock — busier kick pattern (goblins start here!)
     {
@@ -94,7 +94,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.45,
-        timerSeconds: 99,
+        timerSeconds: 150,
     },
     // L4: Add a 4th kick, driving feel
     {
@@ -109,7 +109,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.46,
-        timerSeconds: 99,
+        timerSeconds: 150,
     },
     // L5: Offbeat open hats — hats thin out for open hat accents
     {
@@ -124,7 +124,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.47,
-        timerSeconds: 99,
+        timerSeconds: 150,
     },
     // L6: Snare ghost note — add ghost before beat 4
     {
@@ -139,7 +139,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.48,
-        timerSeconds: 99,
+        timerSeconds: 150,
     },
     // L7: Syncopated kick — displaced kicks (pink goblins start here!)
     {
@@ -154,7 +154,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.50,
-        timerSeconds: 99,
+        timerSeconds: 150,
     },
     // L8: More open hat variety
     {
@@ -169,7 +169,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.51,
-        timerSeconds: 99,
+        timerSeconds: 150,
     },
     // L9: Complex kick+hat interplay
     {
@@ -184,7 +184,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.52,
-        timerSeconds: 99,
+        timerSeconds: 150,
     },
     // L10: Rock mastery — full complexity with 4 rows
     {
@@ -199,7 +199,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.53,
-        timerSeconds: 99,
+        timerSeconds: 150,
     },
 
     // ---- FUNK & SOUL (Levels 11-20) — 5 rows: +Cowbell ----
@@ -217,7 +217,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.54,
-        timerSeconds: 95,
+        timerSeconds: 145,
     },
     // L12: Offbeat cowbell
     {
@@ -232,7 +232,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.55,
-        timerSeconds: 95,
+        timerSeconds: 145,
     },
     // L13: Funky kick + cowbell
     {
@@ -247,7 +247,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.56,
-        timerSeconds: 95,
+        timerSeconds: 145,
     },
     // L14: Ghost snare notes + funk kick
     {
@@ -262,7 +262,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.57,
-        timerSeconds: 95,
+        timerSeconds: 145,
     },
     // L15: Tresillo cowbell (catapult goblins start here!)
     {
@@ -277,7 +277,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.58,
-        timerSeconds: 90,
+        timerSeconds: 135,
     },
     // L16: Open hat accents return
     {
@@ -292,7 +292,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.59,
-        timerSeconds: 90,
+        timerSeconds: 135,
     },
     // L17: Syncopated everything — James Brown feel
     {
@@ -307,7 +307,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.60,
-        timerSeconds: 90,
+        timerSeconds: 135,
     },
     // L18: Disco-style — 4-on-the-floor with busy hats
     {
@@ -322,7 +322,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.61,
-        timerSeconds: 90,
+        timerSeconds: 135,
     },
     // L19: Latin-influenced — cowbell drives, kick sparse
     {
@@ -337,7 +337,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.63,
-        timerSeconds: 90,
+        timerSeconds: 135,
     },
     // L20: Funk mastery — full complexity with 5 rows
     {
@@ -352,7 +352,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, false,false,false,false],
         ],
         goblinSpeed: 0.64,
-        timerSeconds: 90,
+        timerSeconds: 135,
     },
 
     // ---- BREAKBEATS & BEYOND (Levels 21-30) — 6 rows: +Tom ----
@@ -370,7 +370,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,true,  false,false,false,false, false,false,false,true ], // T — tom fills
         ],
         goblinSpeed: 0.65,
-        timerSeconds: 85,
+        timerSeconds: 130,
     },
     // L22: Offbeat toms
     {
@@ -385,7 +385,7 @@ const LEVELS = [
             [false,false,false,true,  false,false,false,false, false,false,false,true,  false,false,false,false], // T — offbeat accents
         ],
         goblinSpeed: 0.67,
-        timerSeconds: 85,
+        timerSeconds: 130,
     },
     // L23: Add cowbell back with toms
     {
@@ -400,7 +400,7 @@ const LEVELS = [
             [false,false,false,true,  false,false,false,false, false,false,false,true,  false,false,false,false], // T
         ],
         goblinSpeed: 0.69,
-        timerSeconds: 85,
+        timerSeconds: 130,
     },
     // L24: Breakbeat snare — off-grid snare hits
     {
@@ -415,7 +415,7 @@ const LEVELS = [
             [false,false,false,true,  false,false,false,false, false,false,false,true,  false,false,false,false], // T
         ],
         goblinSpeed: 0.71,
-        timerSeconds: 85,
+        timerSeconds: 130,
     },
     // L25: Complex kick+tom interplay
     {
@@ -430,7 +430,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,true,  false,false,false,false], // T — accent
         ],
         goblinSpeed: 0.73,
-        timerSeconds: 85,
+        timerSeconds: 130,
     },
     // L26: D&B half-time — fast hats, syncopated snare, rolling toms
     {
@@ -445,7 +445,7 @@ const LEVELS = [
             [false,false,false,true,  false,false,false,true,  false,false,false,true,  false,false,false,false], // T — rolling offbeat toms
         ],
         goblinSpeed: 0.75,
-        timerSeconds: 80,
+        timerSeconds: 120,
     },
     // L27: Rolling toms — busier tom pattern
     {
@@ -460,7 +460,7 @@ const LEVELS = [
             [false,false,false,true,  false,false,false,true,  false,false,false,true,  false,false,false,true ], // T — 4 rolling toms
         ],
         goblinSpeed: 0.77,
-        timerSeconds: 80,
+        timerSeconds: 120,
     },
     // L28: Syncopated chaos — everything displaced
     {
@@ -475,7 +475,7 @@ const LEVELS = [
             [false,false,false,false, false,false,false,false, false,false,false,false, true, false,true, false], // T — tom break at end
         ],
         goblinSpeed: 0.79,
-        timerSeconds: 80,
+        timerSeconds: 120,
     },
     // L29: Everything together — near-maximum complexity
     {
@@ -490,7 +490,7 @@ const LEVELS = [
             [false,false,false,true,  false,false,false,true,  false,false,false,true,  false,false,false,false], // T — rolling toms
         ],
         goblinSpeed: 0.80,
-        timerSeconds: 75,
+        timerSeconds: 115,
     },
     // L30: Endless mode — no target pattern, survive until timer expires
     {
@@ -1603,6 +1603,7 @@ const player = {
     attackTimer: 0,
     attackDuration: 12,
     punchHit: false, // did this swing already toggle a block?
+    punchBuffered: false, // Space pressed mid-swing queues the next punch
     speed: 2.0, // pixels per frame at 60fps — snappy tile-to-tile glide
     blinkTimer: 0, // counts up each frame, blinks at 180
     stunTimer: 0, // frames remaining in stun (can't move or punch)
@@ -1658,6 +1659,8 @@ function createGoblin(caveIndex) {
         moveSteps: 0,
         stalkTimer: 0,
         gloatTimer: 0,     // elite gloating phase after punching Carl
+        windupTimer: 0,    // elite punch telegraph before the stun lands
+        punchNow: false,
         elite: false,
         hp: 1,
         hurtTimer: 0,
@@ -1686,6 +1689,8 @@ let pendingShakeElite = false;
 
 // Sabotage flash — per-cell timer for red flash overlay
 const cellFlash = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).fill(0));
+// Longer-lived "recently sabotaged" marker (~3s fade) so flipped cells stay findable
+const cellRecent = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).fill(0));
 // ---- Friend NPC (Level 30 only) ----
 let friendNPC = null; // { x, y, destX, destY, moveTimer, highlightGoblin, highlightTimer }
 
@@ -1693,10 +1698,12 @@ function spawnFriendNPC() {
     friendNPC = {
         x: (GRID_X + 8) * TILE, y: (GRID_Y + 3) * TILE,
         destX: (GRID_X + 8) * TILE, destY: (GRID_Y + 3) * TILE,
-        speed: 0.4,
+        speed: 0.7,
         moveTimer: 0,
         highlightGoblin: null,
         highlightTimer: 0,
+        chaseGoblin: null,
+        pointCooldown: 120,
         frame: 0, frameTimer: 0,
         palIndex: 2, // dancer palette
     };
@@ -1705,17 +1712,56 @@ function spawnFriendNPC() {
 function updateFriendNPC() {
     if (!friendNPC) return;
     const f = friendNPC;
-    // Wander slowly
     f.moveTimer++;
-    const atDest = Math.abs(f.x - f.destX) < 0.5 && Math.abs(f.y - f.destY) < 0.5;
-    if (atDest && f.moveTimer > 60) {
-        // Pick random grid tile near Carl
-        const ar = getActiveRows();
-        f.destX = (GRID_X + Math.floor(Math.random() * GRID_COLS)) * TILE;
-        f.destY = rowPixelY(Math.floor(Math.random() * ar));
-        f.moveTimer = 0;
+    if (f.highlightTimer > 0) f.highlightTimer--;
+    if (f.pointCooldown === undefined) f.pointCooldown = 120;
+    if (f.pointCooldown > 0) f.pointCooldown--;
+
+    // Purposeful behavior: pick the goblin nearest Carl, walk toward it,
+    // and highlight it once close — so the gesture reads as "look, that one!"
+    const chaseTarget = f.chaseGoblin;
+    const chaseValid = chaseTarget && !chaseTarget.dead;
+    if (!chaseValid && f.pointCooldown <= 0) {
+        // Choose a new goblin to point out (nearest non-elite to Carl)
+        let best = null, bestDist = Infinity;
+        for (const g of goblins) {
+            if (g.dead || g.elite) continue;
+            const d = Math.abs(g.x - player.x) + Math.abs(g.y - player.y);
+            if (d < bestDist) { bestDist = d; best = g; }
+        }
+        if (best) {
+            f.chaseGoblin = best;
+        } else {
+            // Nothing to point at — wander to a random grid tile
+            const atDestW = Math.abs(f.x - f.destX) < 0.5 && Math.abs(f.y - f.destY) < 0.5;
+            if (atDestW && f.moveTimer > 60) {
+                const ar = getActiveRows();
+                f.destX = (GRID_X + Math.floor(Math.random() * GRID_COLS)) * TILE;
+                f.destY = rowPixelY(Math.floor(Math.random() * ar));
+                f.moveTimer = 0;
+            }
+        }
     }
+
+    if (f.chaseGoblin && !f.chaseGoblin.dead) {
+        // Head toward a spot just beside the target goblin
+        f.destX = Math.round(f.chaseGoblin.x / TILE) * TILE - TILE;
+        f.destY = Math.round(f.chaseGoblin.y / TILE) * TILE;
+        // Close enough? Point it out
+        const distToGob = Math.abs(f.x - f.chaseGoblin.x) + Math.abs(f.y - f.chaseGoblin.y);
+        if (distToGob < TILE * 2.5) {
+            f.highlightGoblin = f.chaseGoblin;
+            f.highlightTimer = 120;   // 2 seconds of gold brackets
+            f.pointCooldown = 240;    // ~4s before picking the next target
+            f.chaseGoblin = null;
+        }
+    } else if (f.chaseGoblin) {
+        f.chaseGoblin = null; // target died mid-chase
+    }
+    if (f.highlightTimer <= 0) f.highlightGoblin = null;
+
     // Move toward destination
+    const atDest = Math.abs(f.x - f.destX) < 0.5 && Math.abs(f.y - f.destY) < 0.5;
     if (!atDest) {
         const dx = f.destX - f.x;
         const dy = f.destY - f.y;
@@ -1725,20 +1771,6 @@ function updateFriendNPC() {
         if (f.frameTimer >= 8) { f.frameTimer = 0; f.frame = (f.frame + 1) % 4; }
     } else {
         f.frame = 0;
-    }
-    // Occasionally highlight a goblin near Carl
-    f.highlightTimer--;
-    if (f.highlightTimer <= 0) {
-        f.highlightGoblin = null;
-        // Every 3-5 seconds, pick a nearby goblin to highlight
-        if (Math.random() < 0.005) {
-            const nearGoblins = goblins.filter(g => !g.dead && !g.elite &&
-                Math.abs(g.x - player.x) < TILE * 5 && Math.abs(g.y - player.y) < TILE * 5);
-            if (nearGoblins.length > 0) {
-                f.highlightGoblin = nearGoblins[Math.floor(Math.random() * nearGoblins.length)];
-                f.highlightTimer = 120; // 2 seconds
-            }
-        }
     }
 }
 
@@ -2526,6 +2558,20 @@ function update(dt) {
         // Game continues normally around frozen Carl — goblins, sequencer all keep running
     }
 
+    // Punch input buffering: a press during the punch animation queues a
+    // follow-up punch that fires as soon as the current one finishes
+    if (spaceJustPressed && p.attacking) {
+        p.punchBuffered = true;
+        spaceJustPressed = false;
+    }
+    if (p.stunTimer > 0 || p.freezeTimer > 0) {
+        p.punchBuffered = false; // don't fire stale punches after a stun/freeze
+    }
+    if (p.punchBuffered && !p.attacking) {
+        p.punchBuffered = false;
+        spaceJustPressed = true; // replay the buffered press
+    }
+
     // Attack (single press only) — skip during boulder launch or stun
     if (spaceJustPressed && !p.attacking && p.stunTimer <= 0 && p.freezeTimer <= 0) {
         p.attacking = true;
@@ -2951,6 +2997,8 @@ function update(dt) {
             // Reset elite AI state from any previous life
             gob.gloatTimer = 0;
             gob.stalkTimer = 0;
+            gob.windupTimer = 0;
+            gob.punchNow = false;
             gob.huntX = undefined;
             gob.huntY = undefined;
             // Spawn from any cave — pick one not occupied by another alive goblin
@@ -3033,6 +3081,7 @@ function update(dt) {
                     if (gc === gob.targetCol && gr === gob.targetRow) {
                         grid[gr][gc] = !grid[gr][gc];
                         cellFlash[gr][gc] = 30;
+                        cellRecent[gr][gc] = 180;
                         if (audioCtx) playSabotageSound(audioCtx.currentTime);
                         gob.targetRow = -1;
                         if (patternMatched && !checkLevelComplete()) {
@@ -3043,15 +3092,62 @@ function update(dt) {
                 }
             }
 
-            // Elite goblin punch: stun Carl when adjacent (goblins can't share
-            // Carl's tile — movement blocks it — so trigger on neighboring tiles)
-            if (gob.elite && gob.gloatTimer <= 0 && p.stunTimer <= 0 && p.freezeTimer <= 0) {
+            // Elite goblin punch: telegraphed wind-up, then stun when adjacent
+            // (goblins can't share Carl's tile — movement blocks it — so
+            // adjacency is the trigger)
+            if (gob.elite && gob.windupTimer > 0) {
+                // Winding up — frozen in place (goal selection below holds position)
+                gob.windupTimer--;
+                if (gob.windupTimer === 0) {
+                    const gobTX = Math.round(gob.x / TILE);
+                    const gobTY = Math.round(gob.y / TILE);
+                    const plrTX = Math.round(p.x / TILE);
+                    const plrTY = Math.round(p.y / TILE);
+                    const manhattan = Math.abs(gobTX - plrTX) + Math.abs(gobTY - plrTY);
+                    if (manhattan > 1 || p.stunTimer > 0 || p.freezeTimer > 0) {
+                        // Carl dodged (or is already incapacitated) — resume stalking
+                        gob.stalkTimer = 999;
+                    } else {
+                        // Punch lands — handled by the block below via punchNow flag
+                        gob.punchNow = true;
+                    }
+                }
+            } else if (gob.elite && gob.gloatTimer <= 0 && p.stunTimer <= 0 && p.freezeTimer <= 0) {
+                // Adjacent? Start the wind-up telegraph instead of punching instantly
                 const gobTX = Math.round(gob.x / TILE);
                 const gobTY = Math.round(gob.y / TILE);
                 const plrTX = Math.round(p.x / TILE);
                 const plrTY = Math.round(p.y / TILE);
                 const manhattan = Math.abs(gobTX - plrTX) + Math.abs(gobTY - plrTY);
                 if (manhattan <= 1) {
+                    gob.windupTimer = 30;
+                    // Face Carl for the telegraph
+                    gob.dir = Math.abs(plrTX - gobTX) >= Math.abs(plrTY - gobTY)
+                        ? (plrTX > gobTX ? 3 : 2)
+                        : (plrTY > gobTY ? 0 : 1);
+                    // Rising warning tone
+                    if (audioCtx) {
+                        const now = audioCtx.currentTime;
+                        const osc = audioCtx.createOscillator();
+                        const g = audioCtx.createGain();
+                        osc.type = "square";
+                        osc.frequency.setValueAtTime(300, now);
+                        osc.frequency.exponentialRampToValueAtTime(900, now + 0.45);
+                        g.gain.setValueAtTime(0.08, now);
+                        g.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+                        osc.connect(g); g.connect(audioCtx.destination);
+                        osc.start(now); osc.stop(now + 0.5);
+                    }
+                }
+            }
+
+            if (gob.elite && gob.punchNow) {
+                gob.punchNow = false;
+                const gobTX = Math.round(gob.x / TILE);
+                const gobTY = Math.round(gob.y / TILE);
+                const plrTX = Math.round(p.x / TILE);
+                const plrTY = Math.round(p.y / TILE);
+                {
                     // Stun Carl
                     p.stunTimer = 60;
                     screenFlash = 15;
@@ -3109,7 +3205,11 @@ function update(dt) {
             gob.moveSteps++;
             let goalX, goalY;
             if (gob.elite) {
-                if (gob.gloatTimer > 0) {
+                if (gob.windupTimer > 0) {
+                    // Hold position during the punch wind-up
+                    goalX = Math.round(gob.x / TILE) * TILE;
+                    goalY = Math.round(gob.y / TILE) * TILE;
+                } else if (gob.gloatTimer > 0) {
                     // Gloating: retreat toward the flee spot
                     goalX = gob.gloatX;
                     goalY = gob.gloatY;
@@ -3576,6 +3676,7 @@ function resetGame() {
     player.attacking = false;
     player.attackTimer = 0;
     player.punchHit = false;
+    player.punchBuffered = false;
     player.blinkTimer = 0;
     player.stunTimer = 0;
     player.freezeTimer = 0;
@@ -3616,7 +3717,7 @@ function resetGame() {
     playerDeathAnim.active = false;
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
-            cellFlash[r][c] = 0;
+            cellFlash[r][c] = 0, cellRecent[r][c] = 0;
 
     // Reset sequencer and frame timing
     currentStep = 0;
@@ -5877,7 +5978,7 @@ function startCaveReturn() {
     levelCelebrateDisplayScore = 0;
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
-            cellFlash[r][c] = 0;
+            cellFlash[r][c] = 0, cellRecent[r][c] = 0;
 
     currentStep = 0;
     lastStepTime = performance.now();
@@ -6224,7 +6325,7 @@ function advanceLevel() {
     levelCelebrateDisplayScore = 0;
     for (let r = 0; r < GRID_ROWS; r++)
         for (let c = 0; c < GRID_COLS; c++)
-            cellFlash[r][c] = 0;
+            cellFlash[r][c] = 0, cellRecent[r][c] = 0;
 
     // Reset sequencer timing to prevent catch-up
     currentStep = 0;
@@ -6372,6 +6473,7 @@ function updateCatapultGoblin() {
                     if (r >= 0 && r < getActiveRows() && c >= 0 && c < GRID_COLS) {
                         grid[r][c] = !grid[r][c];
                         cellFlash[r][c] = 30;
+                        cellRecent[r][c] = 180;
                     }
                 }
             }
@@ -6413,9 +6515,10 @@ function updateCatapultGoblin() {
                 screenFlash = 20;
                 deathText = { x: player.x - 20, y: player.y - 14, timer: 60, text: "FROZEN!", color: "#44CCFF", scale: 6 };
             } else {
-                // Near miss — psychological stun (any boulder landing stuns Carl)
+                // Near miss — psychological stun scaled by distance to the impact
                 if (player.freezeTimer <= 0) {
-                    player.stunTimer = 90;
+                    const distTiles = Math.abs(pGridCol - cc) + Math.abs(pGridRow - cr);
+                    player.stunTimer = distTiles <= 2 ? 90 : 30;
                     screenShake = 6;
                     shakeIntensity = 2;
                     deathText = { x: player.x - 8, y: player.y - 14, timer: 40, text: "...", color: "#AAAAAA", scale: 5 };
@@ -7090,6 +7193,17 @@ function render() {
                 cellFlash[r][c]--;
             }
 
+            // Recently-sabotaged marker: magenta border fading over ~3s so
+            // the player can find what the goblins changed
+            if (cellRecent[r][c] > 0) {
+                ctx.globalAlpha = (cellRecent[r][c] / 180) * 0.55;
+                ctx.strokeStyle = "#FF00FF";
+                ctx.lineWidth = 1.5 * SCALE;
+                ctx.strokeRect((bx + 1) * SCALE, (by + 1) * SCALE, (TILE - 2) * SCALE, (TILE - 2) * SCALE);
+                ctx.globalAlpha = 1.0;
+                cellRecent[r][c]--;
+            }
+
             // Target pattern indicator (skip for noPattern levels like L30)
             if (currentLevel < LEVELS.length && !LEVELS[currentLevel].noPattern) {
                 const target = LEVELS[currentLevel].pattern[r][c];
@@ -7182,6 +7296,22 @@ function render() {
         const num = String(c + 1);
         const tx = (GRID_X + c) * TILE + (c < 9 ? 4 : 1);
         drawText(num, tx, gridBottomTileY() * TILE + 8 + GRID_Y_OFFSET, c === currentStep && playing ? PAL.playhead : "#5a8a8f", 3);
+    }
+
+    // Pattern-progress counter (above grid, right-aligned) — "PATTERN 18/22"
+    if (currentLevel < LEVELS.length && !LEVELS[currentLevel].noPattern) {
+        const targetPat = LEVELS[currentLevel].pattern;
+        const arP = getActiveRows();
+        let cellsCorrect = 0, cellsTotal = arP * GRID_COLS;
+        for (let r = 0; r < arP; r++)
+            for (let c = 0; c < GRID_COLS; c++)
+                if (grid[r][c] === targetPat[r][c]) cellsCorrect++;
+        const progText = "PATTERN " + cellsCorrect + "/" + cellsTotal;
+        const progX = (GRID_X + GRID_COLS) * TILE - progText.length * 4;
+        const progY = GRID_Y * TILE + GRID_Y_OFFSET - 9;
+        const progCol = cellsCorrect === cellsTotal ? "#44ff44"
+            : cellsCorrect >= cellsTotal - 4 ? "#efac28" : "#8a9a8f";
+        drawText(progText, progX, progY, progCol, 4);
     }
 
     // HUD is rendered on separate canvas
@@ -8650,6 +8780,9 @@ function drawGoblinFor(g) {
     let bodyCol, darkCol, headCol, eyeCol;
     if (g.hurtTimer > 0 && g.hurtTimer % 4 < 2) {
         bodyCol = "#ffffff"; darkCol = "#dddddd"; headCol = "#ffffff"; eyeCol = "#00FFFF";
+    } else if (g.elite && g.windupTimer > 0 && g.windupTimer % 8 < 4) {
+        // Punch telegraph: rapid white flash during wind-up
+        bodyCol = "#ffffff"; darkCol = "#ffdddd"; headCol = "#ffffff"; eyeCol = "#FF0000";
     } else if (!g.elite) {
         bodyCol = "#39FF14"; darkCol = "#00CC00"; headCol = "#66FF44"; eyeCol = "#FF00FF";
     } else if (g.hp === 3) {
@@ -8670,6 +8803,20 @@ function drawGoblinFor(g) {
         ctx.globalAlpha = (g.hurtTimer - 8) / 4 * 0.6;
         ctx.fillRect((g.x - 2) * SCALE, (g.y - 6) * SCALE, (g.w + 4) * SCALE, (g.h + 8) * SCALE);
         ctx.globalAlpha = 1.0;
+    }
+
+    // Punch telegraph: pulsing red "!" above the elite during wind-up
+    if (g.elite && g.windupTimer > 0) {
+        const wuPulse = 1 + Math.sin(g.windupTimer * 0.5) * 0.2;
+        ctx.font = `${Math.round(9 * SCALE * wuPulse)}px monospace`;
+        ctx.textAlign = "center";
+        const exX = (g.x + g.w / 2) * SCALE;
+        const exY = (g.y - 14) * SCALE;
+        ctx.fillStyle = "#000000";
+        ctx.fillText("!", exX + 2, exY + 2);
+        ctx.fillStyle = "#FF3333";
+        ctx.fillText("!", exX, exY);
+        ctx.textAlign = "left";
     }
 
     // HP pips for elite goblins (above head)
@@ -8694,6 +8841,30 @@ function drawCatapultGoblin() {
     if (!cg) return;
 
     drawGoblinSprite("catapult", cg.x, cg.y, cg.frame, { dir: cg.dir });
+
+    // Landing warning: mark the 3x3 blast zone from aiming through impact
+    // so the direct-hit freeze is dodgeable
+    if ((cg.phase === "aiming" || cg.phase === "firing") && cg.targetRow >= 0) {
+        const warnT = cg.boulder ? cg.boulder.progress : 0; // intensity ramps in flight
+        const tgtX = (GRID_X + cg.targetCol) * TILE;
+        const tgtY = rowPixelY(cg.targetRow);
+        // Growing shadow at the impact cell
+        const cxp = (tgtX + TILE / 2) * SCALE;
+        const cyp = (tgtY + TILE / 2) * SCALE;
+        const growR = (3 + warnT * 6) * SCALE;
+        ctx.globalAlpha = 0.2 + warnT * 0.35;
+        ctx.fillStyle = "#000000";
+        ctx.beginPath();
+        ctx.ellipse(cxp, cyp, growR, growR * 0.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Pulsing red ring around the full 3x3 blast area
+        const warnPulse = 0.5 + Math.sin(performance.now() * 0.02) * 0.3;
+        ctx.globalAlpha = warnPulse * (0.35 + warnT * 0.45);
+        ctx.strokeStyle = "#FF4444";
+        ctx.lineWidth = 2 * SCALE;
+        ctx.strokeRect((tgtX - TILE) * SCALE, (tgtY - TILE) * SCALE, TILE * 3 * SCALE, TILE * 3 * SCALE);
+        ctx.globalAlpha = 1.0;
+    }
 
     // Boulder in flight
     if (cg.boulder) {
@@ -12111,6 +12282,7 @@ function renderSabotageAnim() {
         if (cell.flip) {
             grid[cell.r][cell.c] = !grid[cell.r][cell.c];
             cellFlash[cell.r][cell.c] = 30;
+            cellRecent[cell.r][cell.c] = 180;
             if (sabotageFlipIndex % 4 === 0) screenShake = 2;
         }
         sabotageFlipIndex++;
