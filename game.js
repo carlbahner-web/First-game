@@ -1576,6 +1576,7 @@ if (LEVELS[0] && LEVELS[0].startPattern) {
 const playing = true;
 let currentStep = 0;
 let lastStepTime = 0;
+let sequencerStarted = false; // true once the audio clock is running and the beat has begun
 
 // ---- Kill Counter & Dancers ----
 let killCount = 0;
@@ -2548,6 +2549,21 @@ function getBlockRect(row, col) {
 // ---- Sequencer tick (extracted so it can run during sabotage-anim too) ----
 function tickSequencer() {
     if (playing) {
+        // The beat must not run before the audio clock does. A suspended
+        // AudioContext freezes its clock, so scheduling hits while suspended
+        // piles them up into a burst at unlock — and the visual playhead
+        // would sweep silently, permanently desynced from what you hear.
+        if (!audioCtx || audioCtx.state !== "running") {
+            sequencerStarted = false;
+            return;
+        }
+        if (!sequencerStarted) {
+            // First audible frame: start the pattern clean from the top,
+            // audio clock and visual clock born together
+            sequencerStarted = true;
+            currentStep = 0;
+            lastStepTime = performance.now() - stepMs; // fire step 0 right now
+        }
         if (!lastStepTime) lastStepTime = performance.now();
         const now = performance.now();
         const elapsed = now - lastStepTime;
@@ -2556,7 +2572,6 @@ function tickSequencer() {
         }
         if (now - lastStepTime >= stepMs) {
             lastStepTime = now;
-            ensureAudio();
             const t = audioCtx ? audioCtx.currentTime : 0;
             if (audioCtx) {
                 const ar = getActiveRows();
@@ -2945,7 +2960,7 @@ function update(dt) {
             const lvlDef = currentLevel < LEVELS.length ? LEVELS[currentLevel] : null;
             const madeCorrect = lvlDef && !lvlDef.noPattern &&
                 grid[row][col] === lvlDef.pattern[row][col];
-            if (madeCorrect && playing) {
+            if (madeCorrect && playing && sequencerStarted) {
                 const sinceTick = performance.now() - lastStepTime;
                 const playedCol = (currentStep + GRID_COLS - 1) % GRID_COLS;
                 if (col === playedCol) {
@@ -7824,6 +7839,20 @@ function render() {
 
     // Punch (in front for down/left/right)
     if (player.attacking && player.dir !== 1) drawPunch();
+
+    // "Press any key" prompt while the beat waits for the audio unlock
+    if (!sequencerStarted && gameState === "playing") {
+        const blinkStart = Math.floor(performance.now() / 500) % 2 === 0;
+        if (blinkStart) {
+            ctx.font = `${6 * SCALE}px monospace`;
+            ctx.textAlign = "center";
+            ctx.fillStyle = "#000000";
+            ctx.fillText("PRESS ANY KEY TO DROP THE BEAT", (COLS * TILE * SCALE) / 2 + SCALE, 14 * SCALE + SCALE);
+            ctx.fillStyle = "#efac28";
+            ctx.fillText("PRESS ANY KEY TO DROP THE BEAT", (COLS * TILE * SCALE) / 2, 14 * SCALE);
+            ctx.textAlign = "start";
+        }
+    }
 
     // Door prompt when the beat is restored
     if (doorOpen && !levelComplete) {
