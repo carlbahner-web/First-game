@@ -7246,10 +7246,11 @@ function render() {
     // Bioluminescent mushroom & crystal lights along cave ceiling — drum-synced
     // Skip when cave bg sprite is loaded (lights are painted into the background)
     const MUSH_COLORS = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#44ff44"];
-    if (!IMAGES.cave_bg) {
-    const topCaveCol = Math.floor(COLS / 2);
+    // Declared outside the if-block: the floor-crystals section below needs these too
     const ar_lights = getActiveRows();
     const now_lights = performance.now();
+    if (!IMAGES.cave_bg) {
+    const topCaveCol = Math.floor(COLS / 2);
     for (let c = 1; c < COLS - 1; c++) {
         if (c === topCaveCol) continue;
         const mushX = c * TILE + TILE / 2;
