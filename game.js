@@ -2008,6 +2008,7 @@ const DJ_SETUP_PIECES = [
     "disco ball",
 ];
 let djSetupEarned = []; // pieces earned so far
+let pieceRecoveredThisLevel = null; // piece name to announce on the level-complete screen
 
 // Minigame state
 let minigameActive = false;
@@ -2404,11 +2405,8 @@ window.addEventListener("keydown", (e) => {
             return;
         }
         if (gameState === "levelcomplete" && levelCelebrateTimer > 120) {
-            // Check if this is a minigame milestone level (not already completed)
-            if (MINIGAME_LEVELS.includes(currentLevel) && !minigamesCompleted.includes(currentLevel)) {
-                startMinigameKidnap();
-                return;
-            }
+            // (Kidnap mini-levels retired — DJ pieces are now awarded directly
+            // in triggerLevelComplete at milestone levels)
             // Show all feature screens (instruments + enemy warnings) before advancing
             if (checkPendingFeatureScreens()) return;
             advanceLevel();
@@ -3921,6 +3919,7 @@ function resetGame() {
     cavePlayerDead = false;
     djSetupEarned = [];
     minigamesCompleted = [];
+    pieceRecoveredThisLevel = null;
     stopMinigameMusic();
 
     // Set tempo for level 0
@@ -4105,6 +4104,16 @@ function triggerLevelComplete() {
     // Award time bonus
     lastTimeBonus = Math.ceil(levelTimer / 60) * 10;
     score += lastTimeBonus;
+    // DJ piece recovery at milestone levels — the kidnap mini-levels are
+    // retired, so the stolen piece is reclaimed directly with the room
+    pieceRecoveredThisLevel = null;
+    if (MINIGAME_LEVELS.includes(currentLevel) && !minigamesCompleted.includes(currentLevel)) {
+        minigamesCompleted.push(currentLevel);
+        if (djSetupEarned.length < DJ_SETUP_PIECES.length) {
+            pieceRecoveredThisLevel = DJ_SETUP_PIECES[djSetupEarned.length];
+            djSetupEarned.push(pieceRecoveredThisLevel);
+        }
+    }
     // Screen flash for celebration
     screenFlash = 20;
     // Play fanfare instead of drums
@@ -12236,6 +12245,21 @@ function renderLevelComplete() {
         ctx.fillStyle = "#efd8a1";
         ctx.fillText(scoreText, (W * SCALE) / 2, sy * SCALE);
 
+        // Piece recovery announcement at milestone levels
+        if (pieceRecoveredThisLevel && levelCelebrateTimer > 60) {
+            const pcAlpha = Math.min(1, (levelCelebrateTimer - 60) / 30);
+            const pcPulse = 1 + Math.sin(levelCelebrateTimer * 0.1) * 0.06;
+            ctx.globalAlpha = pcAlpha;
+            ctx.font = `${Math.round(6 * SCALE * pcPulse)}px monospace`;
+            const pcText = "RECOVERED: THE " + pieceRecoveredThisLevel.toUpperCase() + "!";
+            ctx.fillStyle = "#000000";
+            ctx.fillText(pcText, (W * SCALE) / 2 + SCALE, (sy + 12) * SCALE);
+            ctx.fillStyle = "#FFD700";
+            ctx.fillText(pcText, (W * SCALE) / 2, (sy + 11) * SCALE);
+            ctx.globalAlpha = 1;
+            ctx.font = `${8 * SCALE}px monospace`;
+        }
+
         // Narrative breadcrumb — brief one-liner about progress
         if (levelCelebrateTimer > 90) {
             const narrativeAlpha = Math.min(1, (levelCelebrateTimer - 90) / 40);
@@ -12253,10 +12277,12 @@ function renderLevelComplete() {
             else if (lvl === 30) narrative = "The underground remembers.";
             else if (earned > 0 && earned < 6) narrative = earned + " / 6 pieces recovered.";
             if (narrative) {
+                // Sits lower when the piece-recovery banner is showing above it
+                const nyOfs = pieceRecoveredThisLevel ? 24 : 18;
                 ctx.fillStyle = "#000000";
-                ctx.fillText(narrative, (W * SCALE) / 2 + SCALE, (sy + 18) * SCALE);
+                ctx.fillText(narrative, (W * SCALE) / 2 + SCALE, (sy + nyOfs + 1) * SCALE);
                 ctx.fillStyle = "#8a9a6a";
-                ctx.fillText(narrative, (W * SCALE) / 2, (sy + 17) * SCALE);
+                ctx.fillText(narrative, (W * SCALE) / 2, (sy + nyOfs) * SCALE);
             }
             ctx.globalAlpha = 1.0;
         }
