@@ -2730,10 +2730,13 @@ function update(dt) {
                 if (hitGob.hp > 0) {
                     hitGob.hurtTimer = 12;
                     const baseSpd = currentLevel < LEVELS.length ? LEVELS[currentLevel].goblinSpeed : 0.5;
-                    // No speed boost on hurt — elites keep their stalking (or gloating) speed
-                    hitGob.speed = hitGob.elite
-                        ? baseSpd * 0.85 * (hitGob.gloatTimer > 0 ? 0.5 : 1)
-                        : baseSpd;
+                    // No speed boost on hurt — elites keep their stalking (or
+                    // gloating) speed, and fleeing goblins keep their sprint
+                    if (!hitGob.fleeing) {
+                        hitGob.speed = hitGob.elite
+                            ? baseSpd * 0.85 * (hitGob.gloatTimer > 0 ? 0.5 : 1)
+                            : baseSpd;
+                    }
 
                     hitFreeze = 2;
                     pendingShake = true;
@@ -3111,7 +3114,11 @@ function update(dt) {
         else if (patternMatched) {
             gob.respawnTimer = 300;
         }
-        if (doorOpen) continue; // no respawns once the door is open
+        // No respawns once the door is open — but DON'T skip the rest of the
+        // loop body: dead goblins still need their death-poof timer (at the
+        // loop tail) to tick, or a goblin killed mid-flee freezes on poof
+        // frame zero and looks stuck in place.
+        if (!doorOpen) {
         gob.respawnTimer--;
         if (gob.respawnTimer <= 0) {
             // Every 6th goblin is a catapult goblin instead of normal/elite (from L15+)
@@ -3200,6 +3207,7 @@ function update(dt) {
             }
         }
         } // end else (non-catapult spawn)
+        } // end if (!doorOpen)
     } else if (gob.danceTimer > 0) {
         // GROOVED! Involuntary dance break — can't move, sabotage, or punch
         gob.danceTimer--;
