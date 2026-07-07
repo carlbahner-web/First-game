@@ -1969,7 +1969,7 @@ const INTRO_SCENE_DURATIONS = [
     420,  // Scene 0: The Good Times (7s)
     480,  // Scene 1 (1A): Earthquake + Caves + Eyes (8s)
     660,  // Scene 2 (1B): Goblin Emergence + Attack + Aftermath (11s)
-    420,  // Scene 3: Call to Action — DJ crawls to center + rises (7s)
+    480,  // Scene 3: Call to Action — extra second so the tagline can land
 ];
 let newInstrumentType = null;   // "cowbell" or "tom"
 let newInstrumentTimer = 0;     // animation timer for new instrument popup
