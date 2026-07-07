@@ -10319,22 +10319,8 @@ function renderTitleScreen() {
 
     const beatOn = titleStep % 4 === 0;
 
-    // === CAVE SCENE BACKGROUND ===
-    drawRect(0, 0, W, H, "#0d150d"); // dark stone floor
-
-    // Cave rock walls
-    for (let c = 0; c < COLS; c++) {
-        const stoneCol = (c * 7 + 3) % 3 === 0 ? "#1e2e1e" : ((c * 7 + 3) % 3 === 1 ? "#1a2a1a" : "#162616");
-        drawRect(c * TILE, 0, TILE, TILE, stoneCol);
-        const botCol = (c * 11 + 5) % 3 === 0 ? "#152015" : ((c * 11 + 5) % 3 === 1 ? "#1a2a1a" : "#111911");
-        drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, botCol);
-    }
-    for (let r = 0; r < ROWS; r++) {
-        const lCol = (r * 7) % 3 === 0 ? "#152015" : ((r * 7) % 3 === 1 ? "#1a2a1a" : "#111911");
-        drawRect(0, r * TILE, TILE, TILE, lCol);
-        const rCol = (r * 11) % 3 === 0 ? "#152015" : ((r * 11) % 3 === 1 ? "#1a2a1a" : "#111911");
-        drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, rCol);
-    }
+    // === CAVE SCENE BACKGROUND === (same textured cave as gameplay)
+    drawSceneBackground(0);
 
     // Mushroom lights (animated, bioluminescent)
     const TITLE_MUSH_COLORS = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#44ff44"];
@@ -10921,6 +10907,23 @@ function advanceIntroScene() {
     if (introScene === 3) stopIntroDrums();
 }
 
+// Shared scene background: the same textured cave the gameplay renders,
+// optionally darkened — keeps the title/story scenes visually consistent
+// with the actual levels instead of the old flat-color tiles.
+function drawSceneBackground(darken) {
+    if (IMAGES.cave_bg) {
+        ctx.drawImage(IMAGES.cave_bg, 0, 0, canvas.width, canvas.height);
+    } else {
+        ctx.drawImage(TEX_CAVE_BG, 0, 0);
+    }
+    if (darken > 0) {
+        ctx.fillStyle = "#000000";
+        ctx.globalAlpha = Math.min(1, darken);
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1;
+    }
+}
+
 function renderIntro() {
     const W = COLS * TILE;
     const H = ROWS * TILE;
@@ -10957,22 +10960,8 @@ function renderIntro() {
 
     // ==================== SCENE 0: THE GOOD TIMES ====================
     if (introScene === 0) {
-        // Full cave venue scene: floor, walls, DJ booth, dancers
-        drawRect(0, 0, W, H, "#0d150d"); // dark stone floor
-
-        // Cave walls
-        for (let c = 0; c < COLS; c++) {
-            const stoneCol = (c * 7 + 3) % 3 === 0 ? "#1e2e1e" : ((c * 7 + 3) % 3 === 1 ? "#1a2a1a" : "#162616");
-            drawRect(c * TILE, 0, TILE, TILE, stoneCol);
-            const botCol = (c * 11 + 5) % 3 === 0 ? "#152015" : ((c * 11 + 5) % 3 === 1 ? "#1a2a1a" : "#111911");
-            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, botCol);
-        }
-        for (let r = 0; r < ROWS; r++) {
-            const lCol = (r * 7) % 3 === 0 ? "#152015" : ((r * 7) % 3 === 1 ? "#1a2a1a" : "#111911");
-            drawRect(0, r * TILE, TILE, TILE, lCol);
-            const rCol = (r * 11) % 3 === 0 ? "#152015" : ((r * 11) % 3 === 1 ? "#1a2a1a" : "#111911");
-            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, rCol);
-        }
+        // Full cave venue scene (same textured cave as gameplay)
+        drawSceneBackground(0);
 
         // Mushroom lights (animated)
         const INTRO_MUSH = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#44ff44"];
@@ -11120,27 +11109,9 @@ function renderIntro() {
         ctx.save();
         ctx.translate(shX, shY);
 
-        // Cave darkens as power fades — floor dims over time
+        // Cave darkens as power fades — same textured cave, dimming overlay
         const powerFade = Math.min(1, t / 180); // 0→1 over first 3 seconds
-        const floorR = Math.round(0x0d * (1 - powerFade * 0.5));
-        const floorG = Math.round(0x15 * (1 - powerFade * 0.5));
-        const floorB = Math.round(0x0d * (1 - powerFade * 0.5));
-        drawRect(0, 0, W, H, `rgb(${floorR},${floorG},${floorB})`);
-
-        // Cave walls (dim with power)
-        for (let c = 0; c < COLS; c++) {
-            const topR = (c * 7 + 3) % 3 === 0 ? 0x1e : 0x1a, topG = (c * 7 + 3) % 3 === 0 ? 0x2e : 0x2a, topB = (c * 7 + 3) % 3 === 0 ? 0x1e : 0x1a;
-            const botR = 0x15, botG = 0x20, botB = 0x15;
-            const dim = 1 - powerFade * 0.5;
-            drawRect(c * TILE, 0, TILE, TILE, `rgb(${Math.round(topR*dim)},${Math.round(topG*dim)},${Math.round(topB*dim)})`);
-            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, `rgb(${Math.round(botR*dim)},${Math.round(botG*dim)},${Math.round(botB*dim)})`);
-        }
-        for (let r = 0; r < ROWS; r++) {
-            const sR = 0x15, sG = 0x20, sB = 0x15;
-            const dim = 1 - powerFade * 0.5;
-            drawRect(0, r * TILE, TILE, TILE, `rgb(${Math.round(sR*dim)},${Math.round(sG*dim)},${Math.round(sB*dim)})`);
-            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, `rgb(${Math.round(sR*dim)},${Math.round(sG*dim)},${Math.round(sB*dim)})`);
-        }
+        drawSceneBackground(powerFade * 0.55);
 
         // Mushroom lights — flicker like losing power, then go dark
         const QUAKE_MUSH = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#44ff44"];
@@ -11401,16 +11372,8 @@ function renderIntro() {
         ctx.save();
         ctx.translate(shX, shY);
 
-        drawRect(0, 0, W, H, "#161615");
-        // Walls with caves now open (dimmed — power died in Scene 1A)
-        for (let c = 0; c < COLS; c++) {
-            drawRect(c * TILE, 0, TILE, TILE, (c * 7 + 3) % 3 === 0 ? "#1e2e1e" : "#1a2a1a");
-            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, (c * 11 + 5) % 3 === 0 ? "#152015" : "#1a2a1a");
-        }
-        for (let r = 0; r < ROWS; r++) {
-            drawRect(0, r * TILE, TILE, TILE, (r * 7) % 3 === 0 ? "#152015" : "#1a2a1a");
-            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, (r * 11) % 3 === 0 ? "#152015" : "#1a2a1a");
-        }
+        // Power is dead — same textured cave under heavy darkness
+        drawSceneBackground(0.7);
         // Open caves with glowing eyes (eyes fade as goblins emerge)
         for (let ci = 0; ci < CAVES.length; ci++) {
             const cave = CAVES[ci];
@@ -11990,7 +11953,8 @@ function renderIntro() {
             djFrame = riseProgress < 0.5 ? 0 : Math.floor((rt - 45) / 8) % 4;
         }
 
-        drawRect(0, 0, W, H, "#050805");
+        // Near-black, but the cave texture still reads through faintly
+        drawSceneBackground(0.85);
 
         // Spotlight follows DJ position — green-tinted cave glow
         const spotW = W * SCALE;
