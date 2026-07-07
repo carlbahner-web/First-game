@@ -1896,7 +1896,7 @@ let catapultSpawnedThisCycle = false; // prevents re-spawning catapult after it 
 let tomatoes = []; // { x, y, targetX, targetY, speed, life }
 let tomatoSplats = []; // { x, y, timer }
 
-const SKIP_INTRO = true; // Set to false to re-enable title screen and intro/story scenes
+const SKIP_INTRO = false; // Set to true to skip the title screen and intro/story scenes
 let gameState = SKIP_INTRO ? "playing" : "title";
 let gameMode = "thrill"; // "thrill" = full game with goblins, "chill" = no goblins during gameplay
 let pausedFromState = "playing";   // gameState to restore on unpause
@@ -7246,10 +7246,11 @@ function render() {
     // Bioluminescent mushroom & crystal lights along cave ceiling — drum-synced
     // Skip when cave bg sprite is loaded (lights are painted into the background)
     const MUSH_COLORS = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#44ff44"];
-    if (!IMAGES.cave_bg) {
-    const topCaveCol = Math.floor(COLS / 2);
+    // Declared outside the if-block: the floor-crystals section below needs these too
     const ar_lights = getActiveRows();
     const now_lights = performance.now();
+    if (!IMAGES.cave_bg) {
+    const topCaveCol = Math.floor(COLS / 2);
     for (let c = 1; c < COLS - 1; c++) {
         if (c === topCaveCol) continue;
         const mushX = c * TILE + TILE / 2;
@@ -10865,9 +10866,8 @@ function advanceIntroScene() {
             ];
             introGridFlash = Array.from({ length: 4 }, () => new Array(16).fill(0));
         }
-        // Spawn 6 goblins: 5 green from caves (cycling), then 1 elite from top cave
-        // Caves cycle: right(0), top(1), left(2), right(0), left(2), top(1)
-        const goblinCaveAssign = [0, 1, 2, 0, 2, 1];
+        // Spawn 6 goblins from the available caves (cycling), last one elite
+        const goblinCaveAssign = [0, 1, 0, 1, 0, 1].map(ci => ci % CAVES.length);
         introGoblins = goblinCaveAssign.map((ci, gi) => {
             const cave = CAVES[ci];
             const spawnX = cave.tileX * TILE;
@@ -10905,6 +10905,12 @@ function renderIntro() {
     const H = ROWS * TILE;
     introTimer++;
     introGlobalTimer++;
+
+    // Auto-advance each scene after its scripted duration (Enter still skips)
+    if (introTimer >= (INTRO_SCENE_DURATIONS[introScene] || 420)) {
+        advanceIntroScene();
+        return;
+    }
 
     // Advance simulated beat
     introBeatTimer++;
