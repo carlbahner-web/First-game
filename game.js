@@ -1704,6 +1704,9 @@ const cellFlash = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).f
 // Longer-lived "recently sabotaged" marker (~3s fade) so flipped cells stay findable
 const cellRecent = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).fill(0));
 
+// Cached canvas gradients — building these per frame caused GC churn
+const gradCache = {};
+
 // ---- Groove bonus state (on-beat punches) ----
 let pocketRing = null;    // { x, y, timer } — expanding gold ring on a pocket hit
 let entourageCheer = 0;   // frames the fan entourage throws its arms up
@@ -7176,15 +7179,19 @@ function render() {
                 ctx.lineTo((cx + 12) * SCALE, (cy + TILE - 1) * SCALE);
                 ctx.closePath(); ctx.fill();
             }
-            // Green glow from inside cave
-            const caveGlow = ctx.createRadialGradient(
-                (cx + TILE / 2) * SCALE, (cy + TILE / 2) * SCALE, 2 * SCALE,
-                (cx + TILE / 2) * SCALE, (cy + TILE / 2) * SCALE, TILE * SCALE
-            );
-            caveGlow.addColorStop(0, "rgba(50,255,50,0.12)");
-            caveGlow.addColorStop(1, "rgba(0,0,0,0)");
-            ctx.fillStyle = caveGlow;
-            ctx.fillRect((cx - 4) * SCALE, (cy - 4) * SCALE, (TILE + 8) * SCALE, (TILE + 8) * SCALE);
+            // Green glow from inside cave (gradient cached — building one per
+            // cave per frame was measurable GC/setup churn)
+            if (!gradCache.caveGlow) {
+                const g = ctx.createRadialGradient(0, 0, 2 * SCALE, 0, 0, TILE * SCALE);
+                g.addColorStop(0, "rgba(50,255,50,0.12)");
+                g.addColorStop(1, "rgba(0,0,0,0)");
+                gradCache.caveGlow = g;
+            }
+            ctx.save();
+            ctx.translate((cx + TILE / 2) * SCALE, (cy + TILE / 2) * SCALE);
+            ctx.fillStyle = gradCache.caveGlow;
+            ctx.fillRect(-(TILE / 2 + 4) * SCALE, -(TILE / 2 + 4) * SCALE, (TILE + 8) * SCALE, (TILE + 8) * SCALE);
+            ctx.restore();
         }
         // Eye gleam inside cave — always draw (gameplay indicator for goblin respawn)
         for (const g of goblins) {
@@ -7389,11 +7396,9 @@ function render() {
             const rotAngle = rotIndex * Math.PI / 2;
 
             if (on) {
-                // Draw glow tile (sprite with rotation, or pre-rendered fallback)
-                ctx.shadowColor = PAL.gridOn[r];
-                ctx.shadowBlur = 8;
-                ctx.shadowOffsetX = 0;
-                ctx.shadowOffsetY = 0;
+                // Draw glow tile (sprite with rotation, or pre-rendered fallback).
+                // NOTE: no draw-time shadowBlur here — the glow is baked into
+                // the tile art itself; shadowBlur per cell was a huge perf cost.
                 const sprOn = IMAGES["grid_on_" + ROW_LETTERS[r]];
                 if (sprOn) {
                     if (rotAngle !== 0) {
@@ -7408,8 +7413,6 @@ function render() {
                 } else {
                     ctx.drawImage(TEX_GRID_ON[r][c], bxs, bys);
                 }
-                ctx.shadowColor = "transparent";
-                ctx.shadowBlur = 0;
             } else {
                 // Draw dark stone tile (sprite with rotation, or pre-rendered fallback)
                 const sprOff = IMAGES.grid_off;
@@ -7799,24 +7802,31 @@ function render() {
         ctx.globalAlpha = 1.0;
     }
 
-    // Persistent amber/gold glow under Carl's feet — flares up on groove hits
+    // Persistent amber/gold glow under Carl's feet — flares up on groove hits.
+    // Gradient is cached at unit radius and scaled via transform.
     {
         const boost = carlGlowBoost > 0 ? (carlGlowBoost / 45) * 0.3 : 0;
         if (carlGlowBoost > 0) carlGlowBoost--;
+        const R0 = TILE * SCALE;
+        if (!gradCache.carlGlow) {
+            const g = ctx.createRadialGradient(0, 0, 0, 0, 0, R0);
+            g.addColorStop(0, "rgba(239,172,40,0.5)");
+            g.addColorStop(0.6, "rgba(239,172,40,0.15)");
+            g.addColorStop(1, "rgba(239,172,40,0)");
+            gradCache.carlGlow = g;
+        }
         const glowCX = (player.x + player.w / 2) * SCALE;
         const glowCY = (player.y + player.h) * SCALE;
-        const glowRX = TILE * SCALE * (0.9 + boost);
-        const glowRY = TILE * SCALE * (0.35 + boost * 0.4);
         const glowPulse = 0.25 + Math.sin(performance.now() * 0.002) * 0.08 + boost;
+        ctx.save();
+        ctx.translate(glowCX, glowCY);
+        ctx.scale(0.9 + boost, 0.35 + boost * 0.4); // ellipse via squash
         ctx.globalAlpha = glowPulse;
-        const glowGrad = ctx.createRadialGradient(glowCX, glowCY, 0, glowCX, glowCY, glowRX);
-        glowGrad.addColorStop(0, "rgba(239,172,40,0.5)");
-        glowGrad.addColorStop(0.6, "rgba(239,172,40,0.15)");
-        glowGrad.addColorStop(1, "rgba(239,172,40,0)");
-        ctx.fillStyle = glowGrad;
+        ctx.fillStyle = gradCache.carlGlow;
         ctx.beginPath();
-        ctx.ellipse(glowCX, glowCY, glowRX, glowRY, 0, 0, Math.PI * 2);
+        ctx.arc(0, 0, R0, 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
         ctx.globalAlpha = 1.0;
     }
 
@@ -7874,14 +7884,17 @@ function render() {
         }
     }
 
-    // Ambient cave vignette — dark green-tinted edges
+    // Ambient cave vignette — dark green-tinted edges (gradient cached)
     {
         const W_a = COLS * TILE * SCALE;
         const H_a = ROWS * TILE * SCALE;
-        const ambGrad = ctx.createRadialGradient(W_a / 2, H_a / 2, W_a * 0.35, W_a / 2, H_a / 2, W_a * 0.72);
-        ambGrad.addColorStop(0, "rgba(0,0,0,0)");
-        ambGrad.addColorStop(1, "rgba(0,15,0,0.4)");
-        ctx.fillStyle = ambGrad;
+        if (!gradCache.vignette) {
+            const g = ctx.createRadialGradient(W_a / 2, H_a / 2, W_a * 0.35, W_a / 2, H_a / 2, W_a * 0.72);
+            g.addColorStop(0, "rgba(0,0,0,0)");
+            g.addColorStop(1, "rgba(0,15,0,0.4)");
+            gradCache.vignette = g;
+        }
+        ctx.fillStyle = gradCache.vignette;
         ctx.fillRect(0, 0, W_a, H_a);
     }
 
@@ -13091,10 +13104,15 @@ function gameLoop(timestamp) {
     const dt = timestamp - lastTime;
     lastTime = timestamp;
     frameAccum += dt;
-    // Cap accumulated time to prevent spiral (max 3 catch-up frames)
-    if (frameAccum > FRAME_MS * 3) frameAccum = FRAME_MS * 3;
-    while (frameAccum >= FRAME_MS) {
-        frameAccum -= FRAME_MS;
+    // Run at most ONE simulation+render step per rAF callback. The old
+    // catch-up while-loop re-rendered up to 3x per displayed frame when a
+    // frame ran long — tripling the draw cost exactly when the machine was
+    // already struggling (lag death-spiral). Under load we now drop the
+    // backlog instead: the game time-slows slightly but stays smooth, and
+    // the sequencer keeps beat on its own wall-clock. The accumulator still
+    // paces high-refresh displays (120Hz+) down to 60 steps/sec.
+    if (frameAccum >= FRAME_MS) {
+        frameAccum = Math.min(frameAccum - FRAME_MS, FRAME_MS);
         try {
             // Clear HUD canvas when not in gameplay
             if (gameState !== "playing") {
