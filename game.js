@@ -1969,7 +1969,7 @@ const INTRO_SCENE_DURATIONS = [
     420,  // Scene 0: The Good Times (7s)
     480,  // Scene 1 (1A): Earthquake + Caves + Eyes (8s)
     660,  // Scene 2 (1B): Goblin Emergence + Attack + Aftermath (11s)
-    420,  // Scene 3: Call to Action — DJ crawls to center + rises (7s)
+    480,  // Scene 3: Call to Action — extra second so the tagline can land
 ];
 let newInstrumentType = null;   // "cowbell" or "tom"
 let newInstrumentTimer = 0;     // animation timer for new instrument popup
@@ -2008,6 +2008,7 @@ const DJ_SETUP_PIECES = [
     "disco ball",
 ];
 let djSetupEarned = []; // pieces earned so far
+let pieceRecoveredThisLevel = null; // piece name to announce on the level-complete screen
 
 // Minigame state
 let minigameActive = false;
@@ -2404,11 +2405,8 @@ window.addEventListener("keydown", (e) => {
             return;
         }
         if (gameState === "levelcomplete" && levelCelebrateTimer > 120) {
-            // Check if this is a minigame milestone level (not already completed)
-            if (MINIGAME_LEVELS.includes(currentLevel) && !minigamesCompleted.includes(currentLevel)) {
-                startMinigameKidnap();
-                return;
-            }
+            // (Kidnap mini-levels retired — DJ pieces are now awarded directly
+            // in triggerLevelComplete at milestone levels)
             // Show all feature screens (instruments + enemy warnings) before advancing
             if (checkPendingFeatureScreens()) return;
             advanceLevel();
@@ -2730,10 +2728,13 @@ function update(dt) {
                 if (hitGob.hp > 0) {
                     hitGob.hurtTimer = 12;
                     const baseSpd = currentLevel < LEVELS.length ? LEVELS[currentLevel].goblinSpeed : 0.5;
-                    // No speed boost on hurt — elites keep their stalking (or gloating) speed
-                    hitGob.speed = hitGob.elite
-                        ? baseSpd * 0.85 * (hitGob.gloatTimer > 0 ? 0.5 : 1)
-                        : baseSpd;
+                    // No speed boost on hurt — elites keep their stalking (or
+                    // gloating) speed, and fleeing goblins keep their sprint
+                    if (!hitGob.fleeing) {
+                        hitGob.speed = hitGob.elite
+                            ? baseSpd * 0.85 * (hitGob.gloatTimer > 0 ? 0.5 : 1)
+                            : baseSpd;
+                    }
 
                     hitFreeze = 2;
                     pendingShake = true;
@@ -3111,7 +3112,11 @@ function update(dt) {
         else if (patternMatched) {
             gob.respawnTimer = 300;
         }
-        if (doorOpen) continue; // no respawns once the door is open
+        // No respawns once the door is open — but DON'T skip the rest of the
+        // loop body: dead goblins still need their death-poof timer (at the
+        // loop tail) to tick, or a goblin killed mid-flee freezes on poof
+        // frame zero and looks stuck in place.
+        if (!doorOpen) {
         gob.respawnTimer--;
         if (gob.respawnTimer <= 0) {
             // Every 6th goblin is a catapult goblin instead of normal/elite (from L15+)
@@ -3200,6 +3205,7 @@ function update(dt) {
             }
         }
         } // end else (non-catapult spawn)
+        } // end if (!doorOpen)
     } else if (gob.danceTimer > 0) {
         // GROOVED! Involuntary dance break — can't move, sabotage, or punch
         gob.danceTimer--;
@@ -3913,6 +3919,7 @@ function resetGame() {
     cavePlayerDead = false;
     djSetupEarned = [];
     minigamesCompleted = [];
+    pieceRecoveredThisLevel = null;
     stopMinigameMusic();
 
     // Set tempo for level 0
@@ -4097,6 +4104,16 @@ function triggerLevelComplete() {
     // Award time bonus
     lastTimeBonus = Math.ceil(levelTimer / 60) * 10;
     score += lastTimeBonus;
+    // DJ piece recovery at milestone levels — the kidnap mini-levels are
+    // retired, so the stolen piece is reclaimed directly with the room
+    pieceRecoveredThisLevel = null;
+    if (MINIGAME_LEVELS.includes(currentLevel) && !minigamesCompleted.includes(currentLevel)) {
+        minigamesCompleted.push(currentLevel);
+        if (djSetupEarned.length < DJ_SETUP_PIECES.length) {
+            pieceRecoveredThisLevel = DJ_SETUP_PIECES[djSetupEarned.length];
+            djSetupEarned.push(pieceRecoveredThisLevel);
+        }
+    }
     // Screen flash for celebration
     screenFlash = 20;
     // Play fanfare instead of drums
@@ -10311,22 +10328,8 @@ function renderTitleScreen() {
 
     const beatOn = titleStep % 4 === 0;
 
-    // === CAVE SCENE BACKGROUND ===
-    drawRect(0, 0, W, H, "#0d150d"); // dark stone floor
-
-    // Cave rock walls
-    for (let c = 0; c < COLS; c++) {
-        const stoneCol = (c * 7 + 3) % 3 === 0 ? "#1e2e1e" : ((c * 7 + 3) % 3 === 1 ? "#1a2a1a" : "#162616");
-        drawRect(c * TILE, 0, TILE, TILE, stoneCol);
-        const botCol = (c * 11 + 5) % 3 === 0 ? "#152015" : ((c * 11 + 5) % 3 === 1 ? "#1a2a1a" : "#111911");
-        drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, botCol);
-    }
-    for (let r = 0; r < ROWS; r++) {
-        const lCol = (r * 7) % 3 === 0 ? "#152015" : ((r * 7) % 3 === 1 ? "#1a2a1a" : "#111911");
-        drawRect(0, r * TILE, TILE, TILE, lCol);
-        const rCol = (r * 11) % 3 === 0 ? "#152015" : ((r * 11) % 3 === 1 ? "#1a2a1a" : "#111911");
-        drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, rCol);
-    }
+    // === CAVE SCENE BACKGROUND === (same textured cave as gameplay)
+    drawSceneBackground(0);
 
     // Mushroom lights (animated, bioluminescent)
     const TITLE_MUSH_COLORS = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#44ff44"];
@@ -10913,6 +10916,23 @@ function advanceIntroScene() {
     if (introScene === 3) stopIntroDrums();
 }
 
+// Shared scene background: the same textured cave the gameplay renders,
+// optionally darkened — keeps the title/story scenes visually consistent
+// with the actual levels instead of the old flat-color tiles.
+function drawSceneBackground(darken) {
+    if (IMAGES.cave_bg) {
+        ctx.drawImage(IMAGES.cave_bg, 0, 0, canvas.width, canvas.height);
+    } else {
+        ctx.drawImage(TEX_CAVE_BG, 0, 0);
+    }
+    if (darken > 0) {
+        ctx.fillStyle = "#000000";
+        ctx.globalAlpha = Math.min(1, darken);
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1;
+    }
+}
+
 function renderIntro() {
     const W = COLS * TILE;
     const H = ROWS * TILE;
@@ -10949,22 +10969,8 @@ function renderIntro() {
 
     // ==================== SCENE 0: THE GOOD TIMES ====================
     if (introScene === 0) {
-        // Full cave venue scene: floor, walls, DJ booth, dancers
-        drawRect(0, 0, W, H, "#0d150d"); // dark stone floor
-
-        // Cave walls
-        for (let c = 0; c < COLS; c++) {
-            const stoneCol = (c * 7 + 3) % 3 === 0 ? "#1e2e1e" : ((c * 7 + 3) % 3 === 1 ? "#1a2a1a" : "#162616");
-            drawRect(c * TILE, 0, TILE, TILE, stoneCol);
-            const botCol = (c * 11 + 5) % 3 === 0 ? "#152015" : ((c * 11 + 5) % 3 === 1 ? "#1a2a1a" : "#111911");
-            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, botCol);
-        }
-        for (let r = 0; r < ROWS; r++) {
-            const lCol = (r * 7) % 3 === 0 ? "#152015" : ((r * 7) % 3 === 1 ? "#1a2a1a" : "#111911");
-            drawRect(0, r * TILE, TILE, TILE, lCol);
-            const rCol = (r * 11) % 3 === 0 ? "#152015" : ((r * 11) % 3 === 1 ? "#1a2a1a" : "#111911");
-            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, rCol);
-        }
+        // Full cave venue scene (same textured cave as gameplay)
+        drawSceneBackground(0);
 
         // Mushroom lights (animated)
         const INTRO_MUSH = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#44ff44"];
@@ -11112,27 +11118,9 @@ function renderIntro() {
         ctx.save();
         ctx.translate(shX, shY);
 
-        // Cave darkens as power fades — floor dims over time
+        // Cave darkens as power fades — same textured cave, dimming overlay
         const powerFade = Math.min(1, t / 180); // 0→1 over first 3 seconds
-        const floorR = Math.round(0x0d * (1 - powerFade * 0.5));
-        const floorG = Math.round(0x15 * (1 - powerFade * 0.5));
-        const floorB = Math.round(0x0d * (1 - powerFade * 0.5));
-        drawRect(0, 0, W, H, `rgb(${floorR},${floorG},${floorB})`);
-
-        // Cave walls (dim with power)
-        for (let c = 0; c < COLS; c++) {
-            const topR = (c * 7 + 3) % 3 === 0 ? 0x1e : 0x1a, topG = (c * 7 + 3) % 3 === 0 ? 0x2e : 0x2a, topB = (c * 7 + 3) % 3 === 0 ? 0x1e : 0x1a;
-            const botR = 0x15, botG = 0x20, botB = 0x15;
-            const dim = 1 - powerFade * 0.5;
-            drawRect(c * TILE, 0, TILE, TILE, `rgb(${Math.round(topR*dim)},${Math.round(topG*dim)},${Math.round(topB*dim)})`);
-            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, `rgb(${Math.round(botR*dim)},${Math.round(botG*dim)},${Math.round(botB*dim)})`);
-        }
-        for (let r = 0; r < ROWS; r++) {
-            const sR = 0x15, sG = 0x20, sB = 0x15;
-            const dim = 1 - powerFade * 0.5;
-            drawRect(0, r * TILE, TILE, TILE, `rgb(${Math.round(sR*dim)},${Math.round(sG*dim)},${Math.round(sB*dim)})`);
-            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, `rgb(${Math.round(sR*dim)},${Math.round(sG*dim)},${Math.round(sB*dim)})`);
-        }
+        drawSceneBackground(powerFade * 0.55);
 
         // Mushroom lights — flicker like losing power, then go dark
         const QUAKE_MUSH = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#44ff44"];
@@ -11393,16 +11381,8 @@ function renderIntro() {
         ctx.save();
         ctx.translate(shX, shY);
 
-        drawRect(0, 0, W, H, "#161615");
-        // Walls with caves now open (dimmed — power died in Scene 1A)
-        for (let c = 0; c < COLS; c++) {
-            drawRect(c * TILE, 0, TILE, TILE, (c * 7 + 3) % 3 === 0 ? "#1e2e1e" : "#1a2a1a");
-            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, (c * 11 + 5) % 3 === 0 ? "#152015" : "#1a2a1a");
-        }
-        for (let r = 0; r < ROWS; r++) {
-            drawRect(0, r * TILE, TILE, TILE, (r * 7) % 3 === 0 ? "#152015" : "#1a2a1a");
-            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, (r * 11) % 3 === 0 ? "#152015" : "#1a2a1a");
-        }
+        // Power is dead — same textured cave under heavy darkness
+        drawSceneBackground(0.7);
         // Open caves with glowing eyes (eyes fade as goblins emerge)
         for (let ci = 0; ci < CAVES.length; ci++) {
             const cave = CAVES[ci];
@@ -11982,7 +11962,8 @@ function renderIntro() {
             djFrame = riseProgress < 0.5 ? 0 : Math.floor((rt - 45) / 8) % 4;
         }
 
-        drawRect(0, 0, W, H, "#050805");
+        // Near-black, but the cave texture still reads through faintly
+        drawSceneBackground(0.85);
 
         // Spotlight follows DJ position — green-tinted cave glow
         const spotW = W * SCALE;
@@ -12264,6 +12245,21 @@ function renderLevelComplete() {
         ctx.fillStyle = "#efd8a1";
         ctx.fillText(scoreText, (W * SCALE) / 2, sy * SCALE);
 
+        // Piece recovery announcement at milestone levels
+        if (pieceRecoveredThisLevel && levelCelebrateTimer > 60) {
+            const pcAlpha = Math.min(1, (levelCelebrateTimer - 60) / 30);
+            const pcPulse = 1 + Math.sin(levelCelebrateTimer * 0.1) * 0.06;
+            ctx.globalAlpha = pcAlpha;
+            ctx.font = `${Math.round(6 * SCALE * pcPulse)}px monospace`;
+            const pcText = "RECOVERED: THE " + pieceRecoveredThisLevel.toUpperCase() + "!";
+            ctx.fillStyle = "#000000";
+            ctx.fillText(pcText, (W * SCALE) / 2 + SCALE, (sy + 12) * SCALE);
+            ctx.fillStyle = "#FFD700";
+            ctx.fillText(pcText, (W * SCALE) / 2, (sy + 11) * SCALE);
+            ctx.globalAlpha = 1;
+            ctx.font = `${8 * SCALE}px monospace`;
+        }
+
         // Narrative breadcrumb — brief one-liner about progress
         if (levelCelebrateTimer > 90) {
             const narrativeAlpha = Math.min(1, (levelCelebrateTimer - 90) / 40);
@@ -12281,10 +12277,12 @@ function renderLevelComplete() {
             else if (lvl === 30) narrative = "The underground remembers.";
             else if (earned > 0 && earned < 6) narrative = earned + " / 6 pieces recovered.";
             if (narrative) {
+                // Sits lower when the piece-recovery banner is showing above it
+                const nyOfs = pieceRecoveredThisLevel ? 24 : 18;
                 ctx.fillStyle = "#000000";
-                ctx.fillText(narrative, (W * SCALE) / 2 + SCALE, (sy + 18) * SCALE);
+                ctx.fillText(narrative, (W * SCALE) / 2 + SCALE, (sy + nyOfs + 1) * SCALE);
                 ctx.fillStyle = "#8a9a6a";
-                ctx.fillText(narrative, (W * SCALE) / 2, (sy + 17) * SCALE);
+                ctx.fillText(narrative, (W * SCALE) / 2, (sy + nyOfs) * SCALE);
             }
             ctx.globalAlpha = 1.0;
         }
