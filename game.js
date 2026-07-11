@@ -914,8 +914,9 @@ function generateStoneTile(seed, baseColor, darkColor, highlightColor, opts) {
 }
 
 // Generate stone tile for the grid (darker, more uniform)
-function generateGridStoneTile(seed) {
-    return generateStoneTile(seed, "#1a2820", "#0d150d", "#2a3a2a", { mossColor: "#1a3a2a" });
+function generateGridStoneTile(seed, biome) {
+    const gs = biome.gridStone;
+    return generateStoneTile(seed, gs.base, gs.dark, gs.hi, { mossColor: gs.moss });
 }
 
 // Generate an active/glowing grid tile overlay
@@ -1002,53 +1003,143 @@ function generateGlowTile(seed, glowColor) {
 }
 
 // Generate cave wall tile (rougher, more variation)
-function generateCaveWallTile(seed, variant) {
-    const colors = [
-        { base: "#1e2e1e", dark: "#0a0f0a", hi: "#2a3a2a" },
-        { base: "#1a2a1a", dark: "#080d08", hi: "#243024" },
-        { base: "#162616", dark: "#060b06", hi: "#1e3e1e" },
-    ];
-    const pal = colors[variant % 3];
-    return generateStoneTile(seed, pal.base, pal.dark, pal.hi, { mossColor: "#1a3a1a" });
+function generateCaveWallTile(seed, variant, biome) {
+    const pal = biome.walls[variant % biome.walls.length];
+    return generateStoneTile(seed, pal.base, pal.dark, pal.hi, { mossColor: biome.wallMoss });
 }
 
 // Generate cave floor tile (dark, with subtle variation)
-function generateFloorTile(seed) {
-    return generateStoneTile(seed, "#0d150d", "#050a05", "#152015", { mossColor: "#0a1a0a" });
+function generateFloorTile(seed, biome) {
+    const f = biome.floor;
+    return generateStoneTile(seed, f.base, f.dark, f.hi, { mossColor: f.moss });
 }
 
-// ---- Pre-generate texture atlas at startup ----
-// Floor tiles (ROWS x COLS grid — one per tile position)
-const TEX_FLOOR = [];
-for (let r = 0; r < ROWS; r++) {
-    TEX_FLOOR[r] = [];
-    for (let c = 0; c < COLS; c++) {
-        TEX_FLOOR[r][c] = generateFloorTile(r * 1000 + c * 37 + 5555);
-    }
-}
+// ============================================================
+// BIOMES — six cavern zones, one per stolen DJ setup piece.
+// Each zone is five levels deep and ends with recovering its piece
+// (levels 5/10/15/20/25/30). Palettes stay dark so sprites and the
+// beat grid keep their readability; only the ambience shifts.
+// ============================================================
+const BIOMES = [
+    { // Levels 1-5 → THE LEFT SPEAKER (the classic mossy caves)
+        name: "MOSSY HOLLOWS",
+        tagline: "WHERE THE GROOVE BEGINS",
+        floor: { base: "#0d150d", dark: "#050a05", hi: "#152015", moss: "#0a1a0a" },
+        walls: [
+            { base: "#1e2e1e", dark: "#0a0f0a", hi: "#2a3a2a" },
+            { base: "#1a2a1a", dark: "#080d08", hi: "#243024" },
+            { base: "#162616", dark: "#060b06", hi: "#1e3e1e" },
+        ],
+        wallMoss: "#1a3a1a",
+        gridStone: { base: "#1a2820", dark: "#0d150d", hi: "#2a3a2a", moss: "#1a3a2a" },
+        gridWall: { base: "#1a2820", dark: "#0d150d", hi: "#243024" },
+        lights: ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#44ff44"],
+        lightHi: "#aaffaa",
+        caveGlow: "50,255,50",
+        stal: { a: "#1e2e1e", b: "#243024", hi: "#2a4a2a", drip: "rgba(80,180,80,0.2)" },
+    },
+    { // Levels 6-10 → THE RIGHT SPEAKER (deep blue echo caves)
+        name: "ECHOING DEPTHS",
+        tagline: "EVERY BEAT ECHOES TWICE",
+        floor: { base: "#0c1118", dark: "#04070d", hi: "#131c28", moss: "#0d1a2e" },
+        walls: [
+            { base: "#1c2634", dark: "#0a0f16", hi: "#2a3a50" },
+            { base: "#18222e", dark: "#080c12", hi: "#22303e" },
+            { base: "#141d28", dark: "#060a0e", hi: "#1c2a3c" },
+        ],
+        wallMoss: "#16304a",
+        gridStone: { base: "#182230", dark: "#0c1118", hi: "#28384c", moss: "#1c3450" },
+        gridWall: { base: "#182230", dark: "#0c1118", hi: "#22303e" },
+        lights: ["#44aaff", "#33ccff", "#5588ff", "#22bbee", "#44ccff", "#3399ff"],
+        lightHi: "#bbe4ff",
+        caveGlow: "60,160,255",
+        stal: { a: "#1c2634", b: "#22303e", hi: "#2a4a6a", drip: "rgba(80,140,220,0.2)" },
+    },
+    { // Levels 11-15 → THE TURNTABLE (warm amber sandstone grotto)
+        name: "AMBER GROTTO",
+        tagline: "GOLDEN WALLS, WARMER GROOVES",
+        floor: { base: "#151005", dark: "#0a0703", hi: "#201a0c", moss: "#241a06" },
+        walls: [
+            { base: "#2e2414", dark: "#160f06", hi: "#42341c" },
+            { base: "#2a2010", dark: "#120c04", hi: "#3a2c16" },
+            { base: "#261c0e", dark: "#100a04", hi: "#362818" },
+        ],
+        wallMoss: "#3a2c10",
+        gridStone: { base: "#28200e", dark: "#151005", hi: "#3c3016", moss: "#3a2c10" },
+        gridWall: { base: "#28200e", dark: "#151005", hi: "#3a2c16" },
+        lights: ["#ffbb33", "#ffaa22", "#ffcc55", "#ee9922", "#ffbb44", "#ff9933"],
+        lightHi: "#ffe8aa",
+        caveGlow: "255,180,60",
+        stal: { a: "#2e2414", b: "#3a2c16", hi: "#4a3c1c", drip: "rgba(220,170,80,0.2)" },
+    },
+    { // Levels 16-20 → THE MIXER (murky teal fungus caves)
+        name: "FUNGAL MIRE",
+        tagline: "THE FUNK GROWS THICK DOWN HERE",
+        floor: { base: "#081412", dark: "#040a09", hi: "#10201c", moss: "#0a2420" },
+        walls: [
+            { base: "#16302a", dark: "#0a1512", hi: "#204238" },
+            { base: "#122a24", dark: "#08110e", hi: "#1a3830" },
+            { base: "#0e241e", dark: "#060d0b", hi: "#183226" },
+        ],
+        wallMoss: "#124038",
+        gridStone: { base: "#142a24", dark: "#081412", hi: "#22423a", moss: "#164438" },
+        gridWall: { base: "#142a24", dark: "#081412", hi: "#1a3830" },
+        lights: ["#22ffcc", "#33eebb", "#11ddcc", "#44ffdd", "#22eeaa", "#33ffcc"],
+        lightHi: "#bbffee",
+        caveGlow: "40,255,200",
+        stal: { a: "#16302a", b: "#1a3830", hi: "#2a5a4a", drip: "rgba(60,220,180,0.2)" },
+    },
+    { // Levels 21-25 → THE LIGHT RIG (glittering violet crystal vault)
+        name: "CRYSTAL VAULT",
+        tagline: "A THOUSAND LIGHTS, ONE BEAT",
+        floor: { base: "#100a18", dark: "#08050d", hi: "#1a1226", moss: "#1e0e30" },
+        walls: [
+            { base: "#241a38", dark: "#100a1a", hi: "#382a52" },
+            { base: "#20162e", dark: "#0c0814", hi: "#302242" },
+            { base: "#1c1228", dark: "#0a060f", hi: "#2a1e3e" },
+        ],
+        wallMoss: "#301a4a",
+        gridStone: { base: "#1e1630", dark: "#100a18", hi: "#322450", moss: "#2e1c48" },
+        gridWall: { base: "#1e1630", dark: "#100a18", hi: "#302242" },
+        lights: ["#cc55ff", "#aa44ee", "#dd66ff", "#9933dd", "#bb55ff", "#ee77ff"],
+        lightHi: "#eeccff",
+        caveGlow: "190,90,255",
+        stal: { a: "#241a38", b: "#302242", hi: "#42306a", drip: "rgba(180,100,240,0.2)" },
+    },
+    { // Levels 26-30 → THE DISCO BALL (ember-lit molten core, the goblin lair)
+        name: "MOLTEN CORE",
+        tagline: "THE GOBLIN KING'S DANCE FLOOR",
+        floor: { base: "#160b08", dark: "#0b0504", hi: "#221009", moss: "#2a0e04" },
+        walls: [
+            { base: "#301410", dark: "#180806", hi: "#48201a" },
+            { base: "#2a120c", dark: "#140704", hi: "#3e1c14" },
+            { base: "#24100a", dark: "#100503", hi: "#38180e" },
+        ],
+        wallMoss: "#401808",
+        gridStone: { base: "#2a1410", dark: "#160b08", hi: "#42221a", moss: "#3c1a0c" },
+        gridWall: { base: "#2a1410", dark: "#160b08", hi: "#3e1c14" },
+        lights: ["#ff5522", "#ff7733", "#ff4411", "#ff8844", "#ff6622", "#ff3311"],
+        lightHi: "#ffcc99",
+        caveGlow: "255,90,30",
+        stal: { a: "#301410", b: "#3e1c14", hi: "#582a1e", drip: "rgba(255,120,60,0.25)" },
+    },
+];
 
-// Wall tiles (top, bottom, left, right walls)
-const TEX_WALL_TOP = [];
-const TEX_WALL_BOT = [];
-const TEX_WALL_LEFT = [];
-const TEX_WALL_RIGHT = [];
-for (let c = 0; c < COLS; c++) {
-    TEX_WALL_TOP[c] = generateCaveWallTile(c * 73 + 111, (c * 7 + 3) % 3);
-    TEX_WALL_BOT[c] = generateCaveWallTile(c * 91 + 222, (c * 11 + 5) % 3);
+function biomeForLevel(levelIdx) {
+    return BIOMES[Math.min(BIOMES.length - 1, Math.max(0, Math.floor(levelIdx / 5)))];
 }
-for (let r = 0; r < ROWS; r++) {
-    TEX_WALL_LEFT[r] = generateCaveWallTile(r * 67 + 333, (r * 7) % 3);
-    TEX_WALL_RIGHT[r] = generateCaveWallTile(r * 83 + 444, (r * 11) % 3);
-}
+let currentBiome = BIOMES[0];
 
-// Grid stone tiles (inactive blocks — unique per cell position)
-const TEX_GRID_OFF = [];
-for (let r = 0; r < 6; r++) {
-    TEX_GRID_OFF[r] = [];
-    for (let c = 0; c < GRID_COLS; c++) {
-        TEX_GRID_OFF[r][c] = generateGridStoneTile(r * 100 + c * 17 + 9999);
-    }
-}
+// ---- Texture atlas (rebuilt per level — every room gets its own layout & biome) ----
+let TEX_FLOOR = [];
+let TEX_WALL_TOP = [], TEX_WALL_BOT = [], TEX_WALL_LEFT = [], TEX_WALL_RIGHT = [];
+let TEX_GRID_OFF = [];
+let TEX_GRID_WALL = null;
+let TEX_CAVE_BG = null;
+let texturesBuiltForLevel = -1;
+
+// Cached per-frame gradients (biome colors bake in — cleared on rebuild)
+const gradCache = {};
 
 // Grid glow tiles (active blocks — per row color, multiple variants per row)
 const GLOW_COLORS = ["#44ff44", "#88ee22", "#ee8822", "#ff6611", "#ff4400", "#33dd88"];
@@ -1061,7 +1152,7 @@ for (let r = 0; r < 6; r++) {
 }
 
 // Grid wall background texture (stone slab behind the grid)
-const TEX_GRID_WALL = (function() {
+function buildGridWallTexture(biome, LS) {
     // This is a larger texture for the wall behind the grid
     const maxAR = 6;
     const w = (GRID_COLS * TILE + 4) * SCALE;
@@ -1069,10 +1160,11 @@ const TEX_GRID_WALL = (function() {
     const c = document.createElement('canvas');
     c.width = w; c.height = h;
     const g = c.getContext('2d');
-    const rng = texRNG(88888);
+    const rng = texRNG(LS + 88888);
+    const gw = biome.gridWall;
 
     // Base stone slab
-    g.fillStyle = "#1a2820";
+    g.fillStyle = gw.base;
     g.beginPath();
     g.roundRect(0, 0, w, h, 3);
     g.fill();
@@ -1082,7 +1174,7 @@ const TEX_GRID_WALL = (function() {
         const px = rng() * w;
         const py = rng() * h;
         const pr = 10 + rng() * 30;
-        g.fillStyle = rng() > 0.5 ? "#0d150d" : "#243024";
+        g.fillStyle = rng() > 0.5 ? gw.dark : gw.hi;
         g.globalAlpha = 0.06 + rng() * 0.1;
         g.beginPath();
         g.arc(px, py, pr, 0, Math.PI * 2);
@@ -1095,7 +1187,8 @@ const TEX_GRID_WALL = (function() {
         const x1 = 8 + rng() * (w - 16);
         const y1 = 8 + rng() * (h - 16);
         const segments = 2 + Math.floor(rng() * 4);
-        g.strokeStyle = "rgba(15,25,15,0.6)";
+        g.strokeStyle = gw.dark;
+        g.globalAlpha = 0.6;
         g.lineWidth = 0.5 + rng() * 1;
         g.beginPath();
         g.moveTo(x1, y1);
@@ -1107,9 +1200,10 @@ const TEX_GRID_WALL = (function() {
         }
         g.stroke();
     }
+    g.globalAlpha = 1;
 
     // Mortar lines (horizontal and vertical grid)
-    g.strokeStyle = "#0d150d";
+    g.strokeStyle = gw.dark;
     g.lineWidth = 1;
     for (let r = 0; r <= maxAR; r++) {
         const ly = 2 * SCALE + r * TILE * SCALE;
@@ -1138,10 +1232,10 @@ const TEX_GRID_WALL = (function() {
     g.putImageData(imgData, 0, 0);
 
     return c;
-})();
+}
 
 // Pre-render static cave background (floor + walls + stalactites + stalagmites)
-const TEX_CAVE_BG = (function() {
+function buildCaveBgTexture(biome, LS) {
     const w = COLS * TILE * SCALE;
     const h = ROWS * TILE * SCALE;
     const c = document.createElement('canvas');
@@ -1149,7 +1243,7 @@ const TEX_CAVE_BG = (function() {
     const g = c.getContext('2d');
 
     // Dark base fill
-    g.fillStyle = "#0a0f0a";
+    g.fillStyle = biome.walls[0].dark;
     g.fillRect(0, 0, w, h);
 
     // Draw floor tiles
@@ -1176,14 +1270,15 @@ const TEX_CAVE_BG = (function() {
         g.drawImage(TEX_WALL_RIGHT[r], (COLS - 1) * TILE * SCALE, r * TILE * SCALE);
     }
 
-    // Stalactites (triangular, textured)
-    const stalactitePositions = [2, 4, 7, 9, 12, 14, 17, 19];
-    const stRNG = texRNG(54321);
+    // Stalactites (triangular, textured) — positions jittered per level
+    const stRNG = texRNG(LS + 54321);
+    const stalactitePositions = [2, 4, 7, 9, 12, 14, 17, 19]
+        .map(p => p + Math.floor(stRNG() * 3) - 1);
     for (const sc of stalactitePositions) {
-        if (sc >= COLS) continue;
-        const stH = 3 + (sc * 7) % 5;
+        if (sc < 1 || sc >= COLS - 1) continue;
+        const stH = 3 + Math.floor(stRNG() * 5);
         const stX = sc * TILE + TILE / 2;
-        const stCol = (sc * 3) % 2 === 0 ? "#1e2e1e" : "#243024";
+        const stCol = stRNG() > 0.5 ? biome.stal.a : biome.stal.b;
         // Main stalactite body
         g.fillStyle = stCol;
         g.beginPath();
@@ -1194,7 +1289,7 @@ const TEX_CAVE_BG = (function() {
         g.closePath();
         g.fill();
         // Highlight edge
-        g.fillStyle = "#2a4a2a";
+        g.fillStyle = biome.stal.hi;
         g.globalAlpha = 0.3;
         g.beginPath();
         g.moveTo((stX - 2) * SCALE, TILE * SCALE);
@@ -1204,20 +1299,21 @@ const TEX_CAVE_BG = (function() {
         g.fill();
         g.globalAlpha = 1;
         // Drip highlight
-        g.fillStyle = "rgba(80,180,80,0.2)";
+        g.fillStyle = biome.stal.drip;
         g.beginPath();
         g.arc((stX) * SCALE, (TILE + stH + 2) * SCALE, 1.5 * SCALE, 0, Math.PI * 2);
         g.fill();
     }
 
-    // Stalagmites on floor
-    const stalagmitePositions = [3, 6, 10, 15, 18];
+    // Stalagmites on floor — positions jittered per level
+    const stalagmitePositions = [3, 6, 10, 15, 18]
+        .map(p => p + Math.floor(stRNG() * 3) - 1);
     for (const sm of stalagmitePositions) {
-        if (sm >= COLS) continue;
-        const smH = 2 + (sm * 5) % 4;
+        if (sm < 1 || sm >= COLS - 1) continue;
+        const smH = 2 + Math.floor(stRNG() * 4);
         const smX = sm * TILE + TILE / 2;
         const smBaseY = (ROWS - 1) * TILE;
-        g.fillStyle = (sm * 3) % 2 === 0 ? "#1e2e1e" : "#1a2a1a";
+        g.fillStyle = stRNG() > 0.5 ? biome.stal.a : biome.stal.b;
         g.beginPath();
         g.moveTo((smX - 3) * SCALE, smBaseY * SCALE);
         g.lineTo((smX + 3) * SCALE, smBaseY * SCALE);
@@ -1225,7 +1321,7 @@ const TEX_CAVE_BG = (function() {
         g.closePath();
         g.fill();
         // Highlight
-        g.fillStyle = "#2a4a2a";
+        g.fillStyle = biome.stal.hi;
         g.globalAlpha = 0.25;
         g.beginPath();
         g.moveTo((smX - 1) * SCALE, smBaseY * SCALE);
@@ -1237,7 +1333,50 @@ const TEX_CAVE_BG = (function() {
     }
 
     return c;
-})();
+}
+
+// Rebuild the whole room texture set for a given level. Seeds derive from
+// the level number, so every room has its own stone layout, and the palette
+// comes from the level's biome. Called at startup and on every room change.
+function rebuildCaveTextures(levelIdx) {
+    currentBiome = biomeForLevel(levelIdx);
+    const biome = currentBiome;
+    const LS = (levelIdx + 1) * 7919;
+
+    TEX_FLOOR = [];
+    for (let r = 0; r < ROWS; r++) {
+        TEX_FLOOR[r] = [];
+        for (let c = 0; c < COLS; c++) {
+            TEX_FLOOR[r][c] = generateFloorTile(LS + r * 1000 + c * 37 + 5555, biome);
+        }
+    }
+
+    TEX_WALL_TOP = []; TEX_WALL_BOT = []; TEX_WALL_LEFT = []; TEX_WALL_RIGHT = [];
+    for (let c = 0; c < COLS; c++) {
+        TEX_WALL_TOP[c] = generateCaveWallTile(LS + c * 73 + 111, (c * 7 + 3) % 3, biome);
+        TEX_WALL_BOT[c] = generateCaveWallTile(LS + c * 91 + 222, (c * 11 + 5) % 3, biome);
+    }
+    for (let r = 0; r < ROWS; r++) {
+        TEX_WALL_LEFT[r] = generateCaveWallTile(LS + r * 67 + 333, (r * 7) % 3, biome);
+        TEX_WALL_RIGHT[r] = generateCaveWallTile(LS + r * 83 + 444, (r * 11) % 3, biome);
+    }
+
+    TEX_GRID_OFF = [];
+    for (let r = 0; r < 6; r++) {
+        TEX_GRID_OFF[r] = [];
+        for (let c = 0; c < GRID_COLS; c++) {
+            TEX_GRID_OFF[r][c] = generateGridStoneTile(LS + r * 100 + c * 17 + 9999, biome);
+        }
+    }
+
+    TEX_GRID_WALL = buildGridWallTexture(biome, LS);
+    TEX_CAVE_BG = buildCaveBgTexture(biome, LS);
+
+    // Cave-glow gradient bakes the biome color — rebuild lazily on next frame
+    gradCache.caveGlow = null;
+    texturesBuiltForLevel = levelIdx;
+}
+rebuildCaveTextures(0);
 
 // ============================================================
 // END PROCEDURAL TEXTURE GENERATION
@@ -1278,6 +1417,53 @@ function ensureAudio() {
         decodeAudioSamples(); // BGM disabled — samples decode for drum hits only
     }
     if (audioCtx.state === "suspended") audioCtx.resume();
+}
+
+// Heavy CLANG for the thief slamming the level-exit door
+function playDoorSlam() {
+    if (!audioCtx || audioCtx.state !== "running") return;
+    const now = audioCtx.currentTime;
+    // Low wooden thud
+    const osc = audioCtx.createOscillator();
+    const g1 = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(90, now);
+    osc.frequency.exponentialRampToValueAtTime(35, now + 0.15);
+    g1.gain.setValueAtTime(0.9, now);
+    g1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+    osc.connect(g1);
+    g1.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.35);
+    // Impact noise burst
+    const len = Math.floor(audioCtx.sampleRate * 0.12);
+    const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    const filt = audioCtx.createBiquadFilter();
+    filt.type = "lowpass";
+    filt.frequency.value = 900;
+    const g2 = audioCtx.createGain();
+    g2.gain.setValueAtTime(0.7, now);
+    g2.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+    src.connect(filt);
+    filt.connect(g2);
+    g2.connect(audioCtx.destination);
+    src.start(now);
+    // Metallic ring (the padlock clanking into place)
+    const ping = audioCtx.createOscillator();
+    const g3 = audioCtx.createGain();
+    ping.type = "square";
+    ping.frequency.setValueAtTime(1400, now + 0.03);
+    ping.frequency.exponentialRampToValueAtTime(700, now + 0.2);
+    g3.gain.setValueAtTime(0.12, now + 0.03);
+    g3.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    ping.connect(g3);
+    g3.connect(audioCtx.destination);
+    ping.start(now + 0.03);
+    ping.stop(now + 0.25);
 }
 
 function playKick(time) {
@@ -1704,8 +1890,8 @@ const cellFlash = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).f
 // Longer-lived "recently sabotaged" marker (~3s fade) so flipped cells stay findable
 const cellRecent = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).fill(0));
 
-// Cached canvas gradients — building these per frame caused GC churn
-const gradCache = {};
+// (gradCache is declared up in the texture-generation section — the biome
+// rebuild needs to invalidate it, and that code runs before this point.)
 
 // ---- Groove bonus state (on-beat punches) ----
 let pocketRing = null;    // { x, y, timer } — expanding gold ring on a pocket hit
@@ -1983,6 +2169,24 @@ let sabotageNextState = "playing";
 let sabotageCells = [];              // [{r, c, flip: bool}] in zigzag order
 let sabotageFlipIndex = 0;
 const SABOTAGE_FRAMES_PER_CELL = 2;  // 2 frames/cell at 90fps
+
+// ---- Thief door-slam (level opening) ----
+// After scrambling the grid the goblin bolts through the right door and
+// slams it shut — that's why the exit is barred until the beat is restored.
+let thiefCarriedPiece = null; // DJ piece the thief runs off with on milestone levels
+let doorBarsDown = true;      // false while the thief is still in the room (pre-slam)
+let doorSlamFx = 0;           // impact frames after the slam (dust + bar drop)
+
+// ---- Biome banner ("~ AMBER GROTTO ~") ----
+let biomeBannerTimer = 0;
+let biomeBannerPending = false; // set during sabotage, fires when play starts
+
+// ---- Biome transition cutscene (plays after each milestone level) ----
+let biomeTransTimer = 0;
+let biomeTransFrom = null;      // biome we're leaving
+let biomeTransTo = null;        // biome we're descending into
+let biomeTransPiece = null;     // DJ piece just recovered
+let biomeTransNextPiece = null; // piece the goblins still hold (chase hook)
 
 // ---- High Score System ----
 let highScores = []; // Array of { name: "AAA", score: 0 }, max 5, sorted desc
@@ -2409,10 +2613,20 @@ window.addEventListener("keydown", (e) => {
             // in triggerLevelComplete at milestone levels)
             // Show all feature screens (instruments + enemy warnings) before advancing
             if (checkPendingFeatureScreens()) return;
+            // Milestone level cleared → biome transition cutscene before the next zone
+            if (pieceRecoveredThisLevel && currentLevel < LEVELS.length - 1) {
+                startBiomeTransition();
+                return;
+            }
             advanceLevel();
             return;
         }
         if (gameState === "levelcomplete") return; // let celebration play
+        if (gameState === "biome-transition") {
+            // Let it play a moment, then Enter skips ahead to the next zone
+            if (biomeTransTimer > 60) advanceLevel();
+            return;
+        }
         if (gameState === "gameover" && gameOverTimer > 180) {
             // Let player skip the rest of the sad song
             if (scoreQualifies(finalScore)) {
@@ -3869,6 +4083,12 @@ function resetGame() {
 
     // Reset room progression + entourage
     doorOpen = false;
+    doorBarsDown = true;   // level 1 starts with the door already slammed
+    doorSlamFx = 0;
+    thiefCarriedPiece = null;
+    biomeBannerTimer = 300; // announce the first biome when gameplay starts
+    biomeBannerPending = false;
+    if (texturesBuiltForLevel !== 0) rebuildCaveTextures(0);
     entourageSize = 0;
     playerTrail.length = 0;
     entourageCheer = 0;
@@ -6472,6 +6692,12 @@ function advanceLevel() {
         startEnding();
         return;
     }
+    // New room, new look — regenerate the cave for this level's biome & seed
+    if (biomeForLevel(currentLevel) !== currentBiome) {
+        biomeBannerPending = true; // crossing into a new zone — announce it once play starts
+    }
+    rebuildCaveTextures(currentLevel);
+
     // After a minigame, dancers rescued the DJ and scattered — respawn the full crowd
     if (dancers.length === 0 && currentLevel > 1) {
         spawnDancers(currentLevel * 3);
@@ -6572,9 +6798,14 @@ function advanceLevel() {
     // Stop marching drums before sabotage begins
     stopStoryDrums();
 
-    // Start sabotage animation (goblin zigzags across grid scrambling cells)
+    // Start sabotage animation (goblin zigzags across grid scrambling cells,
+    // then bolts through the right door and slams it behind itself)
     sabotageAnimTimer = 0;
     sabotageFlipIndex = 0;
+    doorBarsDown = false; // door hangs open until the thief slams it
+    doorSlamFx = 0;
+    thiefCarriedPiece = (MINIGAME_LEVELS.includes(currentLevel) && djSetupEarned.length < DJ_SETUP_PIECES.length)
+        ? DJ_SETUP_PIECES[djSetupEarned.length] : null;
     gameState = "sabotage-anim";
 }
 
@@ -7142,12 +7373,8 @@ function render() {
         ctx.drawImage(TEX_CAVE_BG, 0, 0);
     }
 
-    // Per-room ambient tint — each level's room gets its own subtle color cast
-    {
-        const roomHue = (currentLevel * 47) % 360;
-        ctx.fillStyle = `hsla(${roomHue}, 60%, 45%, 0.07)`;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
+    // (Room variety now comes from the biome system — each level regenerates
+    // its textures with a unique seed and the zone's palette.)
 
     // Cave openings (goblin spawn points) — skip structure if bg sprite has them painted in
     for (let ci = 0; ci < CAVES.length; ci++) {
@@ -7196,11 +7423,11 @@ function render() {
                 ctx.lineTo((cx + 12) * SCALE, (cy + TILE - 1) * SCALE);
                 ctx.closePath(); ctx.fill();
             }
-            // Green glow from inside cave (gradient cached — building one per
-            // cave per frame was measurable GC/setup churn)
+            // Biome-colored glow from inside cave (gradient cached — building
+            // one per cave per frame was measurable GC/setup churn)
             if (!gradCache.caveGlow) {
                 const g = ctx.createRadialGradient(0, 0, 2 * SCALE, 0, 0, TILE * SCALE);
-                g.addColorStop(0, "rgba(50,255,50,0.12)");
+                g.addColorStop(0, `rgba(${currentBiome.caveGlow},0.12)`);
                 g.addColorStop(1, "rgba(0,0,0,0)");
                 gradCache.caveGlow = g;
             }
@@ -7256,20 +7483,41 @@ function render() {
             ctx.fillText("→", (dX - 7) * SCALE, (DOOR_TILE_Y * TILE + 6) * SCALE);
             ctx.globalAlpha = 1.0;
             ctx.textAlign = "left";
-        } else {
-            // Wooden bars + padlock
+        } else if (doorBarsDown) {
+            // Wooden bars + padlock — bars slide down for a few frames after
+            // the thief slams the door at level start
+            const drop = doorSlamFx > 8 ? (doorSlamFx - 8) / 6 : 0;
             ctx.fillStyle = "#5C3A1E";
             for (let bi = 0; bi < 3; bi++) {
-                ctx.fillRect((dX + 1) * SCALE, (dY + 4 + bi * 8) * SCALE, (TILE - 4) * SCALE, 2.5 * SCALE);
+                ctx.fillRect((dX + 1) * SCALE, (dY + 4 + bi * 8 - drop * dH) * SCALE, (TILE - 4) * SCALE, 2.5 * SCALE);
             }
-            ctx.fillStyle = "#efac28";
-            ctx.fillRect((dX + 5) * SCALE, (dY + dH / 2 - 1) * SCALE, 4 * SCALE, 5 * SCALE);
+            if (doorSlamFx <= 8) {
+                ctx.fillStyle = "#efac28";
+                ctx.fillRect((dX + 5) * SCALE, (dY + dH / 2 - 1) * SCALE, 4 * SCALE, 5 * SCALE);
+            }
+        }
+        // Dust puff from the slam
+        if (doorSlamFx > 0) {
+            const df = 14 - doorSlamFx;
+            ctx.fillStyle = "#b8a888";
+            for (let i = 0; i < 5; i++) {
+                const ang = Math.PI * 0.6 + i * 0.45;
+                const dist = 2 + df * (0.8 + i * 0.15);
+                const puffX = dX + 4 + Math.cos(ang) * dist;
+                const puffY = DOOR_TILE_Y * TILE + 4 + Math.sin(ang) * dist * 0.6;
+                ctx.globalAlpha = (doorSlamFx / 14) * 0.5;
+                ctx.beginPath();
+                ctx.arc(puffX * SCALE, puffY * SCALE, (1.5 + df * 0.15) * SCALE, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1.0;
+            doorSlamFx--;
         }
     }
 
     // Bioluminescent mushroom & crystal lights along cave ceiling — drum-synced
     // Skip when cave bg sprite is loaded (lights are painted into the background)
-    const MUSH_COLORS = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#44ff44"];
+    const MUSH_COLORS = currentBiome.lights;
     // Declared outside the if-block: the floor-crystals section below needs these too
     const ar_lights = getActiveRows();
     const now_lights = performance.now();
@@ -7289,7 +7537,7 @@ function render() {
         const isCrystal = c % 4 === 0; // every 4th light is a crystal pendant
 
         // Stem/chain from ceiling
-        ctx.strokeStyle = "#1e2e1e";
+        ctx.strokeStyle = currentBiome.walls[0].base;
         ctx.lineWidth = 1 * SCALE;
         ctx.beginPath();
         ctx.moveTo(mushX * SCALE, TILE * SCALE);
@@ -7309,7 +7557,7 @@ function render() {
             ctx.closePath();
             ctx.fill();
             // Inner highlight
-            ctx.fillStyle = "#aaffaa";
+            ctx.fillStyle = currentBiome.lightHi;
             ctx.globalAlpha = 0.3 + pulseIntensity * 0.3;
             ctx.beginPath();
             ctx.moveTo(mushX * SCALE, mushY * SCALE);
@@ -7323,7 +7571,7 @@ function render() {
             // Mushroom cap — half-circle with stem
             const capR = triggered ? 3.5 : (chaseBright > 0.7 ? 3 : 2.5);
             // Thin stem
-            ctx.fillStyle = "#2a4a2a";
+            ctx.fillStyle = currentBiome.stal.hi;
             ctx.fillRect((mushX - 0.5) * SCALE, (mushY - 1) * SCALE, 1 * SCALE, 4 * SCALE);
             // Cap (half-circle arc facing down)
             ctx.globalAlpha = 0.5 + chaseBright * 0.3 + pulseIntensity * 0.2 + twinkle;
@@ -7332,7 +7580,7 @@ function render() {
             ctx.arc(mushX * SCALE, (mushY + 3) * SCALE, capR * SCALE, Math.PI, 0);
             ctx.fill();
             // Cap underside glow (lighter)
-            ctx.fillStyle = "#aaffaa";
+            ctx.fillStyle = currentBiome.lightHi;
             ctx.globalAlpha = 0.15 + pulseIntensity * 0.2;
             ctx.beginPath();
             ctx.arc(mushX * SCALE, (mushY + 3) * SCALE, (capR - 0.5) * SCALE, 0, Math.PI);
@@ -7932,6 +8180,21 @@ function render() {
             ctx.fillRect(0, 0, W_v, H_v);
             ctx.globalAlpha = 1.0;
         }
+    }
+
+    // Biome banner — announces the cavern zone when you cross into it
+    if (biomeBannerTimer > 0) {
+        biomeBannerTimer--;
+        const elapsed = 300 - biomeBannerTimer;
+        const bAlpha = elapsed < 30 ? elapsed / 30
+            : biomeBannerTimer < 60 ? biomeBannerTimer / 60 : 1;
+        ctx.globalAlpha = bAlpha;
+        const W_b = COLS * TILE;
+        const bannerText = "~ " + currentBiome.name + " ~";
+        const bW = bannerText.length * 7;
+        drawText(bannerText, W_b / 2 - bW / 2 + 1, TILE * 2 + 5, "#000000", 7);
+        drawText(bannerText, W_b / 2 - bW / 2, TILE * 2 + 4, currentBiome.lights[0], 7);
+        ctx.globalAlpha = 1.0;
     }
 
     // Controls overlay (level 1 only — stays visible, keys light up on press)
@@ -12645,12 +12908,224 @@ function renderGameOverScreen() {
     }
 }
 
+// ---- Biome Transition Cutscene ----
+// Plays after each milestone level (5/10/15/20/25): celebrate the recovered
+// DJ piece, watch the goblins drag the next one deeper, then descend into
+// the new zone with its title card. Enter skips.
+function startBiomeTransition() {
+    biomeTransFrom = currentBiome;
+    biomeTransTo = biomeForLevel(currentLevel + 1);
+    biomeTransPiece = pieceRecoveredThisLevel;
+    biomeTransNextPiece = djSetupEarned.length < DJ_SETUP_PIECES.length
+        ? DJ_SETUP_PIECES[djSetupEarned.length] : null;
+    biomeTransTimer = 0;
+    gameState = "biome-transition";
+    if (audioCtx && audioCtx.state === "running") {
+        if (!playSample("crowd", audioCtx.currentTime) && !playSample("yeah", audioCtx.currentTime)) {
+            playYeahStab(audioCtx.currentTime);
+        }
+    }
+}
+
+// Glowing golden DJ piece with rotating sparkle rays (game-unit coords)
+function drawDJPieceGlow(cx, cy, t) {
+    const s = SCALE;
+    ctx.strokeStyle = "#ffe082";
+    for (let i = 0; i < 8; i++) {
+        const ang = t * 0.02 + i * Math.PI / 4;
+        ctx.globalAlpha = 0.25 + Math.sin(t * 0.1 + i) * 0.15;
+        ctx.lineWidth = s;
+        ctx.beginPath();
+        ctx.moveTo((cx + Math.cos(ang) * 8) * s, (cy + Math.sin(ang) * 8) * s);
+        ctx.lineTo((cx + Math.cos(ang) * 13) * s, (cy + Math.sin(ang) * 13) * s);
+        ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#efac28";
+    ctx.beginPath();
+    ctx.roundRect((cx - 5) * s, (cy - 4) * s, 10 * s, 8 * s, 2 * s);
+    ctx.fill();
+    ctx.fillStyle = "#ffe082";
+    ctx.fillRect((cx - 5) * s, (cy - 4) * s, 10 * s, 2 * s);
+    if (Math.floor(t / 8) % 2 === 0) {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect((cx + 2) * s, (cy - 3) * s, s, s);
+    }
+}
+
+function renderBiomeTransition() {
+    tickSequencer(); // the beat you rebuilt keeps grooving under the cutscene
+    biomeTransTimer++;
+    const t = biomeTransTimer;
+    const W = COLS * TILE;
+    const H = ROWS * TILE;
+
+    const PH_A = 240;   // celebration: piece held high
+    const PH_B = 410;   // goblins drag the next piece deeper
+    const PH_END = 660; // auto-advance (~11s total; Enter skips)
+
+    drawRect(0, 0, W, H, "#050805");
+
+    if (t < PH_A) {
+        // === Phase 1: celebrate the recovered piece ===
+        const fadeIn = Math.min(1, t / 20);
+        const grad = ctx.createRadialGradient(
+            W / 2 * SCALE, H / 2 * SCALE, 10 * SCALE,
+            W / 2 * SCALE, H / 2 * SCALE, W * 0.4 * SCALE);
+        grad.addColorStop(0, `rgba(${biomeTransFrom.caveGlow},${0.18 * fadeIn})`);
+        grad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+
+        // Carl center stage, piece held overhead
+        const cx = W / 2 - 8, cy = H / 2 - 4;
+        ctx.globalAlpha = fadeIn;
+        drawPlayerSprite(cx, cy, 0, 0, {});
+        drawDJPieceGlow(W / 2, cy - 10, t);
+
+        // Fans flanking him, arms up, bouncing
+        for (let i = 0; i < 6; i++) {
+            const side = i % 2 === 0 ? -1 : 1;
+            const off = 22 + Math.floor(i / 2) * 16;
+            drawDancerSprite(W / 2 - 6 + side * off, cy + 10 + (i % 3) * 4,
+                DANCER_PALETTES[i % DANCER_PALETTES.length], {
+                    bob: Math.abs(Math.sin(t * 0.15 + i)) * 3,
+                    armBlend: 1,
+                    footOffset: Math.sin(t * 0.15 + i) * 1.5,
+                });
+        }
+
+        if (t > 25 && biomeTransPiece) {
+            const line = "THE " + biomeTransPiece.toUpperCase() + " IS BACK!";
+            const lw = line.length * 7;
+            drawText(line, W / 2 - lw / 2 + 1, 26, "#000000", 7);
+            drawText(line, W / 2 - lw / 2, 25, "#efac28", 7);
+        }
+
+        // DJ setup progress: six slots, earned ones lit gold
+        if (t > 55) {
+            const slotW = 12, gap = 4;
+            const totalW = DJ_SETUP_PIECES.length * slotW + (DJ_SETUP_PIECES.length - 1) * gap;
+            const sx0 = W / 2 - totalW / 2;
+            const sy0 = H - 42;
+            const label = "DJ SETUP: " + djSetupEarned.length + "/" + DJ_SETUP_PIECES.length;
+            const lblW = label.length * 5;
+            drawText(label, W / 2 - lblW / 2, sy0 - 10, "#88cc88", 5);
+            for (let i = 0; i < DJ_SETUP_PIECES.length; i++) {
+                const sx = sx0 + i * (slotW + gap);
+                const earned = i < djSetupEarned.length;
+                const newest = i === djSetupEarned.length - 1;
+                const pulse = newest ? 0.75 + Math.sin(t * 0.15) * 0.25 : 1;
+                ctx.globalAlpha = fadeIn * (earned ? pulse : 0.5);
+                drawRect(sx, sy0, slotW, 10, earned ? "#efac28" : "#1a2a1a");
+                if (earned) drawRect(sx + 1, sy0 + 1, slotW - 2, 2, "#ffe082");
+            }
+        }
+        ctx.globalAlpha = 1;
+    } else if (t < PH_B) {
+        // === Phase 2: the goblins drag the NEXT piece deeper ===
+        const pt = t - PH_A;
+        // The new zone's glow leaks in from the right — that's where they're headed
+        const grad = ctx.createRadialGradient(
+            W * SCALE, H / 2 * SCALE, 10 * SCALE,
+            W * SCALE, H / 2 * SCALE, W * 0.5 * SCALE);
+        grad.addColorStop(0, `rgba(${biomeTransTo.caveGlow},0.16)`);
+        grad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+
+        // Goblin sprints across the screen with the stolen piece overhead
+        const prog = Math.min(1, pt / 140);
+        const gx = -TILE + prog * (W + TILE * 2);
+        const gy = H / 2 + 8 + Math.sin(pt * 0.1) * 2;
+        drawGoblinSprite("normal", gx, gy, Math.floor(pt / 5) % 4, { dir: 3, showShadow: false });
+        if (biomeTransNextPiece) drawDJPieceGlow(gx + 8, gy - 8, t);
+
+        if (biomeTransNextPiece && pt > 15) {
+            const line1 = "BUT THE GOBLINS DRAG THE " + biomeTransNextPiece.toUpperCase();
+            const line2 = "DEEPER INTO THE CAVES...";
+            const w1 = line1.length * 6, w2 = line2.length * 6;
+            drawText(line1, W / 2 - w1 / 2 + 1, 26, "#000000", 6);
+            drawText(line1, W / 2 - w1 / 2, 25, "#39FF14", 6);
+            drawText(line2, W / 2 - w2 / 2 + 1, 36, "#000000", 6);
+            drawText(line2, W / 2 - w2 / 2, 35, "#39FF14", 6);
+        }
+    } else {
+        // === Phase 3: descend into the new zone ===
+        const pt = t - PH_B;
+        const dur = PH_END - PH_B - 30;
+        const p = Math.min(1, pt / dur);
+
+        // Crossfade: old zone's glow behind, new zone's glow ahead
+        const gradOld = ctx.createRadialGradient(
+            0, H / 2 * SCALE, 10 * SCALE, 0, H / 2 * SCALE, W * 0.45 * SCALE);
+        gradOld.addColorStop(0, `rgba(${biomeTransFrom.caveGlow},${0.14 * (1 - p)})`);
+        gradOld.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = gradOld;
+        ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+        const gradNew = ctx.createRadialGradient(
+            W * SCALE, H / 2 * SCALE, 10 * SCALE, W * SCALE, H / 2 * SCALE, W * 0.55 * SCALE);
+        gradNew.addColorStop(0, `rgba(${biomeTransTo.caveGlow},${0.05 + 0.15 * p})`);
+        gradNew.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = gradNew;
+        ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+
+        // Tunnel floor line
+        drawRect(0, H / 2 + 26, W, 2, "#1a1a1a");
+
+        // Carl leads his entourage deeper (rightward)
+        const walkX = W * 0.1 + p * W * 0.55;
+        const walkY = H / 2 + 8;
+        drawPlayerSprite(walkX, walkY, 1 + (Math.floor(t / 8) % 2), 3, {});
+        const crew = Math.max(2, Math.min(4, Math.floor(entourageSize / 3) + 2));
+        for (let i = 0; i < crew; i++) {
+            drawDancerSprite(walkX - 18 - i * 14, walkY + 2,
+                DANCER_PALETTES[i % DANCER_PALETTES.length], {
+                    bob: Math.abs(Math.sin(t * 0.12 + i)) * 2,
+                    armBlend: 0,
+                    footOffset: Math.sin(t * 0.12 + i) * 1.5,
+                });
+        }
+
+        // New zone title card + tagline + mission
+        if (pt > 40) {
+            const a = Math.min(1, (pt - 40) / 30);
+            ctx.globalAlpha = a;
+            const title = "~ " + biomeTransTo.name + " ~";
+            const tw = title.length * 8;
+            drawText(title, W / 2 - tw / 2 + 1, 26, "#000000", 8);
+            drawText(title, W / 2 - tw / 2, 25, biomeTransTo.lights[0], 8);
+            const tag = biomeTransTo.tagline || "";
+            const tgw = tag.length * 5;
+            drawText(tag, W / 2 - tgw / 2, 37, "#8a9a8a", 5);
+            if (biomeTransNextPiece) {
+                const goal = "RECOVER THE " + biomeTransNextPiece.toUpperCase() + "!";
+                const gw2 = goal.length * 6;
+                drawText(goal, W / 2 - gw2 / 2, H - 30, "#efac28", 6);
+            }
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // Skip prompt
+    if (t > 90) {
+        ctx.globalAlpha = 0.5 + Math.sin(t * 0.1) * 0.3;
+        drawText("ENTER >", W - 34, H - 10, "#8a9a8a", 4);
+        ctx.globalAlpha = 1;
+    }
+
+    if (t >= PH_END) {
+        advanceLevel();
+    }
+}
+
 function renderSabotageAnim() {
     // Keep the drum sequencer playing during the scramble
     tickSequencer();
 
     sabotageAnimTimer++;
     const t = sabotageAnimTimer;
+    if (screenShake > 0) screenShake--; // update() isn't running in this state
 
     // Determine which cell the goblin is "at"
     const cellIndex = Math.floor(t / SABOTAGE_FRAMES_PER_CELL);
@@ -12724,12 +13199,77 @@ function renderSabotageAnim() {
         drawGoblinSprite("normal", gx, gy, frame, { dir: dir, showShadow: false });
     }
 
-    // Animation complete — wait a brief pause then transition
+    // Scramble complete — the thief bolts for the right door and slams it
+    // shut behind itself (that's why the exit is barred all level)
     if (sabotageFlipIndex >= sabotageCells.length) {
+        if (sabotageCells.length === 0) {
+            // Nothing to scramble (shouldn't happen) — just close the door and go
+            if (t > 20) {
+                doorBarsDown = true;
+                if (biomeBannerPending) {
+                    biomeBannerTimer = 300;
+                    biomeBannerPending = false;
+                }
+                gameState = sabotageNextState;
+            }
+            return;
+        }
         const endFrame = sabotageCells.length * SABOTAGE_FRAMES_PER_CELL;
-        if (t > endFrame + 20) {
+        const tt = t - endFrame;      // frames since the scramble finished
+        const THIEF_RUN = 50;         // sprint duration
+        const THIEF_PAUSE = 30;       // beat after the slam before play starts
+
+        const last = sabotageCells[sabotageCells.length - 1];
+        const startX = (GRID_X + last.c) * TILE;
+        const startY = rowPixelY(last.r);
+        const exitX = (COLS - 2) * TILE;
+        const exitY = DOOR_TILE_Y * TILE;
+
+        if (tt >= 0 && tt <= THIEF_RUN) {
+            // Sprint from the last scrambled cell to the door (smoothstep ease)
+            const prog = tt / THIEF_RUN;
+            const ease = prog * prog * (3 - 2 * prog);
+            const gx = startX + (exitX - startX) * ease;
+            const gy = startY + (exitY - startY) * ease;
+            const runFrame = Math.floor(t / 4) % 4;
+            drawGoblinSprite("normal", gx, gy, runFrame, { dir: 3, showShadow: false });
+
+            // On milestone levels the thief is visibly carrying the next DJ piece
+            if (thiefCarriedPiece) {
+                const bobY = Math.sin(t * 0.3) * 1.5;
+                const px2 = (gx + TILE / 2) * SCALE;
+                const py2 = (gy - 5 + bobY) * SCALE;
+                ctx.fillStyle = "#efac28";
+                ctx.fillRect(px2 - 3 * SCALE, py2 - 3 * SCALE, 6 * SCALE, 6 * SCALE);
+                ctx.fillStyle = "#ffe082";
+                ctx.fillRect(px2 - 3 * SCALE, py2 - 3 * SCALE, 6 * SCALE, 2 * SCALE);
+                if (Math.floor(t / 6) % 2 === 0) {
+                    ctx.fillStyle = "rgba(255,255,255,0.9)";
+                    ctx.fillRect(px2 + 2 * SCALE, py2 - 5 * SCALE, SCALE, SCALE);
+                }
+                // Callout so the player knows what this zone's prize is
+                const stealText = "THE THIEF HAS THE " + thiefCarriedPiece.toUpperCase() + "!";
+                const stW = stealText.length * 6;
+                const W_t = COLS * TILE;
+                drawText(stealText, W_t / 2 - stW / 2 + 1, TILE * 3 + 1, "#000000", 6);
+                drawText(stealText, W_t / 2 - stW / 2, TILE * 3, "#efac28", 6);
+            }
+
+            if (tt === THIEF_RUN) {
+                // SLAM! — bars drop, dust flies, the room shakes
+                doorBarsDown = true;
+                doorSlamFx = 14;
+                screenShake = 8;
+                shakeIntensity = 4;
+                playDoorSlam();
+            }
+        } else if (tt > THIEF_RUN + THIEF_PAUSE) {
             if (sabotageNextState === "enemywarning-intro") {
                 // Sound already played when setting up the warning
+            }
+            if (biomeBannerPending) {
+                biomeBannerTimer = 300;
+                biomeBannerPending = false;
             }
             gameState = sabotageNextState;
         }
@@ -13150,6 +13690,8 @@ function gameLoop(timestamp) {
                 renderCaveReturn();
             } else if (gameState === "levelcomplete") {
                 renderLevelComplete();
+            } else if (gameState === "biome-transition") {
+                renderBiomeTransition();
             } else if (gameState === "minigame") {
                 if (minigameState === "kidnap") {
                     updateMinigameKidnap();
