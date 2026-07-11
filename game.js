@@ -782,6 +782,30 @@ function texRNG(seed) {
     };
 }
 
+// ---- Goblin rune alphabet ----
+// Each letter maps to a deterministic rune (same letter → same rune, a real
+// substitution cipher — the lore message is technically decodable early).
+// Strokes are normalized to a 0..1 box; cached per character. Used by the
+// glyph cutscenes and as ambient carvings in the cave wall textures.
+const runeStrokeCache = {};
+function getRuneStrokes(ch) {
+    if (runeStrokeCache[ch]) return runeStrokeCache[ch];
+    const rng = texRNG(ch.charCodeAt(0) * 7331 + 13);
+    const strokes = [];
+    const stemX = 0.25 + Math.floor(rng() * 3) * 0.25; // stem at 1/4, 1/2, or 3/4
+    strokes.push([stemX, 0, stemX, 1]);
+    const branches = 2 + Math.floor(rng() * 2);
+    for (let i = 0; i < branches; i++) {
+        const y1 = 0.1 + rng() * 0.6;
+        const dir = rng() > 0.5 ? 1 : -1;
+        const x2 = Math.max(0, Math.min(1, stemX + dir * (0.3 + rng() * 0.45)));
+        const y2 = Math.max(0, Math.min(1, rng() > 0.5 ? y1 + 0.25 + rng() * 0.3 : y1 - 0.2 - rng() * 0.2));
+        strokes.push([stemX, y1, x2, y2]);
+    }
+    runeStrokeCache[ch] = strokes;
+    return strokes;
+}
+
 // Helper: parse hex color to [r,g,b]
 function hexToRGB(hex) {
     const v = parseInt(hex.slice(1), 16);
@@ -1329,6 +1353,35 @@ function buildCaveBgTexture(biome, LS) {
         g.lineTo((smX) * SCALE, (smBaseY - smH) * SCALE);
         g.closePath();
         g.fill();
+        g.globalAlpha = 1;
+    }
+
+    // Faint goblin runes carved into the walls — the same message is
+    // everywhere once you know to look for it. (Duplicated word list here:
+    // GOBLIN_MESSAGE is declared later and this runs at startup.)
+    {
+        const words = ["WE", "JUST", "WANT", "TO", "DANCE", "WITH", "YOU"];
+        const runeSnips = 2 + Math.floor(stRNG() * 3);
+        g.strokeStyle = biome.stal.hi;
+        g.lineWidth = SCALE * 0.6;
+        for (let i = 0; i < runeSnips; i++) {
+            const word = words[Math.floor(stRNG() * words.length)];
+            const onTop = stRNG() > 0.45;
+            const chH = 6, chW = 4.5;
+            let rx = (2 + stRNG() * (COLS - 6)) * TILE;
+            const ry = onTop ? 5 + stRNG() * 3 : (ROWS - 1) * TILE + 5 + stRNG() * 3;
+            g.globalAlpha = 0.14 + stRNG() * 0.1;
+            g.beginPath();
+            for (const chr of word) {
+                const strokes = getRuneStrokes(chr);
+                for (const s of strokes) {
+                    g.moveTo((rx + s[0] * chW) * SCALE, (ry + s[1] * chH) * SCALE);
+                    g.lineTo((rx + s[2] * chW) * SCALE, (ry + s[3] * chH) * SCALE);
+                }
+                rx += chW + 1.5;
+            }
+            g.stroke();
+        }
         g.globalAlpha = 1;
     }
 
@@ -10361,6 +10414,39 @@ function renderEnding() {
             ctx.globalAlpha = 1;
         }
 
+        // The glyph message finally resolves — the last words decode as the
+        // goblins dance. This is what was carved on every wall all along.
+        if (endingPhase === 4 && endingTimer > 40 && endingTimer < 330) {
+            const RESOLVE = { "TO": 100, "DANCE": 145, "YOU": 190 };
+            const mAlpha = endingTimer < 60 ? (endingTimer - 40) / 20
+                : endingTimer > 300 ? Math.max(0, 1 - (endingTimer - 300) / 30) : 1;
+            const decoded = ["WE", "JUST", "WANT", "WITH"];
+            const highlight = {};
+            for (const wrd in RESOLVE) {
+                if (endingTimer >= RESOLVE[wrd]) {
+                    decoded.push(wrd);
+                    // Freshly resolved words flash white, then settle to gold
+                    if (endingTimer < RESOLVE[wrd] + 25) highlight[wrd] = "#ffffff";
+                }
+            }
+            const msgY = caveH / 2 + 4;
+            ctx.globalAlpha = mAlpha * 0.55;
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(0, (msgY - 9) * SCALE, caveW * SCALE, 14 * SCALE);
+            ctx.globalAlpha = mAlpha;
+            drawGlyphMessage(caveW / 2, msgY, 7, decoded, { highlight });
+            // Carl's realization
+            if (endingTimer > 225) {
+                const rA = Math.min(1, (endingTimer - 225) / 25);
+                ctx.globalAlpha = mAlpha * rA;
+                const oops = "...HAVE I BEEN PUNCHING PARTY INVITATIONS THIS WHOLE TIME?";
+                const ow = oops.length * 4;
+                drawText(oops, caveW / 2 - ow / 2 + 1, msgY + 17, "#000000", 4);
+                drawText(oops, caveW / 2 - ow / 2, msgY + 16, "#efd8a1", 4);
+            }
+            ctx.globalAlpha = 1;
+        }
+
         // Caption text
         if (endingPhase === 4) {
             if (endingTimer > 120 && endingTimer < 360) {
@@ -12908,10 +12994,72 @@ function renderGameOverScreen() {
     }
 }
 
+// ---- The Goblin Glyphs (lore thread) ----
+// A message in goblin script is carved into the tunnel walls. Carl finds a
+// fragment after every milestone level and deciphers it word by word. The
+// partial readings play as threats ("WANT"... "WANT WITH"...) until the
+// ending reveals the whole sentence at the underground rave.
+const GOBLIN_MESSAGE = ["WE", "JUST", "WANT", "TO", "DANCE", "WITH", "YOU"];
+// Words readable at each stage (stage = DJ pieces recovered, 1-5)
+const GLYPH_DECODE_STAGES = [
+    [],                                 // after L5:  all runes
+    ["WANT"],                           // after L10
+    ["WANT", "WITH"],                   // after L15
+    ["JUST", "WANT", "WITH"],           // after L20
+    ["WE", "JUST", "WANT", "WITH"],     // after L25
+];
+const GLYPH_REACTIONS = [
+    "...IS THIS WRITING?",
+    "I CAN READ ONE WORD NOW. 'WANT'. WANT WHAT?!",
+    "'WANT'... 'WITH'... OK, THAT'S NOT OMINOUS AT ALL.",
+    "'JUST WANT WITH'?! WITH WHAT?! WITH WHO?!",
+    "'WE JUST WANT ... WITH ...' — I'M SO CLOSE.",
+];
+
+// Draw one rune in a character cell. x,y match drawText's convention:
+// y is the text baseline, the cell is `size` game units per character.
+function drawRuneChar(ch, x, y, size, color) {
+    const strokes = getRuneStrokes(ch);
+    const top = y - size * 0.75;
+    const w = size * 0.55;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1, SCALE * 0.75);
+    ctx.beginPath();
+    for (const s of strokes) {
+        ctx.moveTo((x + s[0] * w) * SCALE, (top + s[1] * size * 0.75) * SCALE);
+        ctx.lineTo((x + s[2] * w) * SCALE, (top + s[3] * size * 0.75) * SCALE);
+    }
+    ctx.stroke();
+}
+
+// Draw the goblin message centered at centerX: decoded words as gold text,
+// the rest as runes. decodedWords: array of readable words (or true = all).
+// opts.highlight: {word: color} overrides for freshly decoded words.
+function drawGlyphMessage(centerX, y, size, decodedWords, opts) {
+    const o = opts || {};
+    const totalChars = GOBLIN_MESSAGE.reduce((n, w) => n + w.length, 0) + GOBLIN_MESSAGE.length - 1;
+    let x = centerX - (totalChars * size) / 2;
+    for (const word of GOBLIN_MESSAGE) {
+        const decoded = decodedWords === true || decodedWords.includes(word);
+        if (decoded) {
+            const col = (o.highlight && o.highlight[word]) || o.decodedColor || "#ffe082";
+            for (let i = 0; i < word.length; i++) {
+                drawText(word[i], x + i * size + size * 0.15, y, col, size);
+            }
+        } else {
+            for (let i = 0; i < word.length; i++) {
+                drawRuneChar(word[i], x + i * size + size * 0.15, y, size, o.runeColor || "#5a8a5a");
+            }
+        }
+        x += (word.length + 1) * size;
+    }
+}
+
 // ---- Biome Transition Cutscene ----
 // Plays after each milestone level (5/10/15/20/25): celebrate the recovered
-// DJ piece, watch the goblins drag the next one deeper, then descend into
-// the new zone with its title card. Enter skips.
+// DJ piece, watch the goblins drag the next one deeper, read the newest
+// glyph fragment, then descend into the new zone with its title card.
+// Enter skips.
 function startBiomeTransition() {
     biomeTransFrom = currentBiome;
     biomeTransTo = biomeForLevel(currentLevel + 1);
@@ -12960,9 +13108,10 @@ function renderBiomeTransition() {
     const W = COLS * TILE;
     const H = ROWS * TILE;
 
-    const PH_A = 240;   // celebration: piece held high
-    const PH_B = 410;   // goblins drag the next piece deeper
-    const PH_END = 660; // auto-advance (~11s total; Enter skips)
+    const PH_A = 220;   // celebration: piece held high
+    const PH_B = 360;   // goblins drag the next piece deeper
+    const PH_G = 560;   // goblin glyphs carved into the tunnel wall
+    const PH_END = 800; // auto-advance (~13s total; Enter skips)
 
     drawRect(0, 0, W, H, "#050805");
 
@@ -13035,7 +13184,7 @@ function renderBiomeTransition() {
         ctx.fillRect(0, 0, W * SCALE, H * SCALE);
 
         // Goblin sprints across the screen with the stolen piece overhead
-        const prog = Math.min(1, pt / 140);
+        const prog = Math.min(1, pt / 120);
         const gx = -TILE + prog * (W + TILE * 2);
         const gy = H / 2 + 8 + Math.sin(pt * 0.1) * 2;
         drawGoblinSprite("normal", gx, gy, Math.floor(pt / 5) % 4, { dir: 3, showShadow: false });
@@ -13050,10 +13199,53 @@ function renderBiomeTransition() {
             drawText(line2, W / 2 - w2 / 2 + 1, 36, "#000000", 6);
             drawText(line2, W / 2 - w2 / 2, 35, "#39FF14", 6);
         }
-    } else {
-        // === Phase 3: descend into the new zone ===
+    } else if (t < PH_G) {
+        // === Phase 3: the goblin glyphs on the tunnel wall ===
         const pt = t - PH_B;
-        const dur = PH_END - PH_B - 30;
+        const fade = Math.min(1, pt / 25);
+        const stage = Math.max(1, Math.min(GLYPH_DECODE_STAGES.length, djSetupEarned.length));
+        const decoded = GLYPH_DECODE_STAGES[stage - 1];
+
+        ctx.globalAlpha = fade;
+        // Stone slab, lit by Carl's torchlight
+        const slabW = 220, slabH = 64;
+        const slabX = W / 2 - slabW / 2, slabY = H / 2 - 40;
+        const glowGrad = ctx.createRadialGradient(
+            W / 2 * SCALE, (slabY + slabH / 2) * SCALE, 8 * SCALE,
+            W / 2 * SCALE, (slabY + slabH / 2) * SCALE, slabW * 0.7 * SCALE);
+        glowGrad.addColorStop(0, "rgba(239,172,40,0.10)");
+        glowGrad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = glowGrad;
+        ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+        drawRect(slabX - 2, slabY - 2, slabW + 4, slabH + 4, biomeTransTo.gridWall.dark);
+        drawRect(slabX, slabY, slabW, slabH, biomeTransTo.gridWall.base);
+        drawRect(slabX, slabY, slabW, 2, biomeTransTo.gridWall.hi);
+
+        const cap = "CARVED INTO THE TUNNEL WALL:";
+        drawText(cap, W / 2 - cap.length * 5 / 2, slabY - 8, "#8a9a8a", 5);
+
+        // The message — decoded words in gold, the rest still runes
+        if (pt > 30) {
+            const mAlpha = Math.min(1, (pt - 30) / 20);
+            ctx.globalAlpha = fade * mAlpha;
+            drawGlyphMessage(W / 2, slabY + 36, 7, decoded, {});
+        }
+
+        // Carl puzzling it out below
+        drawPlayerSprite(W / 2 - 8, slabY + slabH + 10, 0, 1, {}); // facing the wall
+        if (pt > 80) {
+            const rAlpha = Math.min(1, (pt - 80) / 20);
+            ctx.globalAlpha = fade * rAlpha;
+            const line = GLYPH_REACTIONS[stage - 1];
+            const lw = line.length * 5;
+            drawText(line, W / 2 - lw / 2 + 1, H - 26 + 1, "#000000", 5);
+            drawText(line, W / 2 - lw / 2, H - 26, "#efd8a1", 5);
+        }
+        ctx.globalAlpha = 1;
+    } else {
+        // === Phase 4: descend into the new zone ===
+        const pt = t - PH_G;
+        const dur = PH_END - PH_G - 30;
         const p = Math.min(1, pt / dur);
 
         // Crossfade: old zone's glow behind, new zone's glow ahead
