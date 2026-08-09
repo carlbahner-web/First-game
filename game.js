@@ -9398,7 +9398,8 @@ function heroSet() {
             leg: DONK_IMG.leg,
             bodyH: bodyH,
             armY: DK.by + DK.bh - bodyH / 2, // shoulders at the drum's center height
-            armX: 24,                        // out at the rim
+            armX: 26,                        // shoulder ON the rim, not inside it
+            armScale: 1.25,                  // arms sized to the bigger drum body
             idleArm: -Math.PI / 4,           // hands down 45deg (audience-left CCW, right CW)
         };
     }
@@ -9433,13 +9434,14 @@ function drawDonk(cx, cy, k, o) {
     };
     const armMX = set.armX !== undefined ? set.armX : 22;
     const armMY = set.armY !== undefined ? set.armY : -31;
-    const armIdle = set.idleArm || 0; // base pose: hands rotated down
+    const armIdle = set.idleArm || 0;  // base pose: hands rotated down
+    const as_ = set.armScale || 1;     // uniform arm scale-up
     const armAt = (side, swing) => {
         ctx.save();
         ctx.translate(side * armMX * k, armMY * k); // shoulder mount
         if (side > 0) ctx.scale(-1, 1);             // arm art mirrors for this side
         ctx.rotate(swing + armIdle);
-        ctx.drawImage(set.arm, -DK.armW * DK.armPX * k, -DK.armH * DK.armPY * k, DK.armW * k, DK.armH * k);
+        ctx.drawImage(set.arm, -DK.armW * as_ * DK.armPX * k, -DK.armH * as_ * DK.armPY * k, DK.armW * as_ * k, DK.armH * as_ * k);
         ctx.restore();
     };
 
