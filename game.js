@@ -9380,12 +9380,25 @@ let DONK_HERO = null;
 function heroSet() {
     if (!DONK_HERO) {
         const img = DONK_IMG.hero;
+        // BUZZ's art natively faces the opposite way from the Donk pieces —
+        // pre-flip it once so the whole rig mirrors as one and his face
+        // agrees with his feet
+        const flipped = document.createElement("canvas");
+        flipped.width = img.width || 1;
+        flipped.height = img.height || 1;
+        const fg = flipped.getContext("2d");
+        fg.translate(flipped.width, 0);
+        fg.scale(-1, 1);
+        fg.drawImage(img, 0, 0);
+        const bodyH = DK.bw * (img.height / img.width);
         DONK_HERO = {
-            body: img,
+            body: flipped,
             button: null, // face is part of the body art — no separate pulse piece
             arm: DONK_IMG.arm,
             leg: DONK_IMG.leg,
-            bodyH: DK.bw * (img.height / img.width),
+            bodyH: bodyH,
+            armY: DK.by + DK.bh - bodyH / 2, // shoulders at the drum's center height
+            armX: 24,                        // out at the rim
         };
     }
     return DONK_HERO;
@@ -9417,10 +9430,12 @@ function drawDonk(cx, cy, k, o) {
         ctx.drawImage(set.leg, -DK.legW * ls * DK.legPX * k, -DK.legH * ls * DK.legPY * k, DK.legW * ls * k, DK.legH * ls * k);
         ctx.restore();
     };
+    const armMX = set.armX !== undefined ? set.armX : 22;
+    const armMY = set.armY !== undefined ? set.armY : -31;
     const armAt = (side, swing) => {
         ctx.save();
-        ctx.translate(side * 22 * k, -31 * k); // shoulder on the shell edge
-        if (side > 0) ctx.scale(-1, 1);        // far arm mirrors the art
+        ctx.translate(side * armMX * k, armMY * k); // shoulder mount
+        if (side > 0) ctx.scale(-1, 1);             // far arm mirrors the art
         ctx.rotate(swing);
         ctx.drawImage(set.arm, -DK.armW * DK.armPX * k, -DK.armH * DK.armPY * k, DK.armW * k, DK.armH * k);
         ctx.restore();
