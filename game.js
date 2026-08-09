@@ -9451,7 +9451,7 @@ const BZ = {
     legSplit: 5.6,
     footOut: 1.0,   // how far outside its pivot each foot parks when standing
     stride: 12, legLift: 0, legGauge: 5.76, legLen: 24.2,
-    dip: 1.5,       // how far the body ducks at full spread; the legs stretch for the rest
+    dip: 6,         // how far the body ducks at full spread; the legs stretch for the rest
     extremes: 0.55, // <1 holds the spread pose, snaps through the pass
     armX: 20, armXTrail: 22, armGauge: 4.2, armLen: 31, armOut: 6, armSwing: 9,
     fistGauge: 6.0, fistBase: 12, fistReach: 32,
