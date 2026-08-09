@@ -8526,7 +8526,7 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         }
         donkCarlLastX = gx; donkCarlLastY = gy;
         const moving = dist > 0.05;
-        donkCarlPhase += moving ? dist * DONK_STRIDE : 0.05;
+        donkCarlPhase = moving ? donkCarlPhase + dist * DONK_STRIDE : donkSettlePhase(donkCarlPhase);
         // Facing is sticky: vertical moves keep whichever way he last faced
         if (dir === 2) donkCarlFacing = -1;
         else if (dir === 3) donkCarlFacing = 1;
@@ -8534,9 +8534,8 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         drawDonk((gx + TILE / 2 + leanX) * SCALE, (gy + TILE - 1 + leanY * 0.5) * SCALE, 90 / 58, {
             phase: donkCarlPhase,
             mirror: donkCarlFacing === 1, // art faces left natively
-            stand: !moving,               // marks time when not travelling
             hipX: 5.5,                    // hips pulled in from the rig's 9
-            stride: 10,                   // long strides — legs cross the midline
+            stride: 14,                   // long, natural strides
         });
         if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
         return;
@@ -9323,7 +9322,13 @@ const DONK_PLAYER = true;
 let donkCarlPhase = 0;        // player stride phase (advances with distance moved)
 let donkCarlLastX = null, donkCarlLastY = null;
 let donkCarlFacing = 1;       // sticky horizontal facing (+1 right, -1 left)
-const DONK_STRIDE = 0.4;      // stride phase per game px moved
+const DONK_STRIDE = 0.29;     // stride phase per game px (matched to stride 14, no foot-slide)
+// Standing still = legs actually still: glide the phase to the nearest
+// rest pose (a multiple of pi, where the swing is zero) over a few frames
+function donkSettlePhase(ph) {
+    const rest = Math.round(ph / Math.PI) * Math.PI;
+    return ph + (rest - ph) * 0.3;
+}
 
 function bakeTint(img, color, amt) {
     const c = document.createElement("canvas");
@@ -9442,8 +9447,9 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
         }
         drawDonk((gx + TILE / 2) * SCALE, (gy + TILE - 2) * SCALE,
             (type === "elite" ? 78 : 66) / 58, {
-                wob: opts.wob || 0,
+                wob: opts.phase !== undefined ? 0 : (opts.wob || 0),
                 phase: opts.phase,
+                stride: 12,
                 mirror: opts.face !== undefined ? opts.face === 1 : dir === 3, // sticky horizontal facing
                 stand: opts.stand,
                 flash: opts.bodyCol === "#ffffff", // hurt + windup telegraph flashes
@@ -9747,7 +9753,8 @@ function drawGoblinFor(g) {
     }
     g.donkLastX = g.x; g.donkLastY = g.y;
     g.donkMoving = gDist > 0.05;
-    g.donkPhase = (g.donkPhase || 0) + (g.donkMoving ? gDist * 0.65 : 0.05);
+    if (g.donkPhase === undefined) g.donkPhase = g.wob || 0; // desync folded in
+    g.donkPhase = g.donkMoving ? g.donkPhase + gDist * 0.44 : donkSettlePhase(g.donkPhase);
     // Color palette: elite changes color based on HP
     let bodyCol, darkCol, headCol, eyeCol;
     if (g.hurtTimer > 0 && g.hurtTimer % 4 < 2) {
@@ -9781,8 +9788,7 @@ function drawGoblinFor(g) {
     drawGoblinSprite(g.elite ? "elite" : "normal", g.x, g.y,
         dancing ? Math.floor(g.danceTimer / 4) % 4 : g.frame, {
         dir: dancing ? 0 : g.dir, bodyCol, darkCol, headCol, eyeCol,
-        wob: g.wob || 0, face: g.donkFace,
-        phase: g.donkPhase, stand: !g.donkMoving
+        face: g.donkFace, phase: g.donkPhase
     });
 
     if (dancing) {
