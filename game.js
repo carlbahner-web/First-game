@@ -8514,7 +8514,7 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         }
     }
 
-    // ---- Donk stand-in for Carl (until BUZZ art lands) ----
+    // ---- BUZZ, the player (Donk rig, hero head/body) ----
     if (donkReady && DONK_PLAYER) {
         // Stride is locked to DISTANCE TRAVELLED — the legs cover ground at
         // the speed the character actually moves, like the procedural walk.
@@ -8537,7 +8537,7 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
             hipX: 5.5,                    // hips pulled in from the rig's 9
             stride: 14,                   // long, natural strides
             legScale: 1.2,                // longer legs, art scaled not stretched
-            hero: true,                   // the smiling drum head/body
+            hero: true,                   // BUZZ's head/body
         });
         if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
         return;
@@ -9314,12 +9314,12 @@ const DONK_FILES = {
     button: "assets/donk/donk-button.png",
     arm:    "assets/donk/donk-arm.png",
     leg:    "assets/donk/donk-leg.png",
-    hero:   "assets/donk/hero-drum.png", // the player's head/body (optional)
+    hero:   "assets/donk/hero-drum.png", // BUZZ — the player's head/body
 };
 const DONK_IMG = { body: null, button: null, arm: null, leg: null };
 const DONK_TINT = { elite: {} }; // tinted variants, baked once on load
 let donkReady = false;
-// Carl draws as a Donk stand-in until BUZZ art lands.
+// The player is BUZZ (the smiling drum, via the hero slot below).
 // Flip to false to get procedural Carl back.
 const DONK_PLAYER = true;
 let donkCarlPhase = 0;        // player stride phase (advances with distance moved)
