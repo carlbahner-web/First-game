@@ -8514,6 +8514,19 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         }
     }
 
+    // ---- Donk stand-in for Carl (until BUZZ art lands) ----
+    if (donkReady && DONK_PLAYER) {
+        if (ghost) { ctx.globalAlpha = 0.5; ctx.globalCompositeOperation = "lighter"; }
+        drawDonk((gx + TILE / 2 + leanX) * SCALE, (gy + TILE - 1 + leanY * 0.5) * SCALE, 90 / 58, {
+            wob: 7.3,                                // his own walk phase
+            mirror: dir === 2,
+            stand: frame === 0 && punch <= 0,        // marks time when idle
+            tint: "player",
+        });
+        if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
+        return;
+    }
+
     // ---- Sprite sheet path for walk-down (20-frame animation) ----
     if (dir === 0 && IMAGES.player_sheet_down && punch <= 0) {
         const sheet = IMAGES.player_sheet_down;
@@ -8816,8 +8829,15 @@ function drawPunch() {
     const fistX = (cx + leanX + shoulderOffX + dx * armLen) * SCALE;
     const fistY = (cy + leanY + shoulderOffY + dy * armLen) * SCALE;
 
-    // === ARM === (procedural Carl's skin palette)
-    ctx.strokeStyle = "#efb775";
+    // Donk-Carl punches with a rubber-hose glove; procedural Carl keeps skin
+    const glove = donkReady && DONK_PLAYER;
+    const armCol = glove ? "#2C2C2A" : "#efb775";
+    const armOutCol = glove ? "#2C2C2A" : "#927e6a";
+    const fistShadowCol = glove ? "#b3aa96" : "#a58c27";
+    const fistCol = glove ? "#fcf7e8" : "#efb775";
+
+    // === ARM ===
+    ctx.strokeStyle = armCol;
     ctx.lineWidth = 4 * SCALE;
     ctx.lineCap = "round";
     ctx.beginPath();
@@ -8826,7 +8846,7 @@ function drawPunch() {
     ctx.stroke();
 
     // Arm outline
-    ctx.strokeStyle = "#927e6a";
+    ctx.strokeStyle = armOutCol;
     ctx.lineWidth = 5 * SCALE;
     ctx.globalAlpha = 0.3;
     ctx.beginPath();
@@ -8838,15 +8858,21 @@ function drawPunch() {
     // === FIST ===
     const fistSize = 3.5;
     // Fist shadow
-    ctx.fillStyle = "#a58c27";
+    ctx.fillStyle = fistShadowCol;
     ctx.beginPath();
     ctx.arc(fistX + SCALE, fistY + SCALE, fistSize * SCALE, 0, Math.PI * 2);
     ctx.fill();
     // Main fist
-    ctx.fillStyle = "#efb775";
+    ctx.fillStyle = fistCol;
     ctx.beginPath();
     ctx.arc(fistX, fistY, fistSize * SCALE, 0, Math.PI * 2);
     ctx.fill();
+    if (glove) {
+        // Inked glove outline
+        ctx.strokeStyle = "#2C2C2A";
+        ctx.lineWidth = 1.5 * SCALE;
+        ctx.stroke();
+    }
     // Knuckle highlights
     ctx.fillStyle = "#F0D8B8";
     const knucklePerp = dx === 0 ? 1 : 0;
@@ -9274,8 +9300,11 @@ const DONK_FILES = {
     leg:    "assets/donk/donk-leg.png",
 };
 const DONK_IMG = { body: null, button: null, arm: null, leg: null };
-const DONK_TINT = { elite: {} }; // tinted variants, baked once on load
+const DONK_TINT = { elite: {}, player: {} }; // tinted variants, baked once on load
 let donkReady = false;
+// Carl draws as a mustard-washed Donk stand-in until BUZZ art lands.
+// Flip to false to get procedural Carl back.
+const DONK_PLAYER = true;
 
 function bakeTint(img, color, amt) {
     const c = document.createElement("canvas");
@@ -9297,6 +9326,11 @@ function donkFinishLoad() {
         DONK_TINT.elite.arm = bakeTint(DONK_IMG.arm, INK.teal, 0.45);
         DONK_TINT.elite.leg = bakeTint(DONK_IMG.leg, INK.teal, 0.45);
         DONK_TINT.elite.button = DONK_IMG.button;
+        // Player stand-in: Midway Mustard wash — clearly the hero at a glance
+        DONK_TINT.player.body = bakeTint(DONK_IMG.body, INK.mustard, 0.4);
+        DONK_TINT.player.arm = bakeTint(DONK_IMG.arm, INK.mustard, 0.4);
+        DONK_TINT.player.leg = bakeTint(DONK_IMG.leg, INK.mustard, 0.4);
+        DONK_TINT.player.button = DONK_IMG.button;
         donkReady = true;
     }
 }
