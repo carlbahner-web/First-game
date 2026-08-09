@@ -9447,7 +9447,7 @@ const BZ = {
     // off the art at 68.4% down and 3.6 units right of centre (the drumhead
     // sits off to one side of the shell). Classic rubber-hose construction,
     // and it makes the walk symmetric by definition.
-    anchorX: -1.4,  // whole leg assembly shifted 5 left of the tongue
+    anchorX: 0.6,   // whole leg assembly, offset from the tongue anchor
     legSplit: 5,    // pivots sit +/- this from the anchor (audience left/right)
     stanceX: 5.5,   // how far apart the feet park when standing
     stride: 12, legLift: 0, legGauge: 4.8, legLen: 39, // legs SWIVEL on the anchor; no foot lift
