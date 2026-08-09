@@ -9469,7 +9469,7 @@ const BZ = {
     armX: 20, armXTrail: 22, armGauge: 4.2,
     armLen: 40,          // longer than the old 31 — an elbow needs hose to bend
     armReach: 0.88,      // hand distance as a fraction of armLen (leaves a crook)
-    armRest: 0.14,       // rad each hand hangs outboard of its shoulder
+    armRest: 0.209,      // rad both arms lean FORWARD at rest (12 deg)
     armSwingAng: 0.38,   // rad of fore/aft swing while walking
     boneBow: 0.35,       // how rounded each bone is (0 = straight sticks)
     elbowAt: 0.5,        // where the joint sits along the hose
@@ -9616,7 +9616,7 @@ function drawBuzzRig(cx, cy, k, o) {
     }
     ctx.drawImage(set.body, DK.bx * k, (hipY + BZ.hip2bot - bodyH) * k, DK.bw * k, bodyH * k);
     {
-        const p2 = handAt(-BZ.armXTrail, -BZ.armRest + swingA);
+        const p2 = handAt(-BZ.armXTrail, BZ.armRest + swingA);
         armIK(set.armMeta, BZ.armGauge, -BZ.armXTrail, armY, p2[0], p2[1], BZ.armLen,
             1, k, true, BZ.elbowAt, BZ.boneBow);
     }
