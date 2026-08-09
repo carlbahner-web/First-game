@@ -20,6 +20,13 @@ const GRID_Y = 2;          // grid start tile-y (centered: 2 + 6 + 2 = 10)
 // device px, so they'd shrink relative to the room when SCALE changes. This
 // pins them to the tile instead.
 const RIG = SCALE / 4;
+// The ceiling is HALF a tile, not a full one. BUZZ is 1.46 tiles tall, so a
+// full-tile ceiling forced a whole row of headroom he could never stand in —
+// the up-clamp was TILE*2, not TILE. Thinning it hands that row back to the
+// play field. The floor and side walls stay a full tile: the floor has no
+// headroom problem, and his sprite is wider than a tile, so he'd overlap a
+// half-width side wall however the clamp reads.
+const WALL_TOP = TILE / 2;
 const GRID_Y_OFFSET = 0;   // no offset needed with centered layout
 const DOOR_TILE_Y = Math.floor(ROWS / 2); // exit door on the right wall
 // (gap row after kick removed)
@@ -1357,7 +1364,8 @@ function buildCaveBgTexture(biome, LS) {
 
     // Top wall tiles
     for (let col = 0; col < COLS; col++) {
-        g.drawImage(TEX_WALL_TOP[col], col * TILE * SCALE, 0);
+        g.drawImage(TEX_WALL_TOP[col], col * TILE * SCALE, 0,
+            TILE * SCALE, WALL_TOP * SCALE);
     }
     // Bottom wall tiles
     for (let col = 0; col < COLS; col++) {
@@ -1444,7 +1452,7 @@ function buildCaveBgTexture(biome, LS) {
             }
             pg.stroke();
         };
-        const topY = TILE * SCALE, botY = (ROWS - 1) * TILE * SCALE;
+        const topY = WALL_TOP * SCALE, botY = (ROWS - 1) * TILE * SCALE;
         const hp = (y) => { const a = []; for (let x = 0; x <= w; x += 14) a.push([x, y]); return a; };
         const vp = (x) => { const a = []; for (let y = topY; y <= botY; y += 14) a.push([x, y]); return a; };
         line(hp(topY), 11); line(hp(botY), 22);
@@ -2003,7 +2011,7 @@ function shouldBeElite() {
 function createGoblin(caveIndex) {
     const cave = CAVES[caveIndex];
     const spawnX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
-    const spawnY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, cave.tileY * TILE));
+    const spawnY = Math.max(TILE, Math.min((ROWS - 2) * TILE, cave.tileY * TILE));
     return {
         x: spawnX, y: spawnY,
         destX: spawnX, destY: spawnY,
@@ -3127,7 +3135,7 @@ function update(dt) {
                     const knockX = hitGob.x + Math.sign(knockDx) * TILE;
                     const knockY = hitGob.y + Math.sign(knockDy) * TILE;
                     hitGob.destX = Math.max(TILE, Math.min((COLS - 2) * TILE, knockX));
-                    hitGob.destY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, knockY));
+                    hitGob.destY = Math.max(TILE, Math.min((ROWS - 2) * TILE, knockY));
 
                     for (let i = 0; i < 8; i++) {
                         deathParticles.push({
@@ -3271,7 +3279,7 @@ function update(dt) {
                     let tryX = p.x + kbDirX * d * TILE;
                     let tryY = p.y + kbDirY * d * TILE;
                     tryX = Math.max(TILE, Math.min((COLS - 2) * TILE, tryX));
-                    tryY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, tryY));
+                    tryY = Math.max(TILE, Math.min((ROWS - 2) * TILE, tryY));
                     const ttx = Math.round(tryX / TILE);
                     const tty = Math.round(tryY / TILE);
                     let gobBlocked = false;
@@ -3288,7 +3296,7 @@ function update(dt) {
                     let kbX = p.x + kbDirX * kbDist * TILE;
                     let kbY = p.y + kbDirY * kbDist * TILE;
                     kbX = Math.max(TILE, Math.min((COLS - 2) * TILE, kbX));
-                    kbY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, kbY));
+                    kbY = Math.max(TILE, Math.min((ROWS - 2) * TILE, kbY));
                     p.destX = kbX;
                     p.destY = kbY;
                 }
@@ -3316,7 +3324,7 @@ function update(dt) {
                 const newX = d.x + Math.sign(knockDx) * TILE;
                 const newY = d.y + Math.sign(knockDy) * TILE;
                 const clampedX = Math.max(TILE, Math.min((COLS - 2) * TILE, newX));
-                const clampedY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, newY));
+                const clampedY = Math.max(TILE, Math.min((ROWS - 2) * TILE, newY));
                 d.targetX = clampedX;
                 d.targetY = clampedY;
                 d.walkingIn = true;
@@ -3426,7 +3434,7 @@ function update(dt) {
             let nx = p.x, ny = p.y;
             switch (wantDir) {
                 case 0: ny = Math.min((ROWS - 2) * TILE, p.y + TILE); break;
-                case 1: ny = Math.max(TILE * 2, p.y - TILE); break;
+                case 1: ny = Math.max(TILE, p.y - TILE); break;
                 case 2: nx = Math.max(TILE, p.x - TILE); break;
                 case 3: nx = Math.min((COLS - 2) * TILE, p.x + TILE); break;
             }
@@ -3554,7 +3562,7 @@ function update(dt) {
                 : Math.floor(Math.random() * CAVES.length);
             const cave = CAVES[gob.spawnCave];
             const spawnX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
-            const spawnY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, cave.tileY * TILE));
+            const spawnY = Math.max(TILE, Math.min((ROWS - 2) * TILE, cave.tileY * TILE));
             gob.x = spawnX;
             gob.y = spawnY;
             gob.destX = spawnX;
@@ -3720,7 +3728,7 @@ function update(dt) {
                     };
                     for (let dist = 2; dist >= 1; dist--) {
                         let newPX = Math.max(TILE, Math.min((COLS - 2) * TILE, p.x + knockDirX * TILE * dist));
-                        let newPY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, p.y + knockDirY * TILE * dist));
+                        let newPY = Math.max(TILE, Math.min((ROWS - 2) * TILE, p.y + knockDirY * TILE * dist));
                         if (landingClear(newPX, newPY)) {
                             p.x = newPX; p.destX = newPX;
                             p.y = newPY; p.destY = newPY;
@@ -3733,7 +3741,7 @@ function update(dt) {
                     const fleeDirY = Math.sign(gob.y - p.y) || (gob.dir === 0 ? -1 : 1);
                     gob.gloatX = Math.max(TILE, Math.min((COLS - 2) * TILE,
                         Math.round(gob.x / TILE) * TILE + fleeDirX * TILE * 4));
-                    gob.gloatY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE,
+                    gob.gloatY = Math.max(TILE, Math.min((ROWS - 2) * TILE,
                         Math.round(gob.y / TILE) * TILE + fleeDirY * TILE * 4));
                     // Gloat at half speed
                     const gloatBase = currentLevel < LEVELS.length ? LEVELS[currentLevel].goblinSpeed : 0.5;
@@ -3758,7 +3766,7 @@ function update(dt) {
                 // Sprint home to the spawn cave; vanish on arrival
                 const fleeCave = CAVES[gob.spawnCave];
                 const fleeX = fleeCave.tileX === 0 ? TILE : fleeCave.tileX === COLS - 1 ? (COLS - 2) * TILE : fleeCave.tileX * TILE;
-                const fleeY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, fleeCave.tileY * TILE));
+                const fleeY = Math.max(TILE, Math.min((ROWS - 2) * TILE, fleeCave.tileY * TILE));
                 if (gob.x === fleeX && gob.y === fleeY) {
                     gob.dead = true;
                     gob.respawnTimer = 999999; // gone for the rest of the level
@@ -3808,7 +3816,7 @@ function update(dt) {
             }
 
             nx = Math.max(TILE, Math.min((COLS - 2) * TILE, nx));
-            ny = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, ny));
+            ny = Math.max(TILE, Math.min((ROWS - 2) * TILE, ny));
 
             // Don't walk into player, other goblins, or solid objects; push dancers aside
             const cgBlockX = catapultGoblin ? Math.round(catapultGoblin.x / TILE) * TILE : -999;
@@ -3844,7 +3852,7 @@ function update(dt) {
                             let newX = d.x + px * TILE;
                             let newY = d.y + py * TILE;
                             newX = Math.max(TILE, Math.min((COLS - 2) * TILE, newX));
-                            newY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, newY));
+                            newY = Math.max(TILE, Math.min((ROWS - 2) * TILE, newY));
                             const ntx = Math.round(newX / TILE);
                             const nty = Math.round(newY / TILE);
                             if (ntx === Math.round(p.x / TILE) && nty === Math.round(p.y / TILE)) continue;
@@ -3883,7 +3891,7 @@ function update(dt) {
                     }
                 }
                 ax = Math.max(TILE, Math.min((COLS - 2) * TILE, ax));
-                ay = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, ay));
+                ay = Math.max(TILE, Math.min((ROWS - 2) * TILE, ay));
                 if ((ax !== gob.x || ay !== gob.y) && !isGobTileBlocked(ax, ay)) {
                     const aDirX = ax - gob.x;
                     const aDirY = ay - gob.y;
@@ -4385,7 +4393,7 @@ function openDoor() {
         catapultGoblin.phase = "retreating";
         const cgCave = CAVES[catapultGoblin.caveIndex];
         catapultGoblin.destX = cgCave.tileX === 0 ? TILE : cgCave.tileX === COLS - 1 ? (COLS - 2) * TILE : cgCave.tileX * TILE;
-        catapultGoblin.destY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, cgCave.tileY * TILE));
+        catapultGoblin.destY = Math.max(TILE, Math.min((ROWS - 2) * TILE, cgCave.tileY * TILE));
     }
 }
 
@@ -6990,7 +6998,7 @@ function spawnCatapultGoblin() {
     const caveIdx = Math.floor(Math.random() * CAVES.length);
     const cave = CAVES[caveIdx];
     const spawnX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
-    const spawnY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, cave.tileY * TILE));
+    const spawnY = Math.max(TILE, Math.min((ROWS - 2) * TILE, cave.tileY * TILE));
 
     // Pick a random grid cell as boulder target
     const tRow = Math.floor(Math.random() * getActiveRows());
@@ -7008,7 +7016,7 @@ function spawnCatapultGoblin() {
     }
     // Clamp to room bounds
     stopX = Math.max(TILE, Math.min((COLS - 2) * TILE, stopX));
-    stopY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, stopY));
+    stopY = Math.max(TILE, Math.min((ROWS - 2) * TILE, stopY));
 
     catapultGoblin = {
         x: spawnX, y: spawnY,
@@ -7171,7 +7179,7 @@ function updateCatapultGoblin() {
             // Set retreat destination back to cave
             const cave = CAVES[cg.caveIndex];
             const retreatX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
-            const retreatY = Math.max(TILE * 2, Math.min((ROWS - 2) * TILE, cave.tileY * TILE));
+            const retreatY = Math.max(TILE, Math.min((ROWS - 2) * TILE, cave.tileY * TILE));
             cg.destX = retreatX;
             cg.destY = retreatY;
         }
@@ -7709,7 +7717,7 @@ function render() {
     for (let c = 1; c < COLS - 1; c++) {
         if (c === topCaveCol) continue;
         const mushX = c * TILE + TILE / 2;
-        const mushY = TILE + 4;
+        const mushY = WALL_TOP + 4;
         const rowIdx = c % ar_lights;
         const mushCol = MUSH_COLORS[c % MUSH_COLORS.length];
         const triggered = rowTrigger[rowIdx] > 0;
@@ -7723,7 +7731,7 @@ function render() {
         ctx.strokeStyle = currentBiome.walls[0].base;
         ctx.lineWidth = 1 * SCALE;
         ctx.beginPath();
-        ctx.moveTo(mushX * SCALE, TILE * SCALE);
+        ctx.moveTo(mushX * SCALE, WALL_TOP * SCALE);
         ctx.lineTo(mushX * SCALE, (mushY - 1) * SCALE);
         ctx.stroke();
 
@@ -11641,7 +11649,7 @@ function renderTitleScreen() {
     // Mushroom lights (animated, bioluminescent)
     const TITLE_MUSH_COLORS = [INK.mint, INK.silverL, INK.green, INK.silverD, INK.mint, INK.green];
     for (let c = 1; c < COLS - 1; c++) {
-        const mushY = TILE + 4;
+        const mushY = WALL_TOP + 4;
         const mushX = c * TILE + TILE / 2;
         const mushCol = TITLE_MUSH_COLORS[c % TITLE_MUSH_COLORS.length];
         const chase = Math.sin(titleBlink * 0.05 + c * 0.6) * 0.5 + 0.5;
@@ -11650,7 +11658,7 @@ function renderTitleScreen() {
         ctx.strokeStyle = "#3f3f3b";
         ctx.lineWidth = 1 * SCALE;
         ctx.beginPath();
-        ctx.moveTo(mushX * SCALE, TILE * SCALE);
+        ctx.moveTo(mushX * SCALE, WALL_TOP * SCALE);
         ctx.lineTo(mushX * SCALE, (mushY - 1) * SCALE);
         ctx.stroke();
         ctx.globalAlpha = 0.5 + chase * 0.5;
@@ -12286,14 +12294,14 @@ function renderIntro() {
         // Mushroom lights (animated)
         const INTRO_MUSH = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#50ad33"];
         for (let c = 1; c < COLS - 1; c++) {
-            const mushY = TILE + 4;
+            const mushY = WALL_TOP + 4;
             const mushX = c * TILE + TILE / 2;
             const mushCol = INTRO_MUSH[c % INTRO_MUSH.length];
             const chase = Math.sin(introGlobalTimer * 0.05 + c * 0.6) * 0.5 + 0.5;
             ctx.strokeStyle = "#3f3f3b";
             ctx.lineWidth = 1 * SCALE;
             ctx.beginPath();
-            ctx.moveTo(mushX * SCALE, TILE * SCALE);
+            ctx.moveTo(mushX * SCALE, WALL_TOP * SCALE);
             ctx.lineTo(mushX * SCALE, (mushY - 1) * SCALE);
             ctx.stroke();
             ctx.globalAlpha = 0.5 + chase * 0.5;
@@ -12437,7 +12445,7 @@ function renderIntro() {
         const QUAKE_MUSH = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#50ad33"];
         for (let c = 1; c < COLS - 1; c++) {
             const mushX = c * TILE + TILE / 2;
-            const mushY = TILE + 4;
+            const mushY = WALL_TOP + 4;
             const mushCol = QUAKE_MUSH[c % QUAKE_MUSH.length];
 
             // Each mushroom dims at different times — outer first, center last
@@ -12449,7 +12457,7 @@ function renderIntro() {
             ctx.strokeStyle = "#3f3f3b";
             ctx.lineWidth = 1 * SCALE;
             ctx.beginPath();
-            ctx.moveTo(mushX * SCALE, TILE * SCALE);
+            ctx.moveTo(mushX * SCALE, WALL_TOP * SCALE);
             ctx.lineTo(mushX * SCALE, (mushY - 1) * SCALE);
             ctx.stroke();
 
