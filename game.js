@@ -9457,6 +9457,32 @@ function heroSet() {
 // the body dips through the stride on its own.
 // ============================================================
 const HOSE_INK = "#312D2F"; // sampled from the art's own hose
+// Classic rubber-hose glove darts, drawn in the GLOVE's own normalised space
+// (x across the glove, y from wrist 0 to fingertips 1) so they scale, rotate
+// and stretch with the hand instead of being baked into the art. Two darts —
+// Carl dropped the third.
+const GLOVE_DARTS = {
+    ts: [-1, 0],     // which dart slots to draw
+    x0: 0.5, spread: 0.13, fan: 1.2,
+    yTop: 0.24,      // floats clear of the cuff
+    yBot: 0.41,
+    curve: 0.05, lw: 0.035,
+};
+function drawGloveDarts(hw, hh, px, k) {
+    const d = GLOVE_DARTS;
+    ctx.strokeStyle = HOSE_INK;
+    ctx.lineCap = "round";
+    ctx.lineWidth = d.lw * hw * k;
+    for (const t of d.ts) {
+        const sx = (d.x0 + t * d.spread) * hw, sy = d.yTop * hh;
+        const ex = (d.x0 + t * d.spread * d.fan) * hw, ey = d.yBot * hh;
+        const cx = (sx + ex) / 2 + d.curve * hw * t, cy = (sy + ey) / 2;
+        ctx.beginPath();
+        ctx.moveTo((sx - hw * px) * k, sy * k);
+        ctx.quadraticCurveTo((cx - hw * px) * k, cy * k, (ex - hw * px) * k, ey * k);
+        ctx.stroke();
+    }
+}
 const BZ = {
     // Leg pivots sit exactly where the legs EMERGE from the drum silhouette
     // (measured off the art: y -24.17, x -5.0 / +6.2), rather than buried deep
@@ -9521,7 +9547,7 @@ function hoseIK(m, gauge, sx, sy, tx, ty, L, bow, k, flip, handScale) {
 // but each bone is drawn as a CURVE and both are stroked as one continuous
 // path — so it reads as a bent hose, not two sticks. bendSign +1 points the
 // elbow backward (away from his facing).
-function armIK(m, gauge, sx, sy, tx, ty, L, bendSign, k, flip, uf, boneBow, handScale) {
+function armIK(m, gauge, sx, sy, tx, ty, L, bendSign, k, flip, uf, boneBow, handScale, darts) {
     const hs = handScale || 1;
     const s = gauge / m.hose, handH = m.ah * (1 - m.split) * s * hs, handW = m.aw * s * hs;
     const hoseLen = Math.max(2, L - handH);
@@ -9561,6 +9587,7 @@ function armIK(m, gauge, sx, sy, tx, ty, L, bendSign, k, flip, uf, boneBow, hand
     if (flip) ctx.scale(-1, 1);
     ctx.drawImage(m.img, 0, m.ah * m.split, m.aw, m.ah * (1 - m.split),
         -handW * m.px * k, 0, handW * k, handH * k);
+    if (darts) drawGloveDarts(handW, handH, m.px, k);
     ctx.restore();
 }
 
@@ -9625,7 +9652,8 @@ function drawBuzzRig(cx, cy, k, o) {
         // Front glove flipped horizontally (Carl) — the hose is drawn separately,
         // so this only mirrors the hand slice.
         armIK(set.armCleanMeta || set.armMeta, BZ.armGauge, -BZ.armXTrail, armY,
-            p2[0], p2[1], BZ.armLen, 1, k, BZ.frontGloveFlip, BZ.elbowAt, BZ.boneBow);
+            p2[0], p2[1], BZ.armLen, 1, k, BZ.frontGloveFlip, BZ.elbowAt, BZ.boneBow,
+            1, true); // darts: the front hand shows the back of the glove
     }
     if (t > 0) {
         // The hand flies to the TARGET CELL (passed in rig-local units) and the
