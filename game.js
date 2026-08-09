@@ -1383,12 +1383,10 @@ function buildCaveBgTexture(biome, LS) {
     // Stalactites & stalagmites: positions rolled once per level, then
     // drawn in the per-phase pass below so their inked edges boil
     const stRNG = texRNG(LS + 54321);
-    // Stalactites removed — they hung as pennants into the play field, and
-    // with a half-tile ceiling there is nothing left for them to hang from.
-    // (stRNG is still stepped the same number of times so the rest of the
-    // cave's noise lands where it always did.)
-    const stals = [];
-    for (const p of [2, 4, 7, 9, 12, 14, 17, 19]) { void p; stRNG(); stRNG(); stRNG(); }
+    // Stalactites are gone: they hung as pennants into the play field, and a
+    // half-tile ceiling gives them nothing to hang from. Their RNG draws go
+    // with them — the cave's noise reshuffles, which doesn't matter now that
+    // the whole cave/goblin dressing is on its way out for StudioLand.
     const smites = [];
     for (const p of [3, 6, 10, 15, 18]) {
         const sm = p + Math.floor(stRNG() * 3) - 1;
@@ -1456,23 +1454,6 @@ function buildCaveBgTexture(biome, LS) {
         line(hp(topY), 11); line(hp(botY), 22);
         line(vp(TILE * SCALE), 33); line(vp((COLS - 1) * TILE * SCALE), 44);
 
-        // Stalactites: wash fill whose jittered edge IS the ink line
-        for (let si = 0; si < stals.length; si++) {
-            const st = stals[si];
-            const bx = st.x * SCALE, ty = TILE * SCALE, hh = st.h * SCALE;
-            const pts = [
-                [bx - 4 * SCALE, ty], [bx + 4 * SCALE, ty],
-                [bx + 1 * SCALE, ty + hh], [bx - 1 * SCALE, ty + hh + 2 * SCALE],
-            ].map((p, k) => [p[0] + J(si * 91 + k * 17, 55, 2.5), p[1] + (k < 2 ? 0 : J(si * 77 + k * 13, 66, 2.5))]);
-            pg.fillStyle = st.fill;
-            pg.beginPath();
-            pts.forEach((p, k) => k === 0 ? pg.moveTo(p[0], p[1]) : pg.lineTo(p[0], p[1]));
-            pg.closePath();
-            pg.fill();
-            pg.strokeStyle = INK.charcoal;
-            pg.lineWidth = 2;
-            pg.stroke();
-        }
         // Stalagmites
         for (let si = 0; si < smites.length; si++) {
             const sm = smites[si];
