@@ -9463,6 +9463,8 @@ const BZ = {
     footOut: 1.0,   // how far outside its pivot each foot parks when standing
     stride: 12, legLift: 0, legGauge: 5.76, legLen: 24.2,
     dip: 6,         // how far the body ducks at full spread; the legs stretch for the rest
+    frontExtend: 0.25,  // how much further the forward foot reaches
+    frontStraight: 0.3, // how much slack the forward leg gives up (straightens it)
     extremes: 0.55, // <1 holds the spread pose, snaps through the pass
     armX: 20, armXTrail: 22, armGauge: 4.2, armLen: 31, armOut: 6, armSwing: 9,
     fistGauge: 6.0, fistBase: 12, fistReach: 32,
@@ -9537,11 +9539,17 @@ function drawBuzzRig(cx, cy, k, o) {
         // into a stance. Shoes are never mirrored per side: both point the way
         // he faces.
         const px = BZ.anchorX + side * BZ.legSplit;
-        const swingX = shape(Math.sin(legPh(side))) * BZ.stride;
+        // The leg stepping FORWARD reaches further and straightens out. Left
+        // bowed it reads as a kick rather than a step, because a forward leg
+        // with slack in it looks like a flicking knee.
+        const fwd = Math.max(0, Math.sin(legPh(side))) * w;
+        const swingX = shape(Math.sin(legPh(side))) * BZ.stride * (1 + BZ.frontExtend * fwd);
         const fx = px + side * BZ.footOut * (1 - w) + swingX * w;
         const fy = -Math.max(0, -Math.cos(legPh(side))) * BZ.legLift * w;
         const need = Math.hypot(fx - px, fy - hipY); // stretch only as far as reaching demands
-        hoseIK(set.legMeta, BZ.legGauge, px, hipY, fx, fy, Math.max(BZ.legLen, need), -side * 0.3, k, false);
+        const restLen = BZ.legLen * (1 - BZ.frontStraight * fwd); // less slack out front
+        hoseIK(set.legMeta, BZ.legGauge, px, hipY, fx, fy, Math.max(restLen, need),
+            -side * 0.3 * (1 - fwd * 0.75), k, false);
     }
     const aSw = Math.sin(ph) * BZ.armSwing * w;
     if (!(t > 0)) {
