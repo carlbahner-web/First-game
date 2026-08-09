@@ -1916,13 +1916,18 @@ let killCount = 0;
 let score = 0;
 let lastTimeBonus = 0;
 const dancers = [];
+// The villagers never got the ink reskin — they were still wearing the old
+// pixel-art palette (peach skin, muddy browns) next to charcoal-on-cream BUZZ,
+// which is what made them read as discoloured. Rebuilt out of INK, and the
+// alert red is gone: #FE3636 on a harmless villager broke the design bible's
+// one hard rule, and a bystander painted DEADLY reads as a threat.
 const DANCER_PALETTES = [
-    { _index: 0, body: "#FE3636", dark: "#9b1a0a", head: "#efb775", hair: "#724113" },
-    { _index: 1, body: "#3c9f9c", dark: "#276468", head: "#efb775", hair: "#2a1d0d" },
-    { _index: 2, body: "#F6CC60", dark: "#a58c27", head: "#efb775", hair: "#ab5c1c" },
-    { _index: 3, body: "#39571c", dark: "#1f240a", head: "#efb775", hair: "#F6CC60" },
-    { _index: 4, body: "#ab5c1c", dark: "#773421", head: "#efb775", hair: "#2a1d0d" },
-    { _index: 5, body: "#ef692f", dark: "#a56243", head: "#efb775", hair: "#392a1c" },
+    { _index: 0, body: INK.mustard, dark: INK.rust,     head: INK.paper, hair: INK.charcoal },
+    { _index: 1, body: INK.teal,    dark: "#27454a",    head: INK.paper, hair: INK.rust },
+    { _index: 2, body: INK.rust,    dark: "#8c5326",    head: INK.paper, hair: INK.charcoal },
+    { _index: 3, body: INK.mint,    dark: INK.silverD,  head: INK.paper, hair: INK.rust },
+    { _index: 4, body: INK.green,   dark: "#37761f",    head: INK.paper, hair: INK.charcoal },
+    { _index: 5, body: INK.silverL, dark: INK.silverD,  head: INK.paper, hair: INK.rust },
 ];
 
 // ---- Player State ----
@@ -1942,6 +1947,10 @@ const player = {
     attackDuration: 12,
     punchHit: false, // did this swing already toggle a block?
     punchBuffered: false, // Space pressed mid-swing queues the next punch
+    // The swing HOLDS at full extension while the button is down, so the
+    // impact burst needs its own clock — tied to the swing it would freeze
+    // mid-flash for as long as you leaned on the button.
+    punchFx: 0,
     speed: 1.68, // pixels per frame at 60fps
     blinkTimer: 0, // counts up each frame, blinks at 180
     stunTimer: 0, // frames remaining in stun (can't move or punch)
@@ -3030,6 +3039,7 @@ function update(dt) {
     if (spaceJustPressed && !p.attacking && p.stunTimer <= 0 && p.freezeTimer <= 0) {
         p.attacking = true;
         p.attackTimer = p.attackDuration;
+        p.punchFx = p.attackDuration;
         p.punchHit = false;
         ensureAudio();
         // play a punchy impact sound
@@ -3348,9 +3358,20 @@ function update(dt) {
     }
     spaceJustPressed = false;
 
+    if (p.punchFx > 0) p.punchFx--;   // impact burst runs on its own clock
     if (p.attacking) {
-        p.attackTimer--;
-        if (p.attackTimer <= 0) p.attacking = false;
+        // HOLD the punch out while the button is down instead of playing a
+        // one-shot swing: the thrust peaks at the halfway frame, so pinning the
+        // timer there pins the pose. Let go and the rest of the swing plays out
+        // and retracts him. A stun or freeze always wins.
+        const peak = Math.ceil(p.attackDuration / 2);
+        const held = keys["Space"] && p.stunTimer <= 0 && p.freezeTimer <= 0;
+        if (held && p.attackTimer <= peak) {
+            p.attackTimer = peak;
+        } else {
+            p.attackTimer--;
+            if (p.attackTimer <= 0) p.attacking = false;
+        }
     }
 
     // Stun timer countdown
@@ -8937,7 +8958,13 @@ function drawPunch() {
     }
 
     // === IMPACT SHOCKWAVE on hit — radiates outward from fist ===
-    if (thrust > 0.5 && p.punchHit) {
+    // Driven by punchFx, not by the swing: the swing can be HELD at full
+    // extension, and a burst frozen mid-flash for as long as the button is
+    // down reads as a bug, not a hit.
+    const fxProg = 1 - (p.punchFx / p.attackDuration);
+    const fx = p.punchFx > 0 ? Math.sin(fxProg * Math.PI) : 0;
+    if (fx > 0.5 && p.punchHit) {
+        const thrust = fx;
         // Shockwave center extends outward from Carl in punch direction
         const shockDist = thrust * 12 * SCALE;
         const tip = (heroArm && donkFistTip) ? donkFistTip : { x: fistX, y: fistY };
