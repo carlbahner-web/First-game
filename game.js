@@ -8531,7 +8531,20 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         if (dir === 2) donkCarlFacing = -1;
         else if (dir === 3) donkCarlFacing = 1;
         if (ghost) { ctx.globalAlpha = 0.5; ctx.globalCompositeOperation = "lighter"; }
-        drawBuzzRig((gx + TILE / 2 + leanX) * SCALE, (gy + TILE - 1 + leanY * 0.5) * SCALE, 90 / 58, {
+        // Aim the punch at the tile it actually HITS, so what you see is what
+        // you hit. (Same tile getPunchBox/the grid-toggle use.)
+        const K = BUZZ_SCALE;
+        const ox = gx + TILE / 2 + leanX, oy = gy + TILE - 1 + leanY * 0.5;
+        let ptx, pty;
+        if (punch > 0) {
+            const ttx = Math.round(gx / TILE) + (dir === 2 ? -1 : dir === 3 ? 1 : 0);
+            const tty = Math.round(gy / TILE) + (dir === 0 ? 1 : dir === 1 ? -1 : 0);
+            ptx = (ttx * TILE + TILE / 2 - ox) * SCALE / K;
+            pty = (tty * TILE + TILE / 2 - oy) * SCALE / K;
+            if (donkCarlFacing === -1) ptx = -ptx; // into the rig's local space
+        }
+        drawBuzzRig(ox * SCALE, oy * SCALE, K, {
+            punchTX: ptx, punchTY: pty,
             phase: donkCarlPhase,
             moving: moving,
             mirror: donkCarlFacing === -1, // BUZZ's art faces right natively
@@ -9327,6 +9340,8 @@ let donkReady = false;
 // The player is BUZZ (the smiling drum, via the hero slot below).
 // Flip to false to get procedural Carl back.
 const DONK_PLAYER = true;
+const BUZZ_SCALE = 75 / 58;   // drawn height vs the 58-unit rig base (was 90 —
+                              // at 90 his drum sat a whole tile above his hitbox)
 let donkCarlPhase = 0;        // player stride phase (advances with distance moved)
 let donkCarlLastX = null, donkCarlLastY = null;
 let donkCarlFacing = 1;       // sticky horizontal facing (+1 right, -1 left)
@@ -9537,18 +9552,18 @@ function drawBuzzRig(cx, cy, k, o) {
     hoseIK(set.armMeta, BZ.armGauge, -BZ.armXTrail, armY,
         -BZ.armXTrail - BZ.armOut + aSw, armY + BZ.armLen, BZ.armLen, 0.5, k, true);
     if (t > 0) {
-        // The punch throws from the LEADING shoulder in the direction he faces,
-        // so it never swings behind him. The hose whips: bowed on the way out,
-        // straight at full extension.
-        const up = o.punchDir === 1, down = o.punchDir === 0;
-        const reach = BZ.fistBase + t * BZ.fistReach;
-        const tx = up ? BZ.armX + 6 * t : down ? BZ.armX + 10 * t : BZ.armX + reach;
-        const ty = up ? armY - reach : down ? armY + reach : armY - 2 + 6 * (1 - t);
-        const tip = hoseIK(set.fistMeta, BZ.fistGauge, BZ.armX, armY, tx, ty, reach * 1.02,
-            -0.55 * (1 - t), k, false);
-        const tm = ctx.getTransform(); // real fist tip, for the impact effects
-        donkFistTip = { x: tm.a * tip.x * k + tm.c * tip.y * k + tm.e,
-                        y: tm.b * tip.x * k + tm.d * tip.y * k + tm.f };
+        // The hand flies to the TARGET CELL (passed in rig-local units) and the
+        // hose whips out behind it — bowed on the way, straight on impact.
+        const sx = BZ.armX, sy = armY;
+        const tx = o.punchTX !== undefined ? o.punchTX : sx + 30;
+        const ty = o.punchTY !== undefined ? o.punchTY : sy;
+        const hx = sx + (tx - sx) * t, hy = sy + (ty - sy) * t;
+        const need = Math.hypot(hx - sx, hy - sy);
+        hoseIK(set.fistMeta, BZ.fistGauge, sx, sy, hx, hy,
+            Math.max(BZ.fistBase, need), -0.55 * (1 - t), k, false);
+        const tm = ctx.getTransform(); // real fist tip, for the impact FX
+        donkFistTip = { x: tm.a * hx * k + tm.c * hy * k + tm.e,
+                        y: tm.b * hx * k + tm.d * hy * k + tm.f };
     }
     ctx.restore();
 }
