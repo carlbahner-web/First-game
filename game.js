@@ -9493,7 +9493,7 @@ function heroSet() {
                 h: 72.4, solesAt: 1, drumCx: 0.414,
                 // Carl: the UP punch is thrown by the back arm, so this one
                 // hangs off the far rim and draws behind the drawing.
-                shX: 90 / 408, shY: 70 / 512, gauge: 5.4, armLen: 38.8,
+                shX: 79 / 408, shY: 197 / 512, gauge: 5.4, armLen: 38.8,
                 // The cell above him centres barely over his head, so a truthful
                 // aim buries the fist in his own drum. Lifting inside the target
                 // cell keeps the hit honest and the pose readable.
