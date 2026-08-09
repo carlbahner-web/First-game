@@ -9442,7 +9442,7 @@ function heroSet() {
         (DONK_IMG.buzzFist ? 4 : 0) + (DONK_IMG.buzzLeg ? 8 : 0) +
         (DONK_IMG.buzzArmClean ? 16 : 0) +
         (DONK_IMG.buzzPunchBody && DONK_IMG.buzzPunchArm ? 32 : 0) +
-        (DONK_IMG.buzzUpBody && DONK_IMG.buzzUpArm ? 64 : 0) +
+        (DONK_IMG.buzzUpBody ? 64 : 0) + // its glove comes from the side punch
         (DONK_IMG.buzzDownBody && DONK_IMG.buzzDownArm ? 128 : 0);
     if (!DONK_HERO || DONK_HERO_KEY !== key) {
         DONK_HERO_KEY = key;
@@ -9513,9 +9513,14 @@ function heroSet() {
                 shX: 157 / 427, shY: 157 / 512, gauge: 5.2, armLen: 39,
                 front: true, minExt: 0.22,
             } : null,
-            upPose: (DONK_IMG.buzzUpBody && DONK_IMG.buzzUpArm) ? {
+            upPose: (DONK_IMG.buzzUpBody && DONK_IMG.buzzPunchArm) ? {
                 body: DONK_IMG.buzzUpBody,
-                arm: mk(DONK_IMG.buzzUpArm, 256, 512, 71, 0.561, 0.752),
+                // The glove comes from the SIDE punch, not from the up-punch
+                // drawing: that one is a knuckles-on view with four fingers
+                // showing, so BUZZ appeared to swap hands mid-fight. The hose
+                // is stroked procedurally, so borrowing the hand slice costs
+                // nothing. (buzz-up-arm.png is still in assets if we want it.)
+                arm: mk(DONK_IMG.buzzPunchArm, 262, 512, 81, 0.405, 0.556),
                 h: 72.4, solesAt: 1, drumCx: 0.414,
                 shX: 79 / 408, shY: 197 / 512, gauge: 5.4, armLen: 38.8,
                 front: true,
