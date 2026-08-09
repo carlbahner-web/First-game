@@ -8531,13 +8531,11 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         if (dir === 2) donkCarlFacing = -1;
         else if (dir === 3) donkCarlFacing = 1;
         if (ghost) { ctx.globalAlpha = 0.5; ctx.globalCompositeOperation = "lighter"; }
-        drawDonk((gx + TILE / 2 + leanX) * SCALE, (gy + TILE - 1 + leanY * 0.5) * SCALE, 90 / 58, {
+        drawBuzzRig((gx + TILE / 2 + leanX) * SCALE, (gy + TILE - 1 + leanY * 0.5) * SCALE, 90 / 58, {
             phase: donkCarlPhase,
+            moving: moving,
             mirror: donkCarlFacing === -1, // BUZZ's art faces right natively
-            hipX: 5.5,                    // hips pulled in from the rig's 9
-            stride: 14,                   // long, natural strides
-            hero: true,                   // BUZZ's head/body + straight-hose limbs
-            punchThrust: punch,           // the rig draws the punching arm
+            punchThrust: punch,
             punchDir: dir,
         });
         if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
@@ -9433,6 +9431,101 @@ function heroSet() {
         };
     }
     return DONK_HERO;
+}
+
+// ============================================================
+// RUBBER-HOSE IK — BUZZ's rig
+// The HAND is the end effector: it goes where we point it, and the hose is a
+// constant-arc-length curve between shoulder and wrist, so slack makes it BOW
+// and reaching straightens it. That's what makes the limbs read as fluid hose
+// instead of rigid sticks on pivots. Feet are planted on the ground line, so
+// the body dips through the stride on its own.
+// ============================================================
+const HOSE_INK = "#312D2F"; // sampled from the art's own hose
+const BZ = {
+    hipX: 5.5, stride: 12, legLift: 6, legGauge: 4.8, legLen: 39,
+    armX: 20, armXTrail: 22, armGauge: 4.2, armLen: 31, armOut: 6, armSwing: 9,
+    fistGauge: 6.0, fistBase: 12, fistReach: 32,
+    hip2bot: DK.by + DK.bh + 31.4, // drum bottom relative to the hip
+    shoulder: -8.56,               // shoulder height relative to the hip
+};
+
+// Solve one limb: draw the hose from (sx,sy) to a wrist placed so the HAND
+// lands on the target, then stamp the hand aligned to the hose's end tangent.
+function hoseIK(m, gauge, sx, sy, tx, ty, L, bow, k, flip) {
+    const s = gauge / m.hose, handH = m.ah * (1 - m.split) * s, handW = m.aw * s;
+    let dx = tx - sx, dy = ty - sy, d = Math.hypot(dx, dy) || 0.001;
+    const maxD = L * 1.12;                    // cannot reach past full extension
+    if (d > maxD) { const f = maxD / d; dx *= f; dy *= f; d = maxD; tx = sx + dx; ty = sy + dy; }
+    const ang = Math.atan2(dy, dx);
+    const wristD = Math.max(d * 0.2, d - handH);
+    const wx = sx + Math.cos(ang) * wristD, wy = sy + Math.sin(ang) * wristD;
+    const rest = Math.max(1, L - handH);
+    const amp = Math.min(rest * 0.6, Math.max(0, rest - wristD) * 1.7) * bow;
+    const cx2 = (sx + wx) / 2 - Math.sin(ang) * amp, cy2 = (sy + wy) / 2 + Math.cos(ang) * amp;
+    ctx.strokeStyle = HOSE_INK;
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.lineWidth = gauge * k;
+    ctx.beginPath();
+    ctx.moveTo(sx * k, sy * k);
+    ctx.quadraticCurveTo(cx2 * k, cy2 * k, wx * k, wy * k);
+    ctx.stroke();
+    const ta = Math.atan2(wy - cy2, wx - cx2); // end tangent orients the hand
+    ctx.save();
+    ctx.translate(wx * k, wy * k);
+    ctx.rotate(ta - Math.PI / 2);
+    if (flip) ctx.scale(-1, 1);
+    ctx.drawImage(m.img, 0, m.ah * m.split, m.aw, m.ah * (1 - m.split),
+        -handW * m.px * k, 0, handW * k, handH * k);
+    ctx.restore();
+    return { x: tx, y: ty };
+}
+
+// BUZZ, drawn with his soles on (cx, cy). k = height/58.
+function drawBuzzRig(cx, cy, k, o) {
+    const set = heroSet();
+    const bodyH = set.bodyH, t = o.punchThrust || 0, ph = o.phase || 0;
+    const moving = !!o.moving;
+    // Each leg runs a half-cycle out of phase; the swinging leg LIFTS, which is
+    // what keeps the passing position readable instead of a jumble.
+    const legPh = s => ph + (s > 0 ? 0 : Math.PI);
+    const spread = moving ? Math.abs(Math.sin(ph)) * BZ.stride : 0;
+    const hipH = Math.sqrt(Math.max(BZ.legLen * BZ.legLen * 0.25,
+        BZ.legLen * BZ.legLen - spread * spread));
+    ctx.save();
+    ctx.translate(cx, cy);
+    if (o.mirror) ctx.scale(-1, 1);
+    if (o.flash) ctx.filter = "brightness(1.9) saturate(0.4)";
+    const hipY = -hipH, armY = hipY + BZ.shoulder;
+
+    for (const side of [-1, 1]) {
+        const fx = side * BZ.hipX * 0.35 + (moving ? Math.sin(legPh(side)) * BZ.stride : side * BZ.hipX);
+        const fy = moving ? -Math.max(0, -Math.cos(legPh(side))) * BZ.legLift : 0;
+        hoseIK(set.legMeta, BZ.legGauge, side * BZ.hipX, hipY, fx, fy, BZ.legLen, -side * 0.3, k, side < 0);
+    }
+    const aSw = moving ? Math.sin(ph) * BZ.armSwing : 0;
+    if (!(t > 0)) {
+        hoseIK(set.armMeta, BZ.armGauge, BZ.armX, armY,
+            BZ.armX + BZ.armOut - aSw, armY + BZ.armLen, BZ.armLen, -0.5, k, false);
+    }
+    ctx.drawImage(set.body, DK.bx * k, (hipY + BZ.hip2bot - bodyH) * k, DK.bw * k, bodyH * k);
+    hoseIK(set.armMeta, BZ.armGauge, -BZ.armXTrail, armY,
+        -BZ.armXTrail - BZ.armOut + aSw, armY + BZ.armLen, BZ.armLen, 0.5, k, true);
+    if (t > 0) {
+        // The punch throws from the LEADING shoulder in the direction he faces,
+        // so it never swings behind him. The hose whips: bowed on the way out,
+        // straight at full extension.
+        const up = o.punchDir === 1, down = o.punchDir === 0;
+        const reach = BZ.fistBase + t * BZ.fistReach;
+        const tx = up ? BZ.armX + 6 * t : down ? BZ.armX + 10 * t : BZ.armX + reach;
+        const ty = up ? armY - reach : down ? armY + reach : armY - 2 + 6 * (1 - t);
+        const tip = hoseIK(set.fistMeta, BZ.fistGauge, BZ.armX, armY, tx, ty, reach * 1.02,
+            -0.55 * (1 - t), k, false);
+        const tm = ctx.getTransform(); // real fist tip, for the impact effects
+        donkFistTip = { x: tm.a * tip.x * k + tm.c * tip.y * k + tm.e,
+                        y: tm.b * tip.x * k + tm.d * tip.y * k + tm.f };
+    }
+    ctx.restore();
 }
 
 // Draw Donk with his feet at device-px (cx, cy), scaled by k = height/58.
