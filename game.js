@@ -9399,7 +9399,7 @@ function heroSet() {
             bodyH: bodyH,
             armY: DK.by + DK.bh - bodyH / 2, // shoulders at the drum's center height
             armX: 26,                        // far arm: shoulder out at the rim
-            armXFront: 14,                   // front arm: shoulder mid-shell
+            armXFront: 20,                   // front arm: shoulder just inside the rim
             armStretch: 1.3,                 // original thickness, stretched longer
             idleArm: -Math.PI / 4,           // hands down 45deg (audience-left CCW, right CW)
         };
