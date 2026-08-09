@@ -9496,10 +9496,9 @@ function heroSet() {
                 // of the drum, then swinging up past his face on a curve, with
                 // the walking arm's roundness rather than a straight rod.
                 arc: { from: [16, 16], ctrl: [34, -26] }, bow: 0.35,
-                // The cell above him centres barely over his head, so a truthful
-                // aim buries the fist in his own drum. Lifting inside the target
-                // cell keeps the hit honest and the pose readable.
-                aimLift: 14,
+                // Aim dead at the cell centre like the others — with the fist
+                // now centred on its target rather than tip-first, it clears
+                // his head on its own.
             } : null,
         };
     }
@@ -9702,12 +9701,22 @@ function drawBuzzRig(cx, cy, k, o) {
             const e = pose.minExt ? pose.minExt + (1 - pose.minExt) * t : t;
             hx = shx + (tx - shx) * e; hy = shy + (ty - shy) * e;
         }
-        const need = Math.hypot(hx - shx, hy - shy);
         // Cartoon punch: the glove is the whole gag, so it renders at roughly
         // twice the arm's natural hand size and swells further on impact.
-        const throwArm = () => armIK(pose.arm, pose.gauge, shx, shy, hx, hy,
+        const hs = 1.8 + t * 0.25;
+        // armIK lands the FAR TIP of the hand on its target, but the fist has
+        // to land in the MIDDLE of the block he's hitting — measured off all
+        // three gloves, their ink centres sit at 0.50 of the hand slice — so
+        // the aim point is pushed half a glove past the cell centre. At this
+        // glove size the difference is most of a tile.
+        const half = pose.arm.ah * (1 - pose.arm.split) *
+            (pose.gauge / pose.arm.hose) * hs * 0.5;
+        const dx2 = hx - shx, dy2 = hy - shy, dd = Math.hypot(dx2, dy2) || 1;
+        const ax = hx + dx2 / dd * half, ay = hy + dy2 / dd * half;
+        const need = Math.hypot(ax - shx, ay - shy);
+        const throwArm = () => armIK(pose.arm, pose.gauge, shx, shy, ax, ay,
             Math.max(pose.armLen * 0.5, need * 1.02), 1, k, false, 0.5,
-            pose.bow === undefined ? 0.12 : pose.bow, 1.8 + t * 0.25);
+            pose.bow === undefined ? 0.12 : pose.bow, hs);
         if (!pose.front) throwArm();
         ctx.drawImage(im, x0 * k, y0 * k, bw * k, bh * k);
         if (pose.front) throwArm();
