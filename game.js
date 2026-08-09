@@ -14220,6 +14220,123 @@ function gameLoop(timestamp) {
     requestAnimationFrame(gameLoop);
 }
 
+// ============================================================
+// TOUCH CONTROLS — mobile playtest layer
+// Built by the game itself so every build (GitHub Pages, artifact
+// bundle) gets them for free. Only appears on coarse-pointer devices;
+// synthesizes the same keyboard events the game already listens for,
+// so every input path (audio unlock, punch buffering, menu advance)
+// is the real one.
+// ============================================================
+function initTouchControls() {
+    try {
+        if (typeof document === "undefined" || !document.body || !window.matchMedia) return;
+        if (!window.matchMedia("(pointer: coarse)").matches) return;
+
+        // Make sure pinch-zoom/scroll never fights the game
+        if (document.head && !document.querySelector('meta[name="viewport"]')) {
+            const meta = document.createElement("meta");
+            meta.name = "viewport";
+            meta.content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no";
+            document.head.appendChild(meta);
+        }
+
+        const style = document.createElement("style");
+        style.textContent = `
+            .tc-btn {
+                position: fixed; z-index: 20;
+                display: flex; align-items: center; justify-content: center;
+                background: rgba(44,44,42,0.72); color: #fcf7e8;
+                border: 2px solid rgba(252,247,232,0.85); border-radius: 12px;
+                font-family: monospace; font-weight: bold;
+                user-select: none; -webkit-user-select: none;
+                -webkit-tap-highlight-color: transparent; touch-action: none;
+            }
+            .tc-btn.tc-on { background: rgba(246,204,96,0.9); color: #2C2C2A; }
+            #tc-punch {
+                right: 16px; bottom: 26px; width: 84px; height: 84px;
+                border-radius: 50%; font-size: 15px;
+                background: rgba(246,204,96,0.82); color: #2C2C2A;
+                border: 3px solid #2C2C2A;
+                box-shadow: 4px 4px 0 rgba(44,44,42,0.55);
+            }
+            #tc-punch.tc-on { background: #F6CC60; transform: scale(0.94); }
+            .tc-dir { width: 56px; height: 56px; font-size: 22px; }
+            #tc-rotate {
+                display: none; position: fixed; z-index: 30; left: 0; right: 0; top: 12px;
+                text-align: center; font-family: monospace; font-size: 14px;
+                color: #fcf7e8; text-shadow: 1px 1px 0 #2C2C2A;
+                pointer-events: none;
+            }
+            @media (orientation: portrait) { #tc-rotate { display: block; } }
+        `;
+        document.head.appendChild(style);
+
+        const sendKey = (type, code) => {
+            window.dispatchEvent(new KeyboardEvent(type, {
+                code: code,
+                key: code === "Space" ? " " : code === "Enter" ? "Enter" : code,
+                bubbles: true,
+            }));
+        };
+
+        const mkBtn = (id, label, cls, pos) => {
+            const b = document.createElement("div");
+            b.id = id;
+            b.className = "tc-btn " + (cls || "");
+            b.textContent = label;
+            for (const k in pos) b.style[k] = pos[k];
+            document.body.appendChild(b);
+            return b;
+        };
+
+        // Hold-to-move d-pad (bottom-left)
+        const dirs = [
+            ["tc-up",    "▲", "ArrowUp",    { left: "76px",  bottom: "126px" }],
+            ["tc-left",  "◀", "ArrowLeft",  { left: "16px",  bottom: "68px"  }],
+            ["tc-right", "▶", "ArrowRight", { left: "136px", bottom: "68px"  }],
+            ["tc-down",  "▼", "ArrowDown",  { left: "76px",  bottom: "10px"  }],
+        ];
+        for (const [id, label, code, pos] of dirs) {
+            const b = mkBtn(id, label, "tc-dir", pos);
+            const down = (e) => { e.preventDefault(); b.classList.add("tc-on"); sendKey("keydown", code); };
+            const up = (e) => { e.preventDefault(); b.classList.remove("tc-on"); sendKey("keyup", code); };
+            b.addEventListener("touchstart", down, { passive: false });
+            b.addEventListener("touchend", up, { passive: false });
+            b.addEventListener("touchcancel", up, { passive: false });
+        }
+
+        // Punch (bottom-right)
+        const punch = mkBtn("tc-punch", "PUNCH", "", {});
+        punch.addEventListener("touchstart", (e) => {
+            e.preventDefault();
+            punch.classList.add("tc-on");
+            sendKey("keydown", "Space");
+        }, { passive: false });
+        const punchUp = (e) => { e.preventDefault(); punch.classList.remove("tc-on"); sendKey("keyup", "Space"); };
+        punch.addEventListener("touchend", punchUp, { passive: false });
+        punch.addEventListener("touchcancel", punchUp, { passive: false });
+
+        // Tap anywhere else = Enter (start, advance cutscenes, continue).
+        // During gameplay Enter is a no-op, so stray taps cost nothing.
+        const tapEnter = (e) => {
+            if (e.target.closest && e.target.closest(".tc-btn")) return;
+            sendKey("keydown", "Enter");
+            sendKey("keyup", "Enter");
+        };
+        document.body.addEventListener("touchstart", tapEnter, { passive: true });
+
+        // Gentle nudge — the game is built 16:9
+        const rot = document.createElement("div");
+        rot.id = "tc-rotate";
+        rot.textContent = "🥁 ROTATE FOR FULL GROOVE 🥁";
+        document.body.appendChild(rot);
+    } catch (e) {
+        console.error("touch controls init error:", e);
+    }
+}
+initTouchControls();
+
 loadHighScores();
 function startGame() {
     try {
