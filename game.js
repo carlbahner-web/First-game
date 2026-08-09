@@ -9456,26 +9456,27 @@ function heroSet() {
             // ---- Hand-drawn punch poses ------------------------------------
             // Body+legs are ONE drawing (the lean, the plant, the angry face
             // are all baked in); only the punching arm is still solved by IK
-            // so the glove lands on the tile he actually hits. `shX`/`shY` are
-            // the shoulder as the artist placed it, measured as a fraction of
-            // the pose's own box. `h` height-matches the standing rig.
+            // so the glove lands on the tile he actually hits.
+            //
+            // shX/shY is the SHOULDER as a fraction of the pose's own box, and
+            // it has to sit ON the drum: parked out where the art's arm piece
+            // used to start, the hose grew out of thin air beside him. Both
+            // poses hang the arm inside the shell and draw it BEHIND the body,
+            // so the hose emerges from the silhouette and the wind-up reads as
+            // the fist coming out from behind him. `h` height-matches the
+            // standing rig. He stays one-armed: the other arm is simply on his
+            // far side.
             punchPose: (DONK_IMG.buzzPunchBody && DONK_IMG.buzzPunchArm) ? {
                 body: DONK_IMG.buzzPunchBody,
                 arm: mk(DONK_IMG.buzzPunchArm, 262, 512, 81, 0.405, 0.556),
                 h: 72.4, solesAt: 0.9994, drumCx: 0.508,
-                shX: 0.9734, shY: 0.4069, gauge: 5.03, armLen: 31.8,
-                rear: false,                 // FRONT arm throws it, so it sits on top
-                // the other arm cocks back behind the shell — without it he
-                // reads as one-armed, and a hanging arm just dangles at his shins
-                restX: -14, restY: -44, restAng: -1.35, restReach: 0.62,
+                shX: 262 / 359, shY: 200 / 512, gauge: 5.03, armLen: 31.8,
             } : null,
             upPose: (DONK_IMG.buzzUpBody && DONK_IMG.buzzUpArm) ? {
                 body: DONK_IMG.buzzUpBody,
                 arm: mk(DONK_IMG.buzzUpArm, 256, 512, 71, 0.561, 0.752),
                 h: 72.4, solesAt: 1, drumCx: 0.414,
-                shX: 0.7687, shY: 0.0604, gauge: 5.4, armLen: 38.8,
-                rear: true,                  // Carl: up punch is thrown by the BACK arm
-                restX: null,                 // a second arm here crosses his face — skip it
+                shX: 250 / 408, shY: 130 / 512, gauge: 5.4, armLen: 38.8,
                 // The cell above him centres barely over his head, so a truthful
                 // aim buries the fist in his own drum. Lifting inside the target
                 // cell keeps the hit honest and the pose readable.
@@ -9666,26 +9667,14 @@ function drawBuzzRig(cx, cy, k, o) {
         const ty = (o.punchTY !== undefined ? o.punchTY : shy) - (pose.aimLift || 0);
         const hx = shx + (tx - shx) * t, hy = shy + (ty - shy) * t;
         const need = Math.hypot(hx - shx, hy - shy);
-        const thrower = () => armIK(pose.arm, pose.gauge, shx, shy, hx, hy,
+        // The arm goes BEHIND the drawing: the shoulder is buried in the shell,
+        // so the hose only appears where it clears the silhouette. That also
+        // gives the wind-up for free — at t=0 the fist is still behind him and
+        // the arm extends out of him as the punch travels.
+        armIK(pose.arm, pose.gauge, shx, shy, hx, hy,
             Math.max(pose.armLen * 0.5, need * 1.02), 1, k, false, 0.5, 0.12,
             1 + t * 0.2);
-        if (pose.rear) thrower();
-        else if (pose.restX !== null) {
-            const rr = pose.restReach, rx = pose.restX, ry = pose.restY;
-            armIK(set.armMeta, BZ.armGauge, rx, ry,
-                rx + Math.sin(pose.restAng) * BZ.armLen * rr,
-                ry + Math.cos(pose.restAng) * BZ.armLen * rr,
-                BZ.armLen, 1, k, false, BZ.elbowAt, BZ.boneBow);
-        }
         ctx.drawImage(im, x0 * k, y0 * k, bw * k, bh * k);
-        if (!pose.rear) thrower();
-        else if (pose.restX !== null) {
-            const rr = pose.restReach, rx = pose.restX, ry = pose.restY;
-            armIK(set.armCleanMeta || set.armMeta, BZ.armGauge, rx, ry,
-                rx + Math.sin(pose.restAng) * BZ.armLen * rr,
-                ry + Math.cos(pose.restAng) * BZ.armLen * rr,
-                BZ.armLen, 1, k, BZ.frontGloveFlip, BZ.elbowAt, BZ.boneBow, 1, true);
-        }
         const tmp = ctx.getTransform(); // real fist position, for the impact FX
         donkFistTip = { x: tmp.a * hx * k + tmp.c * hy * k + tmp.e,
                         y: tmp.b * hx * k + tmp.d * hy * k + tmp.f };
