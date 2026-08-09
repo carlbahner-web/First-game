@@ -9443,7 +9443,9 @@ function heroSet() {
 // ============================================================
 const HOSE_INK = "#312D2F"; // sampled from the art's own hose
 const BZ = {
-    hipX: 5.5, stride: 12, legLift: 6, legGauge: 4.8, legLen: 39,
+    hipX: 1.5,      // legs hang from near one point — it's a side view
+    stanceX: 5.5,   // how far apart the feet park when standing
+    stride: 12, legLift: 9, legGauge: 4.8, legLen: 39,
     armX: 20, armXTrail: 22, armGauge: 4.2, armLen: 31, armOut: 6, armSwing: 9,
     fistGauge: 6.0, fistBase: 12, fistReach: 32,
     hip2bot: DK.by + DK.bh + 31.4, // drum bottom relative to the hip
@@ -9499,9 +9501,14 @@ function drawBuzzRig(cx, cy, k, o) {
     const hipY = -hipH, armY = hipY + BZ.shoulder;
 
     for (const side of [-1, 1]) {
-        const fx = side * BZ.hipX * 0.35 + (moving ? Math.sin(legPh(side)) * BZ.stride : side * BZ.hipX);
+        // Walking, the feet swing on the CENTRELINE: any constant lateral
+        // offset compounds with the stride, so one half-cycle opens while the
+        // other crosses into an X — a limp, not a walk. Standing, they part
+        // into a stance. Shoes are never mirrored per side: both point the way
+        // he faces.
+        const fx = moving ? Math.sin(legPh(side)) * BZ.stride : side * BZ.stanceX;
         const fy = moving ? -Math.max(0, -Math.cos(legPh(side))) * BZ.legLift : 0;
-        hoseIK(set.legMeta, BZ.legGauge, side * BZ.hipX, hipY, fx, fy, BZ.legLen, -side * 0.3, k, side < 0);
+        hoseIK(set.legMeta, BZ.legGauge, side * BZ.hipX, hipY, fx, fy, BZ.legLen, -side * 0.3, k, false);
     }
     const aSw = moving ? Math.sin(ph) * BZ.armSwing : 0;
     if (!(t > 0)) {
