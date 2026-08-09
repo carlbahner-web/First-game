@@ -8537,6 +8537,7 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
             hipX: 5.5,                    // hips pulled in from the rig's 9
             stride: 14,                   // long, natural strides
             legScale: 1.2,                // longer legs, art scaled not stretched
+            hero: true,                   // the smiling drum head/body
         });
         if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
         return;
@@ -9313,6 +9314,7 @@ const DONK_FILES = {
     button: "assets/donk/donk-button.png",
     arm:    "assets/donk/donk-arm.png",
     leg:    "assets/donk/donk-leg.png",
+    hero:   "assets/donk/hero-drum.png", // the player's head/body (optional)
 };
 const DONK_IMG = { body: null, button: null, arm: null, leg: null };
 const DONK_TINT = { elite: {} }; // tinted variants, baked once on load
@@ -9366,14 +9368,35 @@ function loadDonkImages() {
         img.onerror = () => { if (--pending === 0) donkFinishLoad(); };
         img.src = srcs[key];
     }
+    // Hero head/body (optional, loads independently of the core four)
+    const heroImg = new Image();
+    heroImg.onload = () => { DONK_IMG.hero = heroImg; };
+    heroImg.onerror = () => {};
+    heroImg.src = srcs.hero || DONK_FILES.hero;
 }
 loadDonkImages();
+
+let DONK_HERO = null;
+function heroSet() {
+    if (!DONK_HERO) {
+        const img = DONK_IMG.hero;
+        DONK_HERO = {
+            body: img,
+            button: null, // face is part of the body art — no separate pulse piece
+            arm: DONK_IMG.arm,
+            leg: DONK_IMG.leg,
+            bodyH: DK.bw * (img.height / img.width),
+        };
+    }
+    return DONK_HERO;
+}
 
 // Draw Donk with his feet at device-px (cx, cy), scaled by k = height/58.
 // Two sine waves at deliberately incommensurate rates (walk 0.005, pulse
 // 0.006 — matched rates read as mechanical), one table of numbers.
 function drawDonk(cx, cy, k, o) {
-    const set = (o.tint && DONK_TINT[o.tint] && DONK_TINT[o.tint].body) ? DONK_TINT[o.tint] : DONK_IMG;
+    const set = (o.hero && DONK_IMG.hero) ? heroSet()
+        : (o.tint && DONK_TINT[o.tint] && DONK_TINT[o.tint].body) ? DONK_TINT[o.tint] : DONK_IMG;
     const ph = (o.phase !== undefined ? o.phase : perfNow * 0.005) + (o.wob || 0);
     const sw = Math.sin(ph) * (o.stand ? 0.22 : 1); // blocked Donk marks time at 22%
     ctx.save();
@@ -9421,18 +9444,22 @@ function drawDonk(cx, cy, k, o) {
     armAt(1, -sw * 0.6);
 
     // Drumhead pulse, scaled about its own BOTTOM edge (scale about the
-    // centre and the head visibly detaches from the shell)
-    const p01 = 0.5 + 0.5 * Math.sin(perfNow * 0.006 + (o.wob || 0));
-    ctx.save();
-    ctx.translate(0, DK.btnBot * k);
-    ctx.scale(1, 0.86 + 0.28 * p01);
-    ctx.translate(0, -DK.btnBot * k);
-    ctx.drawImage(set.button, DK.bx * k, DK.by * k, DK.bw * k, DK.bh * k);
-    ctx.restore();
+    // centre and the head visibly detaches from the shell). Only for sets
+    // with a separate drumhead piece — the hero's face is baked into the body.
+    if (set.button) {
+        const p01 = 0.5 + 0.5 * Math.sin(perfNow * 0.006 + (o.wob || 0));
+        ctx.save();
+        ctx.translate(0, DK.btnBot * k);
+        ctx.scale(1, 0.86 + 0.28 * p01);
+        ctx.translate(0, -DK.btnBot * k);
+        ctx.drawImage(set.button, DK.bx * k, DK.by * k, DK.bw * k, DK.bh * k);
+        ctx.restore();
+    }
 
-    // Draw order is load-bearing: button, then body (shell overlaps the
-    // drumhead's lower edge), then BOTH arms in front of the shell
-    ctx.drawImage(set.body, DK.bx * k, DK.by * k, DK.bw * k, DK.bh * k);
+    // Body: bottom edge stays put so hips and shoulders line up for any
+    // body height (the hero drum is taller than Donk's shell)
+    const bodyH = set.bodyH || DK.bh;
+    ctx.drawImage(set.body, DK.bx * k, (DK.by + DK.bh - bodyH) * k, DK.bw * k, bodyH * k);
     // NEAR arm — swings across in FRONT of him. A side-view walker shows
     // one arm sweeping in front of the body while the other counter-swings
     // behind it (drawn before the shell above), not two visible arms
