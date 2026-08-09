@@ -9443,6 +9443,7 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
         drawDonk((gx + TILE / 2) * SCALE, (gy + TILE - 2) * SCALE,
             (type === "elite" ? 78 : 66) / 58, {
                 wob: opts.wob || 0,
+                phase: opts.phase,
                 mirror: opts.face !== undefined ? opts.face === 1 : dir === 3, // sticky horizontal facing
                 stand: opts.stand,
                 flash: opts.bodyCol === "#ffffff", // hurt + windup telegraph flashes
@@ -9736,6 +9737,17 @@ function drawGoblinFor(g) {
     // whichever way this goblin last faced
     if (g.dir === 2) g.donkFace = -1;
     else if (g.dir === 3) g.donkFace = 1;
+    // Distance-locked stride, same treatment as the player: legs cover
+    // ground at the speed this goblin actually moves. (The coaster's
+    // time-based amble was tuned for an enemy on screen for seconds.)
+    let gDist = 0;
+    if (g.donkLastX !== undefined) {
+        gDist = Math.abs(g.x - g.donkLastX) + Math.abs(g.y - g.donkLastY);
+        if (gDist > 8) gDist = 0; // teleport (respawn), not a step
+    }
+    g.donkLastX = g.x; g.donkLastY = g.y;
+    g.donkMoving = gDist > 0.05;
+    g.donkPhase = (g.donkPhase || 0) + (g.donkMoving ? gDist * 0.65 : 0.05);
     // Color palette: elite changes color based on HP
     let bodyCol, darkCol, headCol, eyeCol;
     if (g.hurtTimer > 0 && g.hurtTimer % 4 < 2) {
@@ -9769,7 +9781,8 @@ function drawGoblinFor(g) {
     drawGoblinSprite(g.elite ? "elite" : "normal", g.x, g.y,
         dancing ? Math.floor(g.danceTimer / 4) % 4 : g.frame, {
         dir: dancing ? 0 : g.dir, bodyCol, darkCol, headCol, eyeCol,
-        wob: g.wob || 0, face: g.donkFace
+        wob: g.wob || 0, face: g.donkFace,
+        phase: g.donkPhase, stand: !g.donkMoving
     });
 
     if (dancing) {
@@ -13484,7 +13497,7 @@ function renderBiomeTransition() {
         const prog = Math.min(1, pt / 120);
         const gx = -TILE + prog * (W + TILE * 2);
         const gy = H / 2 + 8 + Math.sin(pt * 0.1) * 2;
-        drawGoblinSprite("normal", gx, gy, Math.floor(pt / 5) % 4, { dir: 3, showShadow: false });
+        drawGoblinSprite("normal", gx, gy, Math.floor(pt / 5) % 4, { dir: 3, showShadow: false, phase: gx * 0.55 });
         if (biomeTransNextPiece) drawDJPieceGlow(gx + 8, gy - 8, t);
 
         if (biomeTransNextPiece && pt > 15) {
@@ -13721,7 +13734,7 @@ function renderSabotageAnim() {
             const gx = startX + (exitX - startX) * ease;
             const gy = startY + (exitY - startY) * ease;
             const runFrame = Math.floor(t / 4) % 4;
-            drawGoblinSprite("normal", gx, gy, runFrame, { dir: 3, showShadow: false });
+            drawGoblinSprite("normal", gx, gy, runFrame, { dir: 3, showShadow: false, phase: (gx + gy) * 0.55 });
 
             // On milestone levels the thief is visibly carrying the next DJ piece
             if (thiefCarriedPiece) {
