@@ -1942,7 +1942,7 @@ const player = {
     attackDuration: 12,
     punchHit: false, // did this swing already toggle a block?
     punchBuffered: false, // Space pressed mid-swing queues the next punch
-    speed: 2.0, // pixels per frame at 60fps — snappy tile-to-tile glide
+    speed: 1.4, // pixels per frame at 60fps (down from 2.0 to assess the walk)
     blinkTimer: 0, // counts up each frame, blinks at 180
     stunTimer: 0, // frames remaining in stun (can't move or punch)
     freezeTimer: 0, // frames remaining in boulder freeze (direct hit, with countdown)
@@ -8536,7 +8536,7 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
             mirror: donkCarlFacing === 1, // art faces left natively
             hipX: 5.5,                    // hips pulled in from the rig's 9
             stride: 14,                   // long, natural strides
-            legScale: 1.5,                // longer legs, art scaled not stretched
+            legScale: 1.2,                // longer legs, art scaled not stretched
         });
         if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
         return;
