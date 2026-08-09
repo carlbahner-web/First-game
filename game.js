@@ -9491,7 +9491,11 @@ function heroSet() {
                 arm: mk(DONK_IMG.buzzUpArm, 256, 512, 71, 0.561, 0.752),
                 h: 72.4, solesAt: 1, drumCx: 0.414,
                 shX: 79 / 408, shY: 197 / 512, gauge: 5.4, armLen: 38.8,
-                front: true, minExt: 0.22,
+                front: true,
+                // Carl: the up punch is an UPPERCUT — fist cocked low in front
+                // of the drum, then swinging up past his face on a curve, with
+                // the walking arm's roundness rather than a straight rod.
+                arc: { from: [16, 16], ctrl: [34, -26] }, bow: 0.35,
                 // The cell above him centres barely over his head, so a truthful
                 // aim buries the fist in his own drum. Lifting inside the target
                 // cell keeps the hit honest and the pose readable.
@@ -9682,12 +9686,28 @@ function drawBuzzRig(cx, cy, k, o) {
         const shx = x0 + pose.shX * bw, shy = y0 + pose.shY * bh;
         const tx = o.punchTX !== undefined ? o.punchTX : shx + 40;
         const ty = (o.punchTY !== undefined ? o.punchTY : shy) - (pose.aimLift || 0);
-        const e = pose.minExt ? pose.minExt + (1 - pose.minExt) * t : t;
-        const hx = shx + (tx - shx) * e, hy = shy + (ty - shy) * e;
+        // `arc` makes it an UPPERCUT: the fist starts cocked low in front of
+        // him and swings up to the target along a curve (quadratic through a
+        // control point out front), instead of travelling straight out from
+        // the shoulder. Paired with a fatter `bow` the limb keeps the curve of
+        // the walking arm rather than snapping into a rod.
+        let hx, hy;
+        if (pose.arc) {
+            const sx1 = shx + pose.arc.from[0], sy1 = shy + pose.arc.from[1];
+            const cx1 = shx + pose.arc.ctrl[0], cy1 = shy + pose.arc.ctrl[1];
+            const m = 1 - t;
+            hx = m * m * sx1 + 2 * m * t * cx1 + t * t * tx;
+            hy = m * m * sy1 + 2 * m * t * cy1 + t * t * ty;
+        } else {
+            const e = pose.minExt ? pose.minExt + (1 - pose.minExt) * t : t;
+            hx = shx + (tx - shx) * e; hy = shy + (ty - shy) * e;
+        }
         const need = Math.hypot(hx - shx, hy - shy);
+        // Cartoon punch: the glove is the whole gag, so it renders at roughly
+        // twice the arm's natural hand size and swells further on impact.
         const throwArm = () => armIK(pose.arm, pose.gauge, shx, shy, hx, hy,
-            Math.max(pose.armLen * 0.5, need * 1.02), 1, k, false, 0.5, 0.12,
-            1 + t * 0.2);
+            Math.max(pose.armLen * 0.5, need * 1.02), 1, k, false, 0.5,
+            pose.bow === undefined ? 0.12 : pose.bow, 1.8 + t * 0.25);
         if (!pose.front) throwArm();
         ctx.drawImage(im, x0 * k, y0 * k, bw * k, bh * k);
         if (pose.front) throwArm();
