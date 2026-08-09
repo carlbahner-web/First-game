@@ -9410,6 +9410,9 @@ function drawDonk(cx, cy, k, o) {
     // Step bob: carries everything above the hips
     ctx.translate(0, -Math.abs(sw) * 1.8 * k);
 
+    // FAR arm — counter-swings BEHIND him, mostly hidden by the shell
+    armAt(1, -sw * 0.6);
+
     // Drumhead pulse, scaled about its own BOTTOM edge (scale about the
     // centre and the head visibly detaches from the shell)
     const p01 = 0.5 + 0.5 * Math.sin(perfNow * 0.006 + (o.wob || 0));
@@ -9423,13 +9426,11 @@ function drawDonk(cx, cy, k, o) {
     // Draw order is load-bearing: button, then body (shell overlaps the
     // drumhead's lower edge), then BOTH arms in front of the shell
     ctx.drawImage(set.body, DK.bx * k, DK.by * k, DK.bw * k, DK.bh * k);
-    // Arms are a pendulum PAIR, not a mirror pair: the far arm draws
-    // through a mirror transform, so equal rotations made both arms wing
-    // outward together (bird flap). Opposite signs make them sway with the
-    // stride, each countering its diagonal leg — and the phase settle
-    // already brings them to rest at his sides when he stops.
-    armAt(1, -sw * 0.45);
-    armAt(-1, sw * 0.45);
+    // NEAR arm — swings across in FRONT of him. A side-view walker shows
+    // one arm sweeping in front of the body while the other counter-swings
+    // behind it (drawn before the shell above), not two visible arms
+    // waving. The phase settle still rests both at his sides on stop.
+    armAt(-1, sw * 0.6);
     ctx.restore();
 }
 
