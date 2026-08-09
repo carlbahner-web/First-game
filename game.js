@@ -9398,7 +9398,8 @@ function heroSet() {
             leg: DONK_IMG.leg,
             bodyH: bodyH,
             armY: DK.by + DK.bh - bodyH / 2, // shoulders at the drum's center height
-            armX: 26,                        // shoulder ON the rim, not inside it
+            armX: 26,                        // far arm: shoulder out at the rim
+            armXFront: 14,                   // front arm: shoulder mid-shell
             armStretch: 1.3,                 // original thickness, stretched longer
             idleArm: -Math.PI / 4,           // hands down 45deg (audience-left CCW, right CW)
         };
@@ -9439,8 +9440,11 @@ function drawDonk(cx, cy, k, o) {
     const ast = set.armStretch || 1;                // length-only stretch
     const aw = DK.armW * as_, ah = DK.armH * as_ * ast;
     const armAt = (side, swing) => {
+        // Front arm (side +1) can carry its own mount — on BUZZ its shoulder
+        // sits mid-shell rather than out at the rim
+        const mx = (side > 0 && set.armXFront !== undefined) ? set.armXFront : armMX;
         ctx.save();
-        ctx.translate(side * armMX * k, armMY * k); // shoulder mount
+        ctx.translate(side * mx * k, armMY * k);    // shoulder mount
         if (side > 0) ctx.scale(-1, 1);             // arm art mirrors for this side
         ctx.rotate(swing + armIdle);
         ctx.drawImage(set.arm, -aw * DK.armPX * k, -ah * DK.armPY * k, aw * k, ah * k);
