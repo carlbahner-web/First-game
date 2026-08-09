@@ -17,6 +17,61 @@ const GRID_Y = 4;          // grid start tile-y (centered vertically)
 const GRID_Y_OFFSET = 0;   // no offset needed with centered layout
 const DOOR_TILE_Y = Math.floor(ROWS / 2); // exit door on the right wall
 // (gap row after kick removed)
+
+// ============================================================
+// STUDIOLAND INK — palette + line-boil engine
+// Ported from BUZZ's Coaster Run: hand-inked charcoal on cream paper,
+// re-inked on a 3-phase ~8fps clock so every line breathes as one hand.
+// ============================================================
+const INK = {
+    paper:    "#fcf7e8", // BUZZ off-white
+    charcoal: "#2C2C2A",
+    mustard:  "#F6CC60", // Midway Mustard
+    teal:     "#3A6168", // Harbor Teal
+    mint:     "#BFCDC0", // Foggy Mint
+    rust:     "#BF7538", // Rusty Turnstile
+    red:      "#c05838", // decorative red
+    green:    "#50ad33", // neon green
+    silverL:  "#BFC9C1", // robot silver light
+    silverD:  "#7A8F85", // robot silver dark
+    alert:    "#FE3636", // DEADLY ONLY — never decorative (design bible)
+};
+
+// The boil clock + noise (verbatim from the coaster; amplitudes in device px)
+let perfNow = 0; // advanced once per frame in gameLoop
+const boil = () => Math.floor(perfNow / 130) % 3;
+function hashN(i, seed) { const s = Math.sin(i * 127.1 + seed * 311.7) * 43758.5453; return s - Math.floor(s); }
+function vnoise(x, seed) {
+    const c = 46, i = Math.floor(x / c), t = x / c - i;
+    const a = hashN(i, seed), b = hashN(i + 1, seed), u = (1 - Math.cos(t * Math.PI)) / 2;
+    return a + (b - a) * u;
+}
+function jit(x, seed, amp) { return (vnoise(x, seed + boil() * 7.31) - 0.5) * 2 * amp; }
+// Static wonk — same irregularity, frozen. For dense repeating marks
+// (grid tiles), where boiling at density reads as strobe.
+function sjit(x, seed, amp) { return (vnoise(x, seed) - 0.5) * 2 * amp; }
+// Phase-explicit jitter for pre-rendered boil variants (textures are baked
+// once per level in 3 phases, so they can't read the live clock)
+function pjit(x, seed, phase, amp) { return (vnoise(x, seed + phase * 7.31) - 0.5) * 2 * amp; }
+
+// Stroke a wobbly hand-inked polyline through the given points (device px),
+// displacing each interior point by the live boil. Used for per-frame ink
+// (the door); baked ink uses pjit with an explicit phase instead.
+function boilStroke(g, pts, seed, amp, color, lw) {
+    g.strokeStyle = color;
+    g.lineWidth = lw;
+    g.lineJoin = "round";
+    g.lineCap = "round";
+    g.beginPath();
+    for (let i = 0; i < pts.length; i++) {
+        const p = pts[i];
+        const x = p[0] + jit(p[0] + p[1] * 0.37, seed, amp);
+        const y = p[1] + jit(p[1] + p[0] * 0.61, seed + 5.7, amp);
+        if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+    }
+    g.stroke();
+}
+
 // Tempo is set per level using frames-per-16th-note at 60fps
 // Gradual curve across 30 levels:
 // L1-5: 10 frames (90 BPM), L6-14: 9 (100), L15-18: 8 (112.5),
@@ -901,7 +956,7 @@ function generateStoneTile(seed, baseColor, darkColor, highlightColor, opts) {
             const mx = rng() * size;
             const my = rng() * size;
             const mr = 2 + rng() * 4;
-            g.fillStyle = o.mossColor || "#2a4a2a";
+            g.fillStyle = o.mossColor || "#55554f";
             g.globalAlpha = 0.15 + rng() * 0.2;
             g.beginPath();
             g.arc(mx, my, mr, 0, Math.PI * 2);
@@ -937,43 +992,65 @@ function generateStoneTile(seed, baseColor, darkColor, highlightColor, opts) {
     return c;
 }
 
-// Generate stone tile for the grid (darker, more uniform)
+// Generate stone tile for the grid — paper stone with a hand-inked
+// charcoal border. Static wonk, not boil: 96 repeating tiles boiling in
+// lockstep reads as strobe (coaster bible, the rail-ties lesson).
 function generateGridStoneTile(seed, biome) {
     const gs = biome.gridStone;
-    return generateStoneTile(seed, gs.base, gs.dark, gs.hi, { mossColor: gs.moss });
+    const c = generateStoneTile(seed, gs.base, gs.dark, gs.hi, { mossColor: gs.moss });
+    const g = c.getContext('2d');
+    const size = TILE * SCALE;
+    g.strokeStyle = INK.charcoal;
+    g.globalAlpha = 0.8;
+    g.lineWidth = 2;
+    g.lineJoin = "round";
+    g.beginPath();
+    const corners = [[2, 2], [size - 2, 2], [size - 2, size - 2], [2, size - 2]];
+    for (let e = 0; e < 4; e++) {
+        const [x1, y1] = corners[e], [x2, y2] = corners[(e + 1) % 4];
+        for (let s = 0; s <= 4; s++) {
+            const t = s / 4, x = x1 + (x2 - x1) * t, y = y1 + (y2 - y1) * t;
+            const px = x + sjit(seed * 0.13 + e * 97 + s * 29, 3.1, 1.6);
+            const py = y + sjit(seed * 0.17 + e * 61 + s * 41, 4.7, 1.6);
+            (e === 0 && s === 0) ? g.moveTo(px, py) : g.lineTo(px, py);
+        }
+    }
+    g.closePath();
+    g.stroke();
+    g.globalAlpha = 1;
+    return c;
 }
 
-// Generate an active/glowing grid tile overlay
+// Generate an active grid tile — flat ink-wash fill in the row's color,
+// paper-white veins, and a hand-inked charcoal border (static wonk).
 function generateGlowTile(seed, glowColor) {
     const size = TILE * SCALE;
     const c = document.createElement('canvas');
     c.width = size; c.height = size;
     const g = c.getContext('2d');
     const rng = texRNG(seed);
-    const [gr, gg, gb] = hexToRGB(glowColor);
 
-    // Dark stone base
-    g.fillStyle = "#1a2820";
+    // Paper stone base
+    g.fillStyle = "#f3ecd8";
     g.fillRect(0, 0, size, size);
 
-    // Glow fill (inner area)
+    // Gouache wash fill
     const innerPad = 3;
     g.fillStyle = glowColor;
-    g.globalAlpha = 0.7;
+    g.globalAlpha = 0.92;
     g.beginPath();
-    g.roundRect(innerPad, innerPad, size - innerPad * 2, size - innerPad * 2, 3);
+    g.roundRect(innerPad, innerPad, size - innerPad * 2, size - innerPad * 2, 4);
     g.fill();
     g.globalAlpha = 1;
 
-    // Energy vein network (branching cracks that glow)
-    const numVeins = 4 + Math.floor(rng() * 4);
+    // Paper-white energy veins (unpainted cracks in the wash)
+    const numVeins = 3 + Math.floor(rng() * 3);
     for (let i = 0; i < numVeins; i++) {
         const x1 = innerPad + rng() * (size - innerPad * 2);
         const y1 = innerPad + rng() * (size - innerPad * 2);
         const segments = 2 + Math.floor(rng() * 3);
-        // Bright core
-        g.strokeStyle = `rgba(255,255,255,0.6)`;
-        g.lineWidth = 0.5 + rng() * 1;
+        g.strokeStyle = "rgba(252,247,232,0.55)";
+        g.lineWidth = 1 + rng() * 1.5;
         g.beginPath();
         g.moveTo(x1, y1);
         let vx = x1, vy = y1;
@@ -983,45 +1060,35 @@ function generateGlowTile(seed, glowColor) {
             g.lineTo(vx, vy);
         }
         g.stroke();
-        // Outer glow around vein
-        g.strokeStyle = glowColor;
-        g.globalAlpha = 0.4;
-        g.lineWidth = 2 + rng() * 2;
-        g.beginPath();
-        g.moveTo(x1, y1);
-        vx = x1; vy = y1;
-        for (let s = 0; s < segments; s++) {
-            vx += (rng() - 0.5) * 20;
-            vy += (rng() - 0.5) * 20;
-            g.lineTo(vx, vy);
+    }
+
+    // Brush-light hotspot
+    const hx = innerPad + rng() * (size - innerPad * 2);
+    const hy = innerPad + rng() * (size - innerPad * 2);
+    const hr = 5 + rng() * 8;
+    const grad = g.createRadialGradient(hx, hy, 0, hx, hy, hr);
+    grad.addColorStop(0, "rgba(255,255,255,0.35)");
+    grad.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = grad;
+    g.fillRect(hx - hr, hy - hr, hr * 2, hr * 2);
+
+    // Hand-inked charcoal border — static wonk (dense tiles must not boil)
+    g.strokeStyle = INK.charcoal;
+    g.lineWidth = 2.5;
+    g.lineJoin = "round";
+    g.beginPath();
+    const corners = [[innerPad, innerPad], [size - innerPad, innerPad], [size - innerPad, size - innerPad], [innerPad, size - innerPad]];
+    for (let e = 0; e < 4; e++) {
+        const [x1, y1] = corners[e], [x2, y2] = corners[(e + 1) % 4];
+        for (let s = 0; s <= 4; s++) {
+            const t = s / 4, x = x1 + (x2 - x1) * t, y = y1 + (y2 - y1) * t;
+            const px = x + sjit(seed * 0.11 + e * 97 + s * 29, 8.3, 1.8);
+            const py = y + sjit(seed * 0.19 + e * 61 + s * 41, 9.1, 1.8);
+            (e === 0 && s === 0) ? g.moveTo(px, py) : g.lineTo(px, py);
         }
-        g.stroke();
-        g.globalAlpha = 1;
     }
-
-    // Hot spots (brighter concentration points)
-    for (let i = 0; i < 3; i++) {
-        const hx = innerPad + rng() * (size - innerPad * 2);
-        const hy = innerPad + rng() * (size - innerPad * 2);
-        const hr = 3 + rng() * 6;
-        const grad = g.createRadialGradient(hx, hy, 0, hx, hy, hr);
-        grad.addColorStop(0, `rgba(255,255,255,0.5)`);
-        grad.addColorStop(0.5, `rgba(${gr},${gg},${gb},0.4)`);
-        grad.addColorStop(1, `rgba(${gr},${gg},${gb},0)`);
-        g.fillStyle = grad;
-        g.fillRect(hx - hr, hy - hr, hr * 2, hr * 2);
-    }
-
-    // Inner highlight (top edge shine)
-    g.fillStyle = "rgba(255,255,255,0.12)";
-    g.fillRect(innerPad, innerPad, size - innerPad * 2, 2);
-
-    // Edge bevel
-    g.fillStyle = "#0d150d";
-    g.globalAlpha = 0.3;
-    g.fillRect(0, size - 2, size, 2);
-    g.fillRect(size - 2, 0, 2, size);
-    g.globalAlpha = 1;
+    g.closePath();
+    g.stroke();
 
     return c;
 }
@@ -1045,107 +1112,107 @@ function generateFloorTile(seed, biome) {
 // beat grid keep their readability; only the ambience shifts.
 // ============================================================
 const BIOMES = [
-    { // Levels 1-5 → THE LEFT SPEAKER (the classic mossy caves)
+    { // Levels 1-5 → THE LEFT SPEAKER (soft mint, closest to plain paper)
         name: "MOSSY HOLLOWS",
         tagline: "WHERE THE GROOVE BEGINS",
-        floor: { base: "#0d150d", dark: "#050a05", hi: "#152015", moss: "#0a1a0a" },
+        floor: { base: "#fcf7e8", dark: "#ded6c0", hi: "#ffffff", moss: "#dfe7df" },
         walls: [
-            { base: "#1e2e1e", dark: "#0a0f0a", hi: "#2a3a2a" },
-            { base: "#1a2a1a", dark: "#080d08", hi: "#243024" },
-            { base: "#162616", dark: "#060b06", hi: "#1e3e1e" },
+            { base: "#BFCDC0", dark: "#93a89a", hi: "#e9eee9" },
+            { base: "#b7c6b8", dark: "#8aa091", hi: "#e4eae4" },
+            { base: "#c6d2c7", dark: "#9cb0a3", hi: "#eef2ee" },
         ],
-        wallMoss: "#1a3a1a",
-        gridStone: { base: "#1a2820", dark: "#0d150d", hi: "#2a3a2a", moss: "#1a3a2a" },
-        gridWall: { base: "#1a2820", dark: "#0d150d", hi: "#243024" },
-        lights: ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#44ff44"],
-        lightHi: "#aaffaa",
-        caveGlow: "50,255,50",
-        stal: { a: "#1e2e1e", b: "#243024", hi: "#2a4a2a", drip: "rgba(80,180,80,0.2)" },
+        wallMoss: "#93a89a",
+        gridStone: { base: "#f3ecd8", dark: "#b3aa96", hi: "#ffffff", moss: "#dfe7df" },
+        gridWall: { base: "#e9eee9", dark: "#93a89a", hi: "#ffffff" },
+        lights: ["#50ad33", "#8fbf7a", "#BFCDC0", "#6fae57", "#a5c99a", "#50ad33"],
+        lightHi: "#ffffff",
+        caveGlow: "143,168,150",
+        stal: { a: "#BFCDC0", b: "#a9bcab", hi: "#e9eee9", drip: "rgba(44,44,42,0.25)" },
     },
-    { // Levels 6-10 → THE RIGHT SPEAKER (deep blue echo caves)
+    { // Levels 6-10 → THE RIGHT SPEAKER (harbor teal wash)
         name: "ECHOING DEPTHS",
         tagline: "EVERY BEAT ECHOES TWICE",
-        floor: { base: "#0c1118", dark: "#04070d", hi: "#131c28", moss: "#0d1a2e" },
+        floor: { base: "#fcf7e8", dark: "#dcd8c8", hi: "#ffffff", moss: "#d5e0e1" },
         walls: [
-            { base: "#1c2634", dark: "#0a0f16", hi: "#2a3a50" },
-            { base: "#18222e", dark: "#080c12", hi: "#22303e" },
-            { base: "#141d28", dark: "#060a0e", hi: "#1c2a3c" },
+            { base: "#7fa0a4", dark: "#3A6168", hi: "#d5e0e1" },
+            { base: "#75989c", dark: "#35595f", hi: "#cfdcdd" },
+            { base: "#88a8ac", dark: "#40686f", hi: "#dbe5e6" },
         ],
-        wallMoss: "#16304a",
-        gridStone: { base: "#182230", dark: "#0c1118", hi: "#28384c", moss: "#1c3450" },
-        gridWall: { base: "#182230", dark: "#0c1118", hi: "#22303e" },
-        lights: ["#44aaff", "#33ccff", "#5588ff", "#22bbee", "#44ccff", "#3399ff"],
-        lightHi: "#bbe4ff",
-        caveGlow: "60,160,255",
-        stal: { a: "#1c2634", b: "#22303e", hi: "#2a4a6a", drip: "rgba(80,140,220,0.2)" },
+        wallMoss: "#3A6168",
+        gridStone: { base: "#f3ecd8", dark: "#b3aa96", hi: "#ffffff", moss: "#d5e0e1" },
+        gridWall: { base: "#d5e0e1", dark: "#3A6168", hi: "#ffffff" },
+        lights: ["#3A6168", "#5d8a90", "#7fb2b8", "#4a777e", "#6d9ba1", "#3A6168"],
+        lightHi: "#ffffff",
+        caveGlow: "58,97,104",
+        stal: { a: "#7fa0a4", b: "#527d82", hi: "#d5e0e1", drip: "rgba(44,44,42,0.25)" },
     },
-    { // Levels 11-15 → THE TURNTABLE (warm amber sandstone grotto)
+    { // Levels 11-15 → THE TURNTABLE (midway mustard wash)
         name: "AMBER GROTTO",
         tagline: "GOLDEN WALLS, WARMER GROOVES",
-        floor: { base: "#151005", dark: "#0a0703", hi: "#201a0c", moss: "#241a06" },
+        floor: { base: "#fcf7e8", dark: "#e2d8ba", hi: "#ffffff", moss: "#f5ecd0" },
         walls: [
-            { base: "#2e2414", dark: "#160f06", hi: "#42341c" },
-            { base: "#2a2010", dark: "#120c04", hi: "#3a2c16" },
-            { base: "#261c0e", dark: "#100a04", hi: "#362818" },
+            { base: "#e5bd57", dark: "#b8923a", hi: "#faeec9" },
+            { base: "#ddb44e", dark: "#ad8834", hi: "#f7e9bd" },
+            { base: "#ecc667", dark: "#c29a3f", hi: "#fbf1d3" },
         ],
-        wallMoss: "#3a2c10",
-        gridStone: { base: "#28200e", dark: "#151005", hi: "#3c3016", moss: "#3a2c10" },
-        gridWall: { base: "#28200e", dark: "#151005", hi: "#3a2c16" },
-        lights: ["#ffbb33", "#ffaa22", "#ffcc55", "#ee9922", "#ffbb44", "#ff9933"],
-        lightHi: "#ffe8aa",
-        caveGlow: "255,180,60",
-        stal: { a: "#2e2414", b: "#3a2c16", hi: "#4a3c1c", drip: "rgba(220,170,80,0.2)" },
+        wallMoss: "#b8923a",
+        gridStone: { base: "#f3ecd8", dark: "#b3aa96", hi: "#ffffff", moss: "#f5ecd0" },
+        gridWall: { base: "#faeec9", dark: "#b8923a", hi: "#ffffff" },
+        lights: ["#F6CC60", "#e0b34a", "#f2d788", "#d3a63f", "#f8dfa0", "#F6CC60"],
+        lightHi: "#ffffff",
+        caveGlow: "246,204,96",
+        stal: { a: "#e5bd57", b: "#c9a13e", hi: "#faeec9", drip: "rgba(44,44,42,0.25)" },
     },
-    { // Levels 16-20 → THE MIXER (murky teal fungus caves)
+    { // Levels 16-20 → THE MIXER (neon green wash — the funk is green)
         name: "FUNGAL MIRE",
         tagline: "THE FUNK GROWS THICK DOWN HERE",
-        floor: { base: "#081412", dark: "#040a09", hi: "#10201c", moss: "#0a2420" },
+        floor: { base: "#fcf7e8", dark: "#dcdcc4", hi: "#ffffff", moss: "#e2efdb" },
         walls: [
-            { base: "#16302a", dark: "#0a1512", hi: "#204238" },
-            { base: "#122a24", dark: "#08110e", hi: "#1a3830" },
-            { base: "#0e241e", dark: "#060d0b", hi: "#183226" },
+            { base: "#7dba66", dark: "#3c8226", hi: "#dcedd2" },
+            { base: "#74b15d", dark: "#377a22", hi: "#d5e9ca" },
+            { base: "#87c271", dark: "#428c2b", hi: "#e3f1da" },
         ],
-        wallMoss: "#124038",
-        gridStone: { base: "#142a24", dark: "#081412", hi: "#22423a", moss: "#164438" },
-        gridWall: { base: "#142a24", dark: "#081412", hi: "#1a3830" },
-        lights: ["#22ffcc", "#33eebb", "#11ddcc", "#44ffdd", "#22eeaa", "#33ffcc"],
-        lightHi: "#bbffee",
-        caveGlow: "40,255,200",
-        stal: { a: "#16302a", b: "#1a3830", hi: "#2a5a4a", drip: "rgba(60,220,180,0.2)" },
+        wallMoss: "#3c8226",
+        gridStone: { base: "#f3ecd8", dark: "#b3aa96", hi: "#ffffff", moss: "#e2efdb" },
+        gridWall: { base: "#dcedd2", dark: "#3c8226", hi: "#ffffff" },
+        lights: ["#50ad33", "#71c153", "#8fd077", "#3c8226", "#a8dc94", "#50ad33"],
+        lightHi: "#ffffff",
+        caveGlow: "80,173,51",
+        stal: { a: "#7dba66", b: "#4f9739", hi: "#dcedd2", drip: "rgba(44,44,42,0.25)" },
     },
-    { // Levels 21-25 → THE LIGHT RIG (glittering violet crystal vault)
+    { // Levels 21-25 → THE LIGHT RIG (robot silver — crystal as chrome)
         name: "CRYSTAL VAULT",
         tagline: "A THOUSAND LIGHTS, ONE BEAT",
-        floor: { base: "#100a18", dark: "#08050d", hi: "#1a1226", moss: "#1e0e30" },
+        floor: { base: "#fcf7e8", dark: "#dfdcd2", hi: "#ffffff", moss: "#e6eae7" },
         walls: [
-            { base: "#241a38", dark: "#100a1a", hi: "#382a52" },
-            { base: "#20162e", dark: "#0c0814", hi: "#302242" },
-            { base: "#1c1228", dark: "#0a060f", hi: "#2a1e3e" },
+            { base: "#BFC9C1", dark: "#7A8F85", hi: "#e6eae7" },
+            { base: "#b4c0b8", dark: "#71867c", hi: "#e0e5e1" },
+            { base: "#c8d1ca", dark: "#83988e", hi: "#eceeec" },
         ],
-        wallMoss: "#301a4a",
-        gridStone: { base: "#1e1630", dark: "#100a18", hi: "#322450", moss: "#2e1c48" },
-        gridWall: { base: "#1e1630", dark: "#100a18", hi: "#302242" },
-        lights: ["#cc55ff", "#aa44ee", "#dd66ff", "#9933dd", "#bb55ff", "#ee77ff"],
-        lightHi: "#eeccff",
-        caveGlow: "190,90,255",
-        stal: { a: "#241a38", b: "#302242", hi: "#42306a", drip: "rgba(180,100,240,0.2)" },
+        wallMoss: "#7A8F85",
+        gridStone: { base: "#f3ecd8", dark: "#b3aa96", hi: "#ffffff", moss: "#e6eae7" },
+        gridWall: { base: "#e6eae7", dark: "#7A8F85", hi: "#ffffff" },
+        lights: ["#BFC9C1", "#9fb0a6", "#d5dcd6", "#8ba095", "#c8d1ca", "#BFC9C1"],
+        lightHi: "#ffffff",
+        caveGlow: "122,143,133",
+        stal: { a: "#BFC9C1", b: "#93a69b", hi: "#e6eae7", drip: "rgba(44,44,42,0.25)" },
     },
-    { // Levels 26-30 → THE DISCO BALL (ember-lit molten core, the goblin lair)
+    { // Levels 26-30 → THE DISCO BALL (rusty turnstile — the finale burns)
         name: "MOLTEN CORE",
         tagline: "THE GOBLIN KING'S DANCE FLOOR",
-        floor: { base: "#160b08", dark: "#0b0504", hi: "#221009", moss: "#2a0e04" },
+        floor: { base: "#fcf7e8", dark: "#e4d6c2", hi: "#ffffff", moss: "#f2e2cf" },
         walls: [
-            { base: "#301410", dark: "#180806", hi: "#48201a" },
-            { base: "#2a120c", dark: "#140704", hi: "#3e1c14" },
-            { base: "#24100a", dark: "#100503", hi: "#38180e" },
+            { base: "#cf8f55", dark: "#9a5426", hi: "#f0d9c2" },
+            { base: "#c98547", dark: "#8f4d21", hi: "#ecd2b8" },
+            { base: "#d69a64", dark: "#a55c2c", hi: "#f4e0cc" },
         ],
-        wallMoss: "#401808",
-        gridStone: { base: "#2a1410", dark: "#160b08", hi: "#42221a", moss: "#3c1a0c" },
-        gridWall: { base: "#2a1410", dark: "#160b08", hi: "#3e1c14" },
-        lights: ["#ff5522", "#ff7733", "#ff4411", "#ff8844", "#ff6622", "#ff3311"],
-        lightHi: "#ffcc99",
-        caveGlow: "255,90,30",
-        stal: { a: "#301410", b: "#3e1c14", hi: "#582a1e", drip: "rgba(255,120,60,0.25)" },
+        wallMoss: "#9a5426",
+        gridStone: { base: "#f3ecd8", dark: "#b3aa96", hi: "#ffffff", moss: "#f2e2cf" },
+        gridWall: { base: "#f0d9c2", dark: "#9a5426", hi: "#ffffff" },
+        lights: ["#BF7538", "#c05838", "#d99a5e", "#a85f2a", "#c98547", "#c05838"],
+        lightHi: "#ffffff",
+        caveGlow: "191,117,56",
+        stal: { a: "#cf8f55", b: "#a05a28", hi: "#f0d9c2", drip: "rgba(44,44,42,0.25)" },
     },
 ];
 
@@ -1166,7 +1233,7 @@ let texturesBuiltForLevel = -1;
 const gradCache = {};
 
 // Grid glow tiles (active blocks — per row color, multiple variants per row)
-const GLOW_COLORS = ["#44ff44", "#88ee22", "#ee8822", "#ff6611", "#ff4400", "#33dd88"];
+const GLOW_COLORS = [INK.green, INK.mustard, INK.teal, INK.red, INK.silverD, INK.rust];
 const TEX_GRID_ON = [];
 for (let r = 0; r < 6; r++) {
     TEX_GRID_ON[r] = [];
@@ -1262,12 +1329,12 @@ function buildGridWallTexture(biome, LS) {
 function buildCaveBgTexture(biome, LS) {
     const w = COLS * TILE * SCALE;
     const h = ROWS * TILE * SCALE;
-    const c = document.createElement('canvas');
+    const c = document.createElement('canvas'); // shared base (non-boiling)
     c.width = w; c.height = h;
     const g = c.getContext('2d');
 
-    // Dark base fill
-    g.fillStyle = biome.walls[0].dark;
+    // Paper base fill
+    g.fillStyle = INK.paper;
     g.fillRect(0, 0, w, h);
 
     // Draw floor tiles
@@ -1294,66 +1361,24 @@ function buildCaveBgTexture(biome, LS) {
         g.drawImage(TEX_WALL_RIGHT[r], (COLS - 1) * TILE * SCALE, r * TILE * SCALE);
     }
 
-    // Stalactites (triangular, textured) — positions jittered per level
+    // Stalactites & stalagmites: positions rolled once per level, then
+    // drawn in the per-phase pass below so their inked edges boil
     const stRNG = texRNG(LS + 54321);
-    const stalactitePositions = [2, 4, 7, 9, 12, 14, 17, 19]
-        .map(p => p + Math.floor(stRNG() * 3) - 1);
-    for (const sc of stalactitePositions) {
-        if (sc < 1 || sc >= COLS - 1) continue;
+    const stals = [];
+    for (const p of [2, 4, 7, 9, 12, 14, 17, 19]) {
+        const sc = p + Math.floor(stRNG() * 3) - 1;
         const stH = 3 + Math.floor(stRNG() * 5);
-        const stX = sc * TILE + TILE / 2;
-        const stCol = stRNG() > 0.5 ? biome.stal.a : biome.stal.b;
-        // Main stalactite body
-        g.fillStyle = stCol;
-        g.beginPath();
-        g.moveTo((stX - 4) * SCALE, TILE * SCALE);
-        g.lineTo((stX + 4) * SCALE, TILE * SCALE);
-        g.lineTo((stX + 1) * SCALE, (TILE + stH) * SCALE);
-        g.lineTo((stX - 1) * SCALE, (TILE + stH + 2) * SCALE);
-        g.closePath();
-        g.fill();
-        // Highlight edge
-        g.fillStyle = biome.stal.hi;
-        g.globalAlpha = 0.3;
-        g.beginPath();
-        g.moveTo((stX - 2) * SCALE, TILE * SCALE);
-        g.lineTo((stX) * SCALE, TILE * SCALE);
-        g.lineTo((stX - 0.5) * SCALE, (TILE + stH) * SCALE);
-        g.closePath();
-        g.fill();
-        g.globalAlpha = 1;
-        // Drip highlight
-        g.fillStyle = biome.stal.drip;
-        g.beginPath();
-        g.arc((stX) * SCALE, (TILE + stH + 2) * SCALE, 1.5 * SCALE, 0, Math.PI * 2);
-        g.fill();
+        const fill = stRNG() > 0.5 ? biome.stal.a : biome.stal.b;
+        if (sc < 1 || sc >= COLS - 1) continue;
+        stals.push({ x: sc * TILE + TILE / 2, h: stH, fill });
     }
-
-    // Stalagmites on floor — positions jittered per level
-    const stalagmitePositions = [3, 6, 10, 15, 18]
-        .map(p => p + Math.floor(stRNG() * 3) - 1);
-    for (const sm of stalagmitePositions) {
-        if (sm < 1 || sm >= COLS - 1) continue;
+    const smites = [];
+    for (const p of [3, 6, 10, 15, 18]) {
+        const sm = p + Math.floor(stRNG() * 3) - 1;
         const smH = 2 + Math.floor(stRNG() * 4);
-        const smX = sm * TILE + TILE / 2;
-        const smBaseY = (ROWS - 1) * TILE;
-        g.fillStyle = stRNG() > 0.5 ? biome.stal.a : biome.stal.b;
-        g.beginPath();
-        g.moveTo((smX - 3) * SCALE, smBaseY * SCALE);
-        g.lineTo((smX + 3) * SCALE, smBaseY * SCALE);
-        g.lineTo((smX) * SCALE, (smBaseY - smH) * SCALE);
-        g.closePath();
-        g.fill();
-        // Highlight
-        g.fillStyle = biome.stal.hi;
-        g.globalAlpha = 0.25;
-        g.beginPath();
-        g.moveTo((smX - 1) * SCALE, smBaseY * SCALE);
-        g.lineTo((smX + 1) * SCALE, smBaseY * SCALE);
-        g.lineTo((smX) * SCALE, (smBaseY - smH) * SCALE);
-        g.closePath();
-        g.fill();
-        g.globalAlpha = 1;
+        const fill = stRNG() > 0.5 ? biome.stal.a : biome.stal.b;
+        if (sm < 1 || sm >= COLS - 1) continue;
+        smites.push({ x: sm * TILE + TILE / 2, h: smH, fill });
     }
 
     // Faint goblin runes carved into the walls — the same message is
@@ -1362,7 +1387,7 @@ function buildCaveBgTexture(biome, LS) {
     {
         const words = ["WE", "JUST", "WANT", "TO", "DANCE", "WITH", "YOU"];
         const runeSnips = 2 + Math.floor(stRNG() * 3);
-        g.strokeStyle = biome.stal.hi;
+        g.strokeStyle = INK.charcoal;
         g.lineWidth = SCALE * 0.6;
         for (let i = 0; i < runeSnips; i++) {
             const word = words[Math.floor(stRNG() * words.length)];
@@ -1385,7 +1410,71 @@ function buildCaveBgTexture(biome, LS) {
         g.globalAlpha = 1;
     }
 
-    return c;
+    // ---- Per-phase ink pass: the hand that re-inks the room 3x/sec ----
+    const phases = [];
+    for (let ph = 0; ph < 3; ph++) {
+        const pc = document.createElement('canvas');
+        pc.width = w; pc.height = h;
+        const pg = pc.getContext('2d');
+        pg.drawImage(c, 0, 0);
+        const J = (x, seed, amp) => pjit(x, LS * 0.013 + seed, ph, amp);
+
+        // Wall/floor boundary ink lines — the inked edge of the cave
+        pg.lineJoin = "round";
+        pg.lineCap = "round";
+        const line = (pts, seed) => {
+            pg.strokeStyle = INK.charcoal;
+            pg.lineWidth = 2.5;
+            pg.beginPath();
+            for (let i = 0; i < pts.length; i++) {
+                const x = pts[i][0] + J(pts[i][0] + pts[i][1] * 0.37, seed, 2.2);
+                const y = pts[i][1] + J(pts[i][1] + pts[i][0] * 0.61, seed + 3.3, 2.2);
+                i === 0 ? pg.moveTo(x, y) : pg.lineTo(x, y);
+            }
+            pg.stroke();
+        };
+        const topY = TILE * SCALE, botY = (ROWS - 1) * TILE * SCALE;
+        const hp = (y) => { const a = []; for (let x = 0; x <= w; x += 14) a.push([x, y]); return a; };
+        const vp = (x) => { const a = []; for (let y = topY; y <= botY; y += 14) a.push([x, y]); return a; };
+        line(hp(topY), 11); line(hp(botY), 22);
+        line(vp(TILE * SCALE), 33); line(vp((COLS - 1) * TILE * SCALE), 44);
+
+        // Stalactites: wash fill whose jittered edge IS the ink line
+        for (let si = 0; si < stals.length; si++) {
+            const st = stals[si];
+            const bx = st.x * SCALE, ty = TILE * SCALE, hh = st.h * SCALE;
+            const pts = [
+                [bx - 4 * SCALE, ty], [bx + 4 * SCALE, ty],
+                [bx + 1 * SCALE, ty + hh], [bx - 1 * SCALE, ty + hh + 2 * SCALE],
+            ].map((p, k) => [p[0] + J(si * 91 + k * 17, 55, 2.5), p[1] + (k < 2 ? 0 : J(si * 77 + k * 13, 66, 2.5))]);
+            pg.fillStyle = st.fill;
+            pg.beginPath();
+            pts.forEach((p, k) => k === 0 ? pg.moveTo(p[0], p[1]) : pg.lineTo(p[0], p[1]));
+            pg.closePath();
+            pg.fill();
+            pg.strokeStyle = INK.charcoal;
+            pg.lineWidth = 2;
+            pg.stroke();
+        }
+        // Stalagmites
+        for (let si = 0; si < smites.length; si++) {
+            const sm = smites[si];
+            const bx = sm.x * SCALE, by = (ROWS - 1) * TILE * SCALE, hh = sm.h * SCALE;
+            const pts = [
+                [bx - 3 * SCALE, by], [bx + 3 * SCALE, by], [bx, by - hh],
+            ].map((p, k) => [p[0] + J(si * 53 + k * 29, 77, 2), p[1] + (k === 2 ? J(si * 31, 88, 2) : 0)]);
+            pg.fillStyle = sm.fill;
+            pg.beginPath();
+            pts.forEach((p, k) => k === 0 ? pg.moveTo(p[0], p[1]) : pg.lineTo(p[0], p[1]));
+            pg.closePath();
+            pg.fill();
+            pg.strokeStyle = INK.charcoal;
+            pg.lineWidth = 2;
+            pg.stroke();
+        }
+        phases.push(pc);
+    }
+    return phases;
 }
 
 // Rebuild the whole room texture set for a given level. Seeds derive from
@@ -1438,25 +1527,25 @@ rebuildCaveTextures(0);
 // ---- Colors (dark cave palette — bioluminescent greens + lava oranges) ----
 // Cave stone: dark gray-greens. Active grid: green energy / orange lava
 const PAL = {
-    bg:        "#0a0f0a",
-    wall:      "#1a2a1a",
-    wallTop:   "#1e2e1e",
-    floor:     "#0d150d",
-    floorAlt:  "#111911",
-    gridOff:   "#1a2820",
-    gridOn:    ["#44ff44", "#ddcc22", "#aa44ff", "#ee8822", "#4488ff", "#ff4400"], // per-row colors (O,H,S,K,B,T): green, yellow, purple, orange, blue, red
-    gridX:     ["#ff4400", "#6633aa", "#ee8822", "#aa44ff", "#ff4400", "#44ff44"], // bright X indicators (contrasting)
-    gridBorder:"#2a3a2a",
-    playhead:  "#44ff44",
+    bg:        INK.paper,
+    wall:      "#a9b8ab",
+    wallTop:   "#b6c3b8",
+    floor:     INK.paper,
+    floorAlt:  "#f3ecd8",
+    gridOff:   "#f3ecd8",
+    gridOn:    [INK.green, INK.mustard, INK.teal, INK.red, INK.silverD, INK.rust], // rows O,H,S,K,B,T
+    gridX:     [INK.charcoal, INK.charcoal, INK.charcoal, INK.charcoal, INK.charcoal, INK.charcoal],
+    gridBorder:"#c9c0a8",
+    playhead:  INK.charcoal,
     player:    "#efd8a1",
     playerDark:"#927e6a",
-    punch:     "#44ff44",
-    punchGlow: "#226622",
-    shadow:    "rgba(0,0,0,0.4)",
-    startBtn:  "#44ff44",
-    stopBtn:   "#661100",
-    labelText: "#88cc88",
-    titleText: "#44ff44",
+    punch:     INK.green,
+    punchGlow: "#3c8226",
+    shadow:    "rgba(44,44,42,0.25)",
+    startBtn:  INK.green,
+    stopBtn:   INK.red,
+    labelText: INK.teal,
+    titleText: INK.charcoal,
 };
 
 const DRUM_LABELS = ["OPEN-HH", "HI-HAT", "SNARE", "KICK", "COWBELL", "TOM"];
@@ -1828,10 +1917,10 @@ let score = 0;
 let lastTimeBonus = 0;
 const dancers = [];
 const DANCER_PALETTES = [
-    { _index: 0, body: "#ef3a0c", dark: "#9b1a0a", head: "#efb775", hair: "#724113" },
+    { _index: 0, body: "#FE3636", dark: "#9b1a0a", head: "#efb775", hair: "#724113" },
     { _index: 1, body: "#3c9f9c", dark: "#276468", head: "#efb775", hair: "#2a1d0d" },
-    { _index: 2, body: "#efac28", dark: "#a58c27", head: "#efb775", hair: "#ab5c1c" },
-    { _index: 3, body: "#39571c", dark: "#1f240a", head: "#efb775", hair: "#efac28" },
+    { _index: 2, body: "#F6CC60", dark: "#a58c27", head: "#efb775", hair: "#ab5c1c" },
+    { _index: 3, body: "#39571c", dark: "#1f240a", head: "#efb775", hair: "#F6CC60" },
     { _index: 4, body: "#ab5c1c", dark: "#773421", head: "#efb775", hair: "#2a1d0d" },
     { _index: 5, body: "#ef692f", dark: "#a56243", head: "#efb775", hair: "#392a1c" },
 ];
@@ -1963,7 +2052,7 @@ function triggerYeah() {
     score = Math.min(99999, score + 25);
     entourageCheer = 40;
     carlGlowBoost = 25;
-    deathText = { x: player.x - 10, y: player.y - 16, timer: 35, text: "YEAH!", color: "#efac28", scale: 5 };
+    deathText = { x: player.x - 10, y: player.y - 16, timer: 35, text: "YEAH!", color: "#F6CC60", scale: 5 };
     if (audioCtx && !playSample("yeah", audioCtx.currentTime)) playYeahStab(audioCtx.currentTime);
 }
 
@@ -2110,7 +2199,7 @@ function renderFriendNPC() {
         const L = 6, s = 2;
         const pulse = 0.6 + Math.sin(performance.now() * 0.005) * 0.3;
         ctx.globalAlpha = pulse;
-        const c = "#efac28"; // gold
+        const c = "#F6CC60"; // gold
         // Top-left corner
         drawRect(hg.x, hg.y, L, s, c);
         drawRect(hg.x, hg.y, s, L, c);
@@ -3023,7 +3112,7 @@ function update(dt) {
                             vx: (Math.random() - 0.5) * 2,
                             vy: (Math.random() - 0.5) * 2 - 0.5,
                             life: 15 + Math.random() * 15,
-                            color: hitGob.hp === 2 ? "#FF00FF" : "#39FF14",
+                            color: hitGob.hp === 2 ? "#c05838" : "#50ad33",
                             size: 2 + Math.random() * 2,
                             sparkle: false,
                         });
@@ -3799,8 +3888,8 @@ function update(dt) {
                     vy: Math.sin(angle) * speed - 0.5,
                     life: wasElite ? 40 + Math.random() * 30 : 20 + Math.random() * 20,
                     color: wasElite
-                        ? (isSparkle ? "#00FFFF" : Math.random() > 0.3 ? "#FF00FF" : "#FF44FF")
-                        : (Math.random() > 0.3 ? "#39FF14" : "#00CC00"),
+                        ? (isSparkle ? "#00FFFF" : Math.random() > 0.3 ? "#c05838" : "#FF44FF")
+                        : (Math.random() > 0.3 ? "#50ad33" : "#00CC00"),
                     size: 1 + Math.random() * 2,
                     sparkle: isSparkle,
                 });
@@ -3820,8 +3909,8 @@ function update(dt) {
                     vy: (Math.random() - 0.5) * spreadMul - 1.2,
                     life: wasElite ? 50 + Math.random() * 50 : 30 + Math.random() * 30,
                     color: wasElite
-                        ? (isSparkle ? "#00FFFF" : Math.random() > 0.3 ? "#FF00FF" : "#FF44FF")
-                        : (Math.random() > 0.5 ? "#39FF14" : Math.random() > 0.3 ? "#00CC00" : "#66FF44"),
+                        ? (isSparkle ? "#00FFFF" : Math.random() > 0.3 ? "#c05838" : "#FF44FF")
+                        : (Math.random() > 0.5 ? "#50ad33" : Math.random() > 0.3 ? "#00CC00" : "#66FF44"),
                     size: wasElite ? 2 + Math.random() * 4 : 2 + Math.random() * 3,
                     sparkle: isSparkle,
                 });
@@ -4235,7 +4324,7 @@ function openDoor() {
     if (doorOpen) return;
     doorOpen = true;
     entourageCheer = 120;
-    deathText = { x: player.x - 28, y: player.y - 18, timer: 90, text: "BEAT RESTORED!", color: "#44ff44", scale: 5 };
+    deathText = { x: player.x - 28, y: player.y - 18, timer: 90, text: "BEAT RESTORED!", color: "#50ad33", scale: 5 };
     playLevelFanfare();
     // Goblins can't stand the finished groove — they bolt for their caves
     for (const g of goblins) {
@@ -4834,7 +4923,7 @@ function updateMinigameArena() {
                         caveDeathParticles.push({
                             x: cg.x + cg.w / 2, y: cg.y + cg.h / 2,
                             vx: (Math.random() - 0.5) * 2, vy: (Math.random() - 0.5) * 2 - 0.5,
-                            life: 15 + Math.random() * 10, color: cg.elite ? "#FF69B4" : "#39FF14", size: 2,
+                            life: 15 + Math.random() * 10, color: cg.elite ? "#FF69B4" : "#50ad33", size: 2,
                         });
                     }
                 } else {
@@ -4861,7 +4950,7 @@ function updateMinigameArena() {
                     }
 
                     // Death particles
-                    const col = cg.elite ? "#FF69B4" : "#39FF14";
+                    const col = cg.elite ? "#FF69B4" : "#50ad33";
                     for (let i = 0; i < 12; i++) {
                         caveDeathParticles.push({
                             x: cg.x + cg.w / 2, y: cg.y + cg.h / 2,
@@ -5432,7 +5521,7 @@ function renderMinigameArena() {
     }
 
     // Dark cave background
-    drawRect(0, 0, W, H, "#0a0f0a");
+    drawRect(0, 0, W, H, "#2C2C2A");
 
     // Stone floor texture
     for (let r = 2; r < CAVE_ROWS - 1; r++) {
@@ -5440,7 +5529,7 @@ function renderMinigameArena() {
             let seed = r * 997 + c * 31;
             seed = (seed * 9301 + 49297) % 233280;
             const bright = (seed / 233280) > 0.6;
-            const floorCol = bright ? "#152015" : "#111911";
+            const floorCol = bright ? "#343430" : "#2a2a27";
             drawRect(c * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, floorCol);
             // Subtle stone grain
             for (let i = 0; i < 4; i++) {
@@ -5457,36 +5546,36 @@ function renderMinigameArena() {
     // Top wall
     for (let c = 0; c < CAVE_COLS; c++) {
         for (let r = 0; r < 2; r++) {
-            const shade = (c + r) % 2 === 0 ? "#1e2e1e" : "#1a2a1a";
+            const shade = (c + r) % 2 === 0 ? "#3f3f3b" : "#3a3a37";
             drawRect(c * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, shade);
         }
         // Stalactites hanging from ceiling
         if (c % 3 === 1) {
             const stalH = 4 + (c * 7) % 6;
-            drawRect(c * CAVE_TILE + 5, 2 * CAVE_TILE, 3, stalH, "#243024");
-            drawRect(c * CAVE_TILE + 6, 2 * CAVE_TILE, 1, stalH + 2, "#2a3a2a");
+            drawRect(c * CAVE_TILE + 5, 2 * CAVE_TILE, 3, stalH, "#4a4a45");
+            drawRect(c * CAVE_TILE + 6, 2 * CAVE_TILE, 1, stalH + 2, "#55554f");
         }
     }
     // Bottom wall
     for (let c = 0; c < CAVE_COLS; c++) {
-        const shade = c % 2 === 0 ? "#1e2e1e" : "#1a2a1a";
+        const shade = c % 2 === 0 ? "#3f3f3b" : "#3a3a37";
         drawRect(c * CAVE_TILE, (CAVE_ROWS - 1) * CAVE_TILE, CAVE_TILE, CAVE_TILE, shade);
         // Stalagmites
         if (c % 4 === 2) {
             const stalH = 3 + (c * 5) % 5;
-            drawRect(c * CAVE_TILE + 6, (CAVE_ROWS - 1) * CAVE_TILE - stalH, 3, stalH, "#243024");
+            drawRect(c * CAVE_TILE + 6, (CAVE_ROWS - 1) * CAVE_TILE - stalH, 3, stalH, "#4a4a45");
         }
     }
     // Right wall
     for (let r = 0; r < CAVE_ROWS; r++) {
-        const shade = r % 2 === 0 ? "#1e2e1e" : "#1a2a1a";
+        const shade = r % 2 === 0 ? "#3f3f3b" : "#3a3a37";
         drawRect((CAVE_COLS - 1) * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, shade);
     }
 
     // Left wall (normal wall — no longer the rescue wall)
     for (let r = 0; r < CAVE_ROWS; r++) {
         for (let c = 0; c < 2; c++) {
-            const shade = r % 2 === 0 ? "#243024" : "#1e2e1e";
+            const shade = r % 2 === 0 ? "#4a4a45" : "#3f3f3b";
             drawRect(c * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, shade);
         }
     }
@@ -5612,7 +5701,7 @@ function renderMinigameArena() {
             const sz = Math.round(8 + sizePulse);
             const off = Math.round((8 - sz) / 2);
             drawRect(ck.x + off, ck.y + bobY + off, sz, sz, "#FFD700");
-            drawRect(ck.x + off + 1, ck.y + bobY + off + 1, sz - 2, sz - 2, "#0a0f0a");
+            drawRect(ck.x + off + 1, ck.y + bobY + off + 1, sz - 2, sz - 2, "#2C2C2A");
             drawRect(ck.x + 3, ck.y + bobY + 2, 1, 3, "#FFD700"); // minute hand
             drawRect(ck.x + 3, ck.y + bobY + 3, 2, 1, "#FFD700"); // hour hand
             // "+5" text above
@@ -5703,7 +5792,7 @@ function renderMinigameArena() {
                         // Bounds check (inside cave walls)
                         if (rx >= CAVE_TILE * 2 && rx <= (CAVE_COLS - 2) * CAVE_TILE &&
                             ry >= CAVE_TILE * 2 && ry <= (CAVE_ROWS - 2) * CAVE_TILE) {
-                            ctx.fillStyle = "#ff4400";
+                            ctx.fillStyle = "#BF7538";
                             ctx.globalAlpha = 0.35;
                             ctx.fillRect(rx * SCALE, ry * SCALE, CAVE_TILE * SCALE, CAVE_TILE * SCALE);
                             ctx.globalAlpha = 1.0;
@@ -5754,7 +5843,7 @@ function renderMinigameArena() {
                         vy: (Math.random() - 0.5) * 3,
                         life: 20 + Math.random() * 10,
                         size: 2 + Math.random() * 2,
-                        color: cg.deathAnimElite ? "#FF69B4" : "#39FF14"
+                        color: cg.deathAnimElite ? "#FF69B4" : "#50ad33"
                     });
                 }
             }
@@ -6235,7 +6324,7 @@ function renderMinigameReward() {
     const H = CAVE_ROWS * CAVE_TILE;
 
     // Dark background
-    drawRect(0, 0, W, H, "#0a0f0a");
+    drawRect(0, 0, W, H, "#2C2C2A");
 
     // "DJ SETUP PIECE!" header
     const headerAlpha = Math.min(1, minigameRewardTimer / 40);
@@ -6244,7 +6333,7 @@ function renderMinigameReward() {
     ctx.font = `${10 * SCALE}px monospace`;
     ctx.fillStyle = "#000";
     ctx.fillText("DJ SETUP PIECE!", (W / 2) * SCALE + SCALE, (H / 4 + 1) * SCALE);
-    ctx.fillStyle = "#efac28";
+    ctx.fillStyle = "#F6CC60";
     ctx.fillText("DJ SETUP PIECE!", (W / 2) * SCALE, (H / 4) * SCALE);
 
     // Narrative connection text
@@ -6266,8 +6355,8 @@ function renderMinigameReward() {
         const rBoothY = H / 2 - 10;
 
         // Booth platform
-        drawRect(rBoothX - 8, rBoothY + 12, 64, 8, "#1e2e1e");
-        drawRect(rBoothX - 8, rBoothY + 12, 64, 2, "#243024");
+        drawRect(rBoothX - 8, rBoothY + 12, 64, 8, "#3f3f3b");
+        drawRect(rBoothX - 8, rBoothY + 12, 64, 2, "#4a4a45");
 
         // Draw all 6 piece slots
         const newPieceIndex = djSetupEarned.length - 1;
@@ -7145,11 +7234,11 @@ function renderHUD() {
         hudCtx.drawImage(IMAGES.hud_bg, 0, 0);
     } else {
         // Procedural fallback — background fill
-        drawHudRect(0, 0, COLS * TILE, HUD_H, "#0a0f0a");
+        drawHudRect(0, 0, COLS * TILE, HUD_H, "#2C2C2A");
 
         // Teal border along top — connects visually to the venue's bottom wall
         for (let c = 0; c < COLS; c++) {
-            drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#1a2a1a" : "#1e2e1e");
+            drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#3a3a37" : "#3f3f3b");
         }
         // Highlight on border edge
         hudCtx.fillStyle = "rgba(255,255,255,0.08)";
@@ -7195,7 +7284,7 @@ function renderHUD() {
     const lvlStr = String(currentLevel + 1).padStart(2, "0");
     const lvlPanelW = iconW + 2 * digitW + 6;
     const lvlX = margin;
-    drawHudPanel(lvlX, kcY, lvlPanelW, panelH, "#0a0f0a", "#1a2a1a", "#243024");
+    drawHudPanel(lvlX, kcY, lvlPanelW, panelH, "#2C2C2A", "#3a3a37", "#4a4a45");
     // "L" icon
     const fx = lvlX + 2, fy = kcY + 3;
     drawHudRect(fx, fy, p, 5 * p, "#efd8a1");
@@ -7221,10 +7310,10 @@ function renderHUD() {
     const isCritical = timerSec <= 10;
     const blinkRate = isCritical ? 15 : 30;
     const blinkOn = !isUrgent || Math.floor(levelTimer / blinkRate) % 2 === 0;
-    const timerColor = isUrgent ? "#ef3a0c" : "#efd8a1";
-    const timerBorderColor = isUrgent ? "#550f0a" : "#0a0f0a";
-    const timerBgColor = isUrgent ? "#1e2e1e" : "#1a2a1a";
-    const timerHighlight = isUrgent ? "#661100" : "#243024";
+    const timerColor = isUrgent ? "#FE3636" : "#efd8a1";
+    const timerBorderColor = isUrgent ? "#550f0a" : "#2C2C2A";
+    const timerBgColor = isUrgent ? "#3f3f3b" : "#3a3a37";
+    const timerHighlight = isUrgent ? "#661100" : "#4a4a45";
     drawHudPanel(timerX, kcY, timerPanelW, panelH, timerBorderColor, timerBgColor, timerHighlight);
     // "T" icon
     const tx2 = timerX + 2, ty2 = kcY + 3;
@@ -7241,10 +7330,10 @@ function renderHUD() {
     const skullW = 5 * p + 2;
     const killPanelW = skullW + 5 * digitW + 6;
     const kcX = Math.floor((W - killPanelW) / 2);
-    drawHudPanel(kcX, kcY, killPanelW, panelH, "#0a0f0a", "#1a2a1a", "#243024");
+    drawHudPanel(kcX, kcY, killPanelW, panelH, "#2C2C2A", "#3a3a37", "#4a4a45");
     // Skull icon
     const sx = kcX + 2, sy = kcY + 3;
-    const skullBg = "#1a2a1a";
+    const skullBg = "#3a3a37";
     drawHudRect(sx + p, sy, 3 * p, p, "#efd8a1");
     drawHudRect(sx, sy + p, 5 * p, 2 * p, "#efd8a1");
     drawHudRect(sx + p, sy + 3 * p, 3 * p, p, "#efd8a1");
@@ -7292,7 +7381,7 @@ function renderHUD() {
             for (let i = 0; i < total; i++) {
                 const ix = trackerX + i * 5;
                 if (i < earned) {
-                    drawHudRect(ix, trackerY, 4, 4, "#efac28"); // recovered — gold
+                    drawHudRect(ix, trackerY, 4, 4, "#F6CC60"); // recovered — gold
                     drawHudRect(ix, trackerY, 4, 1, "#efd8a1"); // highlight
                 } else {
                     drawHudRect(ix, trackerY, 4, 4, "#3a2a1a"); // missing — dark
@@ -7311,11 +7400,11 @@ function renderMinigameHUD() {
     hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
 
     // Background fill (same as main HUD)
-    drawHudRect(0, 0, COLS * TILE, HUD_H, "#0a0f0a");
+    drawHudRect(0, 0, COLS * TILE, HUD_H, "#2C2C2A");
 
     // Teal border along top
     for (let c = 0; c < COLS; c++) {
-        drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#1a2a1a" : "#1e2e1e");
+        drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#3a3a37" : "#3f3f3b");
     }
     hudCtx.fillStyle = "rgba(255,255,255,0.08)";
     hudCtx.fillRect(0, 0, COLS * TILE * SCALE, 1 * SCALE);
@@ -7355,7 +7444,7 @@ function renderMinigameHUD() {
     const lvlStr = String(currentLevel + 1).padStart(2, "0");
     const lvlPanelW = iconW + 2 * digitW + 6;
     const lvlX = margin;
-    drawMiniHudPanel(lvlX, kcY, lvlPanelW, panelH, "#0a0f0a", "#1a2a1a", "#243024");
+    drawMiniHudPanel(lvlX, kcY, lvlPanelW, panelH, "#2C2C2A", "#3a3a37", "#4a4a45");
     // "L" icon
     const fx = lvlX + 2, fy = kcY + 3;
     drawHudRect(fx, fy, p, 5 * p, "#efd8a1");
@@ -7371,10 +7460,10 @@ function renderMinigameHUD() {
     const isCritical = timerSecs <= 5;
     const blinkRate = isCritical ? 15 : 30;
     const blinkOn = !isUrgent || Math.floor(minigameTimer / blinkRate) % 2 === 0;
-    const timerColor = isCritical ? "#FF0044" : isUrgent ? "#efac28" : "#00FF88";
-    const timerBorderColor = isUrgent ? "#550f0a" : "#0a0f0a";
-    const timerBgColor = isUrgent ? "#1e2e1e" : "#1a2a1a";
-    const timerHighlight = isUrgent ? "#661100" : "#243024";
+    const timerColor = isCritical ? "#FF0044" : isUrgent ? "#F6CC60" : "#00FF88";
+    const timerBorderColor = isUrgent ? "#550f0a" : "#2C2C2A";
+    const timerBgColor = isUrgent ? "#3f3f3b" : "#3a3a37";
+    const timerHighlight = isUrgent ? "#661100" : "#4a4a45";
     drawMiniHudPanel(timerX, kcY, timerPanelW, panelH, timerBorderColor, timerBgColor, timerHighlight);
     // "T" icon
     const tx2 = timerX + 2, ty2 = kcY + 3;
@@ -7390,10 +7479,10 @@ function renderMinigameHUD() {
     const skullW = 5 * p + 2;
     const killPanelW = skullW + scoreStr.length * digitW + 6;
     const kcX = Math.floor((W - killPanelW) / 2);
-    drawMiniHudPanel(kcX, kcY, killPanelW, panelH, "#0a0f0a", "#1a2a1a", "#243024");
+    drawMiniHudPanel(kcX, kcY, killPanelW, panelH, "#2C2C2A", "#3a3a37", "#4a4a45");
     // Skull icon (same as main HUD)
     const sx = kcX + 2, sy = kcY + 3;
-    const skullBg = "#1a2a1a";
+    const skullBg = "#3a3a37";
     drawHudRect(sx + p, sy, 3 * p, p, "#efd8a1");
     drawHudRect(sx, sy + p, 5 * p, 2 * p, "#efd8a1");
     drawHudRect(sx + p, sy + 3 * p, 3 * p, p, "#efd8a1");
@@ -7423,7 +7512,7 @@ function render() {
     if (IMAGES.cave_bg) {
         ctx.drawImage(IMAGES.cave_bg, 0, 0, canvas.width, canvas.height);
     } else {
-        ctx.drawImage(TEX_CAVE_BG, 0, 0);
+        ctx.drawImage(TEX_CAVE_BG[boil()], 0, 0);
     }
 
     // (Room variety now comes from the biome system — each level regenerates
@@ -7441,20 +7530,20 @@ function render() {
                 ctx.drawImage(IMAGES.cave_entrance, (cx - 2) * SCALE, (cy - 5) * SCALE);
             } else {
                 // Procedural fallback — deep black cave hole
-                ctx.fillStyle = "#050805";
+                ctx.fillStyle = "#2C2C2A";
                 ctx.beginPath();
                 ctx.roundRect(cx * SCALE, (cy - 2) * SCALE, TILE * SCALE, (TILE + 4) * SCALE, [6, 6, 2, 2]);
                 ctx.fill();
-                ctx.fillStyle = "#243024";
+                ctx.fillStyle = "#4a4a45";
                 ctx.beginPath();
                 ctx.roundRect((cx - 2) * SCALE, (cy - 5) * SCALE, (TILE + 4) * SCALE, 4 * SCALE, [4, 4, 0, 0]);
                 ctx.fill();
                 ctx.beginPath();
                 ctx.roundRect((cx - 2) * SCALE, (cy + TILE + 1) * SCALE, (TILE + 4) * SCALE, 4 * SCALE, [0, 0, 4, 4]);
                 ctx.fill();
-                if (cave.tileX > 0) drawRect(cx - 3, cy - 2, 3, TILE + 4, "#1e2e1e");
-                if (cave.tileX < COLS - 1) drawRect(cx + TILE, cy - 2, 3, TILE + 4, "#1e2e1e");
-                ctx.fillStyle = "#243024";
+                if (cave.tileX > 0) drawRect(cx - 3, cy - 2, 3, TILE + 4, "#3f3f3b");
+                if (cave.tileX < COLS - 1) drawRect(cx + TILE, cy - 2, 3, TILE + 4, "#3f3f3b");
+                ctx.fillStyle = "#4a4a45";
                 ctx.beginPath();
                 ctx.moveTo((cx + 3) * SCALE, (cy - 2) * SCALE);
                 ctx.lineTo((cx + 5) * SCALE, (cy - 2) * SCALE);
@@ -7493,7 +7582,7 @@ function render() {
         // Eye gleam inside cave — always draw (gameplay indicator for goblin respawn)
         for (const g of goblins) {
             if (g.dead && g.respawnTimer < 60 && ci === g.spawnCave) {
-                const caveEyeCol = g.elite ? "#00FFFF" : "#39FF14";
+                const caveEyeCol = g.elite ? "#00FFFF" : "#50ad33";
                 ctx.fillStyle = caveEyeCol;
                 ctx.beginPath();
                 ctx.arc((cx + 6) * SCALE, (cy + 6) * SCALE, 2 * SCALE, 0, Math.PI * 2);
@@ -7512,18 +7601,24 @@ function render() {
         const dY = (DOOR_TILE_Y - 1) * TILE + 6;
         const dH = TILE * 2 - 8;
         // Doorway recess
-        ctx.fillStyle = doorOpen ? "#0a3a1a" : "#0a0d0a";
+        ctx.fillStyle = doorOpen ? "#dcedd2" : "#3a3a37";
         ctx.beginPath();
         ctx.roundRect(dX * SCALE, dY * SCALE, (TILE - 2) * SCALE, dH * SCALE, [8 , 0, 0, 8]);
         ctx.fill();
-        ctx.strokeStyle = "#2a3a2a";
-        ctx.lineWidth = 2 * SCALE;
-        ctx.stroke();
+        // Hand-inked boiling outline around the doorway
+        {
+            const x0 = dX * SCALE, y0 = dY * SCALE, ww = (TILE - 2) * SCALE, hh = dH * SCALE;
+            const pts = [];
+            for (let xx = x0 + ww; xx >= x0; xx -= 10) pts.push([xx, y0]);
+            for (let yy = y0; yy <= y0 + hh; yy += 10) pts.push([x0, yy]);
+            for (let xx = x0; xx <= x0 + ww; xx += 10) pts.push([xx, y0 + hh]);
+            boilStroke(ctx, pts, 91.7, 2, INK.charcoal, 2.5);
+        }
         if (doorOpen) {
             // Glowing green interior
             const doorPulse = 0.4 + Math.sin(performance.now() * 0.006) * 0.25;
             ctx.globalAlpha = doorPulse;
-            ctx.fillStyle = "#44ff44";
+            ctx.fillStyle = "#50ad33";
             ctx.beginPath();
             ctx.roundRect((dX + 2) * SCALE, (dY + 3) * SCALE, (TILE - 6) * SCALE, (dH - 6) * SCALE, [6, 0, 0, 6]);
             ctx.fill();
@@ -7532,7 +7627,7 @@ function render() {
             ctx.font = `${7 * SCALE}px monospace`;
             ctx.textAlign = "center";
             ctx.globalAlpha = 0.6 + Math.sin(performance.now() * 0.008) * 0.4;
-            ctx.fillStyle = "#44ff44";
+            ctx.fillStyle = "#50ad33";
             ctx.fillText("→", (dX - 7) * SCALE, (DOOR_TILE_Y * TILE + 6) * SCALE);
             ctx.globalAlpha = 1.0;
             ctx.textAlign = "left";
@@ -7545,7 +7640,7 @@ function render() {
                 ctx.fillRect((dX + 1) * SCALE, (dY + 4 + bi * 8 - drop * dH) * SCALE, (TILE - 4) * SCALE, 2.5 * SCALE);
             }
             if (doorSlamFx <= 8) {
-                ctx.fillStyle = "#efac28";
+                ctx.fillStyle = "#F6CC60";
                 ctx.fillRect((dX + 5) * SCALE, (dY + dH / 2 - 1) * SCALE, 4 * SCALE, 5 * SCALE);
             }
         }
@@ -7767,13 +7862,13 @@ function render() {
 
             // Sabotage flash overlay — boosted visibility
             if (cellFlash[r][c] > 0) {
-                ctx.fillStyle = "#FF00FF";
+                ctx.fillStyle = "#c05838";
                 ctx.globalAlpha = cellFlash[r][c] / 30 * 0.75;
                 ctx.fillRect((bx + 1) * SCALE, (by + 1) * SCALE, (TILE - 2) * SCALE, (TILE - 2) * SCALE);
                 ctx.globalAlpha = 1.0;
                 // "!" indicator — visible longer, larger
                 if (cellFlash[r][c] > 10) {
-                    drawText("!", bx + 5, by - 5, "#39FF14", 5);
+                    drawText("!", bx + 5, by - 5, "#50ad33", 5);
                 }
                 cellFlash[r][c]--;
             }
@@ -7782,7 +7877,7 @@ function render() {
             // the player can find what the goblins changed
             if (cellRecent[r][c] > 0) {
                 ctx.globalAlpha = (cellRecent[r][c] / 180) * 0.55;
-                ctx.strokeStyle = "#FF00FF";
+                ctx.strokeStyle = "#c05838";
                 ctx.lineWidth = 1.5 * SCALE;
                 ctx.strokeRect((bx + 1) * SCALE, (by + 1) * SCALE, (TILE - 2) * SCALE, (TILE - 2) * SCALE);
                 ctx.globalAlpha = 1.0;
@@ -7899,8 +7994,8 @@ function render() {
         const progText = "PATTERN " + cellsCorrect + "/" + cellsTotal;
         const progX = (GRID_X + GRID_COLS) * TILE - progText.length * 4;
         const progY = GRID_Y * TILE + GRID_Y_OFFSET - 9;
-        const progCol = cellsCorrect === cellsTotal ? "#44ff44"
-            : cellsCorrect >= cellsTotal - 4 ? "#efac28" : "#8a9a8f";
+        const progCol = cellsCorrect === cellsTotal ? "#50ad33"
+            : cellsCorrect >= cellsTotal - 4 ? "#F6CC60" : "#8a9a8f";
         drawText(progText, progX, progY, progCol, 4);
     }
 
@@ -7994,7 +8089,7 @@ function render() {
                 const trailX = t.x - vnx * ti * 5;
                 const trailY = t.y - vny * ti * 5 + (trailArcY - arcY) * 0.5;
                 ctx.globalAlpha = (4 - ti) / 4 * 0.25;
-                drawRect(trailX - 1, trailY - 1, 3, 2, "#ef3a0c");
+                drawRect(trailX - 1, trailY - 1, 3, 2, "#FE3636");
             }
             ctx.globalAlpha = 1;
         }
@@ -8006,26 +8101,26 @@ function render() {
         const rot = Math.floor(t.progress * 4) % 4;
         if (rot === 0) {
             // Upright
-            drawRect(drawX - 2, drawY - 1, 4, 3, "#ef3a0c");
-            drawRect(drawX - 1, drawY - 2, 2, 1, "#ef3a0c");
+            drawRect(drawX - 2, drawY - 1, 4, 3, "#FE3636");
+            drawRect(drawX - 1, drawY - 2, 2, 1, "#FE3636");
             drawRect(drawX, drawY - 3, 1, 1, "#39571c");
             drawRect(drawX - 2, drawY - 1, 1, 1, "#ef692f");
         } else if (rot === 1) {
             // Tilted right
-            drawRect(drawX - 1, drawY - 2, 3, 4, "#ef3a0c");
-            drawRect(drawX + 2, drawY - 1, 1, 2, "#ef3a0c");
+            drawRect(drawX - 1, drawY - 2, 3, 4, "#FE3636");
+            drawRect(drawX + 2, drawY - 1, 1, 2, "#FE3636");
             drawRect(drawX + 3, drawY, 1, 1, "#39571c");
             drawRect(drawX - 1, drawY - 2, 1, 1, "#ef692f");
         } else if (rot === 2) {
             // Upside down
-            drawRect(drawX - 2, drawY - 1, 4, 3, "#ef3a0c");
-            drawRect(drawX - 1, drawY + 2, 2, 1, "#ef3a0c");
+            drawRect(drawX - 2, drawY - 1, 4, 3, "#FE3636");
+            drawRect(drawX - 1, drawY + 2, 2, 1, "#FE3636");
             drawRect(drawX, drawY + 3, 1, 1, "#39571c");
             drawRect(drawX + 1, drawY + 1, 1, 1, "#ef692f");
         } else {
             // Tilted left
-            drawRect(drawX - 1, drawY - 2, 3, 4, "#ef3a0c");
-            drawRect(drawX - 2, drawY - 1, 1, 2, "#ef3a0c");
+            drawRect(drawX - 1, drawY - 2, 3, 4, "#FE3636");
+            drawRect(drawX - 2, drawY - 1, 1, 2, "#FE3636");
             drawRect(drawX - 3, drawY, 1, 1, "#39571c");
             drawRect(drawX + 1, drawY - 2, 1, 1, "#ef692f");
         }
@@ -8036,14 +8131,14 @@ function render() {
         const a = s.timer / 25;
         ctx.globalAlpha = a;
         // Splat — irregular red blobs
-        drawRect(s.x - 3, s.y - 1, 6, 3, "#ef3a0c");
+        drawRect(s.x - 3, s.y - 1, 6, 3, "#FE3636");
         drawRect(s.x - 1, s.y - 3, 3, 6, "#9b1a0a");
-        drawRect(s.x - 5, s.y, 2, 2, "#ef3a0c");
+        drawRect(s.x - 5, s.y, 2, 2, "#FE3636");
         drawRect(s.x + 4, s.y - 2, 2, 2, "#9b1a0a");
-        drawRect(s.x - 2, s.y + 3, 2, 1, "#ef3a0c");
+        drawRect(s.x - 2, s.y + 3, 2, 1, "#FE3636");
         // Seeds
-        drawRect(s.x + 1, s.y - 1, 1, 1, "#efac28");
-        drawRect(s.x - 2, s.y + 1, 1, 1, "#efac28");
+        drawRect(s.x + 1, s.y - 1, 1, 1, "#F6CC60");
+        drawRect(s.x - 2, s.y + 1, 1, 1, "#F6CC60");
     }
     ctx.globalAlpha = 1.0;
 
@@ -8097,7 +8192,7 @@ function render() {
         const tx = ttx * TILE;
         const ty = tty * TILE + GRID_Y_OFFSET;
         const pulse = 0.35 + Math.sin(performance.now() * 0.004) * 0.2;
-        const c = PAL.punch; // "#efac28"
+        const c = PAL.punch; // "#F6CC60"
         const s = 2; // bracket stroke width
         const L = 5; // bracket arm length
         // Subtle filled highlight behind brackets
@@ -8182,7 +8277,7 @@ function render() {
             ctx.textAlign = "center";
             ctx.fillStyle = "#000000";
             ctx.fillText("PRESS ANY KEY TO DROP THE BEAT", (COLS * TILE * SCALE) / 2 + SCALE, 14 * SCALE + SCALE);
-            ctx.fillStyle = "#efac28";
+            ctx.fillStyle = "#F6CC60";
             ctx.fillText("PRESS ANY KEY TO DROP THE BEAT", (COLS * TILE * SCALE) / 2, 14 * SCALE);
             ctx.textAlign = "start";
         }
@@ -8196,7 +8291,7 @@ function render() {
             ctx.textAlign = "center";
             ctx.fillStyle = "#000000";
             ctx.fillText("THE DOOR IS OPEN! →", (COLS * TILE * SCALE) / 2 + SCALE, 14 * SCALE + SCALE);
-            ctx.fillStyle = "#44ff44";
+            ctx.fillStyle = "#50ad33";
             ctx.fillText("THE DOOR IS OPEN! →", (COLS * TILE * SCALE) / 2, 14 * SCALE);
             ctx.textAlign = "start";
         }
@@ -8209,7 +8304,7 @@ function render() {
         if (!gradCache.vignette) {
             const g = ctx.createRadialGradient(W_a / 2, H_a / 2, W_a * 0.35, W_a / 2, H_a / 2, W_a * 0.72);
             g.addColorStop(0, "rgba(0,0,0,0)");
-            g.addColorStop(1, "rgba(0,15,0,0.4)");
+            g.addColorStop(1, "rgba(44,44,42,0.2)");
             gradCache.vignette = g;
         }
         ctx.fillStyle = gradCache.vignette;
@@ -8227,7 +8322,7 @@ function render() {
             const H_v = ROWS * TILE * SCALE;
             const grad = ctx.createRadialGradient(W_v / 2, H_v / 2, W_v * 0.3, W_v / 2, H_v / 2, W_v * 0.7);
             grad.addColorStop(0, "rgba(0,0,0,0)");
-            grad.addColorStop(1, "#ef3a0c");
+            grad.addColorStop(1, "#FE3636");
             ctx.fillStyle = grad;
             ctx.globalAlpha = vigAlpha;
             ctx.fillRect(0, 0, W_v, H_v);
@@ -8260,13 +8355,13 @@ function render() {
 
         // Semi-transparent background
         ctx.globalAlpha = 0.65;
-        drawRect(boxX, overlayY, boxW, boxH, "#0a0f0a");
+        drawRect(boxX, overlayY, boxW, boxH, "#2C2C2A");
         // Border
         ctx.globalAlpha = 0.4;
-        drawRect(boxX, overlayY, boxW, 1, "#44ff44");
-        drawRect(boxX, overlayY + boxH - 1, boxW, 1, "#44ff44");
-        drawRect(boxX, overlayY, 1, boxH, "#44ff44");
-        drawRect(boxX + boxW - 1, overlayY, 1, boxH, "#44ff44");
+        drawRect(boxX, overlayY, boxW, 1, "#50ad33");
+        drawRect(boxX, overlayY + boxH - 1, boxW, 1, "#50ad33");
+        drawRect(boxX, overlayY, 1, boxH, "#50ad33");
+        drawRect(boxX + boxW - 1, overlayY, 1, boxH, "#50ad33");
         ctx.globalAlpha = 1;
 
         // Helper: draw a small key cap that lights up
@@ -8290,7 +8385,7 @@ function render() {
                 drawRect(x, y, label === "SPACE" ? 30 : keySize, keySize, "#2a1a10");
             }
             // Key border
-            const borderColor = lit ? "#44ff44" : "#1a3a1a";
+            const borderColor = lit ? "#50ad33" : "#3a3a35";
             const kw = label === "SPACE" ? 30 : keySize;
             drawRect(x, y, kw, 1, borderColor);
             drawRect(x, y + keySize - 1, kw, 1, borderColor);
@@ -8339,16 +8434,16 @@ function render() {
             ctx.globalAlpha = hintAlpha * 0.85;
             ctx.font = `${3.5 * SCALE}px monospace`;
             ctx.textAlign = "center";
-            // Line 1: objective
-            ctx.fillStyle = "#000000";
+            // Line 1: objective — charcoal ink with a paper-white relief
+            ctx.fillStyle = "rgba(255,255,255,0.8)";
             ctx.fillText("PUNCH cells to match the beat pattern!", W_t / 2 * SCALE + SCALE, hintY * SCALE + SCALE);
-            ctx.fillStyle = "#efac28";
+            ctx.fillStyle = INK.charcoal;
             ctx.fillText("PUNCH cells to match the beat pattern!", W_t / 2 * SCALE, hintY * SCALE);
             // Line 2: hint about indicators
             if (!tutorialFirstToggle) {
-                ctx.fillStyle = "#000000";
+                ctx.fillStyle = "rgba(255,255,255,0.8)";
                 ctx.fillText("Dotted outlines show what needs toggling.", W_t / 2 * SCALE + SCALE, (hintY + 7) * SCALE + SCALE);
-                ctx.fillStyle = "#efd8a1";
+                ctx.fillStyle = INK.charcoal;
                 ctx.fillText("Dotted outlines show what needs toggling.", W_t / 2 * SCALE, (hintY + 7) * SCALE);
             }
             ctx.textAlign = "start";
@@ -8650,11 +8745,11 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
     ctx.roundRect(sx + 27 - walkOfs, sy + 36 - bob, 9, 6, [0, 0, 3, 3]);
     ctx.fill();
     // Shoe soles
-    ctx.fillStyle = col("#243024");
+    ctx.fillStyle = col("#4a4a45");
     ctx.fillRect(sx + 12 + walkOfs, sy + 40 - bob, 9, 2);
     ctx.fillRect(sx + 27 - walkOfs, sy + 40 - bob, 9, 2);
     // Shoe tops
-    ctx.fillStyle = col("#1e2e1e");
+    ctx.fillStyle = col("#3f3f3b");
     ctx.fillRect(sx + 12 + walkOfs, sy + 34 - bob, 9, 3);
     ctx.fillRect(sx + 27 - walkOfs, sy + 34 - bob, 9, 3);
 
@@ -8792,7 +8887,7 @@ function drawPunch() {
         ctx.arc(shockX, shockY, 22 * SCALE, 0, Math.PI * 2);
         ctx.fill();
         // Amber/gold ring at the edge
-        ctx.strokeStyle = "#efac28";
+        ctx.strokeStyle = "#F6CC60";
         ctx.lineWidth = 3 * SCALE;
         ctx.globalAlpha = thrust * 0.6;
         ctx.beginPath();
@@ -8836,36 +8931,36 @@ function drawRuinedVenueBackdrop(t, options) {
     const W = COLS * TILE;
     const H = ROWS * TILE;
     // Dark cave floor
-    drawRect(0, 0, W, H, "#0a0f0a");
+    drawRect(0, 0, W, H, "#2C2C2A");
     // Damaged cave walls
     for (let c = 0; c < COLS; c++) {
         const damaged = ((c * 7 + 3) % 10) > 6;
-        drawRect(c * TILE, 0, TILE, TILE, damaged ? "#111911" : ((c * 7 + 3) % 3 === 0 ? "#1e2e1e" : "#1a2a1a"));
-        const botCol = (c * 11 + 5) % 3 === 0 ? "#152015" : "#1a2a1a";
+        drawRect(c * TILE, 0, TILE, TILE, damaged ? "#2a2a27" : ((c * 7 + 3) % 3 === 0 ? "#3f3f3b" : "#3a3a37"));
+        const botCol = (c * 11 + 5) % 3 === 0 ? "#343430" : "#3a3a37";
         drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, botCol);
     }
     for (let r = 0; r < ROWS; r++) {
-        const lCol = (r * 7) % 3 === 0 ? "#152015" : "#1a2a1a";
+        const lCol = (r * 7) % 3 === 0 ? "#343430" : "#3a3a37";
         drawRect(0, r * TILE, TILE, TILE, lCol);
         drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, lCol);
     }
     // Open caves
     for (const cave of CAVES) {
         const cx = cave.tileX * TILE, cy = cave.tileY * TILE;
-        drawRect(cx, cy - 2, TILE, TILE + 4, "#050805");
-        drawRect(cx - 2, cy - 4, TILE + 4, 3, "#243024");
-        drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#243024");
+        drawRect(cx, cy - 2, TILE, TILE + 4, "#2C2C2A");
+        drawRect(cx - 2, cy - 4, TILE + 4, 3, "#4a4a45");
+        drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#4a4a45");
     }
     // Dead mushroom lights
     for (let c = 1; c < COLS - 1; c++) {
-        drawRect(c * TILE + TILE / 2 - 2, TILE + 6, 4, 4, "#0a0f0a");
+        drawRect(c * TILE + TILE / 2 - 2, TILE + 6, 4, 4, "#2C2C2A");
     }
     // Destroyed DJ booth (stone rubble)
     const boothX = W / 2 - 24;
     const boothY = GRID_Y * TILE - 8;
-    drawRect(boothX - 8, boothY + 12, 64, 8, "#0a0f0a");
-    drawRect(boothX + 5, boothY + 6, 10, 6, "#0d150d");
-    drawRect(boothX + 35, boothY + 8, 8, 4, "#0d150d");
+    drawRect(boothX - 8, boothY + 12, 64, 8, "#2C2C2A");
+    drawRect(boothX + 5, boothY + 6, 10, 6, "#232321");
+    drawRect(boothX + 35, boothY + 8, 8, 4, "#232321");
     // Smoke wisps
     for (let si = 0; si < 3; si++) {
         const smokeX = boothX + 15 + si * 12;
@@ -8913,8 +9008,8 @@ function drawSubwoofer(sx, sy, pump, side) {
     const bw = 16 + pw;
     const bh = 12 + pw;
     // Cabinet (rounded — stone/metal)
-    fillRoundRect(ctx, bx * SCALE, by * SCALE, bw * SCALE, bh * SCALE, 3, "#2a3a2a");
-    fillRoundRect(ctx, (bx + 1) * SCALE, (by + 1) * SCALE, (bw - 2) * SCALE, (bh - 2) * SCALE, 2, "#1e2e1e");
+    fillRoundRect(ctx, bx * SCALE, by * SCALE, bw * SCALE, bh * SCALE, 3, "#55554f");
+    fillRoundRect(ctx, (bx + 1) * SCALE, (by + 1) * SCALE, (bw - 2) * SCALE, (bh - 2) * SCALE, 2, "#3f3f3b");
     // Speaker cone (actual circle)
     const cx = (bx + bw / 2) * SCALE;
     const cy = (by + bh / 2) * SCALE;
@@ -8955,8 +9050,8 @@ function drawSubwoofer(sx, sy, pump, side) {
 
 function drawTurntable(tx, ty) {
     // Platter base (rounded — stone/metal)
-    fillRoundRect(ctx, tx * SCALE, (ty + 6) * SCALE, 14 * SCALE, 6 * SCALE, 3, "#2a3a2a");
-    fillRoundRect(ctx, (tx + 1) * SCALE, (ty + 7) * SCALE, 12 * SCALE, 4 * SCALE, 2, "#1e2e1e");
+    fillRoundRect(ctx, tx * SCALE, (ty + 6) * SCALE, 14 * SCALE, 6 * SCALE, 3, "#55554f");
+    fillRoundRect(ctx, (tx + 1) * SCALE, (ty + 7) * SCALE, 12 * SCALE, 4 * SCALE, 2, "#3f3f3b");
     // Platter (actual circle)
     const pcx = (tx + 7) * SCALE, pcy = (ty + 5) * SCALE;
     ctx.fillStyle = "#1a1410";
@@ -8973,7 +9068,7 @@ function drawTurntable(tx, ty) {
     ctx.arc(pcx, pcy, 2.5 * SCALE, 0, Math.PI * 2);
     ctx.stroke();
     // Label center
-    ctx.fillStyle = "#efac28";
+    ctx.fillStyle = "#F6CC60";
     ctx.beginPath();
     ctx.arc(pcx, pcy, 1.2 * SCALE, 0, Math.PI * 2);
     ctx.fill();
@@ -9003,7 +9098,7 @@ function drawMixer(mx, my) {
     // Crossfader track
     fillRoundRect(ctx, (mx + 3) * SCALE, (my + 5) * SCALE, 6 * SCALE, 2 * SCALE, 1, "#1f240a");
     // Crossfader knob (circle)
-    ctx.fillStyle = "#efac28";
+    ctx.fillStyle = "#F6CC60";
     ctx.beginPath();
     ctx.arc((mx + 6) * SCALE, (my + 6) * SCALE, 1.5 * SCALE, 0, Math.PI * 2);
     ctx.fill();
@@ -9021,7 +9116,7 @@ function drawMixer(mx, my) {
     ctx.fill();
 }
 
-const LIGHT_RIG_COLORS = ["#FF4400", "#efac28", "#00FF88", "#4488FF", "#FF44AA", "#efac28"];
+const LIGHT_RIG_COLORS = ["#FF4400", "#F6CC60", "#00FF88", "#4488FF", "#FF44AA", "#F6CC60"];
 function drawLightRig(lx, ly, pump) {
     // Two vertical light arrays flanking the stage (left and right)
     // lx, ly is top-left reference (boothX - 8, boothY - 18)
@@ -9182,7 +9277,7 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
             const sprX = sx + (TILE * SCALE) / 2 - sprW / 2;
             const sprY = sy + (TILE * SCALE) / 2 - sprH / 2;
             // Hurt flash: overlay white tint
-            const isHurt = opts.bodyCol && opts.bodyCol !== "#39FF14" && opts.bodyCol !== "#FF00FF" && opts.bodyCol !== "#FF6600";
+            const isHurt = opts.bodyCol && opts.bodyCol !== "#50ad33" && opts.bodyCol !== "#c05838" && opts.bodyCol !== "#FF6600";
             ctx.drawImage(sheet,
                 col * cellW, sheetRow * cellH, cellW, cellH, // source crop
                 sprX, sprY, sprW, sprH                        // destination
@@ -9205,11 +9300,11 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
     if (opts.bodyCol) {
         bodyCol = opts.bodyCol; darkCol = opts.darkCol; headCol = opts.headCol; eyeCol = opts.eyeCol;
     } else if (type === "elite") {
-        bodyCol = "#FF00FF"; darkCol = "#CC00CC"; headCol = "#FF44FF"; eyeCol = "#00FFFF";
+        bodyCol = "#c05838"; darkCol = "#CC00CC"; headCol = "#FF44FF"; eyeCol = "#00FFFF";
     } else if (type === "catapult") {
         bodyCol = "#FF6600"; darkCol = "#CC4400"; headCol = "#FF8833"; eyeCol = "#00FFFF";
     } else {
-        bodyCol = "#39FF14"; darkCol = "#00CC00"; headCol = "#66FF44"; eyeCol = "#FF00FF";
+        bodyCol = "#50ad33"; darkCol = "#00CC00"; headCol = "#66FF44"; eyeCol = "#c05838";
     }
 
     // Screen-pixel base position
@@ -9332,7 +9427,7 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
 
     if (dir !== 1) {
         // Eye sockets
-        ctx.fillStyle = "#1a2a1a";
+        ctx.fillStyle = "#3a3a37";
         ctx.beginPath();
         ctx.ellipse(ghCx - 8 + eyeOfs[0], ghCy - 2 + eyeOfs[1], 6, 5, 0, 0, Math.PI * 2);
         ctx.fill();
@@ -9448,9 +9543,9 @@ function drawGoblinFor(g) {
         // Punch telegraph: rapid white flash during wind-up
         bodyCol = "#ffffff"; darkCol = "#ffdddd"; headCol = "#ffffff"; eyeCol = "#FF0000";
     } else if (!g.elite) {
-        bodyCol = "#39FF14"; darkCol = "#00CC00"; headCol = "#66FF44"; eyeCol = "#FF00FF";
+        bodyCol = "#50ad33"; darkCol = "#00CC00"; headCol = "#66FF44"; eyeCol = "#c05838";
     } else if (g.hp === 3) {
-        bodyCol = "#FF00FF"; darkCol = "#CC00CC"; headCol = "#FF44FF"; eyeCol = "#00FFFF";
+        bodyCol = "#c05838"; darkCol = "#CC00CC"; headCol = "#FF44FF"; eyeCol = "#00FFFF";
     } else if (g.hp === 2) {
         bodyCol = "#CC00CC"; darkCol = "#990099"; headCol = "#DD33DD"; eyeCol = "#FF3333";
     } else {
@@ -9482,7 +9577,7 @@ function drawGoblinFor(g) {
             const nPhase = (180 - g.danceTimer + ni * 30) % 60;
             ctx.globalAlpha = (1 - nPhase / 60) * 0.9;
             ctx.font = `${5 * SCALE}px monospace`;
-            ctx.fillStyle = ni === 0 ? "#44ff44" : "#FFD700";
+            ctx.fillStyle = ni === 0 ? "#50ad33" : "#FFD700";
             ctx.fillText(ni === 0 ? "♪" : "♫",
                 (g.x + (ni === 0 ? 1 : 11)) * SCALE,
                 (g.y - 6 - nPhase * 0.3) * SCALE);
@@ -9518,7 +9613,7 @@ function drawGoblinFor(g) {
         const pipStartX = g.x + g.w / 2 - (3 * 4) / 2;
         for (let i = 0; i < 3; i++) {
             const filled = i < g.hp;
-            drawRect(pipStartX + i * 4, pipY, 3, 3, filled ? "#FF00FF" : "#333333");
+            drawRect(pipStartX + i * 4, pipY, 3, 3, filled ? "#c05838" : "#333333");
             if (filled) {
                 drawRect(pipStartX + i * 4, pipY, 3, 1, "#FF88FF"); // highlight
             }
@@ -9543,7 +9638,7 @@ function drawCatapultGoblin() {
             const nPhase = (180 - cg.danceTimer + ni * 30) % 60;
             ctx.globalAlpha = (1 - nPhase / 60) * 0.9;
             ctx.font = `${5 * SCALE}px monospace`;
-            ctx.fillStyle = ni === 0 ? "#44ff44" : "#FFD700";
+            ctx.fillStyle = ni === 0 ? "#50ad33" : "#FFD700";
             ctx.fillText(ni === 0 ? "♪" : "♫",
                 (cg.x + (ni === 0 ? 1 : 11)) * SCALE,
                 (cg.y - 6 - nPhase * 0.3) * SCALE);
@@ -9639,7 +9734,7 @@ function drawCatapultGoblin() {
                     if (r >= 0 && r < getActiveRows() && c >= 0 && c < GRID_COLS) {
                         const tx = (GRID_X + c) * TILE;
                         const ty = rowPixelY(r);
-                        ctx.fillStyle = "#ff4400";
+                        ctx.fillStyle = "#BF7538";
                         ctx.globalAlpha = 0.35;
                         ctx.fillRect(tx * SCALE, ty * SCALE, TILE * SCALE, TILE * SCALE);
                         ctx.globalAlpha = 1.0;
@@ -10133,26 +10228,26 @@ function renderEnding() {
         // Dark floor
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
-                const shade = (r + c) % 2 === 0 ? "#0a0f0a" : "#0d150d";
+                const shade = (r + c) % 2 === 0 ? "#2C2C2A" : "#232321";
                 drawRect(c * TILE, r * TILE, TILE, TILE, shade);
             }
         }
 
         // Walls
         for (let c = 0; c < COLS; c++) {
-            drawRect(c * TILE, 0, TILE, TILE, (c * 7 + 3) % 3 === 0 ? "#1e2e1e" : "#1a2a1a");
-            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, (c * 11 + 5) % 3 === 0 ? "#152015" : "#1a2a1a");
+            drawRect(c * TILE, 0, TILE, TILE, (c * 7 + 3) % 3 === 0 ? "#3f3f3b" : "#3a3a37");
+            drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, (c * 11 + 5) % 3 === 0 ? "#343430" : "#3a3a37");
         }
         for (let r = 0; r < ROWS; r++) {
-            drawRect(0, r * TILE, TILE, TILE, (r * 7) % 3 === 0 ? "#152015" : "#1a2a1a");
-            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, (r * 11) % 3 === 0 ? "#152015" : "#1a2a1a");
+            drawRect(0, r * TILE, TILE, TILE, (r * 7) % 3 === 0 ? "#343430" : "#3a3a37");
+            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, (r * 11) % 3 === 0 ? "#343430" : "#3a3a37");
         }
 
         // String lights (fade in during phase 0)
         const lightsAlpha = endingPhase === 0 ? Math.min(1, endingPiecesPlaced / 4) : 1;
         if (lightsAlpha > 0) {
             ctx.globalAlpha = lightsAlpha;
-            const bulbColors = ["#FF4400", "#efac28", "#00FF88", "#4488FF", "#FF44AA", "#efac28"];
+            const bulbColors = ["#FF4400", "#F6CC60", "#00FF88", "#4488FF", "#FF44AA", "#F6CC60"];
             for (let c = 0; c < 18; c++) {
                 const bulbX = 2 * TILE + c * (TILE + 2);
                 const bulbY = TILE + 4;
@@ -10169,7 +10264,7 @@ function renderEnding() {
         const boothY = GRID_Y * TILE - 8;
 
         // Platform
-        drawRect(boothX - 8, boothY + 12, 64, 8, "#2a3a2a");
+        drawRect(boothX - 8, boothY + 12, 64, 8, "#55554f");
         drawRect(boothX - 8, boothY + 12, 64, 2, "#3a4a3a");
 
         // Equipment pieces (fly in during phase 0)
@@ -10206,7 +10301,7 @@ function renderEnding() {
             }
             // Playhead
             const phX = miniGridX + endingBeatStep * TILE;
-            ctx.fillStyle = "#efac28";
+            ctx.fillStyle = "#F6CC60";
             ctx.globalAlpha = gridAlpha * 0.35;
             ctx.fillRect(phX * SCALE, miniGridY * SCALE, TILE * SCALE, (4 * TILE) * SCALE);
             ctx.globalAlpha = 1;
@@ -10270,13 +10365,13 @@ function renderEnding() {
                 ctx.globalAlpha = a;
                 ctx.textAlign = "center";
                 ctx.font = `${6 * SCALE}px monospace`;
-                ctx.fillStyle = "#1a3a1a";
+                ctx.fillStyle = "#3a3a35";
                 ctx.fillText("MAYBE THEY WEREN'T ATTACKING.", (W / 2) * SCALE + SCALE, (H / 2 - 6) * SCALE);
-                ctx.fillStyle = "#39FF14";
+                ctx.fillStyle = "#50ad33";
                 ctx.fillText("MAYBE THEY WEREN'T ATTACKING.", (W / 2) * SCALE, (H / 2 - 7) * SCALE);
-                ctx.fillStyle = "#1a3a1a";
+                ctx.fillStyle = "#3a3a35";
                 ctx.fillText("MAYBE THEY WERE ASKING TO JOIN IN.", (W / 2) * SCALE + SCALE, (H / 2 + 8) * SCALE);
-                ctx.fillStyle = "#39FF14";
+                ctx.fillStyle = "#50ad33";
                 ctx.fillText("MAYBE THEY WERE ASKING TO JOIN IN.", (W / 2) * SCALE, (H / 2 + 7) * SCALE);
                 ctx.textAlign = "start";
                 ctx.globalAlpha = 1;
@@ -10289,7 +10384,7 @@ function renderEnding() {
         const caveH = CAVE_ROWS * CAVE_TILE;
 
         // Cave background
-        drawRect(0, 0, caveW, caveH, "#0a0f0a");
+        drawRect(0, 0, caveW, caveH, "#2C2C2A");
 
         // Stone floor
         for (let r = 3; r < CAVE_ROWS - 1; r++) {
@@ -10297,7 +10392,7 @@ function renderEnding() {
                 let seed = r * 997 + c * 31;
                 seed = (seed * 9301 + 49297) % 233280;
                 const bright = (seed / 233280) > 0.6;
-                const floorCol = bright ? "#152015" : "#111911";
+                const floorCol = bright ? "#343430" : "#2a2a27";
                 drawRect(c * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, floorCol);
             }
         }
@@ -10306,21 +10401,21 @@ function renderEnding() {
         for (let c = 0; c < CAVE_COLS; c++) {
             // Top wall (3 rows for grand stage area)
             for (let r = 0; r < 3; r++) {
-                drawRect(c * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, (c + r) % 2 === 0 ? "#1e2e1e" : "#1a2a1a");
+                drawRect(c * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, (c + r) % 2 === 0 ? "#3f3f3b" : "#3a3a37");
             }
             // Bottom wall
-            drawRect(c * CAVE_TILE, (CAVE_ROWS - 1) * CAVE_TILE, CAVE_TILE, CAVE_TILE, c % 2 === 0 ? "#1e2e1e" : "#1a2a1a");
+            drawRect(c * CAVE_TILE, (CAVE_ROWS - 1) * CAVE_TILE, CAVE_TILE, CAVE_TILE, c % 2 === 0 ? "#3f3f3b" : "#3a3a37");
             // Stalactites
             if (c % 3 === 1) {
                 const stalH = 4 + (c * 7) % 6;
-                drawRect(c * CAVE_TILE + 5, 3 * CAVE_TILE, 3, stalH, "#243024");
-                drawRect(c * CAVE_TILE + 6, 3 * CAVE_TILE, 1, stalH + 2, "#2a3a2a");
+                drawRect(c * CAVE_TILE + 5, 3 * CAVE_TILE, 3, stalH, "#4a4a45");
+                drawRect(c * CAVE_TILE + 6, 3 * CAVE_TILE, 1, stalH + 2, "#55554f");
             }
         }
         // Side walls
         for (let r = 0; r < CAVE_ROWS; r++) {
-            drawRect(0, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, r % 2 === 0 ? "#1e2e1e" : "#1a2a1a");
-            drawRect((CAVE_COLS - 1) * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, r % 2 === 0 ? "#1e2e1e" : "#1a2a1a");
+            drawRect(0, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, r % 2 === 0 ? "#3f3f3b" : "#3a3a37");
+            drawRect((CAVE_COLS - 1) * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, r % 2 === 0 ? "#3f3f3b" : "#3a3a37");
         }
 
         // Torches on walls
@@ -10341,10 +10436,10 @@ function renderEnding() {
         const stageY = 3 * CAVE_TILE;
 
         // Stage platform (wider than normal booth)
-        drawRect(stageX - 16, stageY + 16, 112, 10, "#1e2e1e");
-        drawRect(stageX - 16, stageY + 16, 112, 2, "#243024");
+        drawRect(stageX - 16, stageY + 16, 112, 10, "#3f3f3b");
+        drawRect(stageX - 16, stageY + 16, 112, 2, "#4a4a45");
         // Stage risers
-        drawRect(stageX - 20, stageY + 26, 120, 6, "#1a2a1a");
+        drawRect(stageX - 20, stageY + 26, 120, 6, "#3a3a37");
 
         // All 6 equipment pieces on the grand stage
         const sBoothX = caveW / 2 - 24;
@@ -10364,7 +10459,7 @@ function renderEnding() {
         drawDiscoBall(ballX, ballY);
 
         // Disco ball light reflections sweeping cave walls
-        const reflectionColors = ["#FF4400", "#efac28", "#00FF88", "#4488FF", "#FF44AA", "#FFD700",
+        const reflectionColors = ["#FF4400", "#F6CC60", "#00FF88", "#4488FF", "#FF44AA", "#FFD700",
                                    "#FF6600", "#88FF44", "#44DDFF", "#FF88CC", "#AAFFEE", "#FFAA44"];
         for (let ri = 0; ri < 12; ri++) {
             const speed = 0.015 + (ri % 4) * 0.005;
@@ -10681,7 +10776,7 @@ function renderTitleScreen() {
     drawSceneBackground(0);
 
     // Mushroom lights (animated, bioluminescent)
-    const TITLE_MUSH_COLORS = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#44ff44"];
+    const TITLE_MUSH_COLORS = [INK.mint, INK.silverL, INK.green, INK.silverD, INK.mint, INK.green];
     for (let c = 1; c < COLS - 1; c++) {
         const mushY = TILE + 4;
         const mushX = c * TILE + TILE / 2;
@@ -10689,7 +10784,7 @@ function renderTitleScreen() {
         const chase = Math.sin(titleBlink * 0.05 + c * 0.6) * 0.5 + 0.5;
         const isCrystal = c % 4 === 0;
         // Stem
-        ctx.strokeStyle = "#1e2e1e";
+        ctx.strokeStyle = "#3f3f3b";
         ctx.lineWidth = 1 * SCALE;
         ctx.beginPath();
         ctx.moveTo(mushX * SCALE, TILE * SCALE);
@@ -10706,7 +10801,7 @@ function renderTitleScreen() {
             ctx.closePath();
             ctx.fill();
         } else {
-            ctx.fillStyle = "#2a4a2a";
+            ctx.fillStyle = "#55554f";
             ctx.fillRect((mushX - 0.5) * SCALE, (mushY - 1) * SCALE, 1 * SCALE, 4 * SCALE);
             ctx.fillStyle = mushCol;
             ctx.beginPath();
@@ -10727,7 +10822,7 @@ function renderTitleScreen() {
     const boothY = GRID_Y * TILE - 8;
     drawLightRig(boothX - 8, boothY - 18, titleKickPump);
     drawDiscoBall(boothX + 20, boothY - 30);
-    drawRect(boothX - 8, boothY + 12, 64, 8, "#2a3a2a");
+    drawRect(boothX - 8, boothY + 12, 64, 8, "#55554f");
     drawRect(boothX - 8, boothY + 12, 64, 2, "#3a4a3a");
     drawSubwoofer(boothX - 12, boothY - 2, titleKickPump, -1);
     drawSubwoofer(boothX + 44, boothY - 2, titleKickPump, 1);
@@ -10914,14 +11009,14 @@ function renderTitleScreen() {
     for (let i = 0; i < goblinsText.length; i++) {
         const charX = gobStartX + i * gobCharW + gobSlideX;
         const bounce = gobEntrance >= 1 ? Math.sin(titleBlink * 0.07 + i * 0.9 + 3) * 3 : 0;
-        const col = i % 2 === 0 ? "#39FF14" : "#00CC00";
+        const col = i % 2 === 0 ? "#50ad33" : "#00CC00";
         ctx.globalAlpha = gobEntrance * titleTextAlpha;
         // Shadow
         drawText(goblinsText[i], charX + 1, gobY + bounce + 2, "#000000", bigFontSize);
         drawText(goblinsText[i], charX - 1, gobY + bounce + 2, "#000000", bigFontSize);
         // Glow
         ctx.globalAlpha = 0.25 * gobEntrance * titleTextAlpha;
-        drawText(goblinsText[i], charX, gobY + bounce - 1, "#39FF14", bigFontSize);
+        drawText(goblinsText[i], charX, gobY + bounce - 1, "#50ad33", bigFontSize);
         ctx.globalAlpha = gobEntrance * titleTextAlpha;
         // Main text
         drawText(goblinsText[i], charX, gobY + bounce, col, bigFontSize);
@@ -10933,10 +11028,10 @@ function renderTitleScreen() {
     if (!titleFadingOut) {
         const modeY = titleBaseY + 58;
         const modeLabel = gameMode === "thrill" ? "THRILL MODE" : "CHILL MODE";
-        const modeCol = gameMode === "thrill" ? "#ff4400" : "#33dd88";
+        const modeCol = gameMode === "thrill" ? "#BF7538" : "#33dd88";
         const arrowPulse = 0.5 + Math.sin(titleBlink * 0.08) * 0.3;
         ctx.globalAlpha = titleTextAlpha * arrowPulse;
-        drawCentered("<              >", modeY, "#88cc88", 6);
+        drawCentered("<              >", modeY, "#7A8F85", 6);
         ctx.globalAlpha = titleTextAlpha;
         drawCentered(modeLabel, modeY, modeCol, 6);
         ctx.globalAlpha = 1.0;
@@ -10948,7 +11043,7 @@ function renderTitleScreen() {
     // Blink the text with a faster, more urgent rhythm
     if (titleBlink % 45 < 32 && !titleFadingOut) {
         drawCentered("PRESS ENTER", pressY + 1, "#000000", 6);
-        const enterCol = (titleStep % 4 === 0) ? "#44ff44" : "#88cc88";
+        const enterCol = (titleStep % 4 === 0) ? "#50ad33" : "#7A8F85";
         drawCentered("PRESS ENTER", pressY, enterCol, 6);
     }
 }
@@ -11272,7 +11367,7 @@ function drawSceneBackground(darken) {
     if (IMAGES.cave_bg) {
         ctx.drawImage(IMAGES.cave_bg, 0, 0, canvas.width, canvas.height);
     } else {
-        ctx.drawImage(TEX_CAVE_BG, 0, 0);
+        ctx.drawImage(TEX_CAVE_BG[boil()], 0, 0);
     }
     if (darken > 0) {
         ctx.fillStyle = "#000000";
@@ -11322,13 +11417,13 @@ function renderIntro() {
         drawSceneBackground(0);
 
         // Mushroom lights (animated)
-        const INTRO_MUSH = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#44ff44"];
+        const INTRO_MUSH = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#50ad33"];
         for (let c = 1; c < COLS - 1; c++) {
             const mushY = TILE + 4;
             const mushX = c * TILE + TILE / 2;
             const mushCol = INTRO_MUSH[c % INTRO_MUSH.length];
             const chase = Math.sin(introGlobalTimer * 0.05 + c * 0.6) * 0.5 + 0.5;
-            ctx.strokeStyle = "#1e2e1e";
+            ctx.strokeStyle = "#3f3f3b";
             ctx.lineWidth = 1 * SCALE;
             ctx.beginPath();
             ctx.moveTo(mushX * SCALE, TILE * SCALE);
@@ -11362,7 +11457,7 @@ function renderIntro() {
         const boothY = GRID_Y * TILE - 8;
         drawLightRig(boothX - 8, boothY - 18, introKickPump);
         drawDiscoBall(boothX + 20, boothY - 30);
-        drawRect(boothX - 8, boothY + 12, 64, 8, "#2a3a2a");
+        drawRect(boothX - 8, boothY + 12, 64, 8, "#55554f");
         drawRect(boothX - 8, boothY + 12, 64, 2, "#3a4a3a");
         drawSubwoofer(boothX - 12, boothY - 2, introKickPump, -1);
         drawSubwoofer(boothX + 44, boothY - 2, introKickPump, 1);
@@ -11389,7 +11484,7 @@ function renderIntro() {
         }
         // Playhead
         const phX = miniGridX + introBeatStep * TILE;
-        ctx.fillStyle = "#efac28";
+        ctx.fillStyle = "#F6CC60";
         ctx.globalAlpha = 0.35;
         ctx.fillRect(phX * SCALE, miniGridY * SCALE, TILE * SCALE, (4 * TILE) * SCALE);
         ctx.globalAlpha = 1;
@@ -11437,7 +11532,7 @@ function renderIntro() {
         // Beat pulse background — smooth sine wave, peaks every 4 steps
         const beatPhase = ((introBeatStep % 4) + introBeatTimer / INTRO_BEAT_FRAMES) / 4;
         const pulse = Math.cos(beatPhase * Math.PI * 2) * 0.5 + 0.5;
-        ctx.fillStyle = "#efac28";
+        ctx.fillStyle = "#F6CC60";
         ctx.globalAlpha = pulse * 0.04;
         ctx.fillRect(0, 0, W * SCALE, H * SCALE);
         ctx.globalAlpha = 1;
@@ -11446,9 +11541,9 @@ function renderIntro() {
         if (t > 60) {
             const capAlpha = Math.min(1, (t - 60) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("EVERY FRIDAY NIGHT, THE UNDERGROUND CAME ALIVE.", H - 60, "#44ff44", 5);
-            drawCentered("THE DJ SPUN BEATS THAT MADE THE WALLS SHAKE", H - 50, "#44ff44", 5);
-            drawCentered("AND THE FLOOR PULSE.", H - 40, "#44ff44", 5);
+            drawCentered("EVERY FRIDAY NIGHT, THE UNDERGROUND CAME ALIVE.", H - 60, "#50ad33", 5);
+            drawCentered("THE DJ SPUN BEATS THAT MADE THE WALLS SHAKE", H - 50, "#50ad33", 5);
+            drawCentered("AND THE FLOOR PULSE.", H - 40, "#50ad33", 5);
             ctx.globalAlpha = 1;
         }
     }
@@ -11472,7 +11567,7 @@ function renderIntro() {
         drawSceneBackground(powerFade * 0.55);
 
         // Mushroom lights — flicker like losing power, then go dark
-        const QUAKE_MUSH = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#44ff44"];
+        const QUAKE_MUSH = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#50ad33"];
         for (let c = 1; c < COLS - 1; c++) {
             const mushX = c * TILE + TILE / 2;
             const mushY = TILE + 4;
@@ -11484,7 +11579,7 @@ function renderIntro() {
             const flickerZone = dieFrame - 40;
 
             // Stem always visible
-            ctx.strokeStyle = "#1e2e1e";
+            ctx.strokeStyle = "#3f3f3b";
             ctx.lineWidth = 1 * SCALE;
             ctx.beginPath();
             ctx.moveTo(mushX * SCALE, TILE * SCALE);
@@ -11514,14 +11609,14 @@ function renderIntro() {
                     ctx.arc(mushX * SCALE, (mushY + 3) * SCALE, 2.5 * SCALE, Math.PI, 0);
                     ctx.fill();
                 } else {
-                    ctx.fillStyle = "#0d150d";
+                    ctx.fillStyle = "#232321";
                     ctx.beginPath();
                     ctx.arc(mushX * SCALE, (mushY + 3) * SCALE, 2.5 * SCALE, Math.PI, 0);
                     ctx.fill();
                 }
             } else {
                 // Dead mushroom — dark
-                ctx.fillStyle = "#0a0f0a";
+                ctx.fillStyle = "#2C2C2A";
                 ctx.beginPath();
                 ctx.arc(mushX * SCALE, (mushY + 3) * SCALE, 2.5 * SCALE, Math.PI, 0);
                 ctx.fill();
@@ -11534,7 +11629,7 @@ function renderIntro() {
         const boothY = GRID_Y * TILE - 8;
         drawLightRig(boothX - 8, boothY - 18, introKickPump);
         drawDiscoBall(boothX + 20, boothY - 30);
-        drawRect(boothX - 8, boothY + 12, 64, 8, "#2a3a2a");
+        drawRect(boothX - 8, boothY + 12, 64, 8, "#55554f");
         drawRect(boothX - 8, boothY + 12, 64, 2, "#3a4a3a");
         drawSubwoofer(boothX - 12, boothY - 2, introKickPump, -1);
         drawSubwoofer(boothX + 44, boothY - 2, introKickPump, 1);
@@ -11554,7 +11649,7 @@ function renderIntro() {
                 drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, on ? PAL.gridOn[r] : PAL.gridOff);
                 // Goblin sabotage flash
                 if (introGridFlash && introGridFlash[r][c] > 0) {
-                    ctx.fillStyle = "#39FF14";
+                    ctx.fillStyle = "#50ad33";
                     ctx.globalAlpha = (introGridFlash[r][c] / 30) * 0.5;
                     ctx.fillRect(gx * SCALE, gy * SCALE, TILE * SCALE, TILE * SCALE);
                     ctx.globalAlpha = 1;
@@ -11564,7 +11659,7 @@ function renderIntro() {
         }
         // Playhead
         const phX = miniGridX + introBeatStep * TILE;
-        ctx.fillStyle = "#efac28";
+        ctx.fillStyle = "#F6CC60";
         ctx.globalAlpha = 0.35;
         ctx.fillRect(phX * SCALE, miniGridY * SCALE, TILE * SCALE, (4 * TILE) * SCALE);
         ctx.globalAlpha = 1;
@@ -11664,25 +11759,25 @@ function renderIntro() {
                 // Cave opens
                 if (caveReveal > 0) {
                     const holeSize = caveReveal * TILE;
-                    drawRect(cx + (TILE - holeSize) / 2, cy + (TILE - holeSize) / 2, holeSize, holeSize + 4, "#050805");
+                    drawRect(cx + (TILE - holeSize) / 2, cy + (TILE - holeSize) / 2, holeSize, holeSize + 4, "#2C2C2A");
                     if (caveReveal > 0.5) {
-                        drawRect(cx - 2, cy - 4, TILE + 4, 3, "#243024");
-                        drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#243024");
+                        drawRect(cx - 2, cy - 4, TILE + 4, 3, "#4a4a45");
+                        drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#4a4a45");
                     }
                     // Falling rubble
                     if (caveReveal < 0.8) {
                         for (let ri = 0; ri < 5; ri++) {
                             const rx = cx + (ri * 7 + t) % TILE;
                             const ry = cy + TILE + (t * 0.5 + ri * 11) % 20;
-                            drawRect(rx, ry, 2, 2, "#243024");
+                            drawRect(rx, ry, 2, 2, "#4a4a45");
                         }
                     }
                     // Glowing eyes in darkness — no goblins emerge in this scene
                     if (caveReveal > 0.7) {
                         const eyeAlpha = (caveReveal - 0.7) / 0.3;
                         ctx.globalAlpha = eyeAlpha * (0.5 + Math.sin(t * 0.1 + ci) * 0.5);
-                        drawRect(cx + 5, cy + 5, 2, 2, "#39FF14");
-                        drawRect(cx + 9, cy + 5, 2, 2, "#39FF14");
+                        drawRect(cx + 5, cy + 5, 2, 2, "#50ad33");
+                        drawRect(cx + 9, cy + 5, 2, 2, "#50ad33");
                         ctx.globalAlpha = 1;
                     }
                 }
@@ -11692,7 +11787,7 @@ function renderIntro() {
             if (caveT > 60 && t % 12 < 3) {
                 const sparkX = boothX + 20 + Math.random() * 12;
                 const sparkY = boothY + Math.random() * 8;
-                drawRect(sparkX, sparkY, 2, 2, "#efac28");
+                drawRect(sparkX, sparkY, 2, 2, "#F6CC60");
                 drawRect(sparkX + 1, sparkY - 2, 1, 2, "#ffffff");
             }
 
@@ -11704,15 +11799,15 @@ function renderIntro() {
         if (t > 60 && t < 300) {
             const capAlpha = Math.min(1, (t - 60) / 30) * Math.max(0, 1 - (t - 240) / 60);
             ctx.globalAlpha = Math.max(0, capAlpha);
-            drawCentered("BUT DEEP BENEATH THE DANCE FLOOR,", H - 54, "#ef3a0c", 5);
-            drawCentered("SOMETHING HAD BEEN LISTENING.", H - 44, "#ef3a0c", 5);
+            drawCentered("BUT DEEP BENEATH THE DANCE FLOOR,", H - 54, "#FE3636", 5);
+            drawCentered("SOMETHING HAD BEEN LISTENING.", H - 44, "#FE3636", 5);
             ctx.globalAlpha = 1;
         }
         if (t > 300) {
             const capAlpha = Math.min(1, (t - 300) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("THE EARTH SPLIT OPEN.", H - 54, "#ef3a0c", 5);
-            drawCentered("CRACKS TORE THROUGH THE WALLS LIKE JAGGED TEETH.", H - 44, "#ef3a0c", 5);
+            drawCentered("THE EARTH SPLIT OPEN.", H - 54, "#FE3636", 5);
+            drawCentered("CRACKS TORE THROUGH THE WALLS LIKE JAGGED TEETH.", H - 44, "#FE3636", 5);
             ctx.globalAlpha = 1;
         }
     }
@@ -11736,23 +11831,23 @@ function renderIntro() {
         for (let ci = 0; ci < CAVES.length; ci++) {
             const cave = CAVES[ci];
             const cx = cave.tileX * TILE, cy = cave.tileY * TILE;
-            drawRect(cx, cy - 2, TILE, TILE + 4, "#050805");
-            drawRect(cx - 2, cy - 4, TILE + 4, 3, "#243024");
-            drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#243024");
+            drawRect(cx, cy - 2, TILE, TILE + 4, "#2C2C2A");
+            drawRect(cx - 2, cy - 4, TILE + 4, 3, "#4a4a45");
+            drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#4a4a45");
             // Eyes glow until first goblin from this cave emerges
             const gobEmerged = introGoblins.some(g => g.caveIdx === ci && g.emerged);
             if (!gobEmerged) {
                 const eyeAlpha = 0.5 + Math.sin(t * 0.1 + ci) * 0.5;
                 ctx.globalAlpha = eyeAlpha;
-                drawRect(cx + 5, cy + 5, 2, 2, "#39FF14");
-                drawRect(cx + 9, cy + 5, 2, 2, "#39FF14");
+                drawRect(cx + 5, cy + 5, 2, 2, "#50ad33");
+                drawRect(cx + 9, cy + 5, 2, 2, "#50ad33");
                 ctx.globalAlpha = 1;
             }
         }
 
         // Dead mushroom lights (all dark — power died in earthquake)
         for (let c = 1; c < COLS - 1; c++) {
-            drawRect(c * TILE + TILE / 2 - 2, TILE + 6, 4, 4, "#0a0f0a");
+            drawRect(c * TILE + TILE / 2 - 2, TILE + 6, 4, 4, "#2C2C2A");
         }
 
         // Beat grid — corruption starts after goblins reach it (~frame 120)
@@ -11779,7 +11874,7 @@ function renderIntro() {
                 // Green flash on recently corrupted cells
                 if (introGridFlash[r][c] > 0) {
                     ctx.globalAlpha = 0.4 * (introGridFlash[r][c] / 30);
-                    drawRect(gx, gy, TILE, TILE, "#39FF14");
+                    drawRect(gx, gy, TILE, TILE, "#50ad33");
                     ctx.globalAlpha = 1;
                     introGridFlash[r][c]--;
                 }
@@ -11881,18 +11976,18 @@ function renderIntro() {
             // Intact booth — full setup (with damage after swarm)
             drawLightRig(boothX - 8, boothY - 18, introKickPump);
             drawDiscoBall(boothX + 20, boothY - 30);
-            drawRect(boothX - 8, boothY + 12, 64, 8, "#2a3a2a");
+            drawRect(boothX - 8, boothY + 12, 64, 8, "#55554f");
             drawRect(boothX - 8, boothY + 12, 64, 2, "#3a4a3a");
             drawSubwoofer(boothX - 12, boothY - 2, 0, -1);
             drawSubwoofer(boothX + 44, boothY - 2, 0, 1);
             drawTurntable(boothX + 1, boothY - 2);
             drawMixer(boothX + 18, boothY + 2);
             if (t > 120) {
-                drawRect(boothX + 5, boothY + 6, 10, 6, "#0d150d");
-                drawRect(boothX + 35, boothY + 8, 8, 4, "#0d150d");
-                drawRect(boothX + 18, boothY + 2, 12, 10, "#0d150d");
+                drawRect(boothX + 5, boothY + 6, 10, 6, "#232321");
+                drawRect(boothX + 35, boothY + 8, 8, 4, "#232321");
+                drawRect(boothX + 18, boothY + 2, 12, 10, "#232321");
                 if (t % 8 < 2) {
-                    drawRect(boothX + 10 + Math.random() * 30, boothY + Math.random() * 10, 2, 3, "#efac28");
+                    drawRect(boothX + 10 + Math.random() * 30, boothY + Math.random() * 10, 2, 3, "#F6CC60");
                 }
             }
         } else {
@@ -11930,8 +12025,8 @@ function renderIntro() {
             drawRect(boothX - 8, boothY + 12, 64, 8, "#2a1a0a");
             drawRect(boothX - 8, boothY + 12, 64, 2, "#3a2a1a");
             // Scorch marks
-            drawRect(boothX + 5, boothY + 4, 15, 8, "#0a0f0a");
-            drawRect(boothX + 25, boothY + 6, 12, 6, "#0a0f0a");
+            drawRect(boothX + 5, boothY + 4, 15, 8, "#2C2C2A");
+            drawRect(boothX + 25, boothY + 6, 12, 6, "#2C2C2A");
 
             // Update and draw debris pieces
             const gravity = 0.12;
@@ -12259,7 +12354,7 @@ function renderIntro() {
         }
 
         // Green tint overlay
-        ctx.fillStyle = "#39FF14";
+        ctx.fillStyle = "#50ad33";
         ctx.globalAlpha = 0.03 + Math.sin(t * 0.1) * 0.02;
         ctx.fillRect(0, 0, W * SCALE, H * SCALE);
         ctx.globalAlpha = 1;
@@ -12268,9 +12363,9 @@ function renderIntro() {
         if (t > 180 && t < aftermathStart) {
             const capAlpha = Math.min(1, (t - 180) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("THEY CAME POURING OUT. SMALL, VICIOUS, AND FAST.", H - 60, "#39FF14", 5);
-            drawCentered("THEY SWARMED THE BEAT GRID AND TORE IT APART,", H - 50, "#39FF14", 5);
-            drawCentered("NOTE BY NOTE. THE MUSIC TWISTED INTO NOISE.", H - 40, "#39FF14", 5);
+            drawCentered("THEY CAME POURING OUT. SMALL, VICIOUS, AND FAST.", H - 60, "#50ad33", 5);
+            drawCentered("THEY SWARMED THE BEAT GRID AND TORE IT APART,", H - 50, "#50ad33", 5);
+            drawCentered("NOTE BY NOTE. THE MUSIC TWISTED INTO NOISE.", H - 40, "#50ad33", 5);
             ctx.globalAlpha = 1;
         }
         if (t >= aftermathStart) {
@@ -12321,7 +12416,7 @@ function renderIntro() {
         const spotCY = (djY + 8) * SCALE;
         const spotGrad = ctx.createRadialGradient(spotCX, spotCY, 10, spotCX, spotCY, spotW * 0.3);
         spotGrad.addColorStop(0, "#0d1a0d");
-        spotGrad.addColorStop(1, "#050805");
+        spotGrad.addColorStop(1, "#2C2C2A");
         ctx.fillStyle = spotGrad;
         ctx.fillRect(0, 0, spotW, spotH);
 
@@ -12350,7 +12445,7 @@ function renderIntro() {
                     const dist = 15 + Math.sin(t * 0.1 + si) * 5;
                     const sx = (djX + 8 + Math.cos(angle) * dist) * SCALE;
                     const sy = (djY - 4 + Math.sin(angle) * dist) * SCALE;
-                    ctx.fillStyle = si % 2 === 0 ? "#44ff44" : "#88ee88";
+                    ctx.fillStyle = si % 2 === 0 ? "#50ad33" : "#88ee88";
                     ctx.globalAlpha = 0.6 + Math.sin(t * 0.2 + si) * 0.4;
                     ctx.fillRect(sx - SCALE, sy - SCALE, 2 * SCALE, 2 * SCALE);
                 }
@@ -12362,15 +12457,15 @@ function renderIntro() {
         if (t > CRAWL_FRAMES + 60) {
             const txtAlpha = Math.min(1, (t - CRAWL_FRAMES - 60) / 30);
             ctx.globalAlpha = txtAlpha;
-            drawCentered("BUT THE DJ DIDN'T RUN.", 20, "#44ff44", 5);
-            drawCentered("ALONE IN THE WRECKAGE, SOMETHING STIRRED.", 30, "#44ff44", 5);
-            drawCentered("A RHYTHM, DEEP IN THE CHEST, THAT REFUSED TO DIE.", 40, "#44ff44", 5);
+            drawCentered("BUT THE DJ DIDN'T RUN.", 20, "#50ad33", 5);
+            drawCentered("ALONE IN THE WRECKAGE, SOMETHING STIRRED.", 30, "#50ad33", 5);
+            drawCentered("A RHYTHM, DEEP IN THE CHEST, THAT REFUSED TO DIE.", 40, "#50ad33", 5);
         }
         if (t > CRAWL_FRAMES + 150) {
             const txtAlpha2 = Math.min(1, (t - CRAWL_FRAMES - 150) / 30);
             ctx.globalAlpha = txtAlpha2;
-            drawCentered("TWO FISTS. ONE BEAT.", H - 36, "#ff6611", 8);
-            drawCentered("THAT'S ALL IT WOULD TAKE.", H - 24, "#ff6611", 6);
+            drawCentered("TWO FISTS. ONE BEAT.", H - 36, "#BF7538", 8);
+            drawCentered("THAT'S ALL IT WOULD TAKE.", H - 24, "#BF7538", 6);
         }
         ctx.globalAlpha = 1;
 
@@ -12383,10 +12478,10 @@ function renderIntro() {
     if (t > hudPromptDelay) {
         const promptText = introScene >= 3 ? "PRESS ENTER TO BEGIN" : "PRESS ENTER";
         // Draw HUD background (matches cave style)
-        drawHudRect(0, 0, COLS * TILE, HUD_H, "#0a0f0a");
+        drawHudRect(0, 0, COLS * TILE, HUD_H, "#2C2C2A");
         // Stone border along top
         for (let c = 0; c < COLS; c++) {
-            drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#1a2a1a" : "#1e2e1e");
+            drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#3a3a37" : "#3f3f3b");
         }
         hudCtx.fillStyle = "rgba(255,255,255,0.08)";
         hudCtx.fillRect(0, 0, COLS * TILE * SCALE, 1 * SCALE);
@@ -12421,14 +12516,14 @@ function renderHighScoreEntry() {
     const H = ROWS * TILE;
 
     // Dark background with starfield
-    drawRect(0, 0, W, H, "#050805");
+    drawRect(0, 0, W, H, "#2C2C2A");
     for (let i = 0; i < 60; i++) {
         const sx = ((i * 137 + 50) % W);
         const sy = ((i * 97 + 30) % H);
         const twinkle = Math.sin(initialsBlink * 0.05 + i) * 0.5 + 0.5;
         ctx.globalAlpha = 0.3 + twinkle * 0.7;
         const starSize = (i % 3 === 0) ? 2 : 1;
-        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#44ff44" : "#88cc88");
+        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#50ad33" : "#7A8F85");
     }
     ctx.globalAlpha = 1;
 
@@ -12440,7 +12535,7 @@ function renderHighScoreEntry() {
     ctx.font = `${8 * SCALE}px monospace`;
     ctx.fillStyle = "#000";
     ctx.fillText(header, (W / 2) * SCALE + SCALE, 20 * SCALE + SCALE);
-    ctx.fillStyle = "#efac28";
+    ctx.fillStyle = "#F6CC60";
     ctx.fillText(header, (W / 2) * SCALE, 20 * SCALE);
 
     // Score display — big and proud
@@ -12474,29 +12569,29 @@ function renderHighScoreEntry() {
             ctx.globalAlpha = blinkAlpha;
 
             // Up arrow indicator above
-            drawText("^", lx + letterScale * 0.1, ly - 20, "#efac28", 8);
+            drawText("^", lx + letterScale * 0.1, ly - 20, "#F6CC60", 8);
             // Down arrow indicator below
-            drawText("v", lx + letterScale * 0.1, ly + letterScale + 10, "#efac28", 8);
+            drawText("v", lx + letterScale * 0.1, ly + letterScale + 10, "#F6CC60", 8);
         }
 
         // Draw the letter
-        const color = i < initialsPos ? "#44aa44" : (i === initialsPos ? "#44ff44" : "#1a2a1a");
+        const color = i < initialsPos ? "#44aa44" : (i === initialsPos ? "#50ad33" : "#3a3a37");
         drawText(initialsEntry[i], lx, ly, color, letterScale);
         ctx.globalAlpha = 1;
 
         // Underline
-        drawRect(lx, ly + letterScale + 4, letterScale, 2, i === initialsPos ? "#44ff44" : "#1a2a1a");
+        drawRect(lx, ly + letterScale + 4, letterScale, 2, i === initialsPos ? "#50ad33" : "#3a3a37");
     }
 
     // Existing high scores list
     if (highScores.length > 0) {
         const scoreX = 16;
         const scoreStartY = H / 2 - 20;
-        drawText("HIGH SCORES", scoreX, scoreStartY - 12, "#efac28", 3);
+        drawText("HIGH SCORES", scoreX, scoreStartY - 12, "#F6CC60", 3);
         for (let i = 0; i < highScores.length; i++) {
             const entry = highScores[i];
             const rank = (i + 1) + "." + entry.name + " " + String(entry.score).padStart(5, "0");
-            const color = i === 0 ? "#efac28" : "#efb775";
+            const color = i === 0 ? "#F6CC60" : "#efb775";
             drawText(rank, scoreX, scoreStartY + i * 9, color, 3);
         }
     }
@@ -12515,7 +12610,7 @@ function renderHighScoreEntry() {
     const hint = "UP/DOWN: LETTER   ENTER: CONFIRM";
     ctx.textAlign = "center";
     ctx.font = `${3 * SCALE}px monospace`;
-    ctx.fillStyle = "#243024";
+    ctx.fillStyle = "#4a4a45";
     ctx.fillText(hint, (W / 2) * SCALE, (H - 12) * SCALE);
     ctx.textAlign = "start";
 }
@@ -12535,7 +12630,7 @@ function renderLevelComplete() {
     render();
     const fadeAlpha = Math.min(1, levelCelebrateTimer / 90);
     ctx.globalAlpha = fadeAlpha;
-    drawRect(0, 0, COLS * TILE, ROWS * TILE, "#050805");
+    drawRect(0, 0, COLS * TILE, ROWS * TILE, "#2C2C2A");
     ctx.globalAlpha = 1.0;
 
     // Keep dancers dancing on top of the dark overlay
@@ -12561,14 +12656,14 @@ function renderLevelComplete() {
         ctx.fillStyle = "#000000";
         ctx.fillText(levelText, (W * SCALE) / 2 + SCALE, (ty + bounce + 1) * SCALE);
         // Main
-        ctx.fillStyle = "#efac28";
+        ctx.fillStyle = "#F6CC60";
         ctx.fillText(levelText, (W * SCALE) / 2, (ty + bounce) * SCALE);
 
         // "COMPLETE!" below
         const cy = ty + 20;
         ctx.fillStyle = "#000000";
         ctx.fillText(completeText, (W * SCALE) / 2 + SCALE, (cy + bounce + 1) * SCALE);
-        ctx.fillStyle = "#efac28";
+        ctx.fillStyle = "#F6CC60";
         ctx.fillText(completeText, (W * SCALE) / 2, (cy + bounce) * SCALE);
 
         // Time bonus and score below
@@ -12642,7 +12737,7 @@ function renderLevelComplete() {
     }
 
     // Firework bursts + confetti
-    const fwColors = ["#efac28", "#ef3a0c", "#3c9f9c", "#ef692f", "#efd8a1", "#39FF14", "#FF00FF", "#00FFFF", "#FFD700"];
+    const fwColors = ["#F6CC60", "#FE3636", "#3c9f9c", "#ef692f", "#efd8a1", "#50ad33", "#c05838", "#00FFFF", "#FFD700"];
     // Launch new fireworks periodically — more frequent
     if (levelCelebrateTimer % 18 === 0 && levelCelebrateTimer < 240) {
         fireworks.push({
@@ -12715,7 +12810,7 @@ function renderLevelComplete() {
 
     // Confetti — varied shapes (rectangles, triangles, pennants)
     if (levelCelebrateTimer % 5 === 0 && levelCelebrateTimer < 240) {
-        const confColors = ["#efac28", "#ef3a0c", "#3c9f9c", "#ef692f", "#efd8a1", "#ab5c1c", "#FFD700", "#FF69B4"];
+        const confColors = ["#F6CC60", "#FE3636", "#3c9f9c", "#ef692f", "#efd8a1", "#ab5c1c", "#FFD700", "#FF69B4"];
         for (let ci = 0; ci < 4; ci++) {
             deathParticles.push({
                 x: Math.random() * W,
@@ -12917,7 +13012,7 @@ function renderGameOverScreen() {
 
             // Red flash overlay on initial impact
             if (da.flashTimer > 0) {
-                ctx.fillStyle = "#FF00FF";
+                ctx.fillStyle = "#c05838";
                 ctx.globalAlpha = (da.flashTimer / 8) * 0.35;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.globalAlpha = 1.0;
@@ -12969,7 +13064,7 @@ function renderGameOverScreen() {
         const narW = narText.length * 5;
         const narY = player.y + player.h + 34;
         drawText(narText, W / 2 - narW / 2 + 1, narY + 1, "#000000", 5);
-        drawText(narText, W / 2 - narW / 2, narY, "#39FF14", 5);
+        drawText(narText, W / 2 - narW / 2, narY, "#50ad33", 5);
         ctx.globalAlpha = 1.0;
     }
 
@@ -13042,13 +13137,13 @@ function drawGlyphMessage(centerX, y, size, decodedWords, opts) {
     for (const word of GOBLIN_MESSAGE) {
         const decoded = decodedWords === true || decodedWords.includes(word);
         if (decoded) {
-            const col = (o.highlight && o.highlight[word]) || o.decodedColor || "#ffe082";
+            const col = (o.highlight && o.highlight[word]) || o.decodedColor || INK.mustard;
             for (let i = 0; i < word.length; i++) {
                 drawText(word[i], x + i * size + size * 0.15, y, col, size);
             }
         } else {
             for (let i = 0; i < word.length; i++) {
-                drawRuneChar(word[i], x + i * size + size * 0.15, y, size, o.runeColor || "#5a8a5a");
+                drawRuneChar(word[i], x + i * size + size * 0.15, y, size, o.runeColor || INK.silverD);
             }
         }
         x += (word.length + 1) * size;
@@ -13089,7 +13184,7 @@ function drawDJPieceGlow(cx, cy, t) {
         ctx.stroke();
     }
     ctx.globalAlpha = 1;
-    ctx.fillStyle = "#efac28";
+    ctx.fillStyle = "#F6CC60";
     ctx.beginPath();
     ctx.roundRect((cx - 5) * s, (cy - 4) * s, 10 * s, 8 * s, 2 * s);
     ctx.fill();
@@ -13113,7 +13208,7 @@ function renderBiomeTransition() {
     const PH_G = 560;   // goblin glyphs carved into the tunnel wall
     const PH_END = 800; // auto-advance (~13s total; Enter skips)
 
-    drawRect(0, 0, W, H, "#050805");
+    drawRect(0, 0, W, H, "#2C2C2A");
 
     if (t < PH_A) {
         // === Phase 1: celebrate the recovered piece ===
@@ -13148,7 +13243,7 @@ function renderBiomeTransition() {
             const line = "THE " + biomeTransPiece.toUpperCase() + " IS BACK!";
             const lw = line.length * 7;
             drawText(line, W / 2 - lw / 2 + 1, 26, "#000000", 7);
-            drawText(line, W / 2 - lw / 2, 25, "#efac28", 7);
+            drawText(line, W / 2 - lw / 2, 25, "#F6CC60", 7);
         }
 
         // DJ setup progress: six slots, earned ones lit gold
@@ -13159,14 +13254,14 @@ function renderBiomeTransition() {
             const sy0 = H - 42;
             const label = "DJ SETUP: " + djSetupEarned.length + "/" + DJ_SETUP_PIECES.length;
             const lblW = label.length * 5;
-            drawText(label, W / 2 - lblW / 2, sy0 - 10, "#88cc88", 5);
+            drawText(label, W / 2 - lblW / 2, sy0 - 10, "#7A8F85", 5);
             for (let i = 0; i < DJ_SETUP_PIECES.length; i++) {
                 const sx = sx0 + i * (slotW + gap);
                 const earned = i < djSetupEarned.length;
                 const newest = i === djSetupEarned.length - 1;
                 const pulse = newest ? 0.75 + Math.sin(t * 0.15) * 0.25 : 1;
                 ctx.globalAlpha = fadeIn * (earned ? pulse : 0.5);
-                drawRect(sx, sy0, slotW, 10, earned ? "#efac28" : "#1a2a1a");
+                drawRect(sx, sy0, slotW, 10, earned ? "#F6CC60" : "#3a3a37");
                 if (earned) drawRect(sx + 1, sy0 + 1, slotW - 2, 2, "#ffe082");
             }
         }
@@ -13195,9 +13290,9 @@ function renderBiomeTransition() {
             const line2 = "DEEPER INTO THE CAVES...";
             const w1 = line1.length * 6, w2 = line2.length * 6;
             drawText(line1, W / 2 - w1 / 2 + 1, 26, "#000000", 6);
-            drawText(line1, W / 2 - w1 / 2, 25, "#39FF14", 6);
+            drawText(line1, W / 2 - w1 / 2, 25, "#50ad33", 6);
             drawText(line2, W / 2 - w2 / 2 + 1, 36, "#000000", 6);
-            drawText(line2, W / 2 - w2 / 2, 35, "#39FF14", 6);
+            drawText(line2, W / 2 - w2 / 2, 35, "#50ad33", 6);
         }
     } else if (t < PH_G) {
         // === Phase 3: the goblin glyphs on the tunnel wall ===
@@ -13222,7 +13317,7 @@ function renderBiomeTransition() {
         drawRect(slabX, slabY, slabW, 2, biomeTransTo.gridWall.hi);
 
         const cap = "CARVED INTO THE TUNNEL WALL:";
-        drawText(cap, W / 2 - cap.length * 5 / 2, slabY - 8, "#8a9a8a", 5);
+        drawText(cap, W / 2 - cap.length * 5 / 2, slabY - 8, "#7A8F85", 5);
 
         // The message — decoded words in gold, the rest still runes
         if (pt > 30) {
@@ -13289,11 +13384,11 @@ function renderBiomeTransition() {
             drawText(title, W / 2 - tw / 2, 25, biomeTransTo.lights[0], 8);
             const tag = biomeTransTo.tagline || "";
             const tgw = tag.length * 5;
-            drawText(tag, W / 2 - tgw / 2, 37, "#8a9a8a", 5);
+            drawText(tag, W / 2 - tgw / 2, 37, "#7A8F85", 5);
             if (biomeTransNextPiece) {
                 const goal = "RECOVER THE " + biomeTransNextPiece.toUpperCase() + "!";
                 const gw2 = goal.length * 6;
-                drawText(goal, W / 2 - gw2 / 2, H - 30, "#efac28", 6);
+                drawText(goal, W / 2 - gw2 / 2, H - 30, "#F6CC60", 6);
             }
             ctx.globalAlpha = 1;
         }
@@ -13302,7 +13397,7 @@ function renderBiomeTransition() {
     // Skip prompt
     if (t > 90) {
         ctx.globalAlpha = 0.5 + Math.sin(t * 0.1) * 0.3;
-        drawText("ENTER >", W - 34, H - 10, "#8a9a8a", 4);
+        drawText("ENTER >", W - 34, H - 10, "#7A8F85", 4);
         ctx.globalAlpha = 1;
     }
 
@@ -13344,7 +13439,7 @@ function renderSabotageAnim() {
         const alertPulse = 0.08 + Math.sin(t * 0.15) * 0.06;
         const grad_s = ctx.createRadialGradient(W_s / 2, H_s / 2, W_s * 0.35, W_s / 2, H_s / 2, W_s * 0.65);
         grad_s.addColorStop(0, "rgba(0,0,0,0)");
-        grad_s.addColorStop(1, "#FF00FF");
+        grad_s.addColorStop(1, "#c05838");
         ctx.fillStyle = grad_s;
         ctx.globalAlpha = alertPulse;
         ctx.fillRect(0, 0, W_s, H_s);
@@ -13360,7 +13455,7 @@ function renderSabotageAnim() {
         ctx.fillStyle = "#000000";
         ctx.textAlign = "center";
         ctx.fillText("SABOTAGE!", (W_s2 * SCALE) / 2 + SCALE, (ROWS * TILE / 2) * SCALE + SCALE);
-        ctx.fillStyle = "#FF00FF";
+        ctx.fillStyle = "#c05838";
         ctx.fillText("SABOTAGE!", (W_s2 * SCALE) / 2, (ROWS * TILE / 2) * SCALE);
         ctx.textAlign = "start";
         ctx.globalAlpha = 1.0;
@@ -13381,7 +13476,7 @@ function renderSabotageAnim() {
                 const tc = sabotageCells[trailIdx];
                 const tx = (GRID_X + tc.c) * TILE;
                 const ty = rowPixelY(tc.r);
-                ctx.fillStyle = "#39FF14";
+                ctx.fillStyle = "#50ad33";
                 ctx.globalAlpha = (4 - trail) / 4 * 0.45;
                 ctx.fillRect((tx + 2) * SCALE, (ty + 2) * SCALE, (TILE - 4) * SCALE, (TILE - 4) * SCALE);
             }
@@ -13431,7 +13526,7 @@ function renderSabotageAnim() {
                 const bobY = Math.sin(t * 0.3) * 1.5;
                 const px2 = (gx + TILE / 2) * SCALE;
                 const py2 = (gy - 5 + bobY) * SCALE;
-                ctx.fillStyle = "#efac28";
+                ctx.fillStyle = "#F6CC60";
                 ctx.fillRect(px2 - 3 * SCALE, py2 - 3 * SCALE, 6 * SCALE, 6 * SCALE);
                 ctx.fillStyle = "#ffe082";
                 ctx.fillRect(px2 - 3 * SCALE, py2 - 3 * SCALE, 6 * SCALE, 2 * SCALE);
@@ -13444,7 +13539,7 @@ function renderSabotageAnim() {
                 const stW = stealText.length * 6;
                 const W_t = COLS * TILE;
                 drawText(stealText, W_t / 2 - stW / 2 + 1, TILE * 3 + 1, "#000000", 6);
-                drawText(stealText, W_t / 2 - stW / 2, TILE * 3, "#efac28", 6);
+                drawText(stealText, W_t / 2 - stW / 2, TILE * 3, "#F6CC60", 6);
             }
 
             if (tt === THIEF_RUN) {
@@ -13478,11 +13573,11 @@ function renderEnemyWarningIntro() {
     const H = ROWS * TILE;
 
     // Dark background
-    drawRect(0, 0, W, H, "#050805");
+    drawRect(0, 0, W, H, "#2C2C2A");
 
     // Dramatic flash effect — bright flash that fades
     if (progress < 0.4) {
-        ctx.fillStyle = "#ef3a0c";
+        ctx.fillStyle = "#FE3636";
         ctx.globalAlpha = (1 - progress / 0.4) * 0.6;
         ctx.fillRect(0, 0, W * SCALE, H * SCALE);
         ctx.globalAlpha = 1;
@@ -13502,9 +13597,9 @@ function renderEnemyWarning() {
     const H = ROWS * TILE;
 
     // Dark background with threat color tint by enemy type
-    drawRect(0, 0, W, H, "#050805");
+    drawRect(0, 0, W, H, "#2C2C2A");
     // Threat color tint — subtle background hue based on enemy type
-    const threatCol = enemyWarningType === "normal" ? "#39FF14" : (enemyWarningType === "elite" ? "#FF00FF" : "#00FFFF");
+    const threatCol = enemyWarningType === "normal" ? "#50ad33" : (enemyWarningType === "elite" ? "#c05838" : "#00FFFF");
     const threatPulse = 0.03 + Math.sin(t * 0.06) * 0.02;
     ctx.fillStyle = threatCol;
     ctx.globalAlpha = threatPulse;
@@ -13518,7 +13613,7 @@ function renderEnemyWarning() {
         const twinkle = Math.sin(t * 0.05 + i) * 0.5 + 0.5;
         ctx.globalAlpha = 0.3 + twinkle * 0.7;
         const starSize = (i % 3 === 0) ? 2 : 1;
-        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#44ff44" : "#88cc88");
+        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#50ad33" : "#7A8F85");
     }
     ctx.globalAlpha = 1;
 
@@ -13545,7 +13640,7 @@ function renderEnemyWarning() {
 
     // Danger border effect — animated hazard stripes pulsing on edges
     const borderPulse = 0.3 + Math.sin(t * 0.1) * 0.2;
-    const borderCol = enemyWarningType === "normal" ? "#39FF14" : (enemyWarningType === "elite" ? "#FF00FF" : "#00FFFF");
+    const borderCol = enemyWarningType === "normal" ? "#50ad33" : (enemyWarningType === "elite" ? "#c05838" : "#00FFFF");
     const stripeW = 8; // stripe width in game pixels
     const borderThick = 4;
     const stripeOffset = (t * 0.5) % (stripeW * 2); // animation offset
@@ -13569,8 +13664,8 @@ function renderEnemyWarning() {
     ctx.globalAlpha = 1.0;
 
     if (enemyWarningType === "normal") {
-        drawCenteredText("WATCH OUT!", 30, "#39FF14", 8);
-        drawCenteredText("GOBLINS!", 55, "#39FF14", 6);
+        drawCenteredText("WATCH OUT!", 30, "#50ad33", 8);
+        drawCenteredText("GOBLINS!", 55, "#50ad33", 6);
         ctx.save();
         const cx_w = (W / 2) * SCALE;
         const cy_w = (80 + bobOffset + 8) * SCALE;
@@ -13580,10 +13675,10 @@ function renderEnemyWarning() {
         drawGoblinSprite("normal", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
         ctx.restore();
         drawCenteredText("THEY'LL SCRAMBLE YOUR BEATS THE MOMENT", 115, "#efb775", 5);
-        drawCenteredText("YOUR BACK IS TURNED. DON'T LET THEM.", 132, "#efac28", 5);
+        drawCenteredText("YOUR BACK IS TURNED. DON'T LET THEM.", 132, "#F6CC60", 5);
 
     } else if (enemyWarningType === "elite") {
-        drawCenteredText("WARNING!", 30, "#FF00FF", 8);
+        drawCenteredText("WARNING!", 30, "#c05838", 8);
         drawCenteredText("ELITE GOBLIN", 55, "#FF44FF", 6);
         ctx.save();
         const cx_w = (W / 2) * SCALE;
@@ -13598,7 +13693,7 @@ function renderEnemyWarning() {
         drawCenteredText("AND IT'S FAST.", 149, "#efb775", 5);
 
     } else if (enemyWarningType === "catapult") {
-        drawCenteredText("WARNING!", 30, "#FF00FF", 8);
+        drawCenteredText("WARNING!", 30, "#c05838", 8);
         drawCenteredText("CATAPULT GOBLIN", 55, "#00FFFF", 6);
         ctx.save();
         const cx_w = (W / 2) * SCALE;
@@ -13610,12 +13705,12 @@ function renderEnemyWarning() {
         ctx.restore();
         drawCenteredText("THIS ONE FIGHTS DIRTY, HURLING BOULDERS", 115, "#efb775", 5);
         drawCenteredText("AT YOUR GRID FROM ACROSS THE ROOM.", 132, "#efb775", 5);
-        drawCenteredText("YOU CAN'T KILL IT. BUT IT CAN SURE KILL YOU.", 149, "#FF00FF", 5);
+        drawCenteredText("YOU CAN'T KILL IT. BUT IT CAN SURE KILL YOU.", 149, "#c05838", 5);
     }
 
     // Blinking "PRESS ENTER TO CONTINUE"
     if (t > 60 && t % 60 < 40) {
-        drawCenteredText("PRESS ENTER TO CONTINUE", H - 12, "#88cc88", 5);
+        drawCenteredText("PRESS ENTER TO CONTINUE", H - 12, "#7A8F85", 5);
     }
 
 }
@@ -13628,7 +13723,7 @@ function renderNewInstrument() {
     const H = ROWS * TILE;
 
     // Dark background (same as tutorial)
-    drawRect(0, 0, W, H, "#050805");
+    drawRect(0, 0, W, H, "#2C2C2A");
 
     // Starfield
     for (let i = 0; i < 60; i++) {
@@ -13637,7 +13732,7 @@ function renderNewInstrument() {
         const twinkle = Math.sin(t * 0.05 + i) * 0.5 + 0.5;
         ctx.globalAlpha = 0.3 + twinkle * 0.7;
         const starSize = (i % 3 === 0) ? 2 : 1;
-        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#44ff44" : "#88cc88");
+        drawRect(sx, sy, starSize, starSize, i % 5 === 0 ? "#50ad33" : "#7A8F85");
     }
     ctx.globalAlpha = 1;
 
@@ -13653,13 +13748,13 @@ function renderNewInstrument() {
         // Title with entrance animation
         const titleAlpha = Math.min(1, t / 30);
         ctx.globalAlpha = titleAlpha;
-        drawCenteredText("NEW INSTRUMENT!", 28, "#44ff44", 8);
+        drawCenteredText("NEW INSTRUMENT!", 28, "#50ad33", 8);
         ctx.globalAlpha = 1;
 
         // Instrument name
         const nameAlpha = Math.min(1, Math.max(0, (t - 15) / 30));
         ctx.globalAlpha = nameAlpha;
-        drawCenteredText("COWBELL", 52, "#ef3a0c", 7);
+        drawCenteredText("COWBELL", 52, "#FE3636", 7);
         ctx.globalAlpha = 1;
 
         // Animated cowbell icon — larger, centered
@@ -13674,7 +13769,7 @@ function renderNewInstrument() {
             ctx.translate(cx, cy + bob);
             ctx.rotate(swing);
             // Bell body (trapezoid) — bigger
-            ctx.fillStyle = "#ef3a0c";
+            ctx.fillStyle = "#FE3636";
             ctx.beginPath();
             ctx.moveTo(-12 * SCALE, -9 * SCALE);
             ctx.lineTo(12 * SCALE, -9 * SCALE);
@@ -13707,8 +13802,8 @@ function renderNewInstrument() {
         if (t > 55) {
             const desc2Alpha = Math.min(1, (t - 55) / 30);
             ctx.globalAlpha = desc2Alpha;
-            drawCenteredText("THE GROOVE GROWS DEEPER.", 155, "#ef3a0c", 5);
-            drawCenteredText("FILL IN THE COWBELL PATTERN TO MAKE IT SING.", 170, "#ef3a0c", 5);
+            drawCenteredText("THE GROOVE GROWS DEEPER.", 155, "#FE3636", 5);
+            drawCenteredText("FILL IN THE COWBELL PATTERN TO MAKE IT SING.", 170, "#FE3636", 5);
             ctx.globalAlpha = 1;
         }
 
@@ -13725,17 +13820,17 @@ function renderNewInstrument() {
                 const cx_s = stripX + c * cellW;
                 drawRect(cx_s, stripY, cellW, cellW, PAL.gridBorder);
                 drawRect(cx_s + 1, stripY + 1, cellW - 2, cellW - 2,
-                    cowbellPattern[c] ? "#ef3a0c" : PAL.gridOff);
+                    cowbellPattern[c] ? "#FE3636" : PAL.gridOff);
                 // Playhead
                 if (c === demoStep) {
-                    ctx.fillStyle = "#efac28";
+                    ctx.fillStyle = "#F6CC60";
                     ctx.globalAlpha = stripAlpha * 0.4;
                     ctx.fillRect(cx_s * SCALE, stripY * SCALE, cellW * SCALE, cellW * SCALE);
                     ctx.globalAlpha = stripAlpha;
                 }
             }
             // Row label
-            drawText("B", stripX - 8, stripY + 6, "#ef3a0c", 4);
+            drawText("B", stripX - 8, stripY + 6, "#FE3636", 4);
             ctx.globalAlpha = 1;
         }
 
@@ -13743,7 +13838,7 @@ function renderNewInstrument() {
         // Title with entrance animation
         const titleAlpha = Math.min(1, t / 30);
         ctx.globalAlpha = titleAlpha;
-        drawCenteredText("NEW INSTRUMENT!", 28, "#44ff44", 8);
+        drawCenteredText("NEW INSTRUMENT!", 28, "#50ad33", 8);
         ctx.globalAlpha = 1;
 
         // Instrument name
@@ -13763,7 +13858,7 @@ function renderNewInstrument() {
             ctx.save();
             ctx.translate(cx, cy + bob);
             // Drum body — bigger
-            ctx.fillStyle = hitFlash ? "#efac28" : "#3c9f9c";
+            ctx.fillStyle = hitFlash ? "#F6CC60" : "#3c9f9c";
             ctx.fillRect(-15 * SCALE, -6 * SCALE, 30 * SCALE, 18 * SCALE);
             // Drum head (top ellipse)
             ctx.fillStyle = hitFlash ? "#FFFFFF" : "#efd8a1";
@@ -13813,7 +13908,7 @@ function renderNewInstrument() {
                 drawRect(cx_s + 1, stripY + 1, cellW - 2, cellW - 2,
                     tomPattern[c] ? "#3c9f9c" : PAL.gridOff);
                 if (c === demoStep) {
-                    ctx.fillStyle = "#efac28";
+                    ctx.fillStyle = "#F6CC60";
                     ctx.globalAlpha = stripAlpha * 0.4;
                     ctx.fillRect(cx_s * SCALE, stripY * SCALE, cellW * SCALE, cellW * SCALE);
                     ctx.globalAlpha = stripAlpha;
@@ -13826,11 +13921,12 @@ function renderNewInstrument() {
 
     // Blinking "PRESS ENTER TO CONTINUE"
     if (t > 80 && t % 60 < 40) {
-        drawCenteredText("PRESS ENTER TO CONTINUE", H - 12, "#88cc88", 5);
+        drawCenteredText("PRESS ENTER TO CONTINUE", H - 12, "#7A8F85", 5);
     }
 }
 
 function gameLoop(timestamp) {
+    perfNow = timestamp || 0; // drives the boil clock — one hand inks everything
     const dt = timestamp - lastTime;
     lastTime = timestamp;
     frameAccum += dt;
@@ -13859,7 +13955,7 @@ function gameLoop(timestamp) {
                         ? "Title Screen"
                         : (sceneLabels[introScene] || "Scene " + introScene);
                     hudCtx.font = `${3 * SCALE}px monospace`;
-                    hudCtx.fillStyle = "#efac28";
+                    hudCtx.fillStyle = "#F6CC60";
                     hudCtx.textAlign = "center";
                     hudCtx.fillText(label, hudCanvas.width / 2, 10 * SCALE);
                     hudCtx.textAlign = "start";
@@ -13926,7 +14022,7 @@ function gameLoop(timestamp) {
                 ctx.textAlign = "center";
                 ctx.fillStyle = "#000000";
                 ctx.fillText("PAUSED", W_p / 2 + 2 * SCALE, H_p / 2 - 6 * SCALE);
-                ctx.fillStyle = "#efac28";
+                ctx.fillStyle = "#F6CC60";
                 ctx.fillText("PAUSED", W_p / 2, H_p / 2 - 8 * SCALE);
                 // Subtitle
                 ctx.font = `${4 * SCALE}px monospace`;
