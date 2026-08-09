@@ -1942,7 +1942,7 @@ const player = {
     attackDuration: 12,
     punchHit: false, // did this swing already toggle a block?
     punchBuffered: false, // Space pressed mid-swing queues the next punch
-    speed: 1.4, // pixels per frame at 60fps (down from 2.0 to assess the walk)
+    speed: 1.68, // pixels per frame at 60fps
     blinkTimer: 0, // counts up each frame, blinks at 180
     stunTimer: 0, // frames remaining in stun (can't move or punch)
     freezeTimer: 0, // frames remaining in boulder freeze (direct hit, with countdown)
@@ -8183,8 +8183,12 @@ function render() {
         ctx.globalAlpha = 1.0;
     }
 
-    // Punch target tile indicator (gold corner brackets)
-    if (!player.attacking && player.x === player.destX && player.y === player.destY) {
+    // Punch target tile indicator (gold corner brackets). Drawn whenever he
+    // isn't mid-swing — gating it on being exactly AT the destination blanked
+    // it for the whole step, so it strobed off and on at every tile. The tile
+    // below is the same one the punch actually resolves against, so it stays
+    // truthful mid-step too.
+    if (!player.attacking) {
         const ptx = Math.round(player.x / TILE);
         const pty = Math.round((player.y - GRID_Y_OFFSET) / TILE);
         let ttx = ptx, tty = pty;
