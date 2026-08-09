@@ -1383,14 +1383,12 @@ function buildCaveBgTexture(biome, LS) {
     // Stalactites & stalagmites: positions rolled once per level, then
     // drawn in the per-phase pass below so their inked edges boil
     const stRNG = texRNG(LS + 54321);
+    // Stalactites removed — they hung as pennants into the play field, and
+    // with a half-tile ceiling there is nothing left for them to hang from.
+    // (stRNG is still stepped the same number of times so the rest of the
+    // cave's noise lands where it always did.)
     const stals = [];
-    for (const p of [2, 4, 7, 9, 12, 14, 17, 19]) {
-        const sc = p + Math.floor(stRNG() * 3) - 1;
-        const stH = 3 + Math.floor(stRNG() * 5);
-        const fill = stRNG() > 0.5 ? biome.stal.a : biome.stal.b;
-        if (sc < 1 || sc >= COLS - 1) continue;
-        stals.push({ x: sc * TILE + TILE / 2, h: stH, fill });
-    }
+    for (const p of [2, 4, 7, 9, 12, 14, 17, 19]) { void p; stRNG(); stRNG(); stRNG(); }
     const smites = [];
     for (const p of [3, 6, 10, 15, 18]) {
         const sm = p + Math.floor(stRNG() * 3) - 1;
@@ -7717,7 +7715,7 @@ function render() {
     for (let c = 1; c < COLS - 1; c++) {
         if (c === topCaveCol) continue;
         const mushX = c * TILE + TILE / 2;
-        const mushY = WALL_TOP + 4;
+        const mushY = WALL_TOP - 3;   // recessed into the ceiling, not hung from it
         const rowIdx = c % ar_lights;
         const mushCol = MUSH_COLORS[c % MUSH_COLORS.length];
         const triggered = rowTrigger[rowIdx] > 0;
@@ -7727,13 +7725,7 @@ function render() {
         const twinkle = Math.sin(now_lights * 0.005 + c * 2.7) > 0.7 ? 0.3 : 0;
         const isCrystal = c % 4 === 0; // every 4th light is a crystal pendant
 
-        // Stem/chain from ceiling
-        ctx.strokeStyle = currentBiome.walls[0].base;
-        ctx.lineWidth = 1 * SCALE;
-        ctx.beginPath();
-        ctx.moveTo(mushX * SCALE, WALL_TOP * SCALE);
-        ctx.lineTo(mushX * SCALE, (mushY - 1) * SCALE);
-        ctx.stroke();
+        // (No chain — the fixtures are inset in the ceiling now.)
 
         if (isCrystal) {
             // Crystal pendant — diamond/rhombus shape
@@ -11649,18 +11641,11 @@ function renderTitleScreen() {
     // Mushroom lights (animated, bioluminescent)
     const TITLE_MUSH_COLORS = [INK.mint, INK.silverL, INK.green, INK.silverD, INK.mint, INK.green];
     for (let c = 1; c < COLS - 1; c++) {
-        const mushY = WALL_TOP + 4;
+        const mushY = WALL_TOP - 3;   // recessed into the ceiling, not hung from it
         const mushX = c * TILE + TILE / 2;
         const mushCol = TITLE_MUSH_COLORS[c % TITLE_MUSH_COLORS.length];
         const chase = Math.sin(titleBlink * 0.05 + c * 0.6) * 0.5 + 0.5;
         const isCrystal = c % 4 === 0;
-        // Stem
-        ctx.strokeStyle = "#3f3f3b";
-        ctx.lineWidth = 1 * SCALE;
-        ctx.beginPath();
-        ctx.moveTo(mushX * SCALE, WALL_TOP * SCALE);
-        ctx.lineTo(mushX * SCALE, (mushY - 1) * SCALE);
-        ctx.stroke();
         ctx.globalAlpha = 0.5 + chase * 0.5;
         if (isCrystal) {
             ctx.fillStyle = mushCol;
@@ -12294,16 +12279,10 @@ function renderIntro() {
         // Mushroom lights (animated)
         const INTRO_MUSH = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#50ad33"];
         for (let c = 1; c < COLS - 1; c++) {
-            const mushY = WALL_TOP + 4;
+            const mushY = WALL_TOP - 3;   // recessed into the ceiling, not hung from it
             const mushX = c * TILE + TILE / 2;
             const mushCol = INTRO_MUSH[c % INTRO_MUSH.length];
             const chase = Math.sin(introGlobalTimer * 0.05 + c * 0.6) * 0.5 + 0.5;
-            ctx.strokeStyle = "#3f3f3b";
-            ctx.lineWidth = 1 * SCALE;
-            ctx.beginPath();
-            ctx.moveTo(mushX * SCALE, WALL_TOP * SCALE);
-            ctx.lineTo(mushX * SCALE, (mushY - 1) * SCALE);
-            ctx.stroke();
             ctx.globalAlpha = 0.5 + chase * 0.5;
             ctx.fillStyle = mushCol;
             if (c % 4 === 0) {
@@ -12445,7 +12424,7 @@ function renderIntro() {
         const QUAKE_MUSH = ["#33ff33", "#22dd44", "#44ee88", "#22cc66", "#33ff55", "#50ad33"];
         for (let c = 1; c < COLS - 1; c++) {
             const mushX = c * TILE + TILE / 2;
-            const mushY = WALL_TOP + 4;
+            const mushY = WALL_TOP - 3;   // recessed into the ceiling, not hung from it
             const mushCol = QUAKE_MUSH[c % QUAKE_MUSH.length];
 
             // Each mushroom dims at different times — outer first, center last
@@ -12454,12 +12433,6 @@ function renderIntro() {
             const flickerZone = dieFrame - 40;
 
             // Stem always visible
-            ctx.strokeStyle = "#3f3f3b";
-            ctx.lineWidth = 1 * SCALE;
-            ctx.beginPath();
-            ctx.moveTo(mushX * SCALE, WALL_TOP * SCALE);
-            ctx.lineTo(mushX * SCALE, (mushY - 1) * SCALE);
-            ctx.stroke();
 
             if (t < flickerZone) {
                 const chase = Math.sin(introGlobalTimer * 0.05 + c * 0.6) * 0.5 + 0.5;
