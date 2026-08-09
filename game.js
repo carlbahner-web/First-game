@@ -8839,13 +8839,25 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
     ctx.restore(); // undo procedural-scale transform
 }
 
+// How far the arm is out, 0..1. A sine over the whole swing spread the
+// extension across six frames and eased into the top, which reads as a slow
+// reach rather than a jab. The arm now SNAPS out over PUNCH_EXT frames and
+// only eases on the way back, so the strike lands almost immediately and the
+// hold (see the attack tick) takes over from there.
+const PUNCH_EXT = 3;   // frames to full extension
+const PUNCH_RET = 4;   // frames to pull back once the button is released
+function punchExtension(p) {
+    if (!p.attacking) return 0;
+    const elapsed = p.attackDuration - p.attackTimer;
+    // the +0.5 means frame one is already ~40% out — no dead frame at the start
+    const out = Math.min(1, (elapsed + 0.5) / PUNCH_EXT);
+    const back = Math.min(1, p.attackTimer / PUNCH_RET);
+    return Math.min(1 - Math.pow(1 - out, 3), back);
+}
+
 function drawPlayer() {
     const p = player;
-    let punchThrust = 0;
-    if (p.attacking) {
-        const progress = 1 - (p.attackTimer / p.attackDuration);
-        punchThrust = Math.sin(progress * Math.PI);
-    }
+    const punchThrust = punchExtension(p);
     // Flash sprite on/off every 6 frames when stunned
     if (p.stunTimer > 0 && Math.floor(p.stunTimer / 6) % 2 === 0) {
         // Skip drawing — sprite is "off" this cycle
@@ -8863,12 +8875,12 @@ function drawPunch() {
     // scaled by (TILE*SCALE)/48 around the tile origin)
     const cx = px + p.w / 2;
     const cy = py + p.h * 0.35; // shoulder height
-    const progress = 1 - (p.attackTimer / p.attackDuration);
 
     ctx.save();
 
-    // Punch thrust: arm extends outward, peaks at progress=0.5
-    const thrust = Math.sin(progress * Math.PI); // 0→1→0
+    // Same snap-out/ease-back curve the sprite uses, so the procedural arm and
+    // the drawn pose stay in lockstep
+    const thrust = punchExtension(p);
 
     // Direction vectors
     let dx = 0, dy = 0;
