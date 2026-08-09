@@ -8549,7 +8549,8 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         const K = BUZZ_SCALE;
         // The drawn punch poses already carry their own lean and plant, so the
         // procedural body shift would double it up and slide him off his tile.
-        if (punch > 0 && (dir === 1 ? heroSet().upPose : heroSet().punchPose)) {
+        if (punch > 0 && (dir === 1 ? heroSet().upPose
+            : dir === 0 ? (heroSet().downPose || heroSet().punchPose) : heroSet().punchPose)) {
             leanX = 0; leanY = 0;
         }
         const ox = gx + TILE / 2 + leanX, oy = gy + TILE - 1 + leanY * 0.5;
@@ -9397,7 +9398,8 @@ function loadDonkImages() {
     for (const [key, file] of [["buzzArm", "buzz-arm.png"], ["buzzFist", "buzz-fist.png"], ["buzzWave", "buzz-wave.png"], ["buzzLeg", "buzz-leg.png"], ["buzzArmClean", "buzz-arm-clean.png"],
         // Carl's hand-drawn punch poses: body+legs in one piece, arm separate
         ["buzzPunchBody", "buzz-punch-body.png"], ["buzzPunchArm", "buzz-punch-arm.png"],
-        ["buzzUpBody", "buzz-up-body.png"], ["buzzUpArm", "buzz-up-arm.png"]]) {
+        ["buzzUpBody", "buzz-up-body.png"], ["buzzUpArm", "buzz-up-arm.png"],
+        ["buzzDownBody", "buzz-down-body.png"], ["buzzDownArm", "buzz-down-arm.png"]]) {
         const im = new Image();
         im.onload = () => { DONK_IMG[key] = im; };
         im.onerror = () => {};
@@ -9413,7 +9415,8 @@ function heroSet() {
         (DONK_IMG.buzzFist ? 4 : 0) + (DONK_IMG.buzzLeg ? 8 : 0) +
         (DONK_IMG.buzzArmClean ? 16 : 0) +
         (DONK_IMG.buzzPunchBody && DONK_IMG.buzzPunchArm ? 32 : 0) +
-        (DONK_IMG.buzzUpBody && DONK_IMG.buzzUpArm ? 64 : 0);
+        (DONK_IMG.buzzUpBody && DONK_IMG.buzzUpArm ? 64 : 0) +
+        (DONK_IMG.buzzDownBody && DONK_IMG.buzzDownArm ? 128 : 0);
     if (!DONK_HERO || DONK_HERO_KEY !== key) {
         DONK_HERO_KEY = key;
         const img = DONK_IMG.hero;
@@ -9458,25 +9461,38 @@ function heroSet() {
             // are all baked in); only the punching arm is still solved by IK
             // so the glove lands on the tile he actually hits.
             //
-            // shX/shY is the SHOULDER as a fraction of the pose's own box. It
-            // belongs on the SHELL — the black cylinder is his torso, the
-            // drumhead is his face, and his legs come out of the shell, so his
-            // arm does too. (Measured off the ink: side shell spans x 50-215,
-            // up shell x 10-200.) The arm draws BEHIND the pose, so the hose
-            // appears only where it clears the silhouette and the wind-up
-            // reads as the fist coming out from behind him. `h` height-matches
-            // the standing rig. He stays one-armed through a punch: the other
-            // arm is simply on his far side.
+            // shX/shY is the SHOULDER as a fraction of the pose's own box, and
+            // it has to sit on the drum. The standing rig hangs BUZZ's arms off
+            // the drum's rim at mid height, so a pose's shoulder goes on the
+            // rim too — on the side the punch travels. `h` height-matches the
+            // standing rig. He stays one-armed through a punch: the other arm
+            // is simply on his far side.
+            //
+            // `front` draws the arm OVER the body — sideways and downward
+            // punches are thrown by his front arm, so the whole limb reads in
+            // front of him. `minExt` then holds the fist a little way out of
+            // the shoulder even at the very start of the throw, otherwise the
+            // first frame stamps the glove over his own face.
             punchPose: (DONK_IMG.buzzPunchBody && DONK_IMG.buzzPunchArm) ? {
                 body: DONK_IMG.buzzPunchBody,
                 arm: mk(DONK_IMG.buzzPunchArm, 262, 512, 81, 0.405, 0.556),
                 h: 72.4, solesAt: 0.9994, drumCx: 0.508,
-                shX: 190 / 359, shY: 150 / 512, gauge: 5.03, armLen: 31.8,
+                shX: 300 / 359, shY: 195 / 512, gauge: 5.03, armLen: 31.8,
+                front: true, minExt: 0.22,
+            } : null,
+            downPose: (DONK_IMG.buzzDownBody && DONK_IMG.buzzDownArm) ? {
+                body: DONK_IMG.buzzDownBody,
+                arm: mk(DONK_IMG.buzzDownArm, 221, 512, 68, 0.6445, 0.493),
+                h: 75, solesAt: 0.998, drumCx: 0.630,
+                shX: 392 / 427, shY: 235 / 512, gauge: 5.2, armLen: 39,
+                front: true, minExt: 0.22,
             } : null,
             upPose: (DONK_IMG.buzzUpBody && DONK_IMG.buzzUpArm) ? {
                 body: DONK_IMG.buzzUpBody,
                 arm: mk(DONK_IMG.buzzUpArm, 256, 512, 71, 0.561, 0.752),
                 h: 72.4, solesAt: 1, drumCx: 0.414,
+                // Carl: the UP punch is thrown by the back arm, so this one
+                // hangs off the far rim and draws behind the drawing.
                 shX: 90 / 408, shY: 70 / 512, gauge: 5.4, armLen: 38.8,
                 // The cell above him centres barely over his head, so a truthful
                 // aim buries the fist in his own drum. Lifting inside the target
@@ -9655,27 +9671,28 @@ function drawBuzzRig(cx, cy, k, o) {
 
     // ---- Hand-drawn punch pose -------------------------------------------
     // While punching, the whole standing rig is replaced by Carl's pose
-    // drawing. It cuts in on frame one rather than easing — a hard pose change
-    // is what a rubber-hose punch does. The lunge pose also covers the
-    // DOWNWARD punch: the standing body left the arm dangling limply, while
-    // the lunge reads as driving the fist into the floor.
-    const pose = t > 0 ? (o.punchDir === 1 ? set.upPose : set.punchPose) : null;
+    // drawing — sideways, upward and downward each have their own. The pose
+    // cuts in on frame one rather than easing; the wind-up is the ARM, which
+    // starts short at the shoulder and extends to the target as the punch
+    // travels. A hard pose change with a stretching limb is what a rubber-hose
+    // punch does.
+    const pose = t > 0 ? (o.punchDir === 1 ? set.upPose
+        : o.punchDir === 0 ? (set.downPose || set.punchPose) : set.punchPose) : null;
     if (pose && pose.arm) {
         const im = pose.body, bh = pose.h, bw = bh * (im.width / im.height);
         const x0 = -pose.drumCx * bw, y0 = -bh * pose.solesAt;
         const shx = x0 + pose.shX * bw, shy = y0 + pose.shY * bh;
         const tx = o.punchTX !== undefined ? o.punchTX : shx + 40;
         const ty = (o.punchTY !== undefined ? o.punchTY : shy) - (pose.aimLift || 0);
-        const hx = shx + (tx - shx) * t, hy = shy + (ty - shy) * t;
+        const e = pose.minExt ? pose.minExt + (1 - pose.minExt) * t : t;
+        const hx = shx + (tx - shx) * e, hy = shy + (ty - shy) * e;
         const need = Math.hypot(hx - shx, hy - shy);
-        // The arm goes BEHIND the drawing: the shoulder is buried in the shell,
-        // so the hose only appears where it clears the silhouette. That also
-        // gives the wind-up for free — at t=0 the fist is still behind him and
-        // the arm extends out of him as the punch travels.
-        armIK(pose.arm, pose.gauge, shx, shy, hx, hy,
+        const throwArm = () => armIK(pose.arm, pose.gauge, shx, shy, hx, hy,
             Math.max(pose.armLen * 0.5, need * 1.02), 1, k, false, 0.5, 0.12,
             1 + t * 0.2);
+        if (!pose.front) throwArm();
         ctx.drawImage(im, x0 * k, y0 * k, bw * k, bh * k);
+        if (pose.front) throwArm();
         const tmp = ctx.getTransform(); // real fist position, for the impact FX
         donkFistTip = { x: tmp.a * hx * k + tmp.c * hy * k + tmp.e,
                         y: tmp.b * hx * k + tmp.d * hy * k + tmp.f };
