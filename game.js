@@ -9423,8 +9423,13 @@ function drawDonk(cx, cy, k, o) {
     // Draw order is load-bearing: button, then body (shell overlaps the
     // drumhead's lower edge), then BOTH arms in front of the shell
     ctx.drawImage(set.body, DK.bx * k, DK.by * k, DK.bw * k, DK.bh * k);
-    armAt(1, sw * 0.4);
-    armAt(-1, sw * 0.4);
+    // Arms are a pendulum PAIR, not a mirror pair: the far arm draws
+    // through a mirror transform, so equal rotations made both arms wing
+    // outward together (bird flap). Opposite signs make them sway with the
+    // stride, each countering its diagonal leg — and the phase settle
+    // already brings them to rest at his sides when he stops.
+    armAt(1, -sw * 0.45);
+    armAt(-1, sw * 0.45);
     ctx.restore();
 }
 
