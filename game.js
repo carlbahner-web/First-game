@@ -8133,6 +8133,192 @@ const TITLE_STEP_FRAMES = 8.2; // frames per sixteenth note at 110bpm @ 60fps
 
 // Title screen drum pattern (matches audio)
 
+// ============================================================
+// THE VENUE MARQUEE — the title screen
+//
+// Ported from BUZZ's Wild Ride's start billboard. The idea survives the port
+// even though none of the DOM does: the title is not a dialog floating over a
+// game, it is a REAL OBJECT standing in the game's own world. Here that object
+// is the venue's marquee, hung from the ceiling of the room you are about to
+// play in, with the beat already running behind it.
+//
+// The one rule that makes it read as an object rather than a sticker is the
+// LAYER ORDER, and it is the same rule as the coaster's:
+//
+//     z0  structure   hanger rods, mounting plate      BEHIND the face
+//     z1  the face    opaque board — occludes z0       the sign itself
+//     z2  the light   bulb chase, soffit, light spill  IN FRONT of the face
+//
+// The rods are drawn full length and simply hidden by an opaque face — no
+// clipping, no masking, no matching cut-outs. Get this order wrong and the
+// whole thing collapses into flat stickers.
+//
+// Two things the coaster fought that canvas gives us free: the boil (we redraw
+// every frame, so `jit` just works — no feTurbulence, no seed table to keep in
+// sync) and the z-order (draw order IS z-order).
+// ============================================================
+
+// Art slots, same contract as the coaster: present overrides, absent falls back
+// silently to the procedural ink. Drop a PNG in and it replaces that layer with
+// no code change.
+const TITLE_ART = { face: null, logo: null };
+for (const [key, file] of [["face", "marquee-face.png"], ["logo", "marquee-logo.png"]]) {
+    const im = new Image();
+    im.onload = () => { TITLE_ART[key] = im; };
+    im.onerror = () => {};
+    im.src = "assets/title/" + file;
+}
+
+const REDUCED_MOTION = typeof window !== "undefined" && window.matchMedia
+    ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false;
+
+// Marquee geometry, in logical units. Everything else derives from these.
+const MQ = {
+    // Narrow enough that the sequencer still shows either side of it, and hung
+    // low enough that there is real rod above — a sign with a 4px stub reads as
+    // stuck to the ceiling, not suspended from it.
+    w: 196, h: 68,
+    top: 30,               // hangs this far below the ceiling
+    rodSpread: 74,         // half-distance between the two hanger rods
+    overhang: 9,           // how far the soffit projects past the face each side
+};
+
+// The bulb chase runs on the SEQUENCER's step, not a free-running timer — the
+// marquee blinks on the beat playing behind it.
+function marqueeBulbLit(i, step) {
+    return ((i + step) % 4) === 0;
+}
+
+function drawTitleMarquee(riseY) {
+    const W = COLS * TILE;
+    const cx = W / 2;
+    const x0 = cx - MQ.w / 2, y0 = MQ.top - riseY;
+    const x1 = x0 + MQ.w, y1 = y0 + MQ.h;
+    const S = SCALE;
+    const sway = REDUCED_MOTION ? 0 : Math.sin(titleBlink * 0.013) * 0.9;
+
+    ctx.save();
+    // The whole assembly sways about its hanging point, like a hung sign
+    ctx.translate(cx * S, (WALL_TOP) * S);
+    ctx.rotate(sway * Math.PI / 180);
+    ctx.translate(-cx * S, -(WALL_TOP) * S);
+
+    // ---- z0: STRUCTURE — drawn in full, about to be occluded ----------------
+    for (const side of [-1, 1]) {
+        const rx = cx + side * MQ.rodSpread;
+        // hanger rod, running from the ceiling right down INTO the board
+        ctx.strokeStyle = INK.charcoal;
+        ctx.lineWidth = 1.6 * S;
+        ctx.beginPath();
+        ctx.moveTo((rx + jit(rx, 5, 0.3)) * S, WALL_TOP * S);
+        ctx.lineTo((rx + jit(rx + 40, 5, 0.3)) * S, (y0 + 14) * S);
+        ctx.stroke();
+        // ceiling mounting plate
+        drawRect(rx - 5, WALL_TOP - 1, 10, 3, INK.charcoal);
+        drawRect(rx - 4, WALL_TOP, 8, 1, INK.silverD);
+    }
+
+    // ---- z1: THE FACE — opaque, occludes everything above -------------------
+    if (TITLE_ART.face) {
+        ctx.drawImage(TITLE_ART.face, x0 * S, y0 * S, MQ.w * S, MQ.h * S);
+    } else {
+        // teal casing with a boiled charcoal keyline
+        ctx.fillStyle = INK.teal;
+        ctx.beginPath();
+        for (let i = 0; i <= 48; i++) {
+            const t = i / 48, per = t * 4;
+            let px, py;
+            if (per < 1)      { px = x0 + MQ.w * per;        py = y0; }
+            else if (per < 2) { px = x1;                     py = y0 + MQ.h * (per - 1); }
+            else if (per < 3) { px = x1 - MQ.w * (per - 2);  py = y1; }
+            else              { px = x0;                     py = y1 - MQ.h * (per - 3); }
+            const j = jit(i * 11 + y0, 21, 0.7);
+            i ? ctx.lineTo((px + j) * S, (py + j) * S) : ctx.moveTo((px + j) * S, (py + j) * S);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = INK.charcoal;
+        ctx.lineWidth = 2 * S;
+        ctx.stroke();
+
+        // the cream sign face, inset in the casing
+        const px0 = x0 + 5, py0 = y0 + 5, pw = MQ.w - 10, ph = MQ.h - 10;
+        drawRect(px0, py0, pw, ph, INK.paper);
+        ctx.strokeStyle = INK.charcoal;
+        ctx.lineWidth = 1 * S;
+        ctx.strokeRect(px0 * S, py0 * S, pw * S, ph * S);
+    }
+
+    // ---- the lettering, on the face ----------------------------------------
+    const centred = (text, y, col, size) => {
+        ctx.font = `${size * S}px monospace`;
+        ctx.fillStyle = col;
+        ctx.textAlign = "center";
+        ctx.fillText(text, cx * S, y * S);
+        ctx.textAlign = "start";
+    };
+    if (TITLE_ART.logo) {
+        const lw = MQ.w - 24, lh = lw * (TITLE_ART.logo.height / TITLE_ART.logo.width);
+        ctx.drawImage(TITLE_ART.logo, (cx - lw / 2) * S, (y0 + 9) * S, lw * S, lh * S);
+    } else {
+        centred("ATTACK OF THE", y0 + 15, INK.rust, 4.5);
+        // Charcoal letterforms with a mustard offset — a painted sign, not a
+        // glowing one. The old title used 8-bit orange and neon green.
+        for (const [text, ty] of [["GROOVE", y0 + 29], ["GOBLINS", y0 + 43]]) {
+            centred(text, ty + 1.1, INK.mustard, 13);
+            centred(text, ty, INK.charcoal, 13);
+        }
+    }
+
+    // ---- the reader board: where a marquee puts its showtimes ---------------
+    const rbY = y0 + MQ.h - 20;
+    drawRect(x0 + 9, rbY, MQ.w - 18, 16, INK.charcoal);
+    if (!titleFadingOut) {
+        const modeLabel = gameMode === "thrill" ? "THRILL MODE" : "CHILL MODE";
+        const modeCol = gameMode === "thrill" ? INK.rust : INK.mint;
+        const arrowPulse = REDUCED_MOTION ? 0.8 : 0.5 + Math.sin(titleBlink * 0.08) * 0.3;
+        ctx.globalAlpha = arrowPulse;
+        centred("<              >", rbY + 7, INK.silverD, 5);
+        ctx.globalAlpha = 1;
+        centred(modeLabel, rbY + 7, modeCol, 5);
+        if (REDUCED_MOTION || titleBlink % 45 < 32) {
+            centred("PRESS ENTER", rbY + 14, (titleStep % 4 === 0) ? INK.mustard : INK.silverL, 5);
+        }
+    }
+
+    // ---- z2: THE LIGHT — soffit and bulbs, IN FRONT of the face -------------
+    // Straddles the bottom edge and overhangs both sides by the same amount, so
+    // it reads as bolted on rather than butted up against an edge.
+    const sx0 = x0 - MQ.overhang, sw = MQ.w + MQ.overhang * 2, sy = y1 - 3;
+    drawRect(sx0, sy, sw, 6, INK.charcoal);
+    drawRect(sx0, sy, sw, 1, INK.silverD);
+    const BULBS = 15;
+    for (let i = 0; i < BULBS; i++) {
+        const bx = sx0 + 5 + (sw - 10) * (i / (BULBS - 1));
+        const lit = REDUCED_MOTION ? (i % 2 === 0) : marqueeBulbLit(i, titleStep);
+        // the bulb itself
+        ctx.fillStyle = lit ? INK.mustard : INK.silverD;
+        ctx.beginPath();
+        ctx.arc(bx * S, (sy + 6) * S, 1.9 * S, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = INK.charcoal;
+        ctx.lineWidth = 0.7 * S;
+        ctx.stroke();
+        if (!lit) continue;
+        // and the light it throws DOWN over the room
+        const g = ctx.createRadialGradient(bx * S, (sy + 6) * S, 0, bx * S, (sy + 6) * S, 15 * S);
+        g.addColorStop(0, INK.mustard);
+        g.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.globalAlpha = 0.22;
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(bx * S, (sy + 6) * S, 15 * S, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+}
+
 function renderTitleScreen() {
     const W = COLS * TILE;
     const H = ROWS * TILE;
@@ -8188,88 +8374,41 @@ function renderTitleScreen() {
     }
     ctx.globalAlpha = 1;
 
-    // DJ Booth (center) — full setup with all equipment
-    const boothX = W / 2 - 24;
-    const boothY = GRID_Y * TILE - 8;
-    drawLightRig(boothX - 8, boothY - 18, titleKickPump);
-    drawDiscoBall(boothX + 20, boothY - 30);
-    drawRect(boothX - 8, boothY + 12, 64, 8, "#55554f");
-    drawRect(boothX - 8, boothY + 12, 64, 2, "#3a4a3a");
-    drawSubwoofer(boothX - 12, boothY - 2, titleKickPump, -1);
-    drawSubwoofer(boothX + 44, boothY - 2, titleKickPump, 1);
-    drawTurntable(boothX + 1, boothY - 2);
-    drawMixer(boothX + 18, boothY + 2);
-
-    // DJ (player sprite behind booth)
-    const djFrame = Math.floor(titleBlink / 10) % 4;
-    const djBob = beatOn ? 3 : 0;
-    drawPlayerSprite(W / 2 - 8, boothY - 10 - djBob, djFrame, 0, {});
+    // (The DJ booth and its equipment stood here. Carl: simplify — the room
+    // and the beat stay, the clutter goes, so the marquee is the subject.)
 
     // Beat grid (small, showing the beat)
-    const miniGridY = GRID_Y * TILE + GRID_Y_OFFSET;
+    // Two rows, low, under the sign: the beat plays on the floor BUZZ is
+    // standing on, rather than filling the wall the marquee hangs on.
+    const miniGridY = (ROWS - 4) * TILE + 8;   // clear of the marquee's soffit
     const miniGridX = GRID_X * TILE;   // centred like the real sequencer
-    const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
-    for (let r = 0; r < 4; r++) {
+    const patterns = [INTRO_BEAT.S, INTRO_BEAT.K];
+    for (let r = 0; r < patterns.length; r++) {
         for (let c = 0; c < 16; c++) {
             const gx = miniGridX + c * TILE;
             const gy = miniGridY + r * TILE;
             const on = patterns[r][c];
+            ctx.globalAlpha = 0.72;   // present, but subordinate to the sign
             drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
             drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, on ? PAL.gridOn[r] : PAL.gridOff);
+            ctx.globalAlpha = 1;
         }
     }
     // Playhead
     const phX = miniGridX + titleStep * TILE;
     ctx.fillStyle = PAL.playhead;
     ctx.globalAlpha = 0.35;
-    ctx.fillRect(phX * SCALE, miniGridY * SCALE, TILE * SCALE, (4 * TILE) * SCALE);
+    ctx.fillRect(phX * SCALE, miniGridY * SCALE, TILE * SCALE, (2 * TILE) * SCALE);
     ctx.globalAlpha = 1;
 
-    // Dancers (crowd on the dance floor — gameplay-quality animation)
-    const danceFloorY = (GRID_Y + 5) * TILE;
-    const crowdPositions = [
-        // Back row
-        { x: 2 * TILE, yOfs: 0, pal: 0, phase: 0 },
-        { x: 4 * TILE, yOfs: 4, pal: 1, phase: 3 },
-        { x: 6 * TILE, yOfs: 2, pal: 2, phase: 7 },
-        { x: 8 * TILE, yOfs: 0, pal: 3, phase: 11 },
-        { x: 10 * TILE, yOfs: 3, pal: 4, phase: 5 },
-        { x: 12 * TILE, yOfs: 1, pal: 5, phase: 9 },
-        { x: 14 * TILE, yOfs: 4, pal: 0, phase: 2 },
-        { x: 16 * TILE, yOfs: 0, pal: 3, phase: 13 },
-        { x: 18 * TILE, yOfs: 2, pal: 1, phase: 6 },
-        // Front row
-        { x: 3 * TILE, yOfs: 14, pal: 2, phase: 4 },
-        { x: 5 * TILE, yOfs: 16, pal: 5, phase: 8 },
-        { x: 7 * TILE, yOfs: 14, pal: 4, phase: 12 },
-        { x: 11 * TILE, yOfs: 15, pal: 1, phase: 1 },
-        { x: 13 * TILE, yOfs: 14, pal: 0, phase: 10 },
-        { x: 15 * TILE, yOfs: 16, pal: 3, phase: 14 },
-        { x: 17 * TILE, yOfs: 14, pal: 5, phase: 6 },
-    ];
-    for (let di = 0; di < crowdPositions.length; di++) {
-        const dp = crowdPositions[di];
-        const step = (titleStep + dp.phase) % 16;
-        const stepProgress = titleStepTimer / TITLE_STEP_FRAMES;
-        const smoothStep = step + stepProgress;
-
-        // Continuous bob — bounces every beat (4 steps)
-        const bobWave = Math.sin(smoothStep * Math.PI / 2);
-        const bob = Math.abs(bobWave) * 3;
-
-        // Arms up on peaks
-        const armBlend = Math.abs(bobWave);
-        const footOffset = bobWave * 1.5;
-
-        drawDancerSprite(dp.x, danceFloorY + dp.yOfs, DANCER_PALETTES[dp.pal], { bob, armBlend, footOffset });
-    }
+    // (The 16-strong crowd danced here. Gone with the booth — BUZZ alone under
+    // his own marquee reads better than a stage full of extras.)
 
     // Beat pulse background — removed for accessibility
 
-    // === TITLE TEXT (in the dance floor empty space) ===
+    // === THE MARQUEE ===
     titleEntrancePhase++;
 
-    // Handle fade-out when transitioning to intro
     if (titleFadingOut) {
         titleFadeTimer++;
         if (titleFadeTimer >= TITLE_FADE_DURATION) {
@@ -8277,13 +8416,11 @@ function renderTitleScreen() {
             titleFadeTimer = 0;
             stopTitleDrums();
             if (SKIP_INTRO) {
-                // Skip straight to gameplay
                 gameState = "playing";
                 currentStep = 0;
                 lastStepTime = performance.now();
                 return;
             }
-            // Normal intro sequence
             gameState = "intro";
             introScene = 0;
             introTimer = 0;
@@ -8300,127 +8437,27 @@ function renderTitleScreen() {
             return;
         }
     }
-    const titleTextAlpha = titleFadingOut ? Math.max(0, 1 - titleFadeTimer / TITLE_FADE_DURATION) : 1;
 
-    function drawCentered(text, y, color, scale) {
-        ctx.font = `${scale * SCALE}px monospace`;
-        ctx.fillStyle = color;
-        ctx.textAlign = "center";
-        ctx.fillText(text, (W * SCALE) / 2, y * SCALE);
-        ctx.textAlign = "start";
+    // It flies, it does not fade. A hung sign leaves the way a theatre flat
+    // leaves — straight up into the grid. The distance is measured from the
+    // LOWEST part (the soffit and its bulbs), not the board, so nothing is left
+    // poking into frame for the last few frames.
+    const flyEase = t => t * t * (3 - 2 * t);
+    const lowest = MQ.top + MQ.h + 9;
+    const riseY = titleFadingOut
+        ? flyEase(Math.min(1, titleFadeTimer / TITLE_FADE_DURATION)) * (lowest + 8)
+        : (1 - Math.min(1, titleEntrancePhase / 34)) * -(lowest + 8);
+
+    // BUZZ waits on the floor beneath his own marquee
+    {
+        const bx = COLS * TILE / 2 - TILE / 2;
+        const by = (ROWS - 2) * TILE;
+        const bob = REDUCED_MOTION ? 0 : (titleStep % 4 === 0 ? 1 : 0);
+        drawPlayerSprite(bx, by - bob, Math.floor(titleBlink / 10) % 4, 0, {});
     }
 
-    // Entrance animation easing (smooth overshoot)
-    function entranceEase(t) {
-        if (t >= 1) return 1;
-        return 1 - Math.pow(1 - t, 3) * Math.cos(t * Math.PI * 0.5);
-    }
+    drawTitleMarquee(riseY);
 
-    // The logo sits OVER the decorative sequencer, with the dancers below it.
-    // Anchored to the room height rather than the grid: the whole block runs
-    // titleBaseY .. +78, and in a 10-row room there is no strip below the
-    // dancers deep enough to hold it — it used to run off the bottom of the
-    // canvas, which is why GOBLINS was clipped even before the room shrank.
-    const titleBaseY = H - 126;
-
-    // "ATTACK OF THE" subtitle — fades in
-    const subAlpha = Math.min(1, titleEntrancePhase / 30) * titleTextAlpha;
-    ctx.globalAlpha = subAlpha;
-    const subY = titleBaseY;
-    drawCentered("ATTACK OF THE", subY + 1, "#000000", 5);
-    drawCentered("ATTACK OF THE", subY, "#ab5c1c", 5);
-    ctx.globalAlpha = 1.0;
-
-    // "GROOVE" — slams in from the left
-    const bigFontSize = 18;
-    const grooveText = "GROOVE";
-    ctx.font = `${bigFontSize * SCALE}px monospace`;
-    const grooveMeasured = ctx.measureText(grooveText).width;
-    const grooveCharW = grooveMeasured / (SCALE * grooveText.length);
-    const grooveY = titleBaseY + 20;
-    const grooveStartX = ((W * SCALE) - grooveMeasured) / (2 * SCALE);
-    const grooveEntrance = entranceEase(Math.min(1, Math.max(0, (titleEntrancePhase - 10) / 25)));
-    const grooveSlideX = (1 - grooveEntrance) * -W * 0.6;
-    // Logo shimmer — traveling highlight across GROOVE periodically
-    const shimmerCycle = 180;
-    const shimmerPos = (titleBlink % shimmerCycle) / shimmerCycle;
-    const shimmerActive = grooveEntrance >= 1;
-    for (let i = 0; i < grooveText.length; i++) {
-        const charX = grooveStartX + i * grooveCharW + grooveSlideX;
-        const bounce = grooveEntrance >= 1 ? Math.sin(titleBlink * 0.07 + i * 0.9) * 3 : 0;
-        const col = i % 2 === 0 ? "#ff8822" : "#cc5500";
-        ctx.globalAlpha = grooveEntrance * titleTextAlpha;
-        // Shadow
-        drawText(grooveText[i], charX + 1, grooveY + bounce + 2, "#000000", bigFontSize);
-        drawText(grooveText[i], charX - 1, grooveY + bounce + 2, "#000000", bigFontSize);
-        // Glow layer
-        ctx.globalAlpha = 0.3 * grooveEntrance * titleTextAlpha;
-        drawText(grooveText[i], charX, grooveY + bounce - 1, "#ff8822", bigFontSize);
-        ctx.globalAlpha = grooveEntrance * titleTextAlpha;
-        // Main text
-        drawText(grooveText[i], charX, grooveY + bounce, col, bigFontSize);
-        // Shimmer highlight pass
-        if (shimmerActive) {
-            const charNorm = i / grooveText.length;
-            const dist = Math.abs(shimmerPos - charNorm);
-            if (dist < 0.15) {
-                const shimmerAlpha = (1 - dist / 0.15) * 0.5 * titleTextAlpha;
-                ctx.globalAlpha = shimmerAlpha;
-                drawText(grooveText[i], charX, grooveY + bounce, "#ffffff", bigFontSize);
-            }
-        }
-    }
-    ctx.globalAlpha = 1.0;
-    // Impact flash when GROOVE lands — removed
-
-    // "GOBLINS" — slams in from the right
-    const goblinsText = "GOBLINS";
-    const gobMeasured = ctx.measureText(goblinsText).width;
-    const gobCharW = gobMeasured / (SCALE * goblinsText.length);
-    const gobY = grooveY + 26;
-    const gobStartX = ((W * SCALE) - gobMeasured) / (2 * SCALE);
-    const gobEntrance = entranceEase(Math.min(1, Math.max(0, (titleEntrancePhase - 25) / 25)));
-    const gobSlideX = (1 - gobEntrance) * W * 0.6;
-    for (let i = 0; i < goblinsText.length; i++) {
-        const charX = gobStartX + i * gobCharW + gobSlideX;
-        const bounce = gobEntrance >= 1 ? Math.sin(titleBlink * 0.07 + i * 0.9 + 3) * 3 : 0;
-        const col = i % 2 === 0 ? "#50ad33" : "#00CC00";
-        ctx.globalAlpha = gobEntrance * titleTextAlpha;
-        // Shadow
-        drawText(goblinsText[i], charX + 1, gobY + bounce + 2, "#000000", bigFontSize);
-        drawText(goblinsText[i], charX - 1, gobY + bounce + 2, "#000000", bigFontSize);
-        // Glow
-        ctx.globalAlpha = 0.25 * gobEntrance * titleTextAlpha;
-        drawText(goblinsText[i], charX, gobY + bounce - 1, "#50ad33", bigFontSize);
-        ctx.globalAlpha = gobEntrance * titleTextAlpha;
-        // Main text
-        drawText(goblinsText[i], charX, gobY + bounce, col, bigFontSize);
-    }
-    ctx.globalAlpha = 1.0;
-    // Impact flash when GOBLINS lands — removed
-
-    // === Mode selector above "PRESS ENTER" ===
-    if (!titleFadingOut) {
-        const modeY = titleBaseY + 58;
-        const modeLabel = gameMode === "thrill" ? "THRILL MODE" : "CHILL MODE";
-        const modeCol = gameMode === "thrill" ? "#BF7538" : "#33dd88";
-        const arrowPulse = 0.5 + Math.sin(titleBlink * 0.08) * 0.3;
-        ctx.globalAlpha = titleTextAlpha * arrowPulse;
-        drawCentered("<              >", modeY, "#7A8F85", 6);
-        ctx.globalAlpha = titleTextAlpha;
-        drawCentered(modeLabel, modeY, modeCol, 6);
-        ctx.globalAlpha = 1.0;
-    }
-
-    // === "PRESS ENTER" below the title ===
-    const pressY = titleBaseY + 72;
-
-    // Blink the text with a faster, more urgent rhythm
-    if (titleBlink % 45 < 32 && !titleFadingOut) {
-        drawCentered("PRESS ENTER", pressY + 1, "#000000", 6);
-        const enterCol = (titleStep % 4 === 0) ? "#50ad33" : "#7A8F85";
-        drawCentered("PRESS ENTER", pressY, enterCol, 6);
-    }
 }
 
 // ---- Marching Snare Cadence (plays during tutorial, level complete, etc.) ----
