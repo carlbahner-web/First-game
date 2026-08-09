@@ -9450,6 +9450,7 @@ const BZ = {
     anchorX: 3.6,
     stanceX: 5.5,   // how far apart the feet park when standing
     stride: 12, legLift: 9, legGauge: 4.8, legLen: 39,
+    extremes: 0.55, // <1 holds the spread pose, snaps through the pass
     armX: 20, armXTrail: 22, armGauge: 4.2, armLen: 31, armOut: 6, armSwing: 9,
     fistGauge: 6.0, fistBase: 12, fistReach: 32,
     hip2bot: 15.45,                // drum bottom below the tongue anchor
@@ -9495,7 +9496,12 @@ function drawBuzzRig(cx, cy, k, o) {
     // Each leg runs a half-cycle out of phase; the swinging leg LIFTS, which is
     // what keeps the passing position readable instead of a jumble.
     const legPh = s => ph + (s > 0 ? 0 : Math.PI);
-    const spread = moving ? Math.abs(Math.sin(ph)) * BZ.stride : 0;
+    // Favour the EXTREMES (Carl: the quarter-spread is the pose worth holding).
+    // A linear phase gives every pose equal screen time, so the weak
+    // in-betweens read as loudly as the strong one. Shaping the swing holds
+    // the spread and snaps through the pass, the way cartoon walks do.
+    const shape = v => Math.sign(v) * Math.pow(Math.abs(v), BZ.extremes);
+    const spread = moving ? Math.abs(shape(Math.sin(ph))) * BZ.stride : 0;
     const hipH = Math.sqrt(Math.max(BZ.legLen * BZ.legLen * 0.25,
         BZ.legLen * BZ.legLen - spread * spread));
     ctx.save();
@@ -9510,7 +9516,7 @@ function drawBuzzRig(cx, cy, k, o) {
         // other crosses into an X — a limp, not a walk. Standing, they part
         // into a stance. Shoes are never mirrored per side: both point the way
         // he faces.
-        const fx = BZ.anchorX + (moving ? Math.sin(legPh(side)) * BZ.stride : side * BZ.stanceX);
+        const fx = BZ.anchorX + (moving ? shape(Math.sin(legPh(side))) * BZ.stride : side * BZ.stanceX);
         const fy = moving ? -Math.max(0, -Math.cos(legPh(side))) * BZ.legLift : 0;
         hoseIK(set.legMeta, BZ.legGauge, BZ.anchorX, hipY, fx, fy, BZ.legLen, -side * 0.3, k, false);
     }
