@@ -9462,17 +9462,16 @@ function heroSet() {
             // so the glove lands on the tile he actually hits.
             //
             // shX/shY is the SHOULDER as a fraction of the pose's own box, and
-            // it has to sit on the drum. The standing rig hangs BUZZ's arms off
-            // the drum's rim at mid height, so a pose's shoulder goes on the
-            // rim too — on the side the punch travels. `h` height-matches the
-            // standing rig. He stays one-armed through a punch: the other arm
-            // is simply on his far side.
+            // it has to sit on the drum — Carl picked each one off a labelled
+            // grid over the art (side D6, down E5, up C6), all of which land
+            // mid-drum. `h` height-matches the standing rig. He stays one-armed
+            // through a punch: the other arm is simply on his far side.
             //
-            // `front` draws the arm OVER the body — sideways and downward
-            // punches are thrown by his front arm, so the whole limb reads in
-            // front of him. `minExt` then holds the fist a little way out of
-            // the shoulder even at the very start of the throw, otherwise the
-            // first frame stamps the glove over his own face.
+            // EVERY punch is thrown by the FRONT arm, so the limb always draws
+            // OVER the body and swings across his front. `minExt` then holds
+            // the fist a little way out of the shoulder even at the very start
+            // of the throw, otherwise the first frame stamps the glove over
+            // his own face.
             punchPose: (DONK_IMG.buzzPunchBody && DONK_IMG.buzzPunchArm) ? {
                 body: DONK_IMG.buzzPunchBody,
                 arm: mk(DONK_IMG.buzzPunchArm, 262, 512, 81, 0.405, 0.556),
@@ -9491,9 +9490,8 @@ function heroSet() {
                 body: DONK_IMG.buzzUpBody,
                 arm: mk(DONK_IMG.buzzUpArm, 256, 512, 71, 0.561, 0.752),
                 h: 72.4, solesAt: 1, drumCx: 0.414,
-                // Carl: the UP punch is thrown by the back arm, so this one
-                // hangs off the far rim and draws behind the drawing.
                 shX: 79 / 408, shY: 197 / 512, gauge: 5.4, armLen: 38.8,
+                front: true, minExt: 0.22,
                 // The cell above him centres barely over his head, so a truthful
                 // aim buries the fist in his own drum. Lifting inside the target
                 // cell keeps the hit honest and the pose readable.
