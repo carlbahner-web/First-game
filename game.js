@@ -8536,6 +8536,7 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
             mirror: donkCarlFacing === 1, // art faces left natively
             hipX: 5.5,                    // hips pulled in from the rig's 9
             stride: 14,                   // long, natural strides
+            legScale: 1.5,                // longer legs, art scaled not stretched
         });
         if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
         return;
@@ -9380,11 +9381,17 @@ function drawDonk(cx, cy, k, o) {
     if (o.mirror) ctx.scale(-1, 1);
     if (o.flash) ctx.filter = "brightness(1.9) saturate(0.4)";
 
+    // Uniformly scaled-up legs (o.legScale): the art keeps its proportions,
+    // the body rises so the soles still plant at the anchor point
+    const ls = o.legScale || 1;
+    const legLen = DK.legH * ls * (1 - DK.legPY); // hip-to-sole reach
+    ctx.translate(0, -(legLen - 31.4) * k);
+
     const legAt = (hx, hy, rot) => {
         ctx.save();
         ctx.translate(hx * k, hy * k);
         ctx.rotate(rot);
-        ctx.drawImage(set.leg, -DK.legW * DK.legPX * k, -DK.legH * DK.legPY * k, DK.legW * k, DK.legH * k);
+        ctx.drawImage(set.leg, -DK.legW * ls * DK.legPX * k, -DK.legH * ls * DK.legPY * k, DK.legW * ls * k, DK.legH * ls * k);
         ctx.restore();
     };
     const armAt = (side, swing) => {
@@ -9404,8 +9411,8 @@ function drawDonk(cx, cy, k, o) {
     // together made narrow hips waddle.
     const hipX = o.hipX !== undefined ? o.hipX : 9;
     const strideAmp = o.stride !== undefined ? o.stride : 8;
-    legAt(-hipX, -31.4, Math.atan2(sw * -strideAmp, 31.4));
-    legAt(hipX, -31.4, Math.atan2(sw * strideAmp, 31.4));
+    legAt(-hipX, -31.4, Math.atan2(sw * -strideAmp, legLen));
+    legAt(hipX, -31.4, Math.atan2(sw * strideAmp, legLen));
 
     // Step bob: carries everything above the hips
     ctx.translate(0, -Math.abs(sw) * 1.8 * k);
