@@ -9443,19 +9443,19 @@ function heroSet() {
 // ============================================================
 const HOSE_INK = "#312D2F"; // sampled from the art's own hose
 const BZ = {
-    // Both legs radiate from ONE anchor tucked behind his tongue — measured
-    // off the art at 68.4% down and 3.6 units right of centre (the drumhead
-    // sits off to one side of the shell). Classic rubber-hose construction,
-    // and it makes the walk symmetric by definition.
-    anchorX: 0.6,   // whole leg assembly, offset from the tongue anchor
-    legSplit: 5,    // pivots sit +/- this from the anchor (audience left/right)
-    stanceX: 5.5,   // how far apart the feet park when standing
-    stride: 12, legLift: 0, legGauge: 4.8, legLen: 39, // legs SWIVEL on the anchor; no foot lift
+    // Leg pivots sit exactly where the legs EMERGE from the drum silhouette
+    // (measured off the art: y -24.17, x -5.0 / +6.2), rather than buried deep
+    // inside the body. anchorX/legSplit place them; each leg then swings about
+    // ITS OWN pivot, which is what keeps both extremes mirror images.
+    anchorX: 0.6,
+    legSplit: 5.6,
+    footOut: 1.0,   // how far outside its pivot each foot parks when standing
+    stride: 8, legLift: 0, legGauge: 5.76, legLen: 24.2,
     extremes: 0.55, // <1 holds the spread pose, snaps through the pass
     armX: 20, armXTrail: 22, armGauge: 4.2, armLen: 31, armOut: 6, armSwing: 9,
     fistGauge: 6.0, fistBase: 12, fistReach: 32,
-    hip2bot: 15.45,                // drum bottom below the tongue anchor
-    shoulder: -8.56,               // shoulder height relative to the hip
+    hip2bot: 0.62,                 // drum bottom, relative to the pivot line
+    shoulder: -23.39,              // shoulder height relative to the pivot line
 };
 
 // Solve one limb: draw the hose from (sx,sy) to a wrist placed so the HAND
@@ -9502,9 +9502,9 @@ function drawBuzzRig(cx, cy, k, o) {
     // in-betweens read as loudly as the strong one. Shaping the swing holds
     // the spread and snaps through the pass, the way cartoon walks do.
     const shape = v => Math.sign(v) * Math.pow(Math.abs(v), BZ.extremes);
-    const spread = moving ? Math.abs(shape(Math.sin(ph))) * BZ.stride : 0;
+    const reach = moving ? Math.abs(shape(Math.sin(ph))) * BZ.stride : BZ.footOut;
     const hipH = Math.sqrt(Math.max(BZ.legLen * BZ.legLen * 0.25,
-        BZ.legLen * BZ.legLen - spread * spread));
+        BZ.legLen * BZ.legLen - reach * reach));
     ctx.save();
     ctx.translate(cx, cy);
     if (o.mirror) ctx.scale(-1, 1);
@@ -9520,9 +9520,10 @@ function drawBuzzRig(cx, cy, k, o) {
         // other crosses into an X — a limp, not a walk. Standing, they part
         // into a stance. Shoes are never mirrored per side: both point the way
         // he faces.
-        const fx = BZ.anchorX + (moving ? shape(Math.sin(legPh(side))) * BZ.stride : side * BZ.stanceX);
+        const px = BZ.anchorX + side * BZ.legSplit;
+        const fx = px + (moving ? shape(Math.sin(legPh(side))) * BZ.stride : side * BZ.footOut);
         const fy = moving ? -Math.max(0, -Math.cos(legPh(side))) * BZ.legLift : 0;
-        hoseIK(set.legMeta, BZ.legGauge, BZ.anchorX + side * BZ.legSplit, hipY, fx, fy, BZ.legLen, -side * 0.3, k, false);
+        hoseIK(set.legMeta, BZ.legGauge, px, hipY, fx, fy, BZ.legLen, -side * 0.3, k, false);
     }
     const aSw = moving ? Math.sin(ph) * BZ.armSwing : 0;
     if (!(t > 0)) {
