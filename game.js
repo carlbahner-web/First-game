@@ -8536,8 +8536,7 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
             mirror: donkCarlFacing === 1, // art faces left natively
             hipX: 5.5,                    // hips pulled in from the rig's 9
             stride: 14,                   // long, natural strides
-            legScale: 1.2,                // longer legs, art scaled not stretched
-            hero: true,                   // BUZZ's head/body
+            hero: true,                   // BUZZ's head/body + straight-hose limbs
         });
         if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
         return;
@@ -8852,6 +8851,23 @@ function drawPunch() {
     const fistShadowCol = glove ? "#b3aa96" : "#a58c27";
     const fistCol = glove ? "#fcf7e8" : "#efb775";
 
+    // Aim-and-stretch punch: BUZZ's fist arm rockets from the shoulder
+    // toward the target, stretching with the thrust (the hose is straight
+    // art, so the stretch is pure reach). Falls back to the drawn arm/fist.
+    const heroFist = donkReady && DONK_PLAYER && DONK_IMG.hero ? heroSet().fistMeta : null;
+    if (heroFist) {
+        const kp = 90 / 58; // player rig scale
+        const ang = p.dir === 0 ? 0 : p.dir === 1 ? Math.PI : p.dir === 2 ? Math.PI / 2 : -Math.PI / 2;
+        const reach = 0.55 + thrust * 0.85;
+        ctx.save();
+        ctx.translate(shoulderX, shoulderY);
+        ctx.rotate(ang);
+        ctx.drawImage(heroFist.img,
+            -heroFist.w * heroFist.px * kp,
+            -heroFist.h * heroFist.py * kp,
+            heroFist.w * kp, heroFist.h * kp * reach);
+        ctx.restore();
+    } else {
     // === ARM ===
     ctx.strokeStyle = armCol;
     ctx.lineWidth = 4 * SCALE;
@@ -8899,6 +8915,7 @@ function drawPunch() {
         ctx.arc(kx, ky, 1.0 * SCALE, 0, Math.PI * 2);
         ctx.fill();
     }
+    } // end procedural arm/fist fallback
 
     // === IMPACT SHOCKWAVE on hit — radiates outward from fist ===
     if (thrust > 0.5 && p.punchHit) {
@@ -9373,14 +9390,24 @@ function loadDonkImages() {
     heroImg.onload = () => { DONK_IMG.hero = heroImg; };
     heroImg.onerror = () => {};
     heroImg.src = srcs.hero || DONK_FILES.hero;
+    // BUZZ's straight-hose limb pieces (optional; rig falls back to Donk limbs)
+    for (const [key, file] of [["buzzArm", "buzz-arm.png"], ["buzzFist", "buzz-fist.png"], ["buzzWave", "buzz-wave.png"], ["buzzLeg", "buzz-leg.png"]]) {
+        const im = new Image();
+        im.onload = () => { DONK_IMG[key] = im; };
+        im.onerror = () => {};
+        im.src = srcs[key] || ("assets/donk/" + file);
+    }
 }
 loadDonkImages();
 
-let DONK_HERO = null;
+let DONK_HERO = null, DONK_HERO_KEY = -1;
 function heroSet() {
-    if (!DONK_HERO) {
+    const key = (DONK_IMG.hero ? 1 : 0) + (DONK_IMG.buzzArm ? 2 : 0) +
+        (DONK_IMG.buzzFist ? 4 : 0) + (DONK_IMG.buzzLeg ? 8 : 0);
+    if (!DONK_HERO || DONK_HERO_KEY !== key) {
+        DONK_HERO_KEY = key;
         const img = DONK_IMG.hero;
-        // BUZZ's art natively faces the opposite way from the Donk pieces —
+        // BUZZ's art natively faces the opposite way from the limb pieces —
         // pre-flip it once so the whole rig mirrors as one and his face
         // agrees with his feet
         const flipped = document.createElement("canvas");
@@ -9391,18 +9418,22 @@ function heroSet() {
         fg.scale(-1, 1);
         fg.drawImage(img, 0, 0);
         const bodyH = DK.bw * (img.height / img.width);
+        // Straight-hose limb meta: unit height, width from the art's aspect,
+        // pivot fraction measured from the hose center at the shoulder/hip end
+        const mk = (im, hUnits, px) => im ? ({ img: im, h: hUnits, w: hUnits * (im.width / im.height), px: px, py: 0.02 }) : null;
         DONK_HERO = {
             body: flipped,
             button: null, // face is part of the body art — no separate pulse piece
-            arm: DONK_IMG.arm,
+            arm: DONK_IMG.arm,   // fallback if the straight-hose piece is absent
             leg: DONK_IMG.leg,
+            armMeta: mk(DONK_IMG.buzzArm, 34, 0.449),  // relaxed hand
+            legMeta: mk(DONK_IMG.buzzLeg, 40, 0.326),  // hose leg + shoe
+            fistMeta: mk(DONK_IMG.buzzFist, 36, 0.491), // punch arm
             bodyH: bodyH,
             armY: DK.by + DK.bh - bodyH / 2, // shoulders at the drum's center height
-            armX: 22,                        // far arm: tucked so the shell hides more of it
-            armXFront: 20,                   // front arm: shoulder just inside the rim
-            armStretch: 1.45,                // lanky: longer...
-            armThick: 0.8,                   // ...and skinnier (Donk stays stout)
-            idleArm: -Math.PI * 35 / 180,    // hands down 35deg (45 was too much)
+            armX: 22,                        // far arm: tucked behind the shell
+            armXFront: 20,                   // front arm: just inside the rim
+            idleArm: -Math.PI * 12 / 180,    // slight splay; the art hangs naturally
         };
     }
     return DONK_HERO;
@@ -9424,14 +9455,20 @@ function drawDonk(cx, cy, k, o) {
     // Uniformly scaled-up legs (o.legScale): the art keeps its proportions,
     // the body rises so the soles still plant at the anchor point
     const ls = o.legScale || 1;
-    const legLen = DK.legH * ls * (1 - DK.legPY); // hip-to-sole reach
+    const LM = set.legMeta;
+    const legImg = LM ? LM.img : set.leg;
+    const legW = (LM ? LM.w : DK.legW) * ls;
+    const legH = (LM ? LM.h : DK.legH) * ls;
+    const legPXf = LM ? LM.px : DK.legPX;
+    const legPYf = LM ? LM.py : DK.legPY;
+    const legLen = legH * (1 - legPYf); // hip-to-sole reach
     ctx.translate(0, -(legLen - 31.4) * k);
 
     const legAt = (hx, hy, rot) => {
         ctx.save();
         ctx.translate(hx * k, hy * k);
         ctx.rotate(rot);
-        ctx.drawImage(set.leg, -DK.legW * ls * DK.legPX * k, -DK.legH * ls * DK.legPY * k, DK.legW * ls * k, DK.legH * ls * k);
+        ctx.drawImage(legImg, -legW * legPXf * k, -legH * legPYf * k, legW * k, legH * k);
         ctx.restore();
     };
     const armMX = set.armX !== undefined ? set.armX : 22;
@@ -9440,7 +9477,12 @@ function drawDonk(cx, cy, k, o) {
     const as_ = set.armScale || 1;                  // uniform arm scale
     const ast = set.armStretch || 1;                // length stretch
     const ath = set.armThick || 1;                  // width (hose thickness)
-    const aw = DK.armW * as_ * ath, ah = DK.armH * as_ * ast;
+    const AM = set.armMeta;
+    const armImg = AM ? AM.img : set.arm;
+    const aw = (AM ? AM.w : DK.armW) * as_ * ath;
+    const ah = (AM ? AM.h : DK.armH) * as_ * ast;
+    const aPXf = AM ? AM.px : DK.armPX;
+    const aPYf = AM ? AM.py : DK.armPY;
     const armAt = (side, swing) => {
         // Front arm (side +1) can carry its own mount — on BUZZ its shoulder
         // sits mid-shell rather than out at the rim
@@ -9449,7 +9491,7 @@ function drawDonk(cx, cy, k, o) {
         ctx.translate(side * mx * k, armMY * k);    // shoulder mount
         if (side > 0) ctx.scale(-1, 1);             // arm art mirrors for this side
         ctx.rotate(swing + armIdle);
-        ctx.drawImage(set.arm, -aw * DK.armPX * k, -ah * DK.armPY * k, aw * k, ah * k);
+        ctx.drawImage(armImg, -aw * aPXf * k, -ah * aPYf * k, aw * k, ah * k);
         ctx.restore();
     };
 
