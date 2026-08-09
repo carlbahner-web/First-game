@@ -763,14 +763,6 @@ function hexToRGB(hex) {
     return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
 }
 
-// Helper: blend two colors
-function blendColor(c1, c2, t) {
-    const a = hexToRGB(c1), b = hexToRGB(c2);
-    const r = Math.round(a[0] + (b[0] - a[0]) * t);
-    const g = Math.round(a[1] + (b[1] - a[1]) * t);
-    const bl = Math.round(a[2] + (b[2] - a[2]) * t);
-    return `rgb(${r},${g},${bl})`;
-}
 
 // Generate a single stone tile texture (TILE*SCALE x TILE*SCALE pixels)
 function generateStoneTile(seed, baseColor, darkColor, highlightColor, opts) {
@@ -1424,7 +1416,6 @@ const PAL = {
     titleText: INK.charcoal,
 };
 
-const DRUM_LABELS = ["OPEN-HH", "HI-HAT", "SNARE", "KICK", "COWBELL", "TOM"];
 
 // ---- Audio Engine (Web Audio API with synthesized drums) ----
 let audioCtx = null;
@@ -1791,7 +1782,6 @@ let sequencerStarted = false; // true once the audio clock is running and the be
 let killCount = 0;
 let score = 0;
 let lastTimeBonus = 0;
-const dancers = [];
 // The villagers never got the ink reskin — they were still wearing the old
 // pixel-art palette (peach skin, muddy browns) next to charcoal-on-cream BUZZ,
 // which is what made them read as discoloured. Rebuilt out of INK, and the
@@ -2110,7 +2100,6 @@ let catapultSpawnedThisCycle = false; // prevents re-spawning catapult after it 
 //   boulder: null | { startX, startY, targetX, targetY, progress } }
 
 // Tomato projectiles (dancers throw at goblins — purely cosmetic)
-let tomatoes = []; // { x, y, targetX, targetY, speed, life }
 let tomatoSplats = []; // { x, y, timer }
 
 const SKIP_INTRO = false; // Set to true to skip the title screen and intro/story scenes
@@ -2134,7 +2123,6 @@ const TITLE_FADE_DURATION = 20; // frames for title text to fade out
 let fireworks = []; // { x, y, vx, vy, life, maxLife, color, exploded, particles: [] }
 // Screen crack effect for game over
 // Enemy warning zoom state
-let enemyWarningZoom = 0; // 0→1 zoom-in progress
 let enemyWarningType = null;   // "elite" or "catapult"
 let enemyWarningShown = { normal: false, elite: false, catapult: false }; // track which warnings have been shown
 let enemyWarningBlink = 0;     // blink timer for "PRESS ENTER"
@@ -2159,7 +2147,6 @@ let introTimer = 0;         // frame counter within current scene
 let introGlobalTimer = 0;   // total frames since intro started
 let introBeatStep = 0;      // simulated sequencer step for the intro beat
 let introBeatTimer = 0;     // frame counter for beat stepping
-let introSkipHeld = 0;      // frames Enter is held for skip
 let introKickPump = 0;      // 0-1 speaker pump intensity on kick hits
 // Intro earthquake goblins — emerge from caves and flip grid cells
 let introGoblins = [];      // [{x, y, destX, destY, dir, frame, frameTimer, caveIdx, targetRow, targetCol, emerged, speed}]
@@ -2186,7 +2173,6 @@ const INTRO_SCENE_DURATIONS = [
 ];
 let newInstrumentType = null;   // "cowbell" or "tom"
 let newInstrumentTimer = 0;     // animation timer for new instrument popup
-let newInstrumentIntroTimer = 0; // transition timer before instrument popup
 let newInstrumentShown = { cowbell: false, tom: false }; // track which popups have been shown
 
 
@@ -2354,23 +2340,6 @@ const DIGIT_BITMAPS = [
     [0b111, 0b101, 0b111, 0b001, 0b111], // 9
 ];
 
-function drawPixelDigits(num, cx, cy, color, pixelSize) {
-    const str = String(num);
-    const digitW = 3 * pixelSize + pixelSize; // digit width + spacing
-    const totalW = str.length * digitW - pixelSize; // no trailing space
-    let startX = cx - totalW / 2;
-    for (let d = 0; d < str.length; d++) {
-        const bitmap = DIGIT_BITMAPS[parseInt(str[d])];
-        const dx = startX + d * digitW;
-        for (let row = 0; row < 5; row++) {
-            for (let col = 0; col < 3; col++) {
-                if (bitmap[row] & (1 << (2 - col))) {
-                    drawRect(dx + col * pixelSize, cy + row * pixelSize, pixelSize, pixelSize, color);
-                }
-            }
-        }
-    }
-}
 
 // ---- Input ----
 // Check for pending feature screens (instruments, enemy warnings) at level transitions.
@@ -2583,7 +2552,6 @@ window.addEventListener("keydown", (e) => {
                 // Chill mode: skip the goblin intro cutscene — go straight to playing
                 stopTitleDrums();
                 resetGame();
-                spawnDancers(6);
                 gameState = "playing";
                 sceneTransition = { active: true, from: "title", to: "playing", progress: 0, duration: 20 };
                 return;
@@ -2667,93 +2635,13 @@ function tileYToRow(tileY) {
     return tileY - GRID_Y - Math.round(GRID_Y_OFFSET / TILE);
 }
 
-// ---- Helper: check if a tile is occupied by a dancer ----
-function isTileOccupiedByDancer(tileX, tileY) {
-    for (const d of dancers) {
-        const dx = Math.round(d.x / TILE);
-        const dy = Math.round(d.y / TILE);
-        if (tileX === dx && tileY === dy) return true;
-    }
-    return false;
-}
 
 // ---- Helper: AABB collision ----
 function aabb(a, b) {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
-// ---- Helper: spawn dancer fans from the edges ----
-function spawnDancers(count) {
-    return; // Temporarily disabled — dancers bog down performance
-    const edges = [0, 1, 2]; // left, right, bottom
-    for (let i = edges.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [edges[i], edges[j]] = [edges[j], edges[i]];
-    }
-    // Build list of occupied zones (check pixel proximity, not just tile)
-    const occupiedPositions = [];
-    for (const dd of dancers) {
-        occupiedPositions.push({
-            x: dd.targetX ?? dd.x,
-            y: dd.targetY ?? dd.y
-        });
-    }
-    const MIN_DIST = 14; // minimum pixel distance between dancer targets
-    for (let di = 0; di < count; di++) {
-        const palette = DANCER_PALETTES[dancers.length % DANCER_PALETTES.length];
-        // Dancer area: rows 11-16, cols 2-17, with sub-tile pixel offsets
-        const minPxX = 2 * TILE + 2;
-        const maxPxX = (COLS - 3) * TILE - 2;
-        const minPxY = (GRID_Y + GRID_ROWS) * TILE;   // below the sequencer
-        const maxPxY = (ROWS - 1) * TILE - TILE;
-        let targetX, targetY, attempts = 0;
-        let valid = false;
-        do {
-            // Random pixel position within the dancer area (not grid-locked)
-            targetX = minPxX + Math.random() * (maxPxX - minPxX);
-            targetY = minPxY + Math.random() * (maxPxY - minPxY);
-            // Round to nearest pixel (not tile)
-            targetX = Math.round(targetX);
-            targetY = Math.round(targetY);
-            const tileX = Math.floor(targetX / TILE);
-            const tileY = Math.floor(targetY / TILE);
-            attempts++;
-            // Check distance from other dancers
-            const tooClose = occupiedPositions.some(p =>
-                Math.abs(p.x - targetX) < MIN_DIST && Math.abs(p.y - targetY) < MIN_DIST
-            );
-            // Check cave proximity
-            const nearCave = CAVES.some(c =>
-                Math.abs(c.tileX - tileX) <= 1 && Math.abs(c.tileY - tileY) <= 1
-            );
-            valid = !tooClose && !nearCave;
-        } while (!valid && attempts < 80);
-        if (!valid) continue; // skip this dancer if no valid spot found
-        occupiedPositions.push({ x: targetX, y: targetY });
-        const edge = edges[di % edges.length];
-        let startX, startY;
-        if (edge === 0) { startX = -TILE; startY = targetY; }
-        else if (edge === 1) { startX = COLS * TILE; startY = targetY; }
-        else { startX = targetX; startY = ROWS * TILE; }
-        dancers.push({
-            x: startX, y: startY,
-            targetX: targetX, targetY: targetY,
-            walkingIn: true,
-            palette: palette,
-            phase: Math.floor(Math.random() * 16),
-        });
-    }
-}
 
-// ---- Helper: get block rect for grid cell ----
-function getBlockRect(row, col) {
-    return {
-        x: (GRID_X + col) * TILE,
-        y: rowPixelY(row),
-        w: TILE,
-        h: TILE,
-    };
-}
 
 // ---- Sequencer tick (extracted so it can run during sabotage-anim too) ----
 function tickSequencer() {
@@ -3099,8 +2987,7 @@ function update(dt) {
                             gobBlocked = true; break;
                         }
                     }
-                    const blocked = isTileOccupiedByDancer(ttx, tty)
-                        || gobBlocked;
+                    const blocked = gobBlocked;
                     if (!blocked) { kbDist = d; break; }
                 }
                 if (kbDist > 0) {
@@ -3119,29 +3006,6 @@ function update(dt) {
             }
         }
 
-        // Check dancer hit — donk + knockback one tile
-        for (const d of dancers) {
-            const dTileX = Math.round(d.x / TILE);
-            const dTileY = Math.round(d.y / TILE);
-            if (targetTileX === dTileX && targetTileY === dTileY) {
-                p.punchHit = true;
-                p.punchHitCol = INK.mint;
-                if (audioCtx) {
-                    playDonk(audioCtx.currentTime);
-                }
-                // Knock dancer back one tile away from player
-                const knockDx = dTileX - Math.round(p.x / TILE);
-                const knockDy = dTileY - Math.round(p.y / TILE);
-                const newX = d.x + Math.sign(knockDx) * TILE;
-                const newY = d.y + Math.sign(knockDy) * TILE;
-                const clampedX = Math.max(TILE, Math.min((COLS - 2) * TILE, newX));
-                const clampedY = Math.max(TILE, Math.min((ROWS - 2) * TILE, newY));
-                d.targetX = clampedX;
-                d.targetY = clampedY;
-                d.walkingIn = true;
-                break;
-            }
-        }
 
         // Toggle block only if no goblin was hit
         if (!hitAnyGoblin && row >= 0 && row < getActiveRows() && col >= 0 && col < GRID_COLS) {
@@ -3262,7 +3126,7 @@ function update(dt) {
             }
             const blocked = goblinBlocks
                 || (catapultGoblin && nx === cgRoundX && ny === cgRoundY)
-                || isTileOccupiedByDancer(ntx, nty);
+                ;
             if (!blocked) {
                 p.destX = nx;
                 p.destY = ny;
@@ -3644,48 +3508,7 @@ function update(dt) {
                 }
                 return false;
             };
-            const pushDancerAt = (tx, ty, moveDirX, moveDirY, depth) => {
-                if (depth > 5) return false;
-                const ttx = Math.round(tx / TILE);
-                const tty = Math.round(ty / TILE);
-                for (const d of dancers) {
-                    const dtx = Math.round(d.x / TILE);
-                    const dty = Math.round(d.y / TILE);
-                    if (dtx === ttx && dty === tty) {
-                        let pushX = 0, pushY = 0;
-                        if (moveDirX !== 0) {
-                            pushY = (d.y >= gob.y) ? 1 : -1;
-                        } else {
-                            pushX = (d.x >= gob.x) ? 1 : -1;
-                        }
-                        for (const sign of [1, -1]) {
-                            const px = pushX * sign, py = pushY * sign;
-                            let newX = d.x + px * TILE;
-                            let newY = d.y + py * TILE;
-                            newX = Math.max(TILE, Math.min((COLS - 2) * TILE, newX));
-                            newY = Math.max(TILE, Math.min((ROWS - 2) * TILE, newY));
-                            const ntx = Math.round(newX / TILE);
-                            const nty = Math.round(newY / TILE);
-                            if (ntx === Math.round(p.x / TILE) && nty === Math.round(p.y / TILE)) continue;
-                            if (isTileOccupiedByDancer(ntx, nty)) {
-                                if (!pushDancerAt(newX, newY, px * TILE, py * TILE, depth + 1)) continue;
-                            }
-                            d.targetX = newX;
-                            d.targetY = newY;
-                            d.walkingIn = true;
-                            return true;
-                        }
-                        return false;
-                    }
-                }
-                return true;
-            };
             if (!isGobTileBlocked(nx, ny)) {
-                const moveDirX = nx - gob.x;
-                const moveDirY = ny - gob.y;
-                if (isTileOccupiedByDancer(Math.round(nx / TILE), Math.round(ny / TILE))) {
-                    pushDancerAt(nx, ny, moveDirX, moveDirY, 0);
-                }
                 gob.destX = nx;
                 gob.destY = ny;
             } else {
@@ -3704,11 +3527,6 @@ function update(dt) {
                 ax = Math.max(TILE, Math.min((COLS - 2) * TILE, ax));
                 ay = Math.max(TILE, Math.min((ROWS - 2) * TILE, ay));
                 if ((ax !== gob.x || ay !== gob.y) && !isGobTileBlocked(ax, ay)) {
-                    const aDirX = ax - gob.x;
-                    const aDirY = ay - gob.y;
-                    if (isTileOccupiedByDancer(Math.round(ax / TILE), Math.round(ay / TILE))) {
-                        pushDancerAt(ax, ay, aDirX, aDirY, 0);
-                    }
                     gob.destX = ax;
                     gob.destY = ay;
                 }
@@ -3801,86 +3619,7 @@ function update(dt) {
     }
     if (screenFlash > 0) screenFlash--;
 
-    // Update dancers walking in from border
-    for (const d of dancers) {
-        if (d.walkingIn) {
-            const dx = d.targetX - d.x;
-            const dy = d.targetY - d.y;
-            const walkSpeed = 0.6;
-            if (Math.abs(dx) > 0.5) d.x += Math.sign(dx) * Math.min(walkSpeed, Math.abs(dx));
-            if (Math.abs(dy) > 0.5) d.y += Math.sign(dy) * Math.min(walkSpeed, Math.abs(dy));
-            if (Math.abs(dx) <= 0.5 && Math.abs(dy) <= 0.5) {
-                d.x = d.targetX;
-                d.y = d.targetY;
-                d.walkingIn = false;
-            }
-        }
-    }
 
-    // Dancers throw tomatoes at nearby goblins (cosmetic only)
-    // Find nearest alive goblin for each dancer
-    for (const d of dancers) {
-        if (d.walkingIn) continue;
-        // Find closest alive goblin
-        let nearestGob = null;
-        let nearestDist = Infinity;
-        for (const gg of goblins) {
-            if (gg.dead) continue;
-            const ddx = Math.abs(d.x - gg.x);
-            const ddy = Math.abs(d.y - gg.y);
-            const dist = ddx + ddy;
-            if (ddx <= 3 * TILE && ddy <= 3 * TILE && dist < nearestDist) {
-                nearestGob = gg;
-                nearestDist = dist;
-            }
-        }
-        if (nearestGob) {
-            if (d.throwDelay === undefined) d.throwDelay = Math.floor(Math.random() * 30);
-            if (d.throwDelay > 0) { d.throwDelay--; continue; }
-            if (!d.throwCooldown) d.throwCooldown = 0;
-            if (d.throwCooldown > 0) { d.throwCooldown--; continue; }
-            if (Math.random() < 0.015) {
-                d.throwCooldown = 90 + Math.floor(Math.random() * 60);
-                const tdx = nearestGob.x + 8 - (d.x + 8);
-                const tdy = nearestGob.y + 4 - (d.y + 4);
-                const tDist = Math.sqrt(tdx * tdx + tdy * tdy);
-                tomatoes.push({
-                    x: d.x + 8, y: d.y + 4,
-                    targetX: nearestGob.x + 8, targetY: nearestGob.y + 4,
-                    speed: 1.0,
-                    progress: 0,
-                    totalDist: tDist,
-                    spin: 0,
-                    targetGoblin: nearestGob, // track which goblin to follow
-                });
-            }
-        } else {
-            d.throwDelay = undefined;
-        }
-    }
-
-    // Update tomato projectiles
-    tomatoes = tomatoes.filter(t => {
-        const dx = t.targetX - t.x;
-        const dy = t.targetY - t.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < t.speed + 1) {
-            // Splat!
-            tomatoSplats.push({ x: t.targetX, y: t.targetY, timer: 25 });
-            return false;
-        }
-        t.x += (dx / dist) * t.speed;
-        t.y += (dy / dist) * t.speed;
-        t.progress = Math.min(1, t.progress + t.speed / t.totalDist);
-        t.spin++;
-        // Update target to track the target goblin's current position
-        if (t.targetGoblin && !t.targetGoblin.dead) {
-            t.targetX = t.targetGoblin.x + 8;
-            t.targetY = t.targetGoblin.y + 4;
-            t.totalDist = Math.max(t.totalDist, dist);
-        }
-        return true;
-    });
 
     // Update splats
     tomatoSplats = tomatoSplats.filter(s => {
@@ -4099,9 +3838,7 @@ function resetGame() {
     levelTimer = LEVELS[0].timerSeconds * 60;
 
     // Clear dancers and effects
-    dancers.length = 0;
     deathParticles = [];
-    tomatoes = [];
     tomatoSplats = [];
     deathText = null;
     screenFlash = 0;
@@ -4380,13 +4117,6 @@ function advanceLevel() {
     }
     rebuildCaveTextures(currentLevel);
 
-    // After a minigame, dancers rescued the DJ and scattered — respawn the full crowd
-    if (dancers.length === 0 && currentLevel > 1) {
-        spawnDancers(currentLevel * 3);
-    } else {
-        // Normal level start: 3 new dancer fans join the crowd
-        spawnDancers(3);
-    }
     levelTimer = LEVELS[currentLevel].timerSeconds * 60;
     // Spawn friend NPC for level 30 (noPattern mode)
     if (LEVELS[currentLevel].noPattern) {
@@ -4443,7 +4173,6 @@ function advanceLevel() {
 
     // Reset effects
     deathParticles = [];
-    tomatoes = [];
     tomatoSplats = [];
     deathText = null;
     screenFlash = 0;
@@ -4732,11 +4461,6 @@ function drawHudPixelDigits(num, cx, cy, color, pixelSize) {
     }
 }
 
-// Simple seeded random for deterministic floor grain (no flicker)
-function seededRandom(seed) {
-    seed = (seed * 9301 + 49297) % 233280;
-    return seed / 233280;
-}
 
 function drawText(text, x, y, color, size) {
     ctx.fillStyle = color;
@@ -4750,13 +4474,6 @@ function fillRoundRect(context, x, y, w, h, r, color) {
     context.beginPath();
     context.roundRect(x, y, w, h, r);
     context.fill();
-}
-function strokeRoundRect(context, x, y, w, h, r, color, lineWidth) {
-    context.strokeStyle = color;
-    context.lineWidth = lineWidth || 1;
-    context.beginPath();
-    context.roundRect(x, y, w, h, r);
-    context.stroke();
 }
 
 // ---- HUD Render (separate canvas below game) ----
@@ -5338,10 +5055,6 @@ function render() {
     // HUD is rendered on separate canvas
     renderHUD();
 
-    // Dancers (rendered behind player/goblin)
-    for (const d of dancers) {
-        drawDancer(d);
-    }
 
     // (The fan entourage that congaed along behind Carl lived here. Ten
     // pixel-art villagers, each a stack of individual fillRects, cost 3.7ms
@@ -5397,62 +5110,6 @@ function render() {
     }
     ctx.globalAlpha = 1.0;
 
-    // Tomato projectiles (with parabolic arc and tumble)
-    for (const t of tomatoes) {
-        // Parabolic arc: peak at midpoint, height scales with distance
-        const arcHeight = Math.min(30, t.totalDist * 0.4);
-        const arcY = -4 * arcHeight * t.progress * (1 - t.progress);
-        const drawX = t.x;
-        const drawY = t.y + arcY;
-        // Trailing afterimages — fading red dots behind the tomato
-        if (t.progress > 0.05) {
-            const tdx = t.targetX - t.x;
-            const tdy = t.targetY - t.y;
-            const td = Math.sqrt(tdx * tdx + tdy * tdy) || 1;
-            const vnx = tdx / td;
-            const vny = tdy / td;
-            for (let ti = 1; ti <= 3; ti++) {
-                const trailP = Math.max(0, t.progress - ti * 0.06);
-                const trailArcY = -4 * arcHeight * trailP * (1 - trailP);
-                const trailX = t.x - vnx * ti * 5;
-                const trailY = t.y - vny * ti * 5 + (trailArcY - arcY) * 0.5;
-                ctx.globalAlpha = (4 - ti) / 4 * 0.25;
-                drawRect(trailX - 1, trailY - 1, 3, 2, "#FE3636");
-            }
-            ctx.globalAlpha = 1;
-        }
-        // Shadow on ground
-        ctx.globalAlpha = 0.25;
-        drawRect(t.x - 1, t.y + 1, 3, 1, "#000");
-        ctx.globalAlpha = 1;
-        // Tumble: one lazy rotation over the entire flight
-        const rot = Math.floor(t.progress * 4) % 4;
-        if (rot === 0) {
-            // Upright
-            drawRect(drawX - 2, drawY - 1, 4, 3, "#FE3636");
-            drawRect(drawX - 1, drawY - 2, 2, 1, "#FE3636");
-            drawRect(drawX, drawY - 3, 1, 1, "#39571c");
-            drawRect(drawX - 2, drawY - 1, 1, 1, "#ef692f");
-        } else if (rot === 1) {
-            // Tilted right
-            drawRect(drawX - 1, drawY - 2, 3, 4, "#FE3636");
-            drawRect(drawX + 2, drawY - 1, 1, 2, "#FE3636");
-            drawRect(drawX + 3, drawY, 1, 1, "#39571c");
-            drawRect(drawX - 1, drawY - 2, 1, 1, "#ef692f");
-        } else if (rot === 2) {
-            // Upside down
-            drawRect(drawX - 2, drawY - 1, 4, 3, "#FE3636");
-            drawRect(drawX - 1, drawY + 2, 2, 1, "#FE3636");
-            drawRect(drawX, drawY + 3, 1, 1, "#39571c");
-            drawRect(drawX + 1, drawY + 1, 1, 1, "#ef692f");
-        } else {
-            // Tilted left
-            drawRect(drawX - 1, drawY - 2, 3, 4, "#FE3636");
-            drawRect(drawX - 2, drawY - 1, 1, 2, "#FE3636");
-            drawRect(drawX - 3, drawY, 1, 1, "#39571c");
-            drawRect(drawX + 1, drawY - 2, 1, 1, "#ef692f");
-        }
-    }
 
     // Tomato splats
     for (const s of tomatoSplats) {
@@ -6109,80 +5766,6 @@ function drawPunch() {
     ctx.restore();
 }
 
-// Draw the ruined venue backdrop (used in tutorial scenes)
-// t: animation timer for smoke wisps
-function drawRuinedVenueBackdrop(t, options) {
-    const opts = options || {};
-    const skipGrid = opts.skipGrid || false;
-    const W = COLS * TILE;
-    const H = ROWS * TILE;
-    // Dark cave floor
-    drawRect(0, 0, W, H, "#2C2C2A");
-    // Damaged cave walls
-    for (let c = 0; c < COLS; c++) {
-        const damaged = ((c * 7 + 3) % 10) > 6;
-        drawRect(c * TILE, 0, TILE, TILE, damaged ? "#2a2a27" : ((c * 7 + 3) % 3 === 0 ? "#3f3f3b" : "#3a3a37"));
-        const botCol = (c * 11 + 5) % 3 === 0 ? "#343430" : "#3a3a37";
-        drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, botCol);
-    }
-    for (let r = 0; r < ROWS; r++) {
-        const lCol = (r * 7) % 3 === 0 ? "#343430" : "#3a3a37";
-        drawRect(0, r * TILE, TILE, TILE, lCol);
-        drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, lCol);
-    }
-    // Open caves
-    for (const cave of CAVES) {
-        const cx = cave.tileX * TILE, cy = cave.tileY * TILE;
-        drawRect(cx, cy - 2, TILE, TILE + 4, "#2C2C2A");
-        drawRect(cx - 2, cy - 4, TILE + 4, 3, "#4a4a45");
-        drawRect(cx - 2, cy + TILE + 1, TILE + 4, 3, "#4a4a45");
-    }
-    // Dead mushroom lights
-    for (let c = 1; c < COLS - 1; c++) {
-        drawRect(c * TILE + TILE / 2 - 2, TILE + 6, 4, 4, "#2C2C2A");
-    }
-    // Destroyed DJ booth (stone rubble)
-    const boothX = W / 2 - 24;
-    const boothY = GRID_Y * TILE - 8;
-    drawRect(boothX - 8, boothY + 12, 64, 8, "#2C2C2A");
-    drawRect(boothX + 5, boothY + 6, 10, 6, "#232321");
-    drawRect(boothX + 35, boothY + 8, 8, 4, "#232321");
-    // Smoke wisps
-    for (let si = 0; si < 3; si++) {
-        const smokeX = boothX + 15 + si * 12;
-        const smokeY = boothY - (t * 0.3 + si * 20) % 30;
-        ctx.globalAlpha = 0.15 - (t * 0.3 + si * 20) % 30 / 200;
-        if (ctx.globalAlpha > 0) drawRect(smokeX, smokeY, 3, 3, "#888888");
-    }
-    ctx.globalAlpha = 1;
-    // Corrupted beat grid (carries over from intro scenes)
-    if (introGridState && !skipGrid) {
-        const miniGridY = GRID_Y * TILE + GRID_Y_OFFSET;
-        const miniGridX = GRID_X * TILE;   // centred like the real sequencer
-        ctx.globalAlpha = 0.35;
-        for (let r = 0; r < 4; r++) {
-            for (let c = 0; c < 16; c++) {
-                const gx = miniGridX + c * TILE;
-                const gy = miniGridY + r * TILE;
-                const cellOn = introGridState[r][c];
-                drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
-                drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, cellOn ? PAL.gridOn[r] : PAL.gridOff);
-            }
-        }
-        ctx.globalAlpha = 1;
-    }
-    // Dark vignette
-    const W_v = W * SCALE;
-    const H_v = H * SCALE;
-    const vGrad = ctx.createRadialGradient(W_v / 2, H_v / 2, W_v * 0.2, W_v / 2, H_v / 2, W_v * 0.6);
-    vGrad.addColorStop(0, "rgba(0,0,0,0)");
-    vGrad.addColorStop(1, "rgba(0,0,0,0.6)");
-    ctx.fillStyle = vGrad;
-    ctx.fillRect(0, 0, W_v, H_v);
-
-    // Grain texture overlay (screen-print effect)
-    ctx.drawImage(grainCanvas, 0, 0);
-}
 
 // Map DJ_SETUP_PIECES names to draw functions with booth-relative offsets
 // Offsets are relative to boothX, boothY as defined in intro Scene 0
@@ -7390,113 +6973,6 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
     }
 }
 
-function drawGoblinFor(g) {
-    // Sticky horizontal facing for the Donk rig: vertical movement keeps
-    // whichever way this goblin last faced
-    if (g.dir === 2) g.donkFace = -1;
-    else if (g.dir === 3) g.donkFace = 1;
-    // Distance-locked stride, same treatment as the player: legs cover
-    // ground at the speed this goblin actually moves. (The coaster's
-    // time-based amble was tuned for an enemy on screen for seconds.)
-    let gDist = 0;
-    if (g.donkLastX !== undefined) {
-        gDist = Math.abs(g.x - g.donkLastX) + Math.abs(g.y - g.donkLastY);
-        if (gDist > 8) gDist = 0; // teleport (respawn), not a step
-    }
-    g.donkLastX = g.x; g.donkLastY = g.y;
-    g.donkMoving = gDist > 0.05;
-    if (g.donkPhase === undefined) g.donkPhase = g.wob || 0; // desync folded in
-    g.donkPhase = g.donkMoving ? g.donkPhase + gDist * 0.44 : donkSettlePhase(g.donkPhase);
-    // Color palette: elite changes color based on HP
-    let bodyCol, darkCol, headCol, eyeCol;
-    if (g.hurtTimer > 0 && g.hurtTimer % 4 < 2) {
-        bodyCol = "#ffffff"; darkCol = "#dddddd"; headCol = "#ffffff"; eyeCol = "#00FFFF";
-    } else if (g.elite && g.windupTimer > 0 && g.windupTimer % 8 < 4) {
-        // Punch telegraph: rapid white flash during wind-up
-        bodyCol = "#ffffff"; darkCol = "#ffdddd"; headCol = "#ffffff"; eyeCol = "#FF0000";
-    } else if (!g.elite) {
-        bodyCol = "#50ad33"; darkCol = "#00CC00"; headCol = "#66FF44"; eyeCol = "#c05838";
-    } else if (g.hp === 3) {
-        bodyCol = "#c05838"; darkCol = "#CC00CC"; headCol = "#FF44FF"; eyeCol = "#00FFFF";
-    } else if (g.hp === 2) {
-        bodyCol = "#CC00CC"; darkCol = "#990099"; headCol = "#DD33DD"; eyeCol = "#FF3333";
-    } else {
-        bodyCol = "#FF0044"; darkCol = "#CC0033"; headCol = "#FF3366"; eyeCol = "#00FFFF";
-    }
-
-    // GROOVED! Silly involuntary dance — hip-wobble, fast footwork, music notes
-    const dancing = g.danceTimer > 0;
-    if (dancing) {
-        ctx.save();
-        const dcx = (g.x + g.w / 2) * SCALE;
-        const dcy = (g.y + g.h) * SCALE; // pivot at the feet for a hip wiggle
-        ctx.translate(dcx, dcy);
-        ctx.rotate(Math.sin(g.danceTimer * 0.35) * 0.28);
-        // Little bounce on the off-wobble
-        ctx.scale(1, 1 + Math.abs(Math.sin(g.danceTimer * 0.35)) * 0.08);
-        ctx.translate(-dcx, -dcy);
-    }
-
-    drawGoblinSprite(g.elite ? "elite" : "normal", g.x, g.y,
-        dancing ? Math.floor(g.danceTimer / 4) % 4 : g.frame, {
-        dir: dancing ? 0 : g.dir, bodyCol, darkCol, headCol, eyeCol,
-        face: g.donkFace, phase: g.donkPhase
-    });
-
-    if (dancing) {
-        ctx.restore();
-        // Rising music notes
-        for (let ni = 0; ni < 2; ni++) {
-            const nPhase = (180 - g.danceTimer + ni * 30) % 60;
-            ctx.globalAlpha = (1 - nPhase / 60) * 0.9;
-            ctx.font = `${5 * SCALE}px monospace`;
-            ctx.fillStyle = ni === 0 ? "#50ad33" : "#FFD700";
-            ctx.fillText(ni === 0 ? "♪" : "♫",
-                (g.x + (ni === 0 ? 1 : 11)) * SCALE,
-                (g.y - 6 - nPhase * 0.3) * SCALE);
-        }
-        ctx.globalAlpha = 1.0;
-    }
-
-    // Damage flash: bright white burst when hurt
-    if (g.hurtTimer > 8) {
-        ctx.fillStyle = "#ffffff";
-        ctx.globalAlpha = (g.hurtTimer - 8) / 4 * 0.6;
-        ctx.fillRect((g.x - 2) * SCALE, (g.y - 6) * SCALE, (g.w + 4) * SCALE, (g.h + 8) * SCALE);
-        ctx.globalAlpha = 1.0;
-    }
-
-    // Punch telegraph: pulsing red "!" above the elite during wind-up
-    if (g.elite && g.windupTimer > 0) {
-        const wuPulse = 1 + Math.sin(g.windupTimer * 0.5) * 0.2;
-        ctx.font = `${Math.round(9 * SCALE * wuPulse)}px monospace`;
-        ctx.textAlign = "center";
-        const exX = (g.x + g.w / 2) * SCALE;
-        const exY = (g.y - 14) * SCALE;
-        ctx.fillStyle = "#000000";
-        ctx.fillText("!", exX + 2, exY + 2);
-        ctx.fillStyle = "#FF3333";
-        ctx.fillText("!", exX, exY);
-        ctx.textAlign = "left";
-    }
-
-    // HP pips for elite goblins (above head)
-    if (g.elite && g.hp > 0 && g.hp <= 3) {
-        const pipY = g.y - 10;
-        const pipStartX = g.x + g.w / 2 - (3 * 4) / 2;
-        for (let i = 0; i < 3; i++) {
-            const filled = i < g.hp;
-            drawRect(pipStartX + i * 4, pipY, 3, 3, filled ? "#c05838" : "#333333");
-            if (filled) {
-                drawRect(pipStartX + i * 4, pipY, 3, 1, "#FF88FF"); // highlight
-            }
-        }
-    }
-}
-
-// Legacy alias
-function drawGoblin() { drawGoblinFor(goblin); }
-
 function drawCatapultGoblin() {
     const cg = catapultGoblin;
     if (!cg) return;
@@ -7621,6 +7097,111 @@ function drawCatapultGoblin() {
         }
     }
 }
+
+function drawGoblinFor(g) {
+    // Sticky horizontal facing for the Donk rig: vertical movement keeps
+    // whichever way this goblin last faced
+    if (g.dir === 2) g.donkFace = -1;
+    else if (g.dir === 3) g.donkFace = 1;
+    // Distance-locked stride, same treatment as the player: legs cover
+    // ground at the speed this goblin actually moves. (The coaster's
+    // time-based amble was tuned for an enemy on screen for seconds.)
+    let gDist = 0;
+    if (g.donkLastX !== undefined) {
+        gDist = Math.abs(g.x - g.donkLastX) + Math.abs(g.y - g.donkLastY);
+        if (gDist > 8) gDist = 0; // teleport (respawn), not a step
+    }
+    g.donkLastX = g.x; g.donkLastY = g.y;
+    g.donkMoving = gDist > 0.05;
+    if (g.donkPhase === undefined) g.donkPhase = g.wob || 0; // desync folded in
+    g.donkPhase = g.donkMoving ? g.donkPhase + gDist * 0.44 : donkSettlePhase(g.donkPhase);
+    // Color palette: elite changes color based on HP
+    let bodyCol, darkCol, headCol, eyeCol;
+    if (g.hurtTimer > 0 && g.hurtTimer % 4 < 2) {
+        bodyCol = "#ffffff"; darkCol = "#dddddd"; headCol = "#ffffff"; eyeCol = "#00FFFF";
+    } else if (g.elite && g.windupTimer > 0 && g.windupTimer % 8 < 4) {
+        // Punch telegraph: rapid white flash during wind-up
+        bodyCol = "#ffffff"; darkCol = "#ffdddd"; headCol = "#ffffff"; eyeCol = "#FF0000";
+    } else if (!g.elite) {
+        bodyCol = "#50ad33"; darkCol = "#00CC00"; headCol = "#66FF44"; eyeCol = "#c05838";
+    } else if (g.hp === 3) {
+        bodyCol = "#c05838"; darkCol = "#CC00CC"; headCol = "#FF44FF"; eyeCol = "#00FFFF";
+    } else if (g.hp === 2) {
+        bodyCol = "#CC00CC"; darkCol = "#990099"; headCol = "#DD33DD"; eyeCol = "#FF3333";
+    } else {
+        bodyCol = "#FF0044"; darkCol = "#CC0033"; headCol = "#FF3366"; eyeCol = "#00FFFF";
+    }
+
+    // GROOVED! Silly involuntary dance — hip-wobble, fast footwork, music notes
+    const dancing = g.danceTimer > 0;
+    if (dancing) {
+        ctx.save();
+        const dcx = (g.x + g.w / 2) * SCALE;
+        const dcy = (g.y + g.h) * SCALE; // pivot at the feet for a hip wiggle
+        ctx.translate(dcx, dcy);
+        ctx.rotate(Math.sin(g.danceTimer * 0.35) * 0.28);
+        // Little bounce on the off-wobble
+        ctx.scale(1, 1 + Math.abs(Math.sin(g.danceTimer * 0.35)) * 0.08);
+        ctx.translate(-dcx, -dcy);
+    }
+
+    drawGoblinSprite(g.elite ? "elite" : "normal", g.x, g.y,
+        dancing ? Math.floor(g.danceTimer / 4) % 4 : g.frame, {
+        dir: dancing ? 0 : g.dir, bodyCol, darkCol, headCol, eyeCol,
+        face: g.donkFace, phase: g.donkPhase
+    });
+
+    if (dancing) {
+        ctx.restore();
+        // Rising music notes
+        for (let ni = 0; ni < 2; ni++) {
+            const nPhase = (180 - g.danceTimer + ni * 30) % 60;
+            ctx.globalAlpha = (1 - nPhase / 60) * 0.9;
+            ctx.font = `${5 * SCALE}px monospace`;
+            ctx.fillStyle = ni === 0 ? "#50ad33" : "#FFD700";
+            ctx.fillText(ni === 0 ? "♪" : "♫",
+                (g.x + (ni === 0 ? 1 : 11)) * SCALE,
+                (g.y - 6 - nPhase * 0.3) * SCALE);
+        }
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Damage flash: bright white burst when hurt
+    if (g.hurtTimer > 8) {
+        ctx.fillStyle = "#ffffff";
+        ctx.globalAlpha = (g.hurtTimer - 8) / 4 * 0.6;
+        ctx.fillRect((g.x - 2) * SCALE, (g.y - 6) * SCALE, (g.w + 4) * SCALE, (g.h + 8) * SCALE);
+        ctx.globalAlpha = 1.0;
+    }
+
+    // Punch telegraph: pulsing red "!" above the elite during wind-up
+    if (g.elite && g.windupTimer > 0) {
+        const wuPulse = 1 + Math.sin(g.windupTimer * 0.5) * 0.2;
+        ctx.font = `${Math.round(9 * SCALE * wuPulse)}px monospace`;
+        ctx.textAlign = "center";
+        const exX = (g.x + g.w / 2) * SCALE;
+        const exY = (g.y - 14) * SCALE;
+        ctx.fillStyle = "#000000";
+        ctx.fillText("!", exX + 2, exY + 2);
+        ctx.fillStyle = "#FF3333";
+        ctx.fillText("!", exX, exY);
+        ctx.textAlign = "left";
+    }
+
+    // HP pips for elite goblins (above head)
+    if (g.elite && g.hp > 0 && g.hp <= 3) {
+        const pipY = g.y - 10;
+        const pipStartX = g.x + g.w / 2 - (3 * 4) / 2;
+        for (let i = 0; i < 3; i++) {
+            const filled = i < g.hp;
+            drawRect(pipStartX + i * 4, pipY, 3, 3, filled ? "#c05838" : "#333333");
+            if (filled) {
+                drawRect(pipStartX + i * 4, pipY, 3, 1, "#FF88FF"); // highlight
+            }
+        }
+    }
+}
+
 
 // Reusable 48x48 dancer sprite
 // gx, gy: position (game coords), pal: color palette
@@ -7774,40 +7355,6 @@ function drawDancerSprite(gx, gy, pal, options) {
     }
 }
 
-function drawDancer(d) {
-    const pal = d.palette;
-    const step = (currentStep + d.phase) % 16;
-
-    // Smooth interpolation
-    const now = performance.now();
-    const stepProgress = lastStepTime ? Math.min((now - lastStepTime) / stepMs, 1.0) : 0;
-    const smoothStep = step + stepProgress;
-
-    // Smooth bob
-    const onBeat = (step % 4 === 0);
-    const onEighth = (step % 2 === 0);
-    const targetBob = onBeat ? 3 : onEighth ? 1 : 0;
-    const nextStep = (step + 1) % 16;
-    const nextOnBeat = (nextStep % 4 === 0);
-    const nextOnEighth = (nextStep % 2 === 0);
-    const nextBob = nextOnBeat ? 3 : nextOnEighth ? 1 : 0;
-    const easedProgress = Math.sin(stepProgress * Math.PI / 2);
-    const bob = targetBob + (nextBob - targetBob) * easedProgress;
-
-    // Smooth arms
-    const armTarget = onBeat ? 1.0 : 0.0;
-    const nextArmTarget = nextOnBeat ? 1.0 : 0.0;
-    const armBlend = armTarget + (nextArmTarget - armTarget) * easedProgress;
-
-    // Smooth feet
-    const footOffset = Math.sin(smoothStep * Math.PI) * 1.5;
-
-    // Shadow (squishes when dancer is higher)
-    const shadowW = 8 + bob * 0.5;
-    drawRect(d.x + 2 - bob * 0.25, d.y + 13, shadowW, 2, PAL.shadow);
-
-    drawDancerSprite(d.x, d.y, pal, { bob, armBlend, footOffset });
-}
 
 // ---- Ending Scene: The Underground Rave ----
 
@@ -10462,10 +10009,6 @@ function renderLevelComplete() {
     drawRect(0, 0, COLS * TILE, ROWS * TILE, "#2C2C2A");
     ctx.globalAlpha = 1.0;
 
-    // Keep dancers dancing on top of the dark overlay
-    for (const d of dancers) {
-        drawDancer(d);
-    }
 
     // "LEVEL X COMPLETE!" text
     if (levelCelebrateTimer > 30) {
@@ -11999,7 +11542,6 @@ function startGame() {
         if (SKIP_INTRO) {
             ensureAudio();
             resetGame();
-            spawnDancers(6);
             lastStepTime = performance.now();
         }
     } catch (e) {
