@@ -51,21 +51,46 @@ const INK = {
 };
 
 // The boil clock + noise (verbatim from the coaster; amplitudes in device px)
+//
+// Every boiling surface exists as THREE baked copies and drawing is a swap —
+// nothing is displaced inside the render loop. That is the same discipline the
+// coaster uses when it re-seeds its filters only on a phase flip, and it is why
+// turning the whole game's linework on costs nothing per frame.
+//
+// Sources are switchable independently because they are not equally good ideas:
+// dense repeating marks (the 96 grid cells) can read as strobe rather than as a
+// drawn line, which is why they were frozen in the first place. The debug menu
+// (backtick) is there to judge that rather than assume it.
+const BOIL = {
+    on: true, rate: 130, amp: 1.0, freeze: false, frozenPhase: 0,
+    room: true, grid: true, chars: true, hud: true, text: true,
+};
+try {
+    const saved = localStorage.getItem("boilCfg");
+    if (saved) Object.assign(BOIL, JSON.parse(saved));
+} catch (e) { /* no storage, keep defaults */ }
+function saveBoilCfg() {
+    try { localStorage.setItem("boilCfg", JSON.stringify(BOIL)); } catch (e) {}
+}
 let perfNow = 0; // advanced once per frame in gameLoop
-const boil = () => Math.floor(perfNow / 130) % 3;
+const boil = () => (!BOIL.on ? 0
+    : BOIL.freeze ? BOIL.frozenPhase
+    : Math.floor(perfNow / BOIL.rate) % 3);
+// Which baked phase a given surface should show. Off -> phase 0, frozen forever.
+const boilPhase = (src) => (BOIL.on && BOIL[src]) ? boil() : 0;
 function hashN(i, seed) { const s = Math.sin(i * 127.1 + seed * 311.7) * 43758.5453; return s - Math.floor(s); }
 function vnoise(x, seed) {
     const c = 46, i = Math.floor(x / c), t = x / c - i;
     const a = hashN(i, seed), b = hashN(i + 1, seed), u = (1 - Math.cos(t * Math.PI)) / 2;
     return a + (b - a) * u;
 }
-function jit(x, seed, amp) { return (vnoise(x, seed + boil() * 7.31) - 0.5) * 2 * amp; }
+function jit(x, seed, amp) { return (vnoise(x, seed + boil() * 7.31) - 0.5) * 2 * amp * BOIL.amp; }
 // Static wonk — same irregularity, frozen. For dense repeating marks
 // (grid tiles), where boiling at density reads as strobe.
-function sjit(x, seed, amp) { return (vnoise(x, seed) - 0.5) * 2 * amp; }
+function sjit(x, seed, amp) { return (vnoise(x, seed) - 0.5) * 2 * amp * BOIL.amp; }
 // Phase-explicit jitter for pre-rendered boil variants (textures are baked
 // once per level in 3 phases, so they can't read the live clock)
-function pjit(x, seed, phase, amp) { return (vnoise(x, seed + phase * 7.31) - 0.5) * 2 * amp; }
+function pjit(x, seed, phase, amp) { return (vnoise(x, seed + phase * 7.31) - 0.5) * 2 * amp * BOIL.amp; }
 
 // Stroke a wobbly hand-inked polyline through the given points (device px),
 // displacing each interior point by the live boil. Used for per-frame ink
@@ -876,7 +901,7 @@ function generateStoneTile(seed, baseColor, darkColor, highlightColor, opts) {
 // Generate stone tile for the grid — paper stone with a hand-inked
 // charcoal border. Static wonk, not boil: 96 repeating tiles boiling in
 // lockstep reads as strobe (coaster bible, the rail-ties lesson).
-function generateGridStoneTile(seed, biome) {
+function generateGridStoneTile(seed, biome, phase) {
     const gs = biome.gridStone;
     const c = generateStoneTile(seed, gs.base, gs.dark, gs.hi, { mossColor: gs.moss });
     const g = c.getContext('2d');
@@ -891,8 +916,8 @@ function generateGridStoneTile(seed, biome) {
         const [x1, y1] = corners[e], [x2, y2] = corners[(e + 1) % 4];
         for (let s = 0; s <= 4; s++) {
             const t = s / 4, x = x1 + (x2 - x1) * t, y = y1 + (y2 - y1) * t;
-            const px = x + sjit(seed * 0.13 + e * 97 + s * 29, 3.1, 1.6);
-            const py = y + sjit(seed * 0.17 + e * 61 + s * 41, 4.7, 1.6);
+            const px = x + pjit(seed * 0.13 + e * 97 + s * 29, 3.1, phase, 1.6);
+            const py = y + pjit(seed * 0.17 + e * 61 + s * 41, 4.7, phase, 1.6);
             (e === 0 && s === 0) ? g.moveTo(px, py) : g.lineTo(px, py);
         }
     }
@@ -904,7 +929,7 @@ function generateGridStoneTile(seed, biome) {
 
 // Generate an active grid tile — flat ink-wash fill in the row's color,
 // paper-white veins, and a hand-inked charcoal border (static wonk).
-function generateGlowTile(seed, glowColor) {
+function generateGlowTile(seed, glowColor, phase) {
     const size = TILE * SCALE;
     const c = document.createElement('canvas');
     c.width = size; c.height = size;
@@ -963,8 +988,8 @@ function generateGlowTile(seed, glowColor) {
         const [x1, y1] = corners[e], [x2, y2] = corners[(e + 1) % 4];
         for (let s = 0; s <= 4; s++) {
             const t = s / 4, x = x1 + (x2 - x1) * t, y = y1 + (y2 - y1) * t;
-            const px = x + sjit(seed * 0.11 + e * 97 + s * 29, 8.3, 1.8);
-            const py = y + sjit(seed * 0.19 + e * 61 + s * 41, 9.1, 1.8);
+            const px = x + pjit(seed * 0.11 + e * 97 + s * 29, 8.3, phase, 1.8);
+            const py = y + pjit(seed * 0.19 + e * 61 + s * 41, 9.1, phase, 1.8);
             (e === 0 && s === 0) ? g.moveTo(px, py) : g.lineTo(px, py);
         }
     }
@@ -1115,13 +1140,30 @@ const gradCache = {};
 
 // Grid glow tiles (active blocks — per row color, multiple variants per row)
 const GLOW_COLORS = [INK.green, INK.mustard, INK.teal, INK.red, INK.silverD, INK.rust];
-const TEX_GRID_ON = [];
-for (let r = 0; r < 6; r++) {
-    TEX_GRID_ON[r] = [];
-    for (let c = 0; c < GRID_COLS; c++) {
-        TEX_GRID_ON[r][c] = generateGlowTile(r * 100 + c * 17 + 7777, GLOW_COLORS[r]);
+// Grid tiles are noise, so a POOL of variants indexed by cell is visually
+// identical to one bake per cell — and it is what makes three phases affordable:
+// 8 variants x 3 phases x 2 states = 48 canvases, against 576 for per-cell.
+const GRID_VARIANTS = 8;
+const gridVariant = (r, c) => (r * 7 + c * 5) % GRID_VARIANTS;
+const TEX_GRID_ON = [];   // [variant][phase]
+for (let v = 0; v < GRID_VARIANTS; v++) {
+    TEX_GRID_ON[v] = [];
+}
+function bakeGridOnTiles() {
+    for (let v = 0; v < GRID_VARIANTS; v++) {
+        for (let ph = 0; ph < 3; ph++) {
+            TEX_GRID_ON[v][ph] = [];
+        }
+    }
+    for (let r = 0; r < GRID_ROWS; r++) {
+        for (let v = 0; v < GRID_VARIANTS; v++) {
+            for (let ph = 0; ph < 3; ph++) {
+                TEX_GRID_ON[v][ph][r] = generateGlowTile(r * 100 + v * 17 + 7777, GLOW_COLORS[r], ph);
+            }
+        }
     }
 }
+bakeGridOnTiles();
 
 // Grid wall background texture (stone slab behind the grid)
 function buildGridWallTexture(biome, LS) {
@@ -1364,11 +1406,11 @@ function rebuildCaveTextures(levelIdx) {
         TEX_WALL_RIGHT[r] = generateCaveWallTile(LS + r * 83 + 444, (r * 11) % 3, biome);
     }
 
-    TEX_GRID_OFF = [];
-    for (let r = 0; r < 6; r++) {
-        TEX_GRID_OFF[r] = [];
-        for (let c = 0; c < GRID_COLS; c++) {
-            TEX_GRID_OFF[r][c] = generateGridStoneTile(LS + r * 100 + c * 17 + 9999, biome);
+    TEX_GRID_OFF = [];   // [variant][phase]
+    for (let v = 0; v < GRID_VARIANTS; v++) {
+        TEX_GRID_OFF[v] = [];
+        for (let ph = 0; ph < 3; ph++) {
+            TEX_GRID_OFF[v][ph] = generateGridStoneTile(LS + v * 17 + 9999, biome, ph);
         }
     }
 
@@ -4651,7 +4693,7 @@ function render() {
     }
 
     // Clear & draw cave background (sprite scaled to canvas, or pre-rendered fallback)
-    ctx.drawImage(TEX_CAVE_BG[boil()], 0, 0);
+    ctx.drawImage(TEX_CAVE_BG[boilPhase("room")], 0, 0);
 
     // (Room variety now comes from the biome system — each level regenerates
     // its textures with a unique seed and the zone's palette.)
@@ -4940,10 +4982,10 @@ function render() {
                 // Draw glow tile (sprite with rotation, or pre-rendered fallback).
                 // NOTE: no draw-time shadowBlur here — the glow is baked into
                 // the tile art itself; shadowBlur per cell was a huge perf cost.
-                ctx.drawImage(TEX_GRID_ON[r][c], bxs, bys);
+                ctx.drawImage(TEX_GRID_ON[gridVariant(r, c)][boilPhase("grid")][r], bxs, bys);
             } else {
                 // Draw dark stone tile (sprite with rotation, or pre-rendered fallback)
-                ctx.drawImage(TEX_GRID_OFF[r][c], bxs, bys);
+                ctx.drawImage(TEX_GRID_OFF[gridVariant(r, c)][boilPhase("grid")], bxs, bys);
             }
 
             // Block toggle pop animation (scale + glow burst)
@@ -8801,7 +8843,7 @@ function advanceIntroScene() {
 // optionally darkened — keeps the title/story scenes visually consistent
 // with the actual levels instead of the old flat-color tiles.
 function drawSceneBackground(darken) {
-    ctx.drawImage(TEX_CAVE_BG[boil()], 0, 0);
+    ctx.drawImage(TEX_CAVE_BG[boilPhase("room")], 0, 0);
     if (darken > 0) {
         ctx.fillStyle = "#000000";
         ctx.globalAlpha = Math.min(1, darken);
