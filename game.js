@@ -606,13 +606,6 @@ const AUDIO_SAMPLES = [
     // Optional crowd call-and-response samples (synth fallback if missing)
     ["yeah",     "assets/audio/yeah.wav"],
     ["crowd",    "assets/audio/crowd.wav"],
-    // Background music loops (1 bar per tempo tier)
-    ["bgm_90",     "assets/audio/bgm-90.wav"],
-    ["bgm_100",    "assets/audio/bgm-100.wav"],
-    ["bgm_112p5",  "assets/audio/bgm-112p5.wav"],
-    ["bgm_128p6",  "assets/audio/bgm-128p6.wav"],
-    ["bgm_150",    "assets/audio/bgm-150.wav"],
-    ["bgm_180",    "assets/audio/bgm-180.wav"],
 ];
 
 function loadAudioSample(key, src) {
@@ -2441,7 +2434,7 @@ function handleCheatCode(key) {
             setLevelTempo(currentLevel);
             ensureAudio();
             gameState = "playing";
-            lastStepTime = performance.now();
+            resetSequencerClock();
             console.log("DEBUG: Jumped to level " + (targetLevel + 1));
         }
     }
@@ -2642,43 +2635,79 @@ function aabb(a, b) {
 
 
 
-// ---- Sequencer tick (extracted so it can run during sabotage-anim too) ----
+// ---- Sequencer clock ------------------------------------------------------
+// Hits are scheduled AHEAD against the audio clock, not fired at whatever
+// instant an animation frame happens to land. The old tick did `lastStepTime =
+// now` every step, so error never corrected and the tempo ran permanently slow,
+// and it scheduled for `currentTime` exactly — zero lookahead — so every hit
+// carried up to a frame of jitter. Inaudible on a 60ms synth blip; very audible
+// on a real kick sample, which is where this is going.
+//
+// The catch is that `currentStep` and `lastStepTime` are read by the visual
+// playhead AND by the groove-bonus window, and those want the step SOUNDING NOW,
+// not the one being queued 100ms into the future. So the scheduler runs on its
+// own pair of variables and the old two are back-derived from the audio clock
+// each frame — every existing consumer keeps working untouched.
+const SCHED_AHEAD = 0.1;     // seconds of lookahead
+let nextStepTime = 0;        // audioCtx time of the next step to queue
+let scheduleStep = 0;        // which step that is
+let schedQueue = [];         // {step, t} pending, so "what is sounding" is knowable
+
+function resetSequencerClock() {
+    currentStep = 0;
+    scheduleStep = 0;
+    schedQueue = [];
+    nextStepTime = 0;
+    lastStepTime = performance.now();
+}
+
 function tickSequencer() {
-    if (playing) {
-        // The beat must not run before the audio clock does. A suspended
-        // AudioContext freezes its clock, so scheduling hits while suspended
-        // piles them up into a burst at unlock — and the visual playhead
-        // would sweep silently, permanently desynced from what you hear.
-        if (!audioCtx || audioCtx.state !== "running") {
-            sequencerStarted = false;
-            return;
+    if (!playing) return;
+    // The beat must not run before the audio clock does. A suspended
+    // AudioContext freezes its clock, so scheduling hits while suspended piles
+    // them up into a burst at unlock.
+    if (!audioCtx || audioCtx.state !== "running") {
+        sequencerStarted = false;
+        return;
+    }
+    const stepSec = stepMs / 1000;
+    const now = audioCtx.currentTime;
+
+    if (!sequencerStarted) {
+        // First audible frame: pattern starts clean from the top, both clocks
+        // born together
+        sequencerStarted = true;
+        currentStep = 0;
+        scheduleStep = 0;
+        schedQueue = [];
+        nextStepTime = now;
+        lastStepTime = performance.now();
+    }
+    // Tab-stall guard: resync rather than firing a burst of catch-up hits
+    if (nextStepTime < now - stepSec * 2) nextStepTime = now;
+
+    // ---- schedule everything inside the lookahead window ----
+    while (nextStepTime < now + SCHED_AHEAD) {
+        const ar = getActiveRows();
+        for (let r = 0; r < ar; r++) {
+            if (grid[r][scheduleStep]) drumFns[r](nextStepTime);
         }
-        if (!sequencerStarted) {
-            // First audible frame: start the pattern clean from the top,
-            // audio clock and visual clock born together
-            sequencerStarted = true;
-            currentStep = 0;
-            lastStepTime = performance.now() - stepMs; // fire step 0 right now
-        }
-        if (!lastStepTime) lastStepTime = performance.now();
-        const now = performance.now();
-        const elapsed = now - lastStepTime;
-        if (elapsed > stepMs * 2) {
-            lastStepTime = now;
-        }
-        if (now - lastStepTime >= stepMs) {
-            lastStepTime = now;
-            const t = audioCtx ? audioCtx.currentTime : 0;
-            if (audioCtx) {
-                const ar = getActiveRows();
-                for (let r = 0; r < ar; r++) {
-                    if (grid[r][currentStep]) {
-                        drumFns[r](t);
-                        rowTrigger[r] = 8; // pulse for 8 frames
-                    }
-                }
-            }
-            currentStep = (currentStep + 1) % GRID_COLS;
+        schedQueue.push({ step: scheduleStep, t: nextStepTime });
+        scheduleStep = (scheduleStep + 1) % GRID_COLS;
+        nextStepTime += stepSec;          // accumulate — error cannot build up
+    }
+
+    // ---- back-derive what is SOUNDING, for the visuals and the groove window --
+    let sounded = null;
+    while (schedQueue.length && schedQueue[0].t <= now) sounded = schedQueue.shift();
+    if (sounded) {
+        // `currentStep` keeps its old meaning — the step AFTER the one sounding —
+        // so playheadCol/soundingCol/the beat window all read unchanged.
+        currentStep = (sounded.step + 1) % GRID_COLS;
+        lastStepTime = performance.now();
+        const ar = getActiveRows();
+        for (let r = 0; r < ar; r++) {
+            if (grid[r][sounded.step]) rowTrigger[r] = 8;   // pulse for 8 frames
         }
     }
 }
@@ -3846,8 +3875,7 @@ function resetGame() {
             cellFlash[r][c] = 0, cellRecent[r][c] = 0;
 
     // Reset sequencer and frame timing
-    currentStep = 0;
-    lastStepTime = performance.now();
+    resetSequencerClock();
     lastTime = 0;
     frameAccum = 0;
 
@@ -4180,8 +4208,7 @@ function advanceLevel() {
             cellFlash[r][c] = 0, cellRecent[r][c] = 0;
 
     // Reset sequencer timing to prevent catch-up
-    currentStep = 0;
-    lastStepTime = performance.now();
+    resetSequencerClock();
 
     // Set tempo for new level
     setLevelTempo(currentLevel);
@@ -8417,8 +8444,7 @@ function renderTitleScreen() {
             stopTitleDrums();
             if (SKIP_INTRO) {
                 gameState = "playing";
-                currentStep = 0;
-                lastStepTime = performance.now();
+                resetSequencerClock();
                 return;
             }
             gameState = "intro";
@@ -8707,8 +8733,7 @@ function advanceIntroScene() {
         // All scenes complete — start gameplay
         stopStoryDrums();
         gameState = "playing";
-        currentStep = 0;
-        lastStepTime = performance.now();
+        resetSequencerClock();
         sceneTransition = { active: true, from: "intro", to: "playing", progress: 0, duration: 20 };
         return;
     }
@@ -11545,7 +11570,7 @@ function startGame() {
         if (SKIP_INTRO) {
             ensureAudio();
             resetGame();
-            lastStepTime = performance.now();
+            resetSequencerClock();
         }
     } catch (e) {
         console.error("startGame init error:", e);
