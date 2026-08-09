@@ -23,8 +23,12 @@
             border: 4px solid #2C2C2A;
         }
         canvas {
-            image-rendering: pixelated;
-            image-rendering: crisp-edges;
+            /* NOT `pixelated`: that forces nearest-neighbour at the final
+               scale, and the canvas is almost never displayed at an integer
+               multiple of 1920 — so it was dropping or doubling pixel columns
+               at random across BUZZ's ink lines. He's hand-drawn art now, not
+               a pixel-art sprite; he wants a real filter. */
+            image-rendering: auto;
             /* Scale to fit the window while preserving the room's 1920x800
                aspect ratio. The internal resolution is unchanged — this is
                display scaling only. */

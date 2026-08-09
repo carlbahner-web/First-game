@@ -51,14 +51,17 @@ html = """<style>
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     -webkit-tap-highlight-color: transparent;
   }
-  #game-container { display:flex; flex-direction:column; align-items:center; }
+  /* the HUD overlays the room's wall band, so the page only fits the room */
+  #game-container { position:relative; line-height:0; border:4px solid var(--frame); }
   canvas {
-    image-rendering: pixelated; image-rendering: crisp-edges;
-    width: min(calc(100vw - 8px), calc((100vh - 18px) * 2.074));
+    /* not `pixelated` — BUZZ is hand-drawn art, and the canvas is almost
+       never displayed at an integer multiple of its width */
+    image-rendering: auto;
+    width: min(calc(100vw - 8px), calc((100vh - 12px) * 2.4));
     height: auto;
   }
-  #game { border:4px solid var(--frame); border-bottom:2px solid var(--frame); }
-  #hud  { border:4px solid var(--frame); border-top:2px solid var(--frame); }
+  #game { display:block; }
+  #hud  { position:absolute; left:0; bottom:0; width:100%%; }
   @media (prefers-reduced-motion: reduce) { canvas { transition:none; } }
 </style>
 <div id="game-container">
