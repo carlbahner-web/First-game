@@ -1987,6 +1987,7 @@ function createGoblin(caveIndex) {
         destX: spawnX, destY: spawnY,
         w: TILE, h: TILE,
         dir: 0, frame: 0, frameTimer: 0,
+        wob: Math.random() * 100, // per-Donk walk-phase offset
         speed: 0.5,
         dead: true,
         respawnTimer: 300,
@@ -9248,11 +9249,151 @@ function drawDJSetupPiece(pieceIndex, boothX, boothY, options) {
 // gx, gy: top-left position (game coords)
 // frame: animation frame (0-3)
 // options: { dir, showShadow, bodyCol, darkCol, headCol, eyeCol }
+// ============================================================
+// DONK — the drum enemy, ported from BUZZ's Wild Ride
+// Four-piece rubber-hose puppet: body shell, drumhead, arm, leg
+// (arm and leg mirrored for the far side). Loads independently of
+// USE_IMAGE_ASSETS; until the PNGs land in assets/donk/ the
+// procedural goblin below draws as the fallback.
+// ============================================================
+
+// The rig table, verbatim from the coaster (base unit: Donk is 58 tall).
+// Pivots are FRACTIONS of the art box, not pixel offsets — the pieces can
+// be re-exported at any resolution and the rig still works.
+const DK = {
+    bx: -26.41, by: -51.84, bw: 53.14, bh: 36.33, // body+button crop rect
+    btnBot: -41.6,                                 // drumhead bottom = pulse pivot
+    legW: 16.97, legH: 32, legPX: 0.70, legPY: 0.02,
+    armW: 19.66, armH: 24, armPX: 0.90, armPY: 0.07,
+};
+
+const DONK_FILES = {
+    body:   "assets/donk/donk-body.png",
+    button: "assets/donk/donk-button.png",
+    arm:    "assets/donk/donk-arm.png",
+    leg:    "assets/donk/donk-leg.png",
+};
+const DONK_IMG = { body: null, button: null, arm: null, leg: null };
+const DONK_TINT = { elite: {} }; // tinted variants, baked once on load
+let donkReady = false;
+
+function bakeTint(img, color, amt) {
+    const c = document.createElement("canvas");
+    c.width = img.width || 1;
+    c.height = img.height || 1;
+    const g = c.getContext("2d");
+    g.drawImage(img, 0, 0);
+    g.globalCompositeOperation = "source-atop";
+    g.globalAlpha = amt;
+    g.fillStyle = color;
+    g.fillRect(0, 0, c.width, c.height);
+    return c;
+}
+
+function donkFinishLoad() {
+    if (DONK_IMG.body && DONK_IMG.button && DONK_IMG.arm && DONK_IMG.leg) {
+        // Elite variant: Harbor Teal wash on shell + limbs; drumhead stays cream
+        DONK_TINT.elite.body = bakeTint(DONK_IMG.body, INK.teal, 0.45);
+        DONK_TINT.elite.arm = bakeTint(DONK_IMG.arm, INK.teal, 0.45);
+        DONK_TINT.elite.leg = bakeTint(DONK_IMG.leg, INK.teal, 0.45);
+        DONK_TINT.elite.button = DONK_IMG.button;
+        donkReady = true;
+    }
+}
+
+function loadDonkImages() {
+    // An artifact/bundled build can define DONK_SRC with data URIs (same
+    // contract as the coaster's build.py); otherwise load from assets/
+    const srcs = (typeof DONK_SRC !== "undefined") ? DONK_SRC : DONK_FILES;
+    let pending = 4;
+    for (const key of ["body", "button", "arm", "leg"]) {
+        const img = new Image();
+        img.onload = () => { DONK_IMG[key] = img; if (--pending === 0) donkFinishLoad(); };
+        img.onerror = () => { if (--pending === 0) donkFinishLoad(); };
+        img.src = srcs[key];
+    }
+}
+loadDonkImages();
+
+// Draw Donk with his feet at device-px (cx, cy), scaled by k = height/58.
+// Two sine waves at deliberately incommensurate rates (walk 0.005, pulse
+// 0.006 — matched rates read as mechanical), one table of numbers.
+function drawDonk(cx, cy, k, o) {
+    const set = (o.tint && DONK_TINT[o.tint] && DONK_TINT[o.tint].body) ? DONK_TINT[o.tint] : DONK_IMG;
+    const ph = perfNow * 0.005 + (o.wob || 0);
+    const sw = Math.sin(ph) * (o.stand ? 0.22 : 1); // blocked Donk marks time at 22%
+    ctx.save();
+    ctx.translate(cx, cy);
+    if (o.mirror) ctx.scale(-1, 1);
+    if (o.flash) ctx.filter = "brightness(1.9) saturate(0.4)";
+
+    const legAt = (hx, hy, rot) => {
+        ctx.save();
+        ctx.translate(hx * k, hy * k);
+        ctx.rotate(rot);
+        ctx.drawImage(set.leg, -DK.legW * DK.legPX * k, -DK.legH * DK.legPY * k, DK.legW * k, DK.legH * k);
+        ctx.restore();
+    };
+    const armAt = (side, swing) => {
+        ctx.save();
+        ctx.translate(side * 22 * k, -31 * k); // shoulder on the shell edge
+        if (side > 0) ctx.scale(-1, 1);        // far arm mirrors the art
+        ctx.rotate(swing);
+        ctx.drawImage(set.arm, -DK.armW * DK.armPX * k, -DK.armH * DK.armPY * k, DK.armW * k, DK.armH * k);
+        ctx.restore();
+    };
+
+    // Legs — hips 9 apart, 31.4 up inside the shell. The swing is
+    // atan2(displacement, leg length), NOT a raw angle: converting a
+    // horizontal displacement through the leg keeps the sole grounded,
+    // and the 8 caps the stride so the feet never cross.
+    legAt(-9, -31.4, Math.atan2(sw * -8, 31.4));
+    legAt(9, -31.4, Math.atan2(sw * 8, 31.4));
+
+    // Step bob: carries everything above the hips
+    ctx.translate(0, -Math.abs(sw) * 1.8 * k);
+
+    // Drumhead pulse, scaled about its own BOTTOM edge (scale about the
+    // centre and the head visibly detaches from the shell)
+    const p01 = 0.5 + 0.5 * Math.sin(perfNow * 0.006 + (o.wob || 0));
+    ctx.save();
+    ctx.translate(0, DK.btnBot * k);
+    ctx.scale(1, 0.86 + 0.28 * p01);
+    ctx.translate(0, -DK.btnBot * k);
+    ctx.drawImage(set.button, DK.bx * k, DK.by * k, DK.bw * k, DK.bh * k);
+    ctx.restore();
+
+    // Draw order is load-bearing: button, then body (shell overlaps the
+    // drumhead's lower edge), then BOTH arms in front of the shell
+    ctx.drawImage(set.body, DK.bx * k, DK.by * k, DK.bw * k, DK.bh * k);
+    armAt(1, sw * 0.4);
+    armAt(-1, sw * 0.4);
+    ctx.restore();
+}
+
 function drawGoblinSprite(type, gx, gy, frame, options) {
     const opts = options || {};
     const dir = opts.dir !== undefined ? opts.dir : 0;
     const showShadow = opts.showShadow !== false;
     const bob = (frame % 2 === 1 ? 1 : 0) * SCALE;
+
+    // ---- Donk path (drum enemy) ----
+    // The catapult keeps its procedural crew until the machine gets its
+    // own treatment; everything else walks as Donk once the art loads.
+    if (donkReady && type !== "catapult") {
+        if (showShadow) {
+            drawRect(gx + 3, gy + TILE - 2, TILE - 6, 3, PAL.shadow);
+        }
+        drawDonk((gx + TILE / 2) * SCALE, (gy + TILE - 2) * SCALE,
+            (type === "elite" ? 78 : 66) / 58, {
+                wob: opts.wob || 0,
+                mirror: dir === 2, // faces the way he walks; no back view needed
+                stand: opts.stand,
+                flash: opts.bodyCol === "#ffffff", // hurt + windup telegraph flashes
+                tint: type === "elite" ? "elite" : null,
+            });
+        return;
+    }
 
     // ---- Sprite sheet path (early return if sheet loaded) ----
     {
@@ -9567,7 +9708,8 @@ function drawGoblinFor(g) {
 
     drawGoblinSprite(g.elite ? "elite" : "normal", g.x, g.y,
         dancing ? Math.floor(g.danceTimer / 4) % 4 : g.frame, {
-        dir: dancing ? 0 : g.dir, bodyCol, darkCol, headCol, eyeCol
+        dir: dancing ? 0 : g.dir, bodyCol, darkCol, headCol, eyeCol,
+        wob: g.wob || 0
     });
 
     if (dancing) {
