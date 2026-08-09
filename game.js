@@ -9466,7 +9466,7 @@ const BZ = {
     frontExtend: 0.25,  // how much further the forward foot reaches
     frontStraight: 0.3, // how much slack the forward leg gives up (straightens it)
     extremes: 0.55, // <1 holds the spread pose, snaps through the pass
-    armX: 20, armXTrail: 22, armGauge: 4.2,
+    armX: 20, armXTrail: 18, armGauge: 4.2,
     armLen: 40,          // longer than the old 31 — an elbow needs hose to bend
     armReach: 0.88,      // hand distance as a fraction of armLen (leaves a crook)
     armRest: 0.209,      // rad both arms lean FORWARD at rest (12 deg)
