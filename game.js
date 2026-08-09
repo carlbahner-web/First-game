@@ -7,13 +7,19 @@ const ctx = canvas.getContext("2d");
 
 // ---- Constants ----
 const TILE = 16;
-const SCALE = 4;
-const COLS = 28;           // room width in tiles
-const ROWS = 12;           // room height in tiles
+const SCALE = 5;           // 80 device px per tile — cells 25% larger than the
+                           // old SCALE 4, which is what the sequencer needed to
+                           // stay readable on a phone
+const COLS = 24;           // room width in tiles
+const ROWS = 10;           // room height in tiles
 const GRID_COLS = 16;      // sequencer steps
 const GRID_ROWS = 6;       // max drum channels (O, H, S, K, B, T)
-const GRID_X = 6;          // grid start tile-x (centered: 6 + 16 + 6 = 28)
-const GRID_Y = 3;          // grid start tile-y (centered: 3 + 6 + 3 = 12)
+const GRID_X = 4;          // grid start tile-x (centered: 4 + 16 + 4 = 24)
+const GRID_Y = 2;          // grid start tile-y (centered: 2 + 6 + 2 = 10)
+// Character rigs are authored in a 58-unit space and converted straight to
+// device px, so they'd shrink relative to the room when SCALE changes. This
+// pins them to the tile instead.
+const RIG = SCALE / 4;
 const GRID_Y_OFFSET = 0;   // no offset needed with centered layout
 const DOOR_TILE_Y = Math.floor(ROWS / 2); // exit door on the right wall
 // (gap row after kick removed)
@@ -2869,7 +2875,7 @@ function spawnDancers(count) {
         // Dancer area: rows 11-16, cols 2-17, with sub-tile pixel offsets
         const minPxX = 2 * TILE + 2;
         const maxPxX = (COLS - 3) * TILE - 2;
-        const minPxY = 11 * TILE;
+        const minPxY = (GRID_Y + GRID_ROWS) * TILE;   // below the sequencer
         const maxPxY = (ROWS - 1) * TILE - TILE;
         let targetX, targetY, attempts = 0;
         let valid = false;
@@ -6621,7 +6627,7 @@ function updateCaveReturn() {
             // Target position: random spot in the dancer area
             const minPxX = 2 * TILE + 2;
             const maxPxX = (COLS - 3) * TILE - 2;
-            const minPxY = 11 * TILE;
+            const minPxY = (GRID_Y + GRID_ROWS) * TILE;   // below the sequencer
             const maxPxY = (ROWS - 1) * TILE - TILE;
             let targetX, targetY, attempts = 0;
             let valid = false;
@@ -8020,7 +8026,9 @@ function render() {
         drawText(num, tx, gridBottomTileY() * TILE + 8 + GRID_Y_OFFSET, c === soundingCol && playing ? PAL.playhead : "#5a8a8f", 3);
     }
 
-    // Pattern-progress counter (above grid, right-aligned) — "PATTERN 18/22"
+    // Pattern-progress counter (below grid, right-aligned) — "PATTERN 18/22"
+    // It used to sit above the grid, but at the current room height that band
+    // belongs to the hanging lights.
     if (currentLevel < LEVELS.length && !LEVELS[currentLevel].noPattern) {
         const targetPat = LEVELS[currentLevel].pattern;
         const arP = getActiveRows();
@@ -8028,12 +8036,15 @@ function render() {
         for (let r = 0; r < arP; r++)
             for (let c = 0; c < GRID_COLS; c++)
                 if (grid[r][c] === targetPat[r][c]) cellsCorrect++;
-        const progText = "PATTERN " + cellsCorrect + "/" + cellsTotal;
-        const progX = (GRID_X + GRID_COLS) * TILE - progText.length * 4;
-        const progY = GRID_Y * TILE + GRID_Y_OFFSET - 9;
+        // Parked in the right margin as a two-line plate. Above the grid is the
+        // light rig's band and below it is the step-number line, so the margin
+        // is the only place left that never collides.
+        const progX = (GRID_X + GRID_COLS) * TILE + 5;
+        const progY = GRID_Y * TILE + GRID_Y_OFFSET + 2;
         const progCol = cellsCorrect === cellsTotal ? "#50ad33"
             : cellsCorrect >= cellsTotal - 4 ? "#F6CC60" : "#8a9a8f";
-        drawText(progText, progX, progY, progCol, 4);
+        drawText("PATTERN", progX, progY, progCol, 3);
+        drawText(cellsCorrect + "/" + cellsTotal, progX, progY + 9, progCol, 3);
     }
 
     // HUD is rendered on separate canvas
@@ -8471,7 +8482,7 @@ function render() {
             : Math.min(1, tutorialHintTimer / 30); // fade in over 0.5s
         if (hintAlpha > 0) {
             const W_t = COLS * TILE;
-            const hintY = (GRID_Y - 1) * TILE + GRID_Y_OFFSET;
+            const hintY = gridBottomTileY() * TILE + 16 + GRID_Y_OFFSET;
             ctx.globalAlpha = hintAlpha * 0.85;
             ctx.font = `${3.5 * SCALE}px monospace`;
             ctx.textAlign = "center";
@@ -9105,7 +9116,7 @@ function drawRuinedVenueBackdrop(t, options) {
     // Corrupted beat grid (carries over from intro scenes)
     if (introGridState && !skipGrid) {
         const miniGridY = GRID_Y * TILE + GRID_Y_OFFSET;
-        const miniGridX = 3 * TILE;
+        const miniGridX = GRID_X * TILE;   // centred like the real sequencer
         ctx.globalAlpha = 0.35;
         for (let r = 0; r < 4; r++) {
             for (let c = 0; c < 16; c++) {
@@ -9412,7 +9423,7 @@ let donkReady = false;
 // The player is BUZZ (the smiling drum, via the hero slot below).
 // Flip to false to get procedural Carl back.
 const DONK_PLAYER = true;
-const BUZZ_SCALE = 75 / 58;   // drawn height vs the 58-unit rig base (was 90 —
+const BUZZ_SCALE = 75 / 58 * RIG;   // drawn height vs the 58-unit rig base (was 90 —
                               // at 90 his drum sat a whole tile above his hitbox)
 let donkCarlPhase = 0;        // player stride phase (advances with distance moved)
 let donkCarlWalk = 0;         // eased 0..1 walk amount — a one-frame gap must not pop the pose
@@ -10014,7 +10025,7 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
             ctx.fill();
         }
         drawDonk((gx + TILE / 2) * SCALE, (gy + TILE - 2) * SCALE,
-            (type === "elite" ? 78 : 66) / 58, {
+            (type === "elite" ? 78 : 66) / 58 * RIG, {
                 wob: opts.phase !== undefined ? 0 : (opts.wob || 0),
                 phase: opts.phase,
                 stride: 12,
@@ -11075,7 +11086,7 @@ function renderEnding() {
         // Beat grid (lights up in phase 1+)
         if (endingPhase >= 1) {
             const miniGridY = GRID_Y * TILE + GRID_Y_OFFSET;
-            const miniGridX = 3 * TILE;
+            const miniGridX = GRID_X * TILE;   // centred like the real sequencer
             const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
             const gridAlpha = endingPhase === 1 ? Math.min(1, endingTimer / 60) : 1;
             ctx.globalAlpha = gridAlpha;
@@ -11625,7 +11636,7 @@ function renderTitleScreen() {
 
     // Beat grid (small, showing the beat)
     const miniGridY = GRID_Y * TILE + GRID_Y_OFFSET;
-    const miniGridX = 3 * TILE;
+    const miniGridX = GRID_X * TILE;   // centred like the real sequencer
     const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
     for (let r = 0; r < 4; r++) {
         for (let c = 0; c < 16; c++) {
@@ -11734,8 +11745,12 @@ function renderTitleScreen() {
         return 1 - Math.pow(1 - t, 3) * Math.cos(t * Math.PI * 0.5);
     }
 
-    // Dance floor title area — positioned below the dancers
-    const titleBaseY = (GRID_Y + 7) * TILE + 12; // in the open dance floor space
+    // The logo sits OVER the decorative sequencer, with the dancers below it.
+    // Anchored to the room height rather than the grid: the whole block runs
+    // titleBaseY .. +78, and in a 10-row room there is no strip below the
+    // dancers deep enough to hold it — it used to run off the bottom of the
+    // canvas, which is why GOBLINS was clipped even before the room shrank.
+    const titleBaseY = H - 126;
 
     // "ATTACK OF THE" subtitle — fades in
     const subAlpha = Math.min(1, titleEntrancePhase / 30) * titleTextAlpha;
@@ -12260,7 +12275,7 @@ function renderIntro() {
 
         // Beat grid (small, showing the beat is perfect)
         const miniGridY = GRID_Y * TILE + GRID_Y_OFFSET;
-        const miniGridX = 3 * TILE;
+        const miniGridX = GRID_X * TILE;   // centred like the real sequencer
         const patterns = [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
         for (let r = 0; r < 4; r++) {
             for (let c = 0; c < 16; c++) {
@@ -12427,7 +12442,7 @@ function renderIntro() {
 
         // Beat grid — uses mutable state so goblins can flip cells
         const miniGridY = GRID_Y * TILE + GRID_Y_OFFSET;
-        const miniGridX = 3 * TILE;
+        const miniGridX = GRID_X * TILE;   // centred like the real sequencer
         const patterns = introGridState || [INTRO_BEAT.O, INTRO_BEAT.H, INTRO_BEAT.S, INTRO_BEAT.K];
         for (let r = 0; r < 4; r++) {
             for (let c = 0; c < 16; c++) {
@@ -12641,7 +12656,7 @@ function renderIntro() {
 
         // Beat grid — corruption starts after goblins reach it (~frame 120)
         const miniGridY = GRID_Y * TILE + GRID_Y_OFFSET;
-        const miniGridX = 3 * TILE;
+        const miniGridX = GRID_X * TILE;   // centred like the real sequencer
         const corruptStart = 120;
         if (t > corruptStart) {
             const corruptProgress = Math.min(1, (t - corruptStart) / 300);

@@ -23,10 +23,10 @@
         canvas {
             image-rendering: pixelated;
             image-rendering: crisp-edges;
-            /* Scale to fit the window while preserving the 1792x864 total
-               aspect ratio (game 768 + HUD 96 = 864 tall). The internal
+            /* Scale to fit the window while preserving the 1920x920 total
+               aspect ratio (game 800 + HUD 120 = 920 tall). The internal
                canvas resolution is unchanged — this is display scaling only. */
-            width: min(calc(100vw - 16px), calc((100vh - 26px) * 2.074));
+            width: min(calc(100vw - 16px), calc((100vh - 26px) * 2.087));
             height: auto;
         }
         #game {
