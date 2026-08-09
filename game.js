@@ -9451,20 +9451,74 @@ function donkSettlePhase(ph) {
 // repeatedly is a clean box filter — every source pixel contributes — so the
 // final draw is a gentle <2x step instead of a brutal 6x one. Done once at
 // load, it costs nothing per frame.
-function mip(img, maxW) {
+function mip(img, targetW) {
     let src = img;
-    while (src.width / 2 >= maxW && src.width > 8) {
-        const c = document.createElement("canvas");
-        c.width = Math.max(1, Math.round(src.width / 2));
-        c.height = Math.max(1, Math.round(src.height / 2));
-        const g = c.getContext("2d");
-        g.imageSmoothingEnabled = true;
-        g.imageSmoothingQuality = "high";
-        g.drawImage(src, 0, 0, c.width, c.height);
-        src = c;
+    // Halve while there's more than 2x to give away — each halving is a clean
+    // box filter where every source pixel contributes
+    while (src.width / 2 >= targetW && src.width > 8) {
+        src = mipStep(src, Math.round(src.width / 2), Math.round(src.height / 2));
+    }
+    // then one exact step onto the target, so the per-frame draw is never
+    // reducing by more than a hair
+    if (src.width > targetW) {
+        src = mipStep(src, Math.max(1, Math.round(targetW)),
+                      Math.max(1, Math.round(src.height * targetW / src.width)));
     }
     return src;
 }
+function mipStep(src, w, h) {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const g = c.getContext("2d");
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = "high";
+    mipping = true;
+    try { g.drawImage(src, 0, 0, w, h); } finally { mipping = false; }
+    return c;
+}
+
+// Every image in the game has this problem, not just BUZZ: the sequencer's
+// stone tiles are 512px drawings painted into 80px cells, which is the same
+// 6:1 reduction. Rather than hand-tune each call site, drawImage itself picks
+// the right pre-shrunk copy. It's a no-op unless the source is meaningfully
+// larger than the destination, so pre-baked textures and already-small art
+// pass straight through.
+let mipping = false;
+const MIPS = new WeakMap();
+function mipFor(img, destW) {
+    if (mipping || !img || !destW || !(destW > 0)) return img;
+    const sw = img.width || 0;
+    if (!sw || sw <= destW * 1.3) return img;
+    // quantise the target so a rotating or pulsing sprite doesn't rebuild a
+    // mip every frame
+    const key = Math.max(8, Math.pow(2, Math.ceil(Math.log2(destW))));
+    if (sw <= key * 1.3) return img;
+    let byW = MIPS.get(img);
+    if (!byW) { byW = new Map(); MIPS.set(img, byW); }
+    let m = byW.get(key);
+    if (!m) { m = mip(img, key); byW.set(key, m); }
+    return m;
+}
+(function patchDrawImage() {
+    const P = (typeof CanvasRenderingContext2D !== "undefined") && CanvasRenderingContext2D.prototype;
+    if (!P || P.__mipPatched) return;
+    const orig = P.drawImage;
+    P.drawImage = function (img, ...a) {
+        if (a.length === 4) {                       // dx, dy, dw, dh
+            const m = mipFor(img, a[2]);
+            if (m !== img) return orig.call(this, m, a[0], a[1], a[2], a[3]);
+        } else if (a.length === 8) {                // sx..sh, dx..dh
+            const m = mipFor(img, a[6]);
+            if (m !== img) {
+                const f = m.width / img.width;
+                return orig.call(this, m, a[0] * f, a[1] * f, a[2] * f, a[3] * f,
+                                 a[4], a[5], a[6], a[7]);
+            }
+        }
+        return orig.call(this, img, ...a);
+    };
+    P.__mipPatched = true;
+})();
 
 function bakeTint(img, color, amt) {
     const c = document.createElement("canvas");
@@ -9543,32 +9597,23 @@ function heroSet() {
         // thickness — the "thread arms" bug. Each piece is instead sized so its
         // hose renders at a shared gauge, and the hand slice keeps its natural
         // aspect so stretching for reach never distorts the glove.
-        //
-        // Both helpers pre-shrink the source toward the size it is actually
-        // drawn at (see mip). For a LIMB only the hand slice comes from the
-        // image — the hose is a stroked path — so the target is the hand's
-        // width: aw * gauge/hose * k, times the ~2.05 the punch swells it by.
-        const mk = (im, aw, ah, hose, split, px, gauge) => {
-            if (!im) return null;
-            const drawW = aw * ((gauge || 5) / hose) * BUZZ_SCALE * 2.05;
-            return { img: mip(im, Math.max(24, drawW * 2.2)), aw, ah, hose, split, px };
-        };
-        // A body is drawn whole, so its target is simply the drawn width.
-        const mkBody = (im, rigW) => im ? mip(im, Math.max(48, rigW * BUZZ_SCALE * 2.2)) : null;
+        // (Downscaling is handled globally — see mipFor — so these just wrap.)
+        const mk = (im, aw, ah, hose, split, px) => im ? ({ img: im, aw, ah, hose, split, px }) : null;
+        const mkBody = im => im || null;
         DONK_HERO = {
-            body: mkBody(img, DK.bw),
+            body: mkBody(img),
             leadSign: 1,                 // art faces +x, so the leading side is +x
             armXTrail: 22,               // resting arm, drawn in front of the shell
             button: null, // face is part of the body art — no separate pulse piece
             arm: DONK_IMG.arm,   // fallback if the straight-hose piece is absent
             leg: DONK_IMG.leg,
-            armMeta:  mk(DONK_IMG.buzzArm,  127, 512, 38, 0.760, 0.453, 4.2), // relaxed hand
+            armMeta:  mk(DONK_IMG.buzzArm, 127, 512, 38, 0.760, 0.453), // relaxed hand
             // the same glove with the interior palm crease painted out — the
             // front hand shows the BACK of the glove, which has no crease
-            armCleanMeta: mk(DONK_IMG.buzzArmClean, 127, 512, 38, 0.760, 0.453, 4.2),
-            legMeta:  mk(DONK_IMG.buzzLeg,  170, 512, 61, 0.725, 0.324, 5.76), // hose + shoe
-            fistMeta: mk(DONK_IMG.buzzFist, 117, 512, 56, 0.758, 0.491, 6.0), // punch
-            waveMeta: mk(DONK_IMG.buzzWave, 143, 512, 56, 0.686, 0.462, 5.6), // spread hand
+            armCleanMeta: mk(DONK_IMG.buzzArmClean, 127, 512, 38, 0.760, 0.453),
+            legMeta:  mk(DONK_IMG.buzzLeg, 170, 512, 61, 0.725, 0.324), // hose + shoe
+            fistMeta: mk(DONK_IMG.buzzFist, 117, 512, 56, 0.758, 0.491), // punch
+            waveMeta: mk(DONK_IMG.buzzWave, 143, 512, 56, 0.686, 0.462), // spread hand
             armGauge: 4.2, armLen: 32,   // hose thickness / shoulder-to-hand
             legGauge: 4.8, legLen: 39,   // legs run a slightly heavier gauge
             fistGauge: 6.0,              // the punch arm tenses thicker
@@ -9596,27 +9641,27 @@ function heroSet() {
             // of the throw, otherwise the first frame stamps the glove over
             // his own face.
             punchPose: (DONK_IMG.buzzPunchBody && DONK_IMG.buzzPunchArm) ? {
-                body: mkBody(DONK_IMG.buzzPunchBody, 50.8),
-                arm: mk(DONK_IMG.buzzPunchArm, 262, 512, 81, 0.405, 0.556, 5.03),
+                body: mkBody(DONK_IMG.buzzPunchBody),
+                arm: mk(DONK_IMG.buzzPunchArm, 262, 512, 81, 0.405, 0.556),
                 h: 72.4, solesAt: 0.9994, drumCx: 0.508,
                 shX: 118 / 359, shY: 197 / 512, gauge: 5.03, armLen: 31.8,
                 front: true, minExt: 0.22,
             } : null,
             downPose: (DONK_IMG.buzzDownBody && DONK_IMG.buzzDownArm) ? {
-                body: mkBody(DONK_IMG.buzzDownBody, 62.6),
-                arm: mk(DONK_IMG.buzzDownArm, 221, 512, 68, 0.6445, 0.493, 5.2),
+                body: mkBody(DONK_IMG.buzzDownBody),
+                arm: mk(DONK_IMG.buzzDownArm, 221, 512, 68, 0.6445, 0.493),
                 h: 75, solesAt: 0.998, drumCx: 0.630,
                 shX: 157 / 427, shY: 157 / 512, gauge: 5.2, armLen: 39,
                 front: true, minExt: 0.22,
             } : null,
             upPose: (DONK_IMG.buzzUpBody && DONK_IMG.buzzPunchArm) ? {
-                body: mkBody(DONK_IMG.buzzUpBody, 57.7),
+                body: mkBody(DONK_IMG.buzzUpBody),
                 // The glove comes from the SIDE punch, not from the up-punch
                 // drawing: that one is a knuckles-on view with four fingers
                 // showing, so BUZZ appeared to swap hands mid-fight. The hose
                 // is stroked procedurally, so borrowing the hand slice costs
                 // nothing. (buzz-up-arm.png is still in assets if we want it.)
-                arm: mk(DONK_IMG.buzzPunchArm, 262, 512, 81, 0.405, 0.556, 5.03),
+                arm: mk(DONK_IMG.buzzPunchArm, 262, 512, 81, 0.405, 0.556),
                 h: 72.4, solesAt: 1, drumCx: 0.414,
                 shX: 79 / 408, shY: 197 / 512, gauge: 5.4, armLen: 38.8,
                 front: true,
