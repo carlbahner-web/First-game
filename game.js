@@ -9450,7 +9450,8 @@ const BZ = {
     anchorX: 0.6,
     legSplit: 5.6,
     footOut: 1.0,   // how far outside its pivot each foot parks when standing
-    stride: 8, legLift: 0, legGauge: 5.76, legLen: 24.2,
+    stride: 12, legLift: 0, legGauge: 5.76, legLen: 24.2,
+    dip: 1.5,       // how far the body ducks at full spread; the legs stretch for the rest
     extremes: 0.55, // <1 holds the spread pose, snaps through the pass
     armX: 20, armXTrail: 22, armGauge: 4.2, armLen: 31, armOut: 6, armSwing: 9,
     fistGauge: 6.0, fistBase: 12, fistReach: 32,
@@ -9502,9 +9503,10 @@ function drawBuzzRig(cx, cy, k, o) {
     // in-betweens read as loudly as the strong one. Shaping the swing holds
     // the spread and snaps through the pass, the way cartoon walks do.
     const shape = v => Math.sign(v) * Math.pow(Math.abs(v), BZ.extremes);
-    const reach = moving ? Math.abs(shape(Math.sin(ph))) * BZ.stride : BZ.footOut;
-    const hipH = Math.sqrt(Math.max(BZ.legLen * BZ.legLen * 0.25,
-        BZ.legLen * BZ.legLen - reach * reach));
+    // The legs STRETCH to reach the ground rather than the body ducking to
+    // meet them — it's rubber hose, and it buys back the full stride from a
+    // pivot that now sits at the body's edge. The body still dips a little.
+    const hipH = BZ.legLen - (moving ? BZ.dip * Math.abs(shape(Math.sin(ph))) : 0);
     ctx.save();
     ctx.translate(cx, cy);
     if (o.mirror) ctx.scale(-1, 1);
@@ -9523,7 +9525,8 @@ function drawBuzzRig(cx, cy, k, o) {
         const px = BZ.anchorX + side * BZ.legSplit;
         const fx = px + (moving ? shape(Math.sin(legPh(side))) * BZ.stride : side * BZ.footOut);
         const fy = moving ? -Math.max(0, -Math.cos(legPh(side))) * BZ.legLift : 0;
-        hoseIK(set.legMeta, BZ.legGauge, px, hipY, fx, fy, BZ.legLen, -side * 0.3, k, false);
+        const need = Math.hypot(fx - px, fy - hipY); // stretch only as far as reaching demands
+        hoseIK(set.legMeta, BZ.legGauge, px, hipY, fx, fy, Math.max(BZ.legLen, need), -side * 0.3, k, false);
     }
     const aSw = moving ? Math.sin(ph) * BZ.armSwing : 0;
     if (!(t > 0)) {
