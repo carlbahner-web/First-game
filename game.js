@@ -9448,6 +9448,7 @@ const BZ = {
     // sits off to one side of the shell). Classic rubber-hose construction,
     // and it makes the walk symmetric by definition.
     anchorX: 3.6,
+    legSplit: 5,    // pivots sit +/- this from the anchor (audience left/right)
     stanceX: 5.5,   // how far apart the feet park when standing
     stride: 12, legLift: 0, legGauge: 4.8, legLen: 39, // legs SWIVEL on the anchor; no foot lift
     extremes: 0.55, // <1 holds the spread pose, snaps through the pass
@@ -9510,7 +9511,10 @@ function drawBuzzRig(cx, cy, k, o) {
     if (o.flash) ctx.filter = "brightness(1.9) saturate(0.4)";
     const hipY = -hipH, armY = hipY + BZ.shoulder;
 
-    for (const side of [-1, 1]) {
+    // Audience-left leg draws LAST so it sits in FRONT of the right one.
+    // (Sides are audience-relative in the right-facing orientation; the rig
+    // mirror carries the same near/far leg over when he turns.)
+    for (const side of [1, -1]) {
         // Walking, the feet swing on the CENTRELINE: any constant lateral
         // offset compounds with the stride, so one half-cycle opens while the
         // other crosses into an X — a limp, not a walk. Standing, they part
@@ -9518,7 +9522,7 @@ function drawBuzzRig(cx, cy, k, o) {
         // he faces.
         const fx = BZ.anchorX + (moving ? shape(Math.sin(legPh(side))) * BZ.stride : side * BZ.stanceX);
         const fy = moving ? -Math.max(0, -Math.cos(legPh(side))) * BZ.legLift : 0;
-        hoseIK(set.legMeta, BZ.legGauge, BZ.anchorX, hipY, fx, fy, BZ.legLen, -side * 0.3, k, false);
+        hoseIK(set.legMeta, BZ.legGauge, BZ.anchorX + side * BZ.legSplit, hipY, fx, fy, BZ.legLen, -side * 0.3, k, false);
     }
     const aSw = moving ? Math.sin(ph) * BZ.armSwing : 0;
     if (!(t > 0)) {
