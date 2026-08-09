@@ -9399,6 +9399,7 @@ function heroSet() {
             bodyH: bodyH,
             armY: DK.by + DK.bh - bodyH / 2, // shoulders at the drum's center height
             armX: 24,                        // out at the rim
+            idleArm: -Math.PI / 4,           // hands down 45deg (audience-left CCW, right CW)
         };
     }
     return DONK_HERO;
@@ -9432,11 +9433,12 @@ function drawDonk(cx, cy, k, o) {
     };
     const armMX = set.armX !== undefined ? set.armX : 22;
     const armMY = set.armY !== undefined ? set.armY : -31;
+    const armIdle = set.idleArm || 0; // base pose: hands rotated down
     const armAt = (side, swing) => {
         ctx.save();
         ctx.translate(side * armMX * k, armMY * k); // shoulder mount
-        if (side > 0) ctx.scale(-1, 1);             // far arm mirrors the art
-        ctx.rotate(swing);
+        if (side > 0) ctx.scale(-1, 1);             // arm art mirrors for this side
+        ctx.rotate(swing + armIdle);
         ctx.drawImage(set.arm, -DK.armW * DK.armPX * k, -DK.armH * DK.armPY * k, DK.armW * k, DK.armH * k);
         ctx.restore();
     };
