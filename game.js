@@ -8533,7 +8533,7 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         if (ghost) { ctx.globalAlpha = 0.5; ctx.globalCompositeOperation = "lighter"; }
         drawDonk((gx + TILE / 2 + leanX) * SCALE, (gy + TILE - 1 + leanY * 0.5) * SCALE, 90 / 58, {
             phase: donkCarlPhase,
-            mirror: donkCarlFacing === 1, // art faces left natively
+            mirror: donkCarlFacing === -1, // BUZZ's art faces right natively
             hipX: 5.5,                    // hips pulled in from the rig's 9
             stride: 14,                   // long, natural strides
             hero: true,                   // BUZZ's head/body + straight-hose limbs
@@ -9398,16 +9398,10 @@ function heroSet() {
     if (!DONK_HERO || DONK_HERO_KEY !== key) {
         DONK_HERO_KEY = key;
         const img = DONK_IMG.hero;
-        // BUZZ's art natively faces the opposite way from the limb pieces —
-        // pre-flip it once so the whole rig mirrors as one and his face
-        // agrees with his feet
-        const flipped = document.createElement("canvas");
-        flipped.width = img.width || 1;
-        flipped.height = img.height || 1;
-        const fg = flipped.getContext("2d");
-        fg.translate(flipped.width, 0);
-        fg.scale(-1, 1);
-        fg.drawImage(img, 0, 0);
+        // EVERY BUZZ piece faces RIGHT natively — the drum shows its shell on
+        // the left (turned away to the right) and the shoes point right. Do
+        // NOT pre-flip the body: that made his feet point one way and his
+        // body the other. The whole rig mirrors together to walk left.
         const bodyH = DK.bw * (img.height / img.width);
         // Straight-hose limb metas. The four art pieces are drawn at DIFFERENT
         // scales in their canvases (hose widths 38/56/56/61 px), so sizing them
@@ -9417,7 +9411,9 @@ function heroSet() {
         // aspect so stretching for reach never distorts the glove.
         const mk = (im, aw, ah, hose, split, px) => im ? ({ img: im, aw, ah, hose, split, px }) : null;
         DONK_HERO = {
-            body: flipped,
+            body: img,
+            leadSign: 1,                 // art faces +x, so the leading side is +x
+            armXTrail: 22,               // resting arm, drawn in front of the shell
             button: null, // face is part of the body art — no separate pulse piece
             arm: DONK_IMG.arm,   // fallback if the straight-hose piece is absent
             leg: DONK_IMG.leg,
@@ -9432,9 +9428,8 @@ function heroSet() {
             armSwing: 0.30,              // walk swing (0.6 read as flapping)
             bodyH: bodyH,
             armY: DK.by + DK.bh - bodyH / 2, // shoulders at the drum's center height
-            armX: 22,                        // far arm: tucked behind the shell
-            armXFront: 20,                   // front arm: just inside the rim
-            idleArm: -Math.PI * 12 / 180,    // slight splay; the art hangs naturally
+            armX: 20,                        // leading shoulder (throws the punch)
+            idleArm: Math.PI * 12 / 180,     // slight outward splay at rest
         };
     }
     return DONK_HERO;
@@ -9487,14 +9482,17 @@ function drawDonk(cx, cy, k, o) {
     const armIdle = set.idleArm || 0;
     const armSwing = set.armSwing !== undefined ? set.armSwing : 0.6;
     const AM = set.armMeta;
-    const armAt = (side, swing) => {
-        // The near arm can carry its own mount — on BUZZ its shoulder sits
-        // mid-shell while the far one tucks behind the silhouette
-        const mx = (side > 0 && set.armXFront !== undefined) ? set.armXFront : armMX;
+    // Which way the art faces decides which shoulder LEADS. BUZZ's pieces face
+    // +x; Donk's face -x. The leading arm tucks behind the body and throws the
+    // punch; the trailing arm rests in front of the shell.
+    const lead = set.leadSign || -1;
+    const armXTrail = set.armXTrail !== undefined ? set.armXTrail : armMX;
+    const armAt = (front, swing) => {
+        const mx = front ? -lead * armXTrail : lead * armMX;
         ctx.save();
-        ctx.translate(side * mx * k, armMY * k);    // shoulder mount
-        if (side > 0) ctx.scale(-1, 1);             // arm art mirrors for this side
-        ctx.rotate(swing + armIdle);
+        ctx.translate(mx * k, armMY * k);           // shoulder mount
+        if (front) ctx.scale(-1, 1);                // art mirrors for this side
+        ctx.rotate(swing + (front ? armIdle : -armIdle));
         if (AM) limbSlice(AM, set.armGauge || 4.2, set.armLen || 32);
         else {
             const as_ = set.armScale || 1, ast = set.armStretch || 1, ath = set.armThick || 1;
@@ -9518,8 +9516,8 @@ function drawDonk(cx, cy, k, o) {
     // Step bob: carries everything above the hips
     ctx.translate(0, -Math.abs(sw) * 1.8 * k);
 
-    // FAR arm — counter-swings BEHIND him, mostly hidden by the shell
-    armAt(-1, -sw * armSwing);
+    // LEADING arm — counter-swings BEHIND the body (the punch replaces it)
+    if (!(set.fistMeta && (o.punchThrust || 0) > 0)) armAt(false, -sw * armSwing);
 
     // Drumhead pulse, scaled about its own BOTTOM edge (scale about the
     // centre and the head visibly detaches from the shell). Only for sets
@@ -9538,28 +9536,27 @@ function drawDonk(cx, cy, k, o) {
     // body height (the hero drum is taller than Donk's shell)
     const bodyH = set.bodyH || DK.bh;
     ctx.drawImage(set.body, DK.bx * k, (DK.by + DK.bh - bodyH) * k, DK.bw * k, bodyH * k);
-    // NEAR arm, in FRONT of the shell — or the PUNCH, which replaces it.
-    // Horizontal punches lead from the front shoulder and extend forward (the
-    // rig's facing mirror decides which way that is on screen); up and down
-    // punches throw from the near shoulder, `down` tilted outward so the fist
-    // clears his own legs.
+    // TRAILING arm rests IN FRONT of the shell (Carl: facing right, the
+    // audience-left arm reads in front).
+    armAt(true, -sw * armSwing);
+
+    // PUNCH — always thrown from the LEADING shoulder in the direction he
+    // faces, so he never punches behind himself. Down tilts forward to clear
+    // his own legs.
     const FM = set.fistMeta, thrust = o.punchThrust || 0;
     if (FM && thrust > 0) {
         const up = o.punchDir === 1, down = o.punchDir === 0;
-        const ang = up ? Math.PI : down ? (-20 * Math.PI / 180) : Math.PI / 2;
-        const fx = set.armXFront !== undefined ? set.armXFront : armMX;
-        const mount = (up || down) ? fx : -fx;
+        const ang = up ? Math.PI : down ? (lead * -22 * Math.PI / 180) : (lead * -Math.PI / 2);
         const reach = (set.fistBase || 14) + thrust * (set.fistReach || 30);
         ctx.save();
-        ctx.translate(mount * k, armMY * k);
+        ctx.translate(lead * armMX * k, armMY * k);
         ctx.rotate(ang);
         limbSlice(FM, set.fistGauge || 6.0, reach);
         const tm = ctx.getTransform(); // hand the real fist tip to the impact FX
         donkFistTip = { x: tm.c * reach * k + tm.e, y: tm.d * reach * k + tm.f };
         ctx.restore();
-    } else {
-        armAt(1, -sw * armSwing);
     }
+
     ctx.restore();
 }
 
