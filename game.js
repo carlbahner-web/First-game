@@ -8537,6 +8537,8 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
             hipX: 5.5,                    // hips pulled in from the rig's 9
             stride: 14,                   // long, natural strides
             hero: true,                   // BUZZ's head/body + straight-hose limbs
+            punchThrust: punch,           // the rig draws the punching arm
+            punchDir: dir,
         });
         if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
         return;
@@ -8851,23 +8853,10 @@ function drawPunch() {
     const fistShadowCol = glove ? "#b3aa96" : "#a58c27";
     const fistCol = glove ? "#fcf7e8" : "#efb775";
 
-    // Aim-and-stretch punch: BUZZ's fist arm rockets from the shoulder
-    // toward the target, stretching with the thrust (the hose is straight
-    // art, so the stretch is pure reach). Falls back to the drawn arm/fist.
-    const heroFist = donkReady && DONK_PLAYER && DONK_IMG.hero ? heroSet().fistMeta : null;
-    if (heroFist) {
-        const kp = 90 / 58; // player rig scale
-        const ang = p.dir === 0 ? 0 : p.dir === 1 ? Math.PI : p.dir === 2 ? Math.PI / 2 : -Math.PI / 2;
-        const reach = 0.55 + thrust * 0.85;
-        ctx.save();
-        ctx.translate(shoulderX, shoulderY);
-        ctx.rotate(ang);
-        ctx.drawImage(heroFist.img,
-            -heroFist.w * heroFist.px * kp,
-            -heroFist.h * heroFist.py * kp,
-            heroFist.w * kp, heroFist.h * kp * reach);
-        ctx.restore();
-    } else {
+    // BUZZ's punching arm is drawn by the rig itself (correct shoulder, and it
+    // replaces the resting arm). Only the impact effects live here.
+    const heroArm = !!(donkReady && DONK_PLAYER && DONK_IMG.hero && heroSet().fistMeta);
+    if (!heroArm) {
     // === ARM ===
     ctx.strokeStyle = armCol;
     ctx.lineWidth = 4 * SCALE;
@@ -8915,14 +8904,15 @@ function drawPunch() {
         ctx.arc(kx, ky, 1.0 * SCALE, 0, Math.PI * 2);
         ctx.fill();
     }
-    } // end procedural arm/fist fallback
+    }
 
     // === IMPACT SHOCKWAVE on hit — radiates outward from fist ===
     if (thrust > 0.5 && p.punchHit) {
         // Shockwave center extends outward from Carl in punch direction
         const shockDist = thrust * 12 * SCALE;
-        const shockX = fistX + dx * shockDist;
-        const shockY = fistY + dy * shockDist;
+        const tip = (heroArm && donkFistTip) ? donkFistTip : { x: fistX, y: fistY };
+        const shockX = tip.x + dx * shockDist;
+        const shockY = tip.y + dy * shockDist;
         // Burst lines — 2.5x larger, directed outward from Carl
         const burstCount = 12;
         const punchAngle = Math.atan2(dy, dx);
@@ -9401,6 +9391,7 @@ function loadDonkImages() {
 loadDonkImages();
 
 let DONK_HERO = null, DONK_HERO_KEY = -1;
+let donkFistTip = null; // screen-space fist tip during a punch (for impact FX)
 function heroSet() {
     const key = (DONK_IMG.hero ? 1 : 0) + (DONK_IMG.buzzArm ? 2 : 0) +
         (DONK_IMG.buzzFist ? 4 : 0) + (DONK_IMG.buzzLeg ? 8 : 0);
@@ -9418,17 +9409,27 @@ function heroSet() {
         fg.scale(-1, 1);
         fg.drawImage(img, 0, 0);
         const bodyH = DK.bw * (img.height / img.width);
-        // Straight-hose limb meta: unit height, width from the art's aspect,
-        // pivot fraction measured from the hose center at the shoulder/hip end
-        const mk = (im, hUnits, px) => im ? ({ img: im, h: hUnits, w: hUnits * (im.width / im.height), px: px, py: 0.02 }) : null;
+        // Straight-hose limb metas. The four art pieces are drawn at DIFFERENT
+        // scales in their canvases (hose widths 38/56/56/61 px), so sizing them
+        // by height alone rendered the arms at less than half the legs'
+        // thickness — the "thread arms" bug. Each piece is instead sized so its
+        // hose renders at a shared gauge, and the hand slice keeps its natural
+        // aspect so stretching for reach never distorts the glove.
+        const mk = (im, aw, ah, hose, split, px) => im ? ({ img: im, aw, ah, hose, split, px }) : null;
         DONK_HERO = {
             body: flipped,
             button: null, // face is part of the body art — no separate pulse piece
             arm: DONK_IMG.arm,   // fallback if the straight-hose piece is absent
             leg: DONK_IMG.leg,
-            armMeta: mk(DONK_IMG.buzzArm, 34, 0.449),  // relaxed hand
-            legMeta: mk(DONK_IMG.buzzLeg, 40, 0.326),  // hose leg + shoe
-            fistMeta: mk(DONK_IMG.buzzFist, 36, 0.491), // punch arm
+            armMeta:  mk(DONK_IMG.buzzArm,  127, 512, 38, 0.760, 0.453), // relaxed hand
+            legMeta:  mk(DONK_IMG.buzzLeg,  170, 512, 61, 0.725, 0.324), // hose + shoe
+            fistMeta: mk(DONK_IMG.buzzFist, 117, 512, 56, 0.758, 0.491), // punch
+            waveMeta: mk(DONK_IMG.buzzWave, 143, 512, 56, 0.686, 0.462), // spread hand
+            armGauge: 4.2, armLen: 32,   // hose thickness / shoulder-to-hand
+            legGauge: 4.8, legLen: 39,   // legs run a slightly heavier gauge
+            fistGauge: 6.0,              // the punch arm tenses thicker
+            fistBase: 14, fistReach: 30, // wind-up length -> full extension
+            armSwing: 0.30,              // walk swing (0.6 read as flapping)
             bodyH: bodyH,
             armY: DK.by + DK.bh - bodyH / 2, // shoulders at the drum's center height
             armX: 22,                        // far arm: tucked behind the shell
@@ -9452,46 +9453,54 @@ function drawDonk(cx, cy, k, o) {
     if (o.mirror) ctx.scale(-1, 1);
     if (o.flash) ctx.filter = "brightness(1.9) saturate(0.4)";
 
-    // Uniformly scaled-up legs (o.legScale): the art keeps its proportions,
-    // the body rises so the soles still plant at the anchor point
+    // ---- Limbs -----------------------------------------------------------
+    // Straight-hose art draws in two slices: the HOSE stretches to reach and
+    // the HAND keeps its natural aspect, so a limb can be any length without
+    // squashing the glove. `gauge` is the rendered hose thickness — shared
+    // across pieces so arms and legs read as the same character.
+    const limbSlice = (m, gauge, len) => {
+        const s = gauge / m.hose, w = m.aw * s;
+        const handH = m.ah * (1 - m.split) * s;
+        const hoseH = Math.max(0, len - handH);
+        const x = -m.px * w, sp = m.ah * m.split;
+        ctx.drawImage(m.img, 0, 0, m.aw, sp,          x * k, 0,         w * k, hoseH * k);
+        ctx.drawImage(m.img, 0, sp, m.aw, m.ah - sp,  x * k, hoseH * k, w * k, handH * k);
+    };
+
     const ls = o.legScale || 1;
     const LM = set.legMeta;
-    const legImg = LM ? LM.img : set.leg;
-    const legW = (LM ? LM.w : DK.legW) * ls;
-    const legH = (LM ? LM.h : DK.legH) * ls;
-    const legPXf = LM ? LM.px : DK.legPX;
-    const legPYf = LM ? LM.py : DK.legPY;
-    const legLen = legH * (1 - legPYf); // hip-to-sole reach
+    const legLen = LM ? (set.legLen || 39) * ls : DK.legH * ls * (1 - DK.legPY);
     ctx.translate(0, -(legLen - 31.4) * k);
 
     const legAt = (hx, hy, rot) => {
         ctx.save();
         ctx.translate(hx * k, hy * k);
         ctx.rotate(rot);
-        ctx.drawImage(legImg, -legW * legPXf * k, -legH * legPYf * k, legW * k, legH * k);
+        if (LM) limbSlice(LM, (set.legGauge || 4.8) * ls, legLen);
+        else ctx.drawImage(set.leg, -DK.legW * ls * DK.legPX * k, -DK.legH * ls * DK.legPY * k,
+            DK.legW * ls * k, DK.legH * ls * k);
         ctx.restore();
     };
+
     const armMX = set.armX !== undefined ? set.armX : 22;
     const armMY = set.armY !== undefined ? set.armY : -31;
-    const armIdle = set.idleArm || 0;  // base pose: hands rotated down
-    const as_ = set.armScale || 1;                  // uniform arm scale
-    const ast = set.armStretch || 1;                // length stretch
-    const ath = set.armThick || 1;                  // width (hose thickness)
+    const armIdle = set.idleArm || 0;
+    const armSwing = set.armSwing !== undefined ? set.armSwing : 0.6;
     const AM = set.armMeta;
-    const armImg = AM ? AM.img : set.arm;
-    const aw = (AM ? AM.w : DK.armW) * as_ * ath;
-    const ah = (AM ? AM.h : DK.armH) * as_ * ast;
-    const aPXf = AM ? AM.px : DK.armPX;
-    const aPYf = AM ? AM.py : DK.armPY;
     const armAt = (side, swing) => {
-        // Front arm (side +1) can carry its own mount — on BUZZ its shoulder
-        // sits mid-shell rather than out at the rim
+        // The near arm can carry its own mount — on BUZZ its shoulder sits
+        // mid-shell while the far one tucks behind the silhouette
         const mx = (side > 0 && set.armXFront !== undefined) ? set.armXFront : armMX;
         ctx.save();
         ctx.translate(side * mx * k, armMY * k);    // shoulder mount
         if (side > 0) ctx.scale(-1, 1);             // arm art mirrors for this side
         ctx.rotate(swing + armIdle);
-        ctx.drawImage(armImg, -aw * aPXf * k, -ah * aPYf * k, aw * k, ah * k);
+        if (AM) limbSlice(AM, set.armGauge || 4.2, set.armLen || 32);
+        else {
+            const as_ = set.armScale || 1, ast = set.armStretch || 1, ath = set.armThick || 1;
+            const aw = DK.armW * as_ * ath, ah = DK.armH * as_ * ast;
+            ctx.drawImage(set.arm, -aw * DK.armPX * k, -ah * DK.armPY * k, aw * k, ah * k);
+        }
         ctx.restore();
     };
 
@@ -9509,8 +9518,8 @@ function drawDonk(cx, cy, k, o) {
     // Step bob: carries everything above the hips
     ctx.translate(0, -Math.abs(sw) * 1.8 * k);
 
-    // FAR arm (his leading side) — counter-swings BEHIND him, hidden by the shell
-    armAt(-1, -sw * 0.6);
+    // FAR arm — counter-swings BEHIND him, mostly hidden by the shell
+    armAt(-1, -sw * armSwing);
 
     // Drumhead pulse, scaled about its own BOTTOM edge (scale about the
     // centre and the head visibly detaches from the shell). Only for sets
@@ -9529,12 +9538,28 @@ function drawDonk(cx, cy, k, o) {
     // body height (the hero drum is taller than Donk's shell)
     const bodyH = set.bodyH || DK.bh;
     ctx.drawImage(set.body, DK.bx * k, (DK.by + DK.bh - bodyH) * k, DK.bw * k, bodyH * k);
-    // NEAR arm (his trailing side) — swings across in FRONT of him. When he
-    // faces right, his right arm (audience left) is the front arm; the
-    // mirror keeps that true both ways. Sign chosen so the visible pair
-    // alternates like a real walk. Idle rotation is 0 — the settle rests
-    // both arms at the art's own drawn angle.
-    armAt(1, -sw * 0.6);
+    // NEAR arm, in FRONT of the shell — or the PUNCH, which replaces it.
+    // Horizontal punches lead from the front shoulder and extend forward (the
+    // rig's facing mirror decides which way that is on screen); up and down
+    // punches throw from the near shoulder, `down` tilted outward so the fist
+    // clears his own legs.
+    const FM = set.fistMeta, thrust = o.punchThrust || 0;
+    if (FM && thrust > 0) {
+        const up = o.punchDir === 1, down = o.punchDir === 0;
+        const ang = up ? Math.PI : down ? (-20 * Math.PI / 180) : Math.PI / 2;
+        const fx = set.armXFront !== undefined ? set.armXFront : armMX;
+        const mount = (up || down) ? fx : -fx;
+        const reach = (set.fistBase || 14) + thrust * (set.fistReach || 30);
+        ctx.save();
+        ctx.translate(mount * k, armMY * k);
+        ctx.rotate(ang);
+        limbSlice(FM, set.fistGauge || 6.0, reach);
+        const tm = ctx.getTransform(); // hand the real fist tip to the impact FX
+        donkFistTip = { x: tm.c * reach * k + tm.e, y: tm.d * reach * k + tm.f };
+        ctx.restore();
+    } else {
+        armAt(1, -sw * armSwing);
+    }
     ctx.restore();
 }
 
