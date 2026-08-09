@@ -9449,7 +9449,7 @@ const BZ = {
     // and it makes the walk symmetric by definition.
     anchorX: 3.6,
     stanceX: 5.5,   // how far apart the feet park when standing
-    stride: 12, legLift: 9, legGauge: 4.8, legLen: 39,
+    stride: 12, legLift: 0, legGauge: 4.8, legLen: 39, // legs SWIVEL on the anchor; no foot lift
     extremes: 0.55, // <1 holds the spread pose, snaps through the pass
     armX: 20, armXTrail: 22, armGauge: 4.2, armLen: 31, armOut: 6, armSwing: 9,
     fistGauge: 6.0, fistBase: 12, fistReach: 32,
