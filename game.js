@@ -8957,29 +8957,10 @@ function drawPunch() {
         ctx.globalAlpha = 1.0;
     }
 
-    // === MOTION LINES (whoosh trail) ===
-    if (thrust > 0.3) {
-        ctx.strokeStyle = "#efb775";
-        ctx.lineWidth = 1.5 * SCALE;
-        ctx.globalAlpha = thrust * 0.55;
-        for (let i = 1; i <= 3; i++) {
-            const trailLen = i * 3;
-            const offset = i * 2.5;
-            const tx = fistX - dx * trailLen * SCALE;
-            const ty = fistY - dy * trailLen * SCALE;
-            const perpX = dy !== 0 ? offset : 0;
-            const perpY = dx !== 0 ? offset : 0;
-            ctx.beginPath();
-            ctx.moveTo(tx + perpX * SCALE, ty + perpY * SCALE);
-            ctx.lineTo(tx + perpX * SCALE - dx * 4 * SCALE, ty + perpY * SCALE - dy * 4 * SCALE);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(tx - perpX * SCALE, ty - perpY * SCALE);
-            ctx.lineTo(tx - perpX * SCALE - dx * 4 * SCALE, ty - perpY * SCALE - dy * 4 * SCALE);
-            ctx.stroke();
-        }
-        ctx.globalAlpha = 1.0;
-    }
+    // (Motion lines removed — they drew in FRONT of the body while he leans
+    // into the punch, and they were still anchored to the old procedural fist
+    // position rather than the rig's solved one. The impact burst carries the
+    // punch on its own.)
 
     ctx.restore();
 }
