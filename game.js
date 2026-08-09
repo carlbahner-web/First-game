@@ -2065,10 +2065,8 @@ let carlGlowBoost = 0;    // frames of amplified amber glow after a YEAH
 
 // ---- Room progression: exit door + fan entourage ----
 let doorOpen = false;         // pattern restored — right-wall door unbarred
-let entourageSize = 0;        // fans following Carl between rooms (+2 per room)
-const ENTOURAGE_MAX = 10;
-const ENTOURAGE_SPACING = 12; // trail frames between followers
-const playerTrail = [];       // recent player positions for the conga line
+// entourageCheer survives as a flourish timer on YEAH / IN THE POCKET;
+// the conga line it used to animate is gone.
 
 // Tier 1: correct toggle on the quarter-note beat — the crowd answers back
 function triggerYeah() {
@@ -3482,10 +3480,6 @@ function update(dt) {
     p.blinkTimer++;
     if (p.blinkTimer >= 186) p.blinkTimer = 0; // 180 open + 6 closed
 
-    // Fan entourage: record Carl's trail for the conga line
-    playerTrail.unshift({ x: p.x, y: p.y });
-    const maxTrail = entourageSize * ENTOURAGE_SPACING + 24;
-    if (playerTrail.length > maxTrail) playerTrail.length = maxTrail;
     if (entourageCheer > 0) entourageCheer--;
 
     // Walk through the open door to finish the level
@@ -4279,8 +4273,6 @@ function resetGame() {
     biomeBannerTimer = 300; // announce the first biome when gameplay starts
     biomeBannerPending = false;
     if (texturesBuiltForLevel !== 0) rebuildCaveTextures(0);
-    entourageSize = 0;
-    playerTrail.length = 0;
     entourageCheer = 0;
     pocketRing = null;
     carlGlowBoost = 0;
@@ -6930,12 +6922,6 @@ function advanceLevel() {
     player.attackTimer = 0;
     player.punchHit = false;
 
-    // The entourage grows — fans from the cleared room join the crew
-    entourageSize = Math.min(ENTOURAGE_MAX, entourageSize + 2);
-    playerTrail.length = 0;
-    for (let k = 0; k < entourageSize * ENTOURAGE_SPACING + 24; k++) {
-        playerTrail.push({ x: Math.max(TILE, player.x - k * 1.5), y: player.y });
-    }
 
     // Reset all goblins with staggered respawn timers
     for (let i = 0; i < goblins.length; i++) {
@@ -8061,19 +8047,11 @@ function render() {
         drawDancer(d);
     }
 
-    // Fan entourage — conga line trailing Carl between rooms.
-    // Stateless followers: each reads a point from the player's trail.
-    for (let ei = 0; ei < entourageSize; ei++) {
-        const ti = Math.min((ei + 1) * ENTOURAGE_SPACING, playerTrail.length - 1);
-        if (ti < 0) break;
-        const tp = playerTrail[ti];
-        const bobWave = Math.sin(performance.now() * 0.006 + ei * 1.3);
-        const eBob = Math.abs(bobWave) * 2;
-        const eArm = entourageCheer > 0 ? 1 : Math.max(0, bobWave) * 0.3;
-        drawDancerSprite(tp.x - 2, tp.y - 8, DANCER_PALETTES[ei % DANCER_PALETTES.length], {
-            bob: eBob, armBlend: eArm, footOffset: bobWave * 1.5,
-        });
-    }
+    // (The fan entourage that congaed along behind Carl lived here. Ten
+    // pixel-art villagers, each a stack of individual fillRects, cost 3.7ms
+    // of an 11.3ms render — a third of the frame for background garnish.
+    // The crowd still exists where it means something: the intro, the title
+    // screen and the cave-return cutscene.)
 
     // Goblins (all active ones)
     for (const g of goblins) {
@@ -14253,7 +14231,8 @@ function renderBiomeTransition() {
         const walkX = W * 0.1 + p * W * 0.55;
         const walkY = H / 2 + 8;
         drawPlayerSprite(walkX, walkY, 1 + (Math.floor(t / 8) % 2), 3, {});
-        const crew = Math.max(2, Math.min(4, Math.floor(entourageSize / 3) + 2));
+        // A cutscene crowd, not the old live entourage — sized off progress
+        const crew = Math.max(2, Math.min(4, 2 + Math.floor(currentLevel / 10)));
         for (let i = 0; i < crew; i++) {
             drawDancerSprite(walkX - 18 - i * 14, walkY + 2,
                 DANCER_PALETTES[i % DANCER_PALETTES.length], {
