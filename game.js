@@ -9398,10 +9398,10 @@ function heroSet() {
             leg: DONK_IMG.leg,
             bodyH: bodyH,
             armY: DK.by + DK.bh - bodyH / 2, // shoulders at the drum's center height
-            armX: 26,                        // far arm: shoulder out at the rim
+            armX: 22,                        // far arm: tucked so the shell hides more of it
             armXFront: 20,                   // front arm: shoulder just inside the rim
             armStretch: 1.3,                 // original thickness, stretched longer
-            idleArm: -Math.PI / 4,           // hands down 45deg (audience-left CCW, right CW)
+            idleArm: -Math.PI * 35 / 180,    // hands down 35deg (45 was too much)
         };
     }
     return DONK_HERO;
