@@ -9455,8 +9455,8 @@ function drawDonk(cx, cy, k, o) {
     // Step bob: carries everything above the hips
     ctx.translate(0, -Math.abs(sw) * 1.8 * k);
 
-    // FAR arm — counter-swings BEHIND him, mostly hidden by the shell
-    armAt(1, -sw * 0.6);
+    // FAR arm (his leading side) — counter-swings BEHIND him, hidden by the shell
+    armAt(-1, -sw * 0.6);
 
     // Drumhead pulse, scaled about its own BOTTOM edge (scale about the
     // centre and the head visibly detaches from the shell). Only for sets
@@ -9475,11 +9475,12 @@ function drawDonk(cx, cy, k, o) {
     // body height (the hero drum is taller than Donk's shell)
     const bodyH = set.bodyH || DK.bh;
     ctx.drawImage(set.body, DK.bx * k, (DK.by + DK.bh - bodyH) * k, DK.bw * k, bodyH * k);
-    // NEAR arm — swings across in FRONT of him. A side-view walker shows
-    // one arm sweeping in front of the body while the other counter-swings
-    // behind it (drawn before the shell above), not two visible arms
-    // waving. The phase settle still rests both at his sides on stop.
-    armAt(-1, sw * 0.6);
+    // NEAR arm (his trailing side) — swings across in FRONT of him. When he
+    // faces right, his right arm (audience left) is the front arm; the
+    // mirror keeps that true both ways. Sign chosen so the visible pair
+    // alternates like a real walk. Idle rotation is 0 — the settle rests
+    // both arms at the art's own drawn angle.
+    armAt(1, -sw * 0.6);
     ctx.restore();
 }
 
