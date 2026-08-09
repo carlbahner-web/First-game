@@ -8516,11 +8516,16 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
 
     // ---- Donk stand-in for Carl (until BUZZ art lands) ----
     if (donkReady && DONK_PLAYER) {
+        const idle = frame === 0 && punch <= 0;
+        // Stride phase accumulates at a rate matched to procedural Carl's
+        // snappy walk cycle (~0.5s full stride), not the coaster's amble;
+        // idling ticks slowly so the mark-time stays gentle
+        donkCarlPhase += idle ? 0.05 : 0.22;
         if (ghost) { ctx.globalAlpha = 0.5; ctx.globalCompositeOperation = "lighter"; }
         drawDonk((gx + TILE / 2 + leanX) * SCALE, (gy + TILE - 1 + leanY * 0.5) * SCALE, 90 / 58, {
-            wob: 7.3,                                // his own walk phase
-            mirror: dir === 2,
-            stand: frame === 0 && punch <= 0,        // marks time when idle
+            phase: donkCarlPhase,
+            mirror: dir === 3, // art faces left natively; mirror walking right
+            stand: idle,       // marks time when idle
         });
         if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
         return;
@@ -9301,9 +9306,10 @@ const DONK_FILES = {
 const DONK_IMG = { body: null, button: null, arm: null, leg: null };
 const DONK_TINT = { elite: {} }; // tinted variants, baked once on load
 let donkReady = false;
-// Carl draws as a mustard-washed Donk stand-in until BUZZ art lands.
+// Carl draws as a Donk stand-in until BUZZ art lands.
 // Flip to false to get procedural Carl back.
 const DONK_PLAYER = true;
+let donkCarlPhase = 0; // player stride phase (variable rate, smooth)
 
 function bakeTint(img, color, amt) {
     const c = document.createElement("canvas");
@@ -9348,7 +9354,7 @@ loadDonkImages();
 // 0.006 — matched rates read as mechanical), one table of numbers.
 function drawDonk(cx, cy, k, o) {
     const set = (o.tint && DONK_TINT[o.tint] && DONK_TINT[o.tint].body) ? DONK_TINT[o.tint] : DONK_IMG;
-    const ph = perfNow * 0.005 + (o.wob || 0);
+    const ph = (o.phase !== undefined ? o.phase : perfNow * 0.005) + (o.wob || 0);
     const sw = Math.sin(ph) * (o.stand ? 0.22 : 1); // blocked Donk marks time at 22%
     ctx.save();
     ctx.translate(cx, cy);
@@ -9419,7 +9425,7 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
         drawDonk((gx + TILE / 2) * SCALE, (gy + TILE - 2) * SCALE,
             (type === "elite" ? 78 : 66) / 58, {
                 wob: opts.wob || 0,
-                mirror: dir === 2, // faces the way he walks; no back view needed
+                mirror: dir === 3, // art faces left natively; mirror walking right
                 stand: opts.stand,
                 flash: opts.bodyCol === "#ffffff", // hurt + windup telegraph flashes
                 tint: type === "elite" ? "elite" : null,
