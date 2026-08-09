@@ -9473,6 +9473,7 @@ const BZ = {
     armSwingAng: 0.38,   // rad of fore/aft swing while walking
     boneBow: 0.35,       // how rounded each bone is (0 = straight sticks)
     elbowAt: 0.5,        // where the joint sits along the hose
+    frontGloveFlip: false, // front glove: horizontal mirror off (rear arm's orientation)
     fistGauge: 6.0, fistBase: 12, fistReach: 32,
     hip2bot: 0.62,                 // drum bottom, relative to the pivot line
     shoulder: -23.39,              // shoulder height relative to the pivot line
@@ -9617,8 +9618,10 @@ function drawBuzzRig(cx, cy, k, o) {
     ctx.drawImage(set.body, DK.bx * k, (hipY + BZ.hip2bot - bodyH) * k, DK.bw * k, bodyH * k);
     {
         const p2 = handAt(-BZ.armXTrail, BZ.armRest + swingA);
+        // Front glove flipped horizontally (Carl) — the hose is drawn separately,
+        // so this only mirrors the hand slice.
         armIK(set.armMeta, BZ.armGauge, -BZ.armXTrail, armY, p2[0], p2[1], BZ.armLen,
-            1, k, true, BZ.elbowAt, BZ.boneBow);
+            1, k, BZ.frontGloveFlip, BZ.elbowAt, BZ.boneBow);
     }
     if (t > 0) {
         // The hand flies to the TARGET CELL (passed in rig-local units) and the
