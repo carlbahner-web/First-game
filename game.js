@@ -6157,17 +6157,61 @@ function mipFor(img, destW) {
     if (!m) { m = mip(img, key); byW.set(key, m); }
     return m;
 }
+// ---- Boiling the drawn art -----------------------------------------------
+// PNGs can't boil, so each one gets three warped copies baked at load and the
+// draw is a swap — the canvas answer to the coaster's feDisplacementMap, minus
+// the filter. SLICE warp, not per-pixel displacement: cut the image into
+// horizontal bands and offset each one. It reads as a redrawn line, costs a
+// handful of drawImage calls once, and needs no getImageData at all.
+//
+// The copies keep the source's exact dimensions, which matters — the 8-argument
+// draw path scales its source rect by width, and every caller sizes art from
+// img.width/height. Bands pushed past the edge lose a pixel into the art's own
+// transparent margin, which is invisible at this amplitude.
+const WARPS = new WeakMap();
+const WARP_BANDS = 14;
+function sliceWarp(src, phase) {
+    const c = document.createElement("canvas");
+    c.width = src.width; c.height = src.height;
+    const g = c.getContext("2d");
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = "high";
+    const bh = src.height / WARP_BANDS;
+    mipping = true;   // don't let the drawImage patch recurse into itself
+    try {
+        for (let i = 0; i < WARP_BANDS; i++) {
+            const sy = i * bh;
+            const h = (i === WARP_BANDS - 1) ? src.height - sy : bh;
+            const dx = pjit(i * 13, 31, phase, 0.9);
+            const dy = pjit(i * 29, 47, phase, 0.45);
+            g.drawImage(src, 0, sy, src.width, h, dx, sy + dy, src.width, h);
+        }
+    } finally { mipping = false; }
+    return c;
+}
+function warpFor(src) {
+    if (!BOIL.on || !BOIL.chars || !src || !src.width) return src;
+    let w = WARPS.get(src);
+    if (!w) { w = []; WARPS.set(src, w); }
+    const ph = boil();
+    if (!w[ph]) w[ph] = sliceWarp(src, ph);
+    return w[ph];
+}
+
 (function patchDrawImage() {
     const P = (typeof CanvasRenderingContext2D !== "undefined") && CanvasRenderingContext2D.prototype;
     if (!P || P.__mipPatched) return;
     const orig = P.drawImage;
     P.drawImage = function (img, ...a) {
+        if (mipping) return orig.call(this, img, ...a);
         if (a.length === 4) {                       // dx, dy, dw, dh
-            const m = mipFor(img, a[2]);
+            const m = warpFor(mipFor(img, a[2]));
             if (m !== img) return orig.call(this, m, a[0], a[1], a[2], a[3]);
         } else if (a.length === 8) {                // sx..sh, dx..dh
-            const m = mipFor(img, a[6]);
+            const m = warpFor(mipFor(img, a[6]));
             if (m !== img) {
+                // the warp preserves the mip's size, so this factor is the
+                // mip's alone
                 const f = m.width / img.width;
                 return orig.call(this, m, a[0] * f, a[1] * f, a[2] * f, a[3] * f,
                                  a[4], a[5], a[6], a[7]);
