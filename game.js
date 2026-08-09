@@ -9400,7 +9400,8 @@ function heroSet() {
             armY: DK.by + DK.bh - bodyH / 2, // shoulders at the drum's center height
             armX: 22,                        // far arm: tucked so the shell hides more of it
             armXFront: 20,                   // front arm: shoulder just inside the rim
-            armStretch: 1.3,                 // original thickness, stretched longer
+            armStretch: 1.45,                // lanky: longer...
+            armThick: 0.8,                   // ...and skinnier (Donk stays stout)
             idleArm: -Math.PI * 35 / 180,    // hands down 35deg (45 was too much)
         };
     }
@@ -9437,8 +9438,9 @@ function drawDonk(cx, cy, k, o) {
     const armMY = set.armY !== undefined ? set.armY : -31;
     const armIdle = set.idleArm || 0;  // base pose: hands rotated down
     const as_ = set.armScale || 1;                  // uniform arm scale
-    const ast = set.armStretch || 1;                // length-only stretch
-    const aw = DK.armW * as_, ah = DK.armH * as_ * ast;
+    const ast = set.armStretch || 1;                // length stretch
+    const ath = set.armThick || 1;                  // width (hose thickness)
+    const aw = DK.armW * as_ * ath, ah = DK.armH * as_ * ast;
     const armAt = (side, swing) => {
         // Front arm (side +1) can carry its own mount — on BUZZ its shoulder
         // sits mid-shell rather than out at the rim
