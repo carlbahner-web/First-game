@@ -579,7 +579,12 @@ ctx.imageSmoothingEnabled = true;
 // ---- HUD canvas (below game canvas) ----
 const hudCanvas = document.getElementById("hud");
 const hudCtx = hudCanvas.getContext("2d");
-const HUD_H = 1.5 * TILE; // logical height for HUD strip
+// The HUD is a single tile tall and OVERLAYS the room's bottom wall band
+// rather than claiming its own strip below the canvas. That band is
+// impassable scenery, so the readout costs no play area at all — and on a
+// height-limited screen (any phone in landscape) every cell gets ~15% bigger
+// for free, on top of the tile change.
+const HUD_H = 1 * TILE;
 hudCanvas.width = COLS * TILE * SCALE;
 hudCanvas.height = HUD_H * SCALE;
 hudCtx.imageSmoothingEnabled = true;
@@ -7275,8 +7280,10 @@ function renderHUD() {
     if (IMAGES.hud_bg) {
         // Sprite-based HUD background
         hudCtx.drawImage(IMAGES.hud_bg, 0, 0);
-    } else {
-        // Procedural fallback — background fill
+    } else if (false) {
+        // Opaque bar retired: the HUD now sits over the venue's own wall, and
+        // the panels carry their own dark plates, so a full-width fill would
+        // just paint the room out again.
         drawHudRect(0, 0, COLS * TILE, HUD_H, "#2C2C2A");
 
         // Teal border along top — connects visually to the venue's bottom wall
@@ -7302,9 +7309,9 @@ function renderHUD() {
         }
     }
 
-    const pxSz = 3;
+    const pxSz = 2;                       // was 3 — the strip is a third shorter
     const digitW = 3 * pxSz + pxSz;
-    const panelH = 5 * pxSz + 6;
+    const panelH = 5 * pxSz + 4;
     const panelGap = 4;
 
     const kcY = Math.floor((HUD_H - panelH) / 2);
@@ -7338,11 +7345,11 @@ function renderHUD() {
     // Tier subtitle below level panel
     const tierNames = ["ROCK", "FUNK", "BREAKS"];
     const tierIdx = currentLevel < 10 ? 0 : currentLevel < 20 ? 1 : 2;
+    // Beside the level panel, not beneath it — there is no "beneath" now
     hudCtx.font = `${2.5 * SCALE}px monospace`;
     hudCtx.fillStyle = "#8a7a5a";
-    hudCtx.textAlign = "center";
-    hudCtx.fillText(tierNames[tierIdx], (lvlX + lvlPanelW / 2) * SCALE, (kcY + panelH + 5) * SCALE);
     hudCtx.textAlign = "start";
+    hudCtx.fillText(tierNames[tierIdx], (lvlX + lvlPanelW + 5) * SCALE, (kcY + panelH - 3) * SCALE);
 
     // --- Timer counter (right-aligned) ---
     const timerSec = Math.max(0, Math.ceil(levelTimer / 60));
@@ -7406,7 +7413,7 @@ function renderHUD() {
 
     // Chill mode indicator
     if (gameMode === "chill") {
-        const cmX = (COLS - 2) * TILE - 2;
+        const cmX = kcX - 4;   // left of the score plate, clear of the timer
         hudCtx.font = `${3 * SCALE}px monospace`;
         hudCtx.fillStyle = "#3c9f9c";
         hudCtx.textAlign = "right";
@@ -7419,8 +7426,8 @@ function renderHUD() {
         const earned = djSetupEarned.length;
         const total = DJ_SETUP_PIECES.length;
         if (earned > 0 || currentLevel >= 4) { // show after level 5 (first minigame milestone)
-            const trackerX = (COLS * TILE) / 2 - (total * 5) / 2;
-            const trackerY = kcY + panelH + 2;
+            const trackerX = timerX - total * 5 - 8;
+            const trackerY = kcY + Math.floor((panelH - 4) / 2);
             for (let i = 0; i < total; i++) {
                 const ix = trackerX + i * 5;
                 if (i < earned) {
@@ -7442,8 +7449,7 @@ function renderHUD() {
 function renderMinigameHUD() {
     hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
 
-    // Background fill (same as main HUD)
-    drawHudRect(0, 0, COLS * TILE, HUD_H, "#2C2C2A");
+    // No background fill — like the main HUD, this overlays the venue wall
 
     // Teal border along top
     for (let c = 0; c < COLS; c++) {

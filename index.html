@@ -15,27 +15,28 @@
             overflow: hidden;
             font-family: monospace;
         }
+        /* The HUD overlays the room's bottom wall band instead of sitting in
+           its own strip, so the page only has to fit the 1920x800 room. */
         #game-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            position: relative;
+            line-height: 0;
+            border: 4px solid #2C2C2A;
         }
         canvas {
             image-rendering: pixelated;
             image-rendering: crisp-edges;
-            /* Scale to fit the window while preserving the 1920x920 total
-               aspect ratio (game 800 + HUD 120 = 920 tall). The internal
-               canvas resolution is unchanged — this is display scaling only. */
-            width: min(calc(100vw - 16px), calc((100vh - 26px) * 2.087));
+            /* Scale to fit the window while preserving the room's 1920x800
+               aspect ratio. The internal resolution is unchanged — this is
+               display scaling only. */
+            width: min(calc(100vw - 16px), calc((100vh - 18px) * 2.4));
             height: auto;
         }
-        #game {
-            border: 4px solid #2C2C2A;
-            border-bottom: 2px solid #2C2C2A;
-        }
+        #game { display: block; }
         #hud {
-            border: 4px solid #2C2C2A;
-            border-top: 2px solid #2C2C2A;
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            width: 100%;
         }
     </style>
 </head>
