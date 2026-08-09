@@ -10088,7 +10088,10 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
             ctx.fill();
         }
         drawDonk((gx + TILE / 2) * SCALE, (gy + TILE - 2) * SCALE,
-            (type === "elite" ? 78 : 66) / 58 * RIG, {
+            // 50% taller than they were (66 -> 99, elite 78 -> 117). They used
+            // to stand SHORTER than BUZZ, which undercut them — a Donk now
+            // looms over him, and an elite properly towers.
+            (type === "elite" ? 117 : 99) / 58 * RIG, {
                 wob: opts.phase !== undefined ? 0 : (opts.wob || 0),
                 phase: opts.phase,
                 stride: 12,
