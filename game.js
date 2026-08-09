@@ -104,7 +104,6 @@ function setLevelTempo(levelIndex) {
     ][levelIndex] || 7;
     stepMs = framesPerSixteenth * (1000 / 60);
     // BGM disabled for now — sync issues to resolve later
-    // if (typeof startBGM === "function") startBGM(framesPerSixteenth);
 }
 
 // ---- Level Definitions (30 levels) ----
@@ -596,69 +595,6 @@ hudCanvas.width = COLS * TILE * SCALE;
 hudCanvas.height = HUD_H * SCALE;
 hudCtx.imageSmoothingEnabled = true;
 
-// ---- Image Asset Preloader (hybrid sprite system) ----
-// Loads PNG sprites from assets/ folder. If a PNG is missing, IMAGES[key] = null
-// and the original procedural drawing code runs as fallback.
-const IMAGES = {};
-const _ROW_IDS = ["O", "H", "S", "K", "B", "T"];
-const _DIR_NAMES = ["down", "up", "left", "right"];
-
-function loadImage(key, src) {
-    return new Promise((resolve) => {
-        const img = new Image();
-        const timeout = setTimeout(() => { IMAGES[key] = null; resolve(); }, 5000);
-        img.onload = () => { clearTimeout(timeout); IMAGES[key] = img; resolve(); };
-        img.onerror = () => { clearTimeout(timeout); IMAGES[key] = null; resolve(); };
-        img.src = src;
-    });
-}
-
-// MASTER SWITCH: false = all-procedural rendering (no PNGs loaded at all).
-// Flip to true to load and use every image asset again.
-const USE_IMAGE_ASSETS = false;
-
-const ASSET_LIST = [
-    // Backgrounds
-    ["cave_bg",    "assets/bg/themeparkbg.PNG"],
-    ["grid_wall",  "assets/grid/grid-wall.png"],
-    ["hud_bg",     "assets/hud/hud-bg.png"],
-    // Grid cells (1 off + 6 on colors + 6 hint + 6 x-indicator)
-    ["grid_off",   "assets/grid/grid-off.png"],
-    ..._ROW_IDS.map(r => ["grid_on_" + r, "assets/grid/grid-on-" + r + ".png"]),
-    ..._ROW_IDS.map(r => ["grid_hint_" + r, "assets/grid/grid-on-" + r + "-hint.png"]),
-    ..._ROW_IDS.map(r => ["grid_x_" + r, "assets/grid/grid-on-" + r + "-x.png"]),
-    // Player (4 dirs × 3 frames: idle + 2 walk + 4 punch poses)
-    ..._DIR_NAMES.flatMap(d => [0, 1, 2].map(f =>
-        ["player_" + d + "_" + f, "assets/player/player-" + d + "-" + f + ".png"]
-    )),
-    ..._DIR_NAMES.map(d => ["player_punch_" + d, "assets/player/player-punch-" + d + ".png"]),
-    // Player sprite sheet (walk-down animation, 5 cols × 4 rows, 308×464 per cell)
-    ["player_sheet_down", "assets/player/sorceress-f30c8976-1775409570906.mp4_308x464_sheet.png"],
-    // Goblin sprite sheets (3 types × walk + idle sheets)
-    ["goblin_walk",   "assets/goblins/Goblin1/Walk/Walk0_full.png"],
-    ["goblin_idle",   "assets/goblins/Goblin1/Idle/Idle0_full.png"],
-    ["elite_walk",    "assets/goblins/Goblin2/Walk/Walk0_full.png"],
-    ["elite_idle",    "assets/goblins/Goblin2/Idle/Idle0_full.png"],
-    ["catapult_walk", "assets/goblins/Goblin3/Walk/Walk0_full.png"],
-    ["catapult_idle", "assets/goblins/Goblin3/Idle/Idle0_full.png"],
-    // Dancers (6 color variants × 2 poses = 12)
-    ...[0,1,2,3,4,5].flatMap(i => [
-        ["dancer_" + i,          "assets/dancers/dancer-" + i + ".png"],
-        ["dancer_" + i + "_up",  "assets/dancers/dancer-" + i + "-up.png"],
-    ]),
-    // DJ equipment (6 pieces)
-    ["speaker_left",  "assets/dj/speaker-left.png"],
-    ["speaker_right", "assets/dj/speaker-right.png"],
-    ["turntable",     "assets/dj/turntable.png"],
-    ["mixer",         "assets/dj/mixer.png"],
-    ["light_rig",     "assets/dj/light-rig.png"],
-    ["disco_ball",    "assets/dj/disco-ball.png"],
-    // Cave entrance
-    ["cave_entrance", "assets/cave/cave-entrance.png"],
-];
-
-// ---- Audio Sample Preloader ----
-// Loads MP3/WAV drum samples. Falls back to synthesized sounds if missing.
 const AUDIO_BUFFERS = {};
 const AUDIO_SAMPLES = [
     ["openhat",  "assets/audio/openhat.wav"],
@@ -722,73 +658,15 @@ function playSample(key, time, volume) {
 }
 
 // ---- Background Music System ----
-// Maps frames-per-16th values to BGM buffer keys
-const BGM_TEMPO_MAP = {
-    10: "bgm_90",      // 90 BPM
-    9:  "bgm_100",     // 100 BPM
-    8:  "bgm_112p5",   // 112.5 BPM
-    7:  "bgm_128p6",   // 128.6 BPM
-    6:  "bgm_150",     // 150 BPM
-    5:  "bgm_180",     // 180 BPM
-};
-let bgmSource = null;    // current AudioBufferSourceNode
-let bgmGain = null;      // gain node for volume control
-let bgmCurrentKey = null; // which BGM is currently playing
-let bgmBarCount = 0;      // counts bars for 4-bar loop sync
-const BGM_BARS = 4;       // how many bars per BGM loop
-const BGM_VOLUME = 0.35;  // background music volume (0-1)
 
-function startBGM(framesPerSixteenth) {
-    if (!audioCtx) return;
-    const key = BGM_TEMPO_MAP[framesPerSixteenth];
-    if (!key) return;
-    bgmCurrentKey = key;
-    bgmBarCount = 0;
-    // Play immediately and let the sequencer retrigger every 4 bars
-    triggerBGMLoop();
-}
 
-// Called by the sequencer on step 0 to play BGM in sync
-function triggerBGMLoop() {
-    if (!audioCtx || !bgmCurrentKey) return;
-    const buffer = AUDIO_BUFFERS[bgmCurrentKey];
-    if (!buffer || !(buffer instanceof AudioBuffer)) return;
-    // Stop previous loop if still playing
-    if (bgmSource) {
-        try { bgmSource.stop(); } catch (e) {}
-        bgmSource.disconnect();
-    }
-    bgmSource = audioCtx.createBufferSource();
-    if (!bgmGain) {
-        bgmGain = audioCtx.createGain();
-        bgmGain.connect(audioCtx.destination);
-    }
-    bgmSource.buffer = buffer;
-    bgmGain.gain.setValueAtTime(BGM_VOLUME, audioCtx.currentTime);
-    bgmSource.connect(bgmGain);
-    bgmSource.start(audioCtx.currentTime);
-}
 
-function stopBGM() {
-    if (bgmSource) {
-        try { bgmSource.stop(); } catch (e) {}
-        bgmSource.disconnect();
-        bgmSource = null;
-    }
-    if (bgmGain) {
-        bgmGain.disconnect();
-        bgmGain = null;
-    }
-    bgmCurrentKey = null;
-}
 
-let assetsReady = false;
-// Start game as soon as images load — audio loads in background (non-blocking)
-// (with USE_IMAGE_ASSETS off, the list is empty and the game starts immediately)
-Promise.all((USE_IMAGE_ASSETS ? ASSET_LIST : []).map(([key, src]) => loadImage(key, src))).then(() => {
-    assetsReady = true;
-    if (typeof startGame === "function") startGame();
-});
+
+// The PNG preloader is gone: it was gated off, every image lookup was
+// undefined, and every sprite branch fell through to the procedural drawing
+// that is actually on screen. BUZZ and the Donks load separately, further down.
+let assetsReady = true;
 // Load audio samples in background — they'll be available when ready
 Promise.all(AUDIO_SAMPLES.map(([key, src]) => loadAudioSample(key, src))).catch(() => {});
 
@@ -2914,13 +2792,6 @@ function tickSequencer() {
                 }
             }
             currentStep = (currentStep + 1) % GRID_COLS;
-            // Trigger BGM loop every BGM_BARS bars to stay synced
-            if (currentStep === 0) {
-                bgmBarCount = (bgmBarCount + 1) % BGM_BARS;
-                if (bgmBarCount === 0 && typeof triggerBGMLoop === "function") {
-                    triggerBGMLoop();
-                }
-            }
         }
     }
 }
@@ -4039,7 +3910,6 @@ let playerDeathAnim = {
 };
 
 function triggerGameOver() {
-    stopBGM();
     gameState = "gameover";
     gameOverTimer = 0;
     sadSongStarted = false;
@@ -4893,37 +4763,6 @@ function strokeRoundRect(context, x, y, w, h, r, color, lineWidth) {
 function renderHUD() {
     hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
 
-    if (IMAGES.hud_bg) {
-        // Sprite-based HUD background
-        hudCtx.drawImage(IMAGES.hud_bg, 0, 0);
-    } else if (false) {
-        // Opaque bar retired: the HUD now sits over the venue's own wall, and
-        // the panels carry their own dark plates, so a full-width fill would
-        // just paint the room out again.
-        drawHudRect(0, 0, COLS * TILE, HUD_H, "#2C2C2A");
-
-        // Teal border along top — connects visually to the venue's bottom wall
-        for (let c = 0; c < COLS; c++) {
-            drawHudRect(c * TILE, 0, TILE, 2, c % 2 === 0 ? "#3a3a37" : "#3f3f3b");
-        }
-        // Highlight on border edge
-        hudCtx.fillStyle = "rgba(255,255,255,0.08)";
-        hudCtx.fillRect(0, 0, COLS * TILE * SCALE, 1 * SCALE);
-
-        // Subtle grain texture (matches venue floor grain)
-        for (let c = 0; c < COLS; c++) {
-            let seed = c * 37 + 7;
-            for (let i = 0; i < 4; i++) {
-                seed = (seed * 9301 + 49297) % 233280;
-                const gx = c * TILE + (seed % TILE);
-                seed = (seed * 9301 + 49297) % 233280;
-                const gy = 3 + (seed % (HUD_H - 4));
-                const bright = (seed % 2) === 0;
-                hudCtx.fillStyle = bright ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.08)";
-                hudCtx.fillRect(gx * SCALE, gy * SCALE, SCALE, SCALE);
-            }
-        }
-    }
 
     const pxSz = 2;                       // was 3 — the strip is a third shorter
     const digitW = 3 * pxSz + pxSz;
@@ -5073,11 +4912,7 @@ function render() {
     }
 
     // Clear & draw cave background (sprite scaled to canvas, or pre-rendered fallback)
-    if (IMAGES.cave_bg) {
-        ctx.drawImage(IMAGES.cave_bg, 0, 0, canvas.width, canvas.height);
-    } else {
-        ctx.drawImage(TEX_CAVE_BG[boil()], 0, 0);
-    }
+    ctx.drawImage(TEX_CAVE_BG[boil()], 0, 0);
 
     // (Room variety now comes from the biome system — each level regenerates
     // its textures with a unique seed and the zone's palette.)
@@ -5088,12 +4923,9 @@ function render() {
         const cx = cave.tileX * TILE;
         const cy = cave.tileY * TILE;
 
-        if (!IMAGES.cave_bg) {
-            // Only draw cave structures when using procedural background
-            if (IMAGES.cave_entrance) {
-                ctx.drawImage(IMAGES.cave_entrance, (cx - 2) * SCALE, (cy - 5) * SCALE);
-            } else {
-                // Procedural fallback — deep black cave hole
+        {
+            {
+                // Deep black cave hole
                 ctx.fillStyle = "#2C2C2A";
                 ctx.beginPath();
                 ctx.roundRect(cx * SCALE, (cy - 2) * SCALE, TILE * SCALE, (TILE + 4) * SCALE, [6, 6, 2, 2]);
@@ -5233,7 +5065,7 @@ function render() {
     // Declared outside the if-block: the floor-crystals section below needs these too
     const ar_lights = getActiveRows();
     const now_lights = performance.now();
-    if (!IMAGES.cave_bg) {
+    {
     const topCaveCol = Math.floor(COLS / 2);
     for (let c = 1; c < COLS - 1; c++) {
         if (c === topCaveCol) continue;
@@ -5304,11 +5136,10 @@ function render() {
         ctx.fill();
         ctx.globalAlpha = 1.0;
     }
-    } // end if (!IMAGES.cave_bg) — skip ceiling lights
+    }
 
     // Floor crystals along bottom wall — drum-synced glowing formations
     for (let c = 1; c < COLS - 1; c++) {
-        if (IMAGES.cave_bg) continue; // skip when bg sprite is loaded
         const crX = c * TILE + TILE / 2;
         const crBaseY = (ROWS - 1) * TILE + 2;
         const rowIdx = (c + 2) % ar_lights;
@@ -5348,7 +5179,7 @@ function render() {
         const gwX = GRID_X * TILE - 2;
         const gwY = (GRID_Y * TILE + GRID_Y_OFFSET) - 2;
         const gwH = ar * TILE + 4;
-        const gwSrc = IMAGES.grid_wall || TEX_GRID_WALL;
+        const gwSrc = TEX_GRID_WALL;
         ctx.drawImage(gwSrc, 0, 0, gwSrc.width, gwH * SCALE, gwX * SCALE, gwY * SCALE, gwSrc.width, gwH * SCALE);
     }
 
@@ -5370,36 +5201,10 @@ function render() {
                 // Draw glow tile (sprite with rotation, or pre-rendered fallback).
                 // NOTE: no draw-time shadowBlur here — the glow is baked into
                 // the tile art itself; shadowBlur per cell was a huge perf cost.
-                const sprOn = IMAGES["grid_on_" + ROW_LETTERS[r]];
-                if (sprOn) {
-                    if (rotAngle !== 0) {
-                        ctx.save();
-                        ctx.translate(bxs + ts / 2, bys + ts / 2);
-                        ctx.rotate(rotAngle);
-                        ctx.drawImage(sprOn, -ts / 2, -ts / 2, ts, ts);
-                        ctx.restore();
-                    } else {
-                        ctx.drawImage(sprOn, bxs, bys, ts, ts);
-                    }
-                } else {
-                    ctx.drawImage(TEX_GRID_ON[r][c], bxs, bys);
-                }
+                ctx.drawImage(TEX_GRID_ON[r][c], bxs, bys);
             } else {
                 // Draw dark stone tile (sprite with rotation, or pre-rendered fallback)
-                const sprOff = IMAGES.grid_off;
-                if (sprOff) {
-                    if (rotAngle !== 0) {
-                        ctx.save();
-                        ctx.translate(bxs + ts / 2, bys + ts / 2);
-                        ctx.rotate(rotAngle);
-                        ctx.drawImage(sprOff, -ts / 2, -ts / 2, ts, ts);
-                        ctx.restore();
-                    } else {
-                        ctx.drawImage(sprOff, bxs, bys, ts, ts);
-                    }
-                } else {
-                    ctx.drawImage(TEX_GRID_OFF[r][c], bxs, bys);
-                }
+                ctx.drawImage(TEX_GRID_OFF[r][c], bxs, bys);
             }
 
             // Block toggle pop animation (scale + glow burst)
@@ -5446,61 +5251,29 @@ function render() {
             if (currentLevel < LEVELS.length && !LEVELS[currentLevel].noPattern) {
                 const target = LEVELS[currentLevel].pattern[r][c];
                 if (target && !on) {
-                    // Needs to be ON — sprite hint tile or pulsing outline fallback
-                    const hintSpr = IMAGES["grid_hint_" + ROW_LETTERS[r]];
-                    if (hintSpr) {
-                        const pulse = 0.5 + Math.sin(performance.now() * 0.003) * 0.25;
-                        ctx.globalAlpha = pulse;
-                        if (rotAngle !== 0) {
-                            ctx.save();
-                            ctx.translate(bxs + ts / 2, bys + ts / 2);
-                            ctx.rotate(rotAngle);
-                            ctx.drawImage(hintSpr, -ts / 2, -ts / 2, ts, ts);
-                            ctx.restore();
-                        } else {
-                            ctx.drawImage(hintSpr, bxs, bys, ts, ts);
-                        }
-                        ctx.globalAlpha = 1.0;
-                    } else {
-                        const pulse = 0.5 + Math.sin(performance.now() * 0.003) * 0.25;
-                        ctx.globalAlpha = pulse;
-                        const rowCol = PAL.gridOn[r];
-                        drawRect(bx + 1, by + 1, TILE - 2, 1, rowCol);
-                        drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, rowCol);
-                        drawRect(bx + 1, by + 1, 1, TILE - 2, rowCol);
-                        drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, rowCol);
-                        drawRect(bx + 6, by + 6, 4, 4, rowCol);
-                        ctx.globalAlpha = 1.0;
-                    }
+                    // Needs to be ON — pulsing outline
+                    const pulse = 0.5 + Math.sin(performance.now() * 0.003) * 0.25;
+                    ctx.globalAlpha = pulse;
+                    const rowCol = PAL.gridOn[r];
+                    drawRect(bx + 1, by + 1, TILE - 2, 1, rowCol);
+                    drawRect(bx + 1, by + TILE - 2, TILE - 2, 1, rowCol);
+                    drawRect(bx + 1, by + 1, 1, TILE - 2, rowCol);
+                    drawRect(bx + TILE - 2, by + 1, 1, TILE - 2, rowCol);
+                    drawRect(bx + 6, by + 6, 4, 4, rowCol);
+                    ctx.globalAlpha = 1.0;
                 } else if (!target && on) {
-                    // Needs to be OFF — sprite X tile or procedural X fallback
-                    const xSpr = IMAGES["grid_x_" + ROW_LETTERS[r]];
-                    if (xSpr) {
-                        const xPulse = 0.8 + Math.sin(performance.now() * 0.004) * 0.2;
-                        ctx.globalAlpha = xPulse;
-                        if (rotAngle !== 0) {
-                            ctx.save();
-                            ctx.translate(bxs + ts / 2, bys + ts / 2);
-                            ctx.rotate(rotAngle);
-                            ctx.drawImage(xSpr, -ts / 2, -ts / 2, ts, ts);
-                            ctx.restore();
-                        } else {
-                            ctx.drawImage(xSpr, bxs, bys, ts, ts);
-                        }
-                        ctx.globalAlpha = 1.0;
-                    } else {
-                        const xCol = PAL.gridX[r];
-                        ctx.globalAlpha = 0.8 + Math.sin(performance.now() * 0.004) * 0.2;
-                        drawRect(bx + 4, by + 4, 2, 2, xCol);
-                        drawRect(bx + 6, by + 6, 2, 2, xCol);
-                        drawRect(bx + 8, by + 8, 2, 2, xCol);
-                        drawRect(bx + 10, by + 10, 2, 2, xCol);
-                        drawRect(bx + 10, by + 4, 2, 2, xCol);
-                        drawRect(bx + 8, by + 6, 2, 2, xCol);
-                        drawRect(bx + 6, by + 8, 2, 2, xCol);
-                        drawRect(bx + 4, by + 10, 2, 2, xCol);
-                        ctx.globalAlpha = 1.0;
-                    }
+                    // Needs to be OFF — pulsing X
+                    const xCol = PAL.gridX[r];
+                    ctx.globalAlpha = 0.8 + Math.sin(performance.now() * 0.004) * 0.2;
+                    drawRect(bx + 4, by + 4, 2, 2, xCol);
+                    drawRect(bx + 6, by + 6, 2, 2, xCol);
+                    drawRect(bx + 8, by + 8, 2, 2, xCol);
+                    drawRect(bx + 10, by + 10, 2, 2, xCol);
+                    drawRect(bx + 10, by + 4, 2, 2, xCol);
+                    drawRect(bx + 8, by + 6, 2, 2, xCol);
+                    drawRect(bx + 6, by + 8, 2, 2, xCol);
+                    drawRect(bx + 4, by + 10, 2, 2, xCol);
+                    ctx.globalAlpha = 1.0;
                 }
             }
         }
@@ -6125,248 +5898,10 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         return;
     }
 
-    // ---- Sprite sheet path for walk-down (20-frame animation) ----
-    if (dir === 0 && IMAGES.player_sheet_down && punch <= 0) {
-        const sheet = IMAGES.player_sheet_down;
-        const cellW = 308, cellH = 464;
-        const sheetCols = 5, totalFrames = 20;
-        // Frame 0 = idle (sheet frame 0), frames 1+ = walk cycle through all 20
-        const sheetFrame = frame === 0 ? 0 : frame % totalFrames;
-        const col = sheetFrame % sheetCols;
-        const row = Math.floor(sheetFrame / sheetCols);
-        const sprW = TILE * SCALE * 2.0;
-        const sprH = TILE * SCALE * 2.0;
-        const sprX = sx - (sprW - TILE * SCALE) / 2;
-        const sprY = sy - bob - (sprH - TILE * SCALE);
-        if (ghost) { ctx.globalAlpha = 0.5; ctx.globalCompositeOperation = "lighter"; }
-        ctx.drawImage(sheet, col * cellW, row * cellH, cellW, cellH, sprX, sprY, sprW, sprH);
-        if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
-        return;
-    }
-
-    // ---- Sprite-based path for individual files (other directions + fallback) ----
-    {
-        const dirName = ["down", "up", "left", "right"][dir];
-        const punchKey = "player_punch_" + dirName;
-        // Frame 0 = idle, frames 1-3 = walking (alternate between sprite 1 and 2)
-        const walkFrame = frame === 0 ? 0 : ((frame % 2) + 1);
-        const walkKey = "player_" + dirName + "_" + walkFrame;
-        // Fall back to frame 0 if the specific walk frame doesn't exist
-        const walkFallback = "player_" + dirName + "_0";
-        // Try punch sprite first, fall back to walk sprite
-        const sprKey = (punch > 0 && IMAGES[punchKey]) ? punchKey
-            : IMAGES[walkKey] ? walkKey : walkFallback;
-        if (IMAGES[sprKey]) {
-            // No punch lunge when using sprites — keep Carl in place
-            const lx = 0, ly = 0;
-            const sprW = TILE * SCALE * 2.0;
-            const sprH = TILE * SCALE * 2.0;
-            const sprX = sx + lx - (sprW - TILE * SCALE) / 2;
-            const sprY = sy - bob + ly - (sprH - TILE * SCALE);
-            if (ghost) { ctx.globalAlpha = 0.5; ctx.globalCompositeOperation = "lighter"; }
-            ctx.drawImage(IMAGES[sprKey], sprX, sprY, sprW, sprH);
-            if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
-            return;
-        }
-    }
-
-    // ---- Procedural fallback ----
-    const col = (c) => ghost ? ghostTint(c) : c;
-    const lx = leanX * SCALE, ly = leanY * SCALE;
-
-    // The procedural art below was authored in raw pixels for 48px tiles
-    // (SCALE 3). Scale it around the tile origin to match the current tile size.
-    ctx.save();
-    const PK = (TILE * SCALE) / 48;
-    ctx.translate(sx, sy);
-    ctx.scale(PK, PK);
-    ctx.translate(-sx, -sy);
-
-    // Block-print shadow glow
-    spriteGlowOn();
-
-    // === BODY (foggy mint shirt — solid rounded shape) ===
-    // Lower body stays planted
-    ctx.fillStyle = col("#82c48c");
-    ctx.beginPath();
-    ctx.roundRect(sx + 9, sy + 9 - bob, 30, 27, [0, 0, 4, 4]);
-    ctx.fill();
-    // Body shading (left/right edges)
-    ctx.fillStyle = col("#4a8454");
-    ctx.beginPath();
-    ctx.roundRect(sx + 9, sy + 9 - bob, 8, 27, [0, 0, 0, 4]);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.roundRect(sx + 31, sy + 9 - bob, 8, 27, [0, 0, 4, 0]);
-    ctx.fill();
-    // Hem
-    ctx.fillStyle = col("#4a8454");
-    ctx.fillRect(sx + 12, sy + 30 - bob, 24, 3);
-
-    // Upper body leans into punch
-    ctx.fillStyle = col("#82c48c");
-    ctx.beginPath();
-    ctx.roundRect(sx + 9 + lx, sy + 3 + ly - bob, 30, 21, [6, 6, 0, 0]);
-    ctx.fill();
-    // Upper shading
-    ctx.fillStyle = col("#4a8454");
-    ctx.fillRect(sx + 9 + lx, sy + 3 + ly - bob, 6, 18);
-    ctx.fillRect(sx + 33 + lx, sy + 3 + ly - bob, 6, 18);
-    // Chest highlight
-    ctx.fillStyle = col("#a8e0ae");
-    ctx.fillRect(sx + 15 + lx, sy + 9 + ly - bob, 18, 3);
-    // Collar
-    ctx.fillStyle = col("#392a1c");
-    ctx.beginPath();
-    ctx.roundRect(sx + 15 + lx, sy + 3 + ly - bob, 18, 4, [3, 3, 0, 0]);
-    ctx.fill();
-
-    // === HEAD (bald, round dome) — smooth circle ===
-    const headCx = sx + 24 + lx;
-    const headCy = sy - 6 + ly - bob;
-    const headR = 18;
-    // Main head circle
-    ctx.fillStyle = col("#efb775");
-    ctx.beginPath();
-    ctx.arc(headCx, headCy, headR, 0, Math.PI * 2);
-    ctx.fill();
-    // Bald shine highlight (crescent on top)
-    ctx.fillStyle = col("#f5c882");
-    ctx.beginPath();
-    ctx.arc(headCx, headCy - 2, headR - 3, -Math.PI * 0.9, -Math.PI * 0.1);
-    ctx.fill();
-    // Ears (small circles on sides)
-    ctx.fillStyle = col("#a58c27");
-    ctx.beginPath();
-    ctx.arc(headCx - headR + 2, headCy + 4, 4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(headCx + headR - 2, headCy + 4, 4, 0, Math.PI * 2);
-    ctx.fill();
-
-    // === EYES & BEARD (direction-aware) ===
-    const isBlinking = opts.isBlinking || false;
-    const eyeDir = [[0, 3], [0, -6], [-3, 0], [3, 0]][dir];
-
-    if (dir === 1) {
-        // Facing UP — back of bald head
-        ctx.fillStyle = col("#e0a860");
-        ctx.beginPath();
-        ctx.arc(headCx, headCy, headR - 3, -Math.PI * 0.8, -Math.PI * 0.2);
-        ctx.fill();
-        // Neck area
-        ctx.fillStyle = col("#efb775");
-        ctx.fillRect(sx + 15 + lx, sy - 3 + ly - bob, 18, 6);
-    } else {
-        // Facing DOWN, LEFT, or RIGHT — show beard and eyes
-        // Big bushy beard (rounded bottom)
-        ctx.fillStyle = col("#ab5c1c");
-        ctx.beginPath();
-        ctx.moveTo(headCx - 15, headCy + 2);
-        ctx.lineTo(headCx + 15, headCy + 2);
-        ctx.lineTo(headCx + 15, headCy + 14);
-        ctx.quadraticCurveTo(headCx + 15, headCy + 22, headCx + 6, headCy + 22);
-        ctx.lineTo(headCx - 6, headCy + 22);
-        ctx.quadraticCurveTo(headCx - 15, headCy + 22, headCx - 15, headCy + 14);
-        ctx.closePath();
-        ctx.fill();
-        // Beard side tufts
-        ctx.beginPath();
-        ctx.arc(headCx - 16, headCy + 4, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(headCx + 16, headCy + 4, 5, 0, Math.PI * 2);
-        ctx.fill();
-        // Beard bottom detail
-        ctx.fillStyle = col("#773421");
-        ctx.beginPath();
-        ctx.ellipse(headCx, headCy + 20, 9, 3, 0, 0, Math.PI * 2);
-        ctx.fill();
-        // Eyebrow ridge
-        ctx.fillStyle = col("#773421");
-        ctx.fillRect(sx + 12 + lx + eyeDir[0], sy - 20 + ly - bob + eyeDir[1], 24, 2);
-
-        // Mouth (direction-shifted)
-        const mOfs = dir === 2 ? -3 : dir === 3 ? 3 : 0;
-        // Mouth opening
-        ctx.fillStyle = col("#9b1a0a");
-        ctx.beginPath();
-        ctx.roundRect(sx + 16 + lx + mOfs, sy - 5 + ly - bob, 16, 6, 2);
-        ctx.fill();
-        // Inner mouth
-        ctx.fillStyle = col("#300f0a");
-        ctx.beginPath();
-        ctx.roundRect(sx + 17 + lx + mOfs, sy - 4 + ly - bob, 14, 4, 1);
-        ctx.fill();
-        // Teeth
-        ctx.fillStyle = col("#efd8a1");
-        ctx.fillRect(sx + 18 + lx + mOfs, sy - 4 + ly - bob, 12, 1);
-
-        // Eyes
-        if (isBlinking) {
-            ctx.fillStyle = col("#2a1d0d");
-            ctx.fillRect(sx + 12 + lx + eyeDir[0], sy - 13 + ly - bob + eyeDir[1], 8, 2);
-            ctx.fillRect(sx + 28 + lx + eyeDir[0], sy - 13 + ly - bob + eyeDir[1], 8, 2);
-        } else {
-            // Eye whites (rounded)
-            ctx.fillStyle = col("#efd8a1");
-            ctx.beginPath();
-            ctx.ellipse(sx + 16 + lx + eyeDir[0], sy - 14 + ly - bob + eyeDir[1], 5, 4, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.ellipse(sx + 32 + lx + eyeDir[0], sy - 14 + ly - bob + eyeDir[1], 5, 4, 0, 0, Math.PI * 2);
-            ctx.fill();
-            // Pupils
-            ctx.fillStyle = col("#2a1d0d");
-            ctx.beginPath();
-            ctx.arc(sx + 17 + lx + eyeDir[0], sy - 13 + ly - bob + eyeDir[1], 3, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(sx + 33 + lx + eyeDir[0], sy - 13 + ly - bob + eyeDir[1], 3, 0, Math.PI * 2);
-            ctx.fill();
-            // Pupil highlights
-            ctx.fillStyle = col("#efd8a1");
-            ctx.beginPath();
-            ctx.arc(sx + 16 + lx + eyeDir[0], sy - 14 + ly - bob + eyeDir[1], 1, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(sx + 32 + lx + eyeDir[0], sy - 14 + ly - bob + eyeDir[1], 1, 0, Math.PI * 2);
-            ctx.fill();
-            // Brows
-            ctx.fillStyle = col("#927e6a");
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = col("#927e6a");
-            ctx.beginPath();
-            ctx.moveTo(sx + 10 + lx + eyeDir[0], sy - 19 + ly - bob + eyeDir[1]);
-            ctx.lineTo(sx + 22 + lx + eyeDir[0], sy - 19 + ly - bob + eyeDir[1]);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(sx + 26 + lx + eyeDir[0], sy - 19 + ly - bob + eyeDir[1]);
-            ctx.lineTo(sx + 38 + lx + eyeDir[0], sy - 19 + ly - bob + eyeDir[1]);
-            ctx.stroke();
-        }
-    }
-
-    // === FEET / SHOES (rounded) — stay planted ===
-    const walkOfs = (frame === 1 ? 2 : frame === 3 ? -2 : 0) * SCALE;
-    ctx.fillStyle = col("#927e6a");
-    ctx.beginPath();
-    ctx.roundRect(sx + 12 + walkOfs, sy + 36 - bob, 9, 6, [0, 0, 3, 3]);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.roundRect(sx + 27 - walkOfs, sy + 36 - bob, 9, 6, [0, 0, 3, 3]);
-    ctx.fill();
-    // Shoe soles
-    ctx.fillStyle = col("#4a4a45");
-    ctx.fillRect(sx + 12 + walkOfs, sy + 40 - bob, 9, 2);
-    ctx.fillRect(sx + 27 - walkOfs, sy + 40 - bob, 9, 2);
-    // Shoe tops
-    ctx.fillStyle = col("#3f3f3b");
-    ctx.fillRect(sx + 12 + walkOfs, sy + 34 - bob, 9, 3);
-    ctx.fillRect(sx + 27 - walkOfs, sy + 34 - bob, 9, 3);
-
-    spriteGlowOff();
-    ctx.restore(); // undo procedural-scale transform
+    // (Everything below here used to be the pre-BUZZ player: a 20-frame
+    // sprite sheet, a per-direction PNG path, and ~190 lines of procedural
+    // pixel-art Carl authored for 48px tiles. The BUZZ rig above returns
+    // unconditionally, so none of it could run.)
 }
 
 // How far the arm is out, 0..1. A sine over the whole swing spread the
@@ -6658,18 +6193,6 @@ function drawDJSetupPiece(pieceIndex, boothX, boothY, options) {
     ctx.globalAlpha = prevAlpha * alpha;
     if (silhouette) ctx.globalAlpha = prevAlpha * 0.15;
 
-    // Sprite-based path — offsets match the procedural positions below
-    const _djKeys = ["speaker_left", "speaker_right", "turntable", "mixer", "light_rig", "disco_ball"];
-    const _djOffsets = [[-12, -2], [44, -2], [1, -2], [18, 2], [-8, -18], [20, -30]];
-    const djSpr = IMAGES[_djKeys[pieceIndex]];
-    if (djSpr) {
-        const [ox, oy] = _djOffsets[pieceIndex];
-        ctx.drawImage(djSpr, (boothX + ox) * SCALE, (boothY + oy) * SCALE);
-        ctx.globalAlpha = prevAlpha;
-        return;
-    }
-
-    // Procedural fallback
     switch (pieceIndex) {
         case 0: // left speaker
             drawSubwoofer(boothX - 12, boothY - 2, 0, -1);
@@ -7627,46 +7150,6 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
         return;
     }
 
-    // ---- Sprite sheet path (early return if sheet loaded) ----
-    {
-        const prefix = type === "elite" ? "elite" : type === "catapult" ? "catapult" : "goblin";
-        const walkSheet = IMAGES[prefix + "_walk"];
-        const idleSheet = IMAGES[prefix + "_idle"];
-        // Use walk sheet when moving, idle when standing (fall back to walk if idle missing)
-        const sheet = walkSheet || idleSheet;
-        if (sheet) {
-            const sx = gx * SCALE;
-            const sy = gy * SCALE;
-            // Sprite sheet layout: 64×64 cells
-            // Rows: 0=down, 1=up, 2=left, 3=right (matches game dir codes)
-            const sheetRow = dir;
-            const cellW = 64, cellH = 64;
-            const cols = sheet.width / cellW;
-            const col = frame % cols;
-            // Destination size: 3.5×3.5 tiles
-            // Center sprite on the goblin's collision tile (1×1 tile at gx,gy)
-            const sprW = TILE * SCALE * 3.5;
-            const sprH = TILE * SCALE * 3.5;
-            const sprX = sx + (TILE * SCALE) / 2 - sprW / 2;
-            const sprY = sy + (TILE * SCALE) / 2 - sprH / 2;
-            // Hurt flash: overlay white tint
-            const isHurt = opts.bodyCol && opts.bodyCol !== "#50ad33" && opts.bodyCol !== "#c05838" && opts.bodyCol !== "#FF6600";
-            ctx.drawImage(sheet,
-                col * cellW, sheetRow * cellH, cellW, cellH, // source crop
-                sprX, sprY, sprW, sprH                        // destination
-            );
-            if (isHurt) {
-                ctx.globalCompositeOperation = "source-atop";
-                ctx.globalAlpha = 0.6;
-                ctx.fillStyle = "#ffffff";
-                ctx.fillRect(sprX, sprY, sprW, sprH);
-                ctx.globalAlpha = 1;
-                ctx.globalCompositeOperation = "source-over";
-            }
-            return;
-        }
-    }
-
     // ---- Procedural fallback ----
     // Colors — allow overrides (for hurt flash, HP changes)
     let bodyCol, darkCol, headCol, eyeCol;
@@ -8151,31 +7634,6 @@ function drawDancerSprite(gx, gy, pal, options) {
 
     const sx = gx * SCALE;
     const sy = gy * SCALE;
-
-    // ---- Sprite-based path (early return if PNG loaded) ----
-    {
-        const palIdx = pal._index !== undefined ? pal._index : 0;
-        const keyDown = "dancer_" + palIdx;
-        const keyUp = "dancer_" + palIdx + "_up";
-        if (IMAGES[keyDown]) {
-            const drawY = sy - bob;
-            if (scale !== 1) {
-                ctx.save();
-                ctx.translate(sx + 18, sy + 18);
-                ctx.scale(scale, scale);
-                ctx.translate(-(sx + 18), -(sy + 18));
-            }
-            // Choose pose based on arm blend threshold
-            // Dancers are 36×40 screen pixels (12×13.3 game pixels × SCALE)
-            if (armBlend > 0.5 && IMAGES[keyUp]) {
-                ctx.drawImage(IMAGES[keyUp], sx, drawY, 36, 40);
-            } else {
-                ctx.drawImage(IMAGES[keyDown], sx, drawY, 36, 40);
-            }
-            if (scale !== 1) ctx.restore();
-            return;
-        }
-    }
 
     // ---- Procedural fallback ----
     if (scale !== 1) {
@@ -9751,11 +9209,7 @@ function advanceIntroScene() {
 // optionally darkened — keeps the title/story scenes visually consistent
 // with the actual levels instead of the old flat-color tiles.
 function drawSceneBackground(darken) {
-    if (IMAGES.cave_bg) {
-        ctx.drawImage(IMAGES.cave_bg, 0, 0, canvas.width, canvas.height);
-    } else {
-        ctx.drawImage(TEX_CAVE_BG[boil()], 0, 0);
-    }
+    ctx.drawImage(TEX_CAVE_BG[boil()], 0, 0);
     if (darken > 0) {
         ctx.fillStyle = "#000000";
         ctx.globalAlpha = Math.min(1, darken);
