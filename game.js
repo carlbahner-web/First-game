@@ -9399,7 +9399,7 @@ function heroSet() {
             bodyH: bodyH,
             armY: DK.by + DK.bh - bodyH / 2, // shoulders at the drum's center height
             armX: 26,                        // shoulder ON the rim, not inside it
-            armScale: 1.25,                  // arms sized to the bigger drum body
+            armStretch: 1.3,                 // original thickness, stretched longer
             idleArm: -Math.PI / 4,           // hands down 45deg (audience-left CCW, right CW)
         };
     }
@@ -9435,13 +9435,15 @@ function drawDonk(cx, cy, k, o) {
     const armMX = set.armX !== undefined ? set.armX : 22;
     const armMY = set.armY !== undefined ? set.armY : -31;
     const armIdle = set.idleArm || 0;  // base pose: hands rotated down
-    const as_ = set.armScale || 1;     // uniform arm scale-up
+    const as_ = set.armScale || 1;                  // uniform arm scale
+    const ast = set.armStretch || 1;                // length-only stretch
+    const aw = DK.armW * as_, ah = DK.armH * as_ * ast;
     const armAt = (side, swing) => {
         ctx.save();
         ctx.translate(side * armMX * k, armMY * k); // shoulder mount
         if (side > 0) ctx.scale(-1, 1);             // arm art mirrors for this side
         ctx.rotate(swing + armIdle);
-        ctx.drawImage(set.arm, -DK.armW * as_ * DK.armPX * k, -DK.armH * as_ * DK.armPY * k, DK.armW * as_ * k, DK.armH * as_ * k);
+        ctx.drawImage(set.arm, -aw * DK.armPX * k, -ah * DK.armPY * k, aw * k, ah * k);
         ctx.restore();
     };
 
