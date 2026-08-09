@@ -1951,6 +1951,8 @@ const player = {
     // impact burst needs its own clock — tied to the swing it would freeze
     // mid-flash for as long as you leaned on the button.
     punchFx: 0,
+    punchVel: 0,           // fist speed this frame, drives the smear and trail
+    punchHitCol: null,     // colour of whatever he connected with
     speed: 1.68, // pixels per frame at 60fps
     blinkTimer: 0, // counts up each frame, blinks at 180
     stunTimer: 0, // frames remaining in stun (can't move or punch)
@@ -3041,6 +3043,7 @@ function update(dt) {
         p.attackTimer = p.attackDuration;
         p.punchFx = p.attackDuration;
         p.punchHit = false;
+        p.punchHitCol = null;
         ensureAudio();
         // play a punchy impact sound
         if (audioCtx) {
@@ -3090,6 +3093,7 @@ function update(dt) {
             if (!hitGob.dead && aabb(punchBox, gobBox)) {
                 hitAnyGoblin = true;
                 p.punchHit = true;
+                p.punchHitCol = INK.mustard;   // a solid hit on a Donk
                 hitGob.hp--;
 
                 if (hitGob.hp > 0) {
@@ -3231,6 +3235,7 @@ function update(dt) {
             const cgBox = { x: catapultGoblin.x, y: catapultGoblin.y, w: catapultGoblin.w, h: catapultGoblin.h };
             if (aabb(punchBox, cgBox)) {
                 p.punchHit = true;
+                p.punchHitCol = INK.silverL;   // clang — it's armour plate
                 ensureAudio();
                 if (audioCtx) playClang(audioCtx.currentTime);
                 // Spark particles
@@ -3292,6 +3297,7 @@ function update(dt) {
             const dTileY = Math.round(d.y / TILE);
             if (targetTileX === dTileX && targetTileY === dTileY) {
                 p.punchHit = true;
+                p.punchHitCol = INK.mint;
                 if (audioCtx) {
                     playDonk(audioCtx.currentTime);
                 }
@@ -3318,6 +3324,11 @@ function update(dt) {
                 tutorialFirstToggleFrame = tutorialHintTimer;
             }
             p.punchHit = true;
+            // The pad flashes in its own instrument's colour, so the impact
+            // reinforces the sequencer's colour language instead of fighting it
+            p.punchHitCol = PAL.gridOn[row] || INK.mustard;
+            screenShake = Math.max(screenShake, 3);
+            shakeIntensity = Math.max(shakeIntensity, 1);
             // play a toggle blip
             if (audioCtx) {
                 const now = audioCtx.currentTime;
@@ -8589,6 +8600,7 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
             walk: donkCarlWalk,
             mirror: donkCarlFacing === -1, // BUZZ's art faces right natively
             punchThrust: punch,
+            punchVel: opts.punchVel || 0,
             punchDir: dir,
         });
         if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
@@ -8846,23 +8858,29 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
 // hold (see the attack tick) takes over from there.
 const PUNCH_EXT = 3;   // frames to full extension
 const PUNCH_RET = 4;   // frames to pull back once the button is released
-function punchExtension(p) {
+function punchExtensionAt(p, timer) {
     if (!p.attacking) return 0;
-    const elapsed = p.attackDuration - p.attackTimer;
+    const elapsed = p.attackDuration - timer;
     // the +0.5 means frame one is already ~40% out — no dead frame at the start
-    const out = Math.min(1, (elapsed + 0.5) / PUNCH_EXT);
-    const back = Math.min(1, p.attackTimer / PUNCH_RET);
+    const out = Math.max(0, Math.min(1, (elapsed + 0.5) / PUNCH_EXT));
+    const back = Math.min(1, timer / PUNCH_RET);
     return Math.min(1 - Math.pow(1 - out, 3), back);
 }
+const punchExtension = p => punchExtensionAt(p, p.attackTimer);
 
 function drawPlayer() {
     const p = player;
     const punchThrust = punchExtension(p);
+    // How much the fist moved this frame, 0..1 of full reach. The smear and the
+    // trail both scale off it, so they appear exactly on the fast frames and
+    // vanish the moment he's holding still at full extension.
+    p.punchVel = Math.abs(punchThrust - punchExtensionAt(p, p.attackTimer + 1));
     // Flash sprite on/off every 6 frames when stunned
     if (p.stunTimer > 0 && Math.floor(p.stunTimer / 6) % 2 === 0) {
         // Skip drawing — sprite is "off" this cycle
     } else {
-        drawPlayerSprite(p.x, p.y, p.frame, p.dir, { isBlinking: p.blinkTimer >= 180, punchThrust: punchThrust });
+        drawPlayerSprite(p.x, p.y, p.frame, p.dir,
+            { isBlinking: p.blinkTimer >= 180, punchThrust: punchThrust, punchVel: p.punchVel });
     }
 }
 
@@ -8969,56 +8987,71 @@ function drawPunch() {
     }
     }
 
-    // === IMPACT SHOCKWAVE on hit — radiates outward from fist ===
-    // Driven by punchFx, not by the swing: the swing can be HELD at full
-    // extension, and a burst frozen mid-flash for as long as the button is
-    // down reads as a bug, not a hit.
-    const fxProg = 1 - (p.punchFx / p.attackDuration);
-    const fx = p.punchFx > 0 ? Math.sin(fxProg * Math.PI) : 0;
-    if (fx > 0.5 && p.punchHit) {
-        const thrust = fx;
-        // Shockwave center extends outward from Carl in punch direction
-        const shockDist = thrust * 12 * SCALE;
-        const tip = (heroArm && donkFistTip) ? donkFistTip : { x: fistX, y: fistY };
-        const shockX = tip.x + dx * shockDist;
-        const shockY = tip.y + dy * shockDist;
-        // Burst lines — 2.5x larger, directed outward from Carl
-        const burstCount = 12;
-        const punchAngle = Math.atan2(dy, dx);
-        for (let i = 0; i < burstCount; i++) {
-            // Spread lines in a 180° arc in the punch direction
-            const spread = (i / (burstCount - 1) - 0.5) * Math.PI;
-            const angle = punchAngle + spread;
-            const innerR = 8 * SCALE;
-            const outerR = (25 + thrust * 12) * SCALE;
-            ctx.strokeStyle = "#efd8a1";
-            ctx.lineWidth = 3 * SCALE;
-            ctx.globalAlpha = thrust * 0.85;
+    // === IMPACT ===
+    // Two different things, deliberately gated differently:
+    //   the TRAIL is motion, so it draws on every swing including a whiff;
+    //   the STAR and the BLOOM are contact, so they only fire when the punch
+    //   actually connected with something (Carl). punchHit is already set only
+    //   by a real hit — a goblin, the catapult, a villager, or a drum pad.
+    // Both run off punchFx rather than the swing, because the swing can be HELD
+    // and an effect frozen mid-flash reads as a bug rather than a hit.
+    const tip = (heroArm && donkFistTip) ? donkFistTip : { x: fistX, y: fistY };
+    const punchAngle = Math.atan2(dy, dx);
+
+    // --- dry-brush trail, chasing the glove ---
+    const vel = p.punchVel || 0;
+    if (vel > 0.05) {
+        const len = Math.min(1, vel * 2.2) * 15 * SCALE;
+        const nx = -Math.sin(punchAngle), ny = Math.cos(punchAngle);
+        ctx.strokeStyle = HOSE_INK; ctx.lineCap = "round";
+        for (let i = -1; i <= 1; i++) {
+            const off = i * 5 * SCALE, l = len * (1 - Math.abs(i) * 0.3);
+            ctx.globalAlpha = 0.45 - Math.abs(i) * 0.14;
+            ctx.lineWidth = (2.4 - Math.abs(i) * 0.8) * SCALE * 0.6;
             ctx.beginPath();
-            ctx.moveTo(shockX + Math.cos(angle) * innerR, shockY + Math.sin(angle) * innerR);
-            ctx.lineTo(shockX + Math.cos(angle) * outerR, shockY + Math.sin(angle) * outerR);
+            ctx.moveTo(tip.x + nx * off, tip.y + ny * off);
+            ctx.lineTo(tip.x + nx * off - Math.cos(punchAngle) * l,
+                       tip.y + ny * off - Math.sin(punchAngle) * l);
             ctx.stroke();
         }
-        // Impact flash — 2.5x larger, centered on shockwave
-        ctx.fillStyle = "#FFF";
-        ctx.globalAlpha = thrust * 0.5;
-        ctx.beginPath();
-        ctx.arc(shockX, shockY, 22 * SCALE, 0, Math.PI * 2);
-        ctx.fill();
-        // Amber/gold ring at the edge
-        ctx.strokeStyle = "#F6CC60";
-        ctx.lineWidth = 3 * SCALE;
-        ctx.globalAlpha = thrust * 0.6;
-        ctx.beginPath();
-        ctx.arc(shockX, shockY, 22 * SCALE, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.globalAlpha = 1.0;
+        ctx.globalAlpha = 1;
     }
 
-    // (Motion lines removed — they drew in FRONT of the body while he leans
-    // into the punch, and they were still anchored to the old procedural fist
-    // position rather than the rig's solved one. The impact burst carries the
-    // punch on its own.)
+    const fxProg = 1 - (p.punchFx / p.attackDuration);
+    const fx = p.punchFx > 0 ? Math.sin(fxProg * Math.PI) : 0;
+    if (fx > 0 && p.punchHit) {
+        // What he hit decides the colour: a drum pad flashes its own row, so the
+        // impact teaches the sequencer's colour language instead of fighting it.
+        const col = p.punchHitCol || INK.mustard;
+        // Bloom — the paper soaking through behind the glove, not a light source
+        const br = (0.22 + fx * 0.34) * TILE * SCALE;
+        const grad = ctx.createRadialGradient(tip.x, tip.y, 0, tip.x, tip.y, br);
+        grad.addColorStop(0, col); grad.addColorStop(0.45, col);
+        grad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.globalAlpha = fx * 0.45; ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(tip.x, tip.y, br, 0, Math.PI * 2); ctx.fill();
+        // Inked starburst — drawn and boiling, like everything else in this
+        // world. Sized against the TILE so it reads as "one cell got hit"
+        // rather than swallowing him whole.
+        const R = (0.26 + fx * 0.30) * TILE * SCALE;
+        const fade = Math.min(1, fx * 2.2);
+        ctx.save();
+        ctx.translate(tip.x, tip.y);
+        ctx.beginPath();
+        const SPIKES = 11;
+        for (let i = 0; i <= SPIKES * 2; i++) {
+            const a = i / (SPIKES * 2) * Math.PI * 2 - Math.PI / 2;
+            const r = R * (i % 2 === 0 ? 1 : 0.42) * (1 + jit(i * 17, 11, 0.16));
+            const x = Math.cos(a) * r, y = Math.sin(a) * r;
+            i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        }
+        ctx.closePath();
+        ctx.globalAlpha = fade * 0.55; ctx.fillStyle = col; ctx.fill();
+        ctx.globalAlpha = fade; ctx.strokeStyle = HOSE_INK;
+        ctx.lineWidth = 1.4 * SCALE * 0.6; ctx.stroke();
+        ctx.restore();
+        ctx.globalAlpha = 1;
+    }
 
     ctx.restore();
 }
@@ -9648,7 +9681,7 @@ function hoseIK(m, gauge, sx, sy, tx, ty, L, bow, k, flip, handScale) {
 // but each bone is drawn as a CURVE and both are stroked as one continuous
 // path — so it reads as a bent hose, not two sticks. bendSign +1 points the
 // elbow backward (away from his facing).
-function armIK(m, gauge, sx, sy, tx, ty, L, bendSign, k, flip, uf, boneBow, handScale, darts) {
+function armIK(m, gauge, sx, sy, tx, ty, L, bendSign, k, flip, uf, boneBow, handScale, darts, smear) {
     const hs = handScale || 1;
     const s = gauge / m.hose, handH = m.ah * (1 - m.split) * s * hs, handW = m.aw * s * hs;
     const hoseLen = Math.max(2, L - handH);
@@ -9686,6 +9719,11 @@ function armIK(m, gauge, sx, sy, tx, ty, L, bendSign, k, flip, uf, boneBow, hand
     ctx.translate(wx * k, wy * k);
     ctx.rotate(ta - Math.PI / 2);
     if (flip) ctx.scale(-1, 1);
+    // SMEAR: on the fast frames the glove stretches along its travel and
+    // pinches across it — deformation, not blur, which is how a cel animator
+    // draws speed. It costs nothing and it's the difference between a jab and
+    // a hand teleporting.
+    if (smear) ctx.scale(1 / (1 + smear * 0.5), 1 + smear);
     ctx.drawImage(m.img, 0, m.ah * m.split, m.aw, m.ah * (1 - m.split),
         -handW * m.px * k, 0, handW * k, handH * k);
     if (darts) drawGloveDarts(handW, handH, m.px, k);
@@ -9760,7 +9798,8 @@ function drawBuzzRig(cx, cy, k, o) {
         const need = Math.hypot(ax - shx, ay - shy);
         const throwArm = () => armIK(pose.arm, pose.gauge, shx, shy, ax, ay,
             Math.max(pose.armLen * 0.5, need * 1.02), 1, k, false, 0.5,
-            pose.bow === undefined ? 0.12 : pose.bow, hs);
+            pose.bow === undefined ? 0.12 : pose.bow, hs, false,
+            Math.min(0.6, (o.punchVel || 0) * 1.1));
         if (!pose.front) throwArm();
         ctx.drawImage(im, x0 * k, y0 * k, bw * k, bh * k);
         if (pose.front) throwArm();
