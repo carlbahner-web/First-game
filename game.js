@@ -9382,7 +9382,11 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
     // own treatment; everything else walks as Donk once the art loads.
     if (donkReady && type !== "catapult") {
         if (showShadow) {
-            drawRect(gx + 3, gy + TILE - 2, TILE - 6, 3, PAL.shadow);
+            ctx.fillStyle = PAL.shadow;
+            ctx.beginPath();
+            ctx.ellipse((gx + TILE / 2) * SCALE, (gy + TILE - 1.5) * SCALE,
+                7 * SCALE, 2.2 * SCALE, 0, 0, Math.PI * 2);
+            ctx.fill();
         }
         drawDonk((gx + TILE / 2) * SCALE, (gy + TILE - 2) * SCALE,
             (type === "elite" ? 78 : 66) / 58, {
