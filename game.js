@@ -8,12 +8,12 @@ const ctx = canvas.getContext("2d");
 // ---- Constants ----
 const TILE = 16;
 const SCALE = 4;
-const COLS = 24;           // room width in tiles (16:9 layout)
-const ROWS = 14;           // room height in tiles
+const COLS = 28;           // room width in tiles
+const ROWS = 12;           // room height in tiles
 const GRID_COLS = 16;      // sequencer steps
 const GRID_ROWS = 6;       // max drum channels (O, H, S, K, B, T)
-const GRID_X = 4;          // grid start tile-x (centered: 4 + 16 + 4 = 24)
-const GRID_Y = 4;          // grid start tile-y (centered vertically)
+const GRID_X = 6;          // grid start tile-x (centered: 6 + 16 + 6 = 28)
+const GRID_Y = 3;          // grid start tile-y (centered: 3 + 6 + 3 = 12)
 const GRID_Y_OFFSET = 0;   // no offset needed with centered layout
 const DOOR_TILE_Y = Math.floor(ROWS / 2); // exit door on the right wall
 // (gap row after kick removed)
@@ -573,7 +573,7 @@ ctx.imageSmoothingEnabled = true;
 // ---- HUD canvas (below game canvas) ----
 const hudCanvas = document.getElementById("hud");
 const hudCtx = hudCanvas.getContext("2d");
-const HUD_H = 2 * TILE; // logical height for HUD strip
+const HUD_H = 1.5 * TILE; // logical height for HUD strip
 hudCanvas.width = COLS * TILE * SCALE;
 hudCanvas.height = HUD_H * SCALE;
 hudCtx.imageSmoothingEnabled = true;
