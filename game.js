@@ -2488,6 +2488,7 @@ window.addEventListener("keydown", (e) => {
     ensureAudio();
 
     // Feed single-char keys into cheat code buffer
+    if (e.key.length === 1 && handleBoilKey(e.key)) { e.preventDefault(); return; }
     if (e.key.length === 1) handleCheatCode(e.key);
 
     if (e.code === "Space") {
@@ -4502,6 +4503,14 @@ function drawRect(x, y, w, h, color) {
 
 function drawHudRect(x, y, w, h, color) {
     hudCtx.fillStyle = color;
+    // The HUD is built entirely from rects — panels AND the pixel-block digits
+    // — so jittering this one primitive boils the whole readout. Seeded from
+    // the rect's own position so a panel wobbles as one piece rather than
+    // shaking apart. Arithmetic, not pixels: no bake, no per-frame cost.
+    if (BOIL.on && BOIL.hud) {
+        x += jit(x * 3 + y * 7, 61, 0.35);
+        y += jit(x * 5 + y * 11, 73, 0.25);
+    }
     hudCtx.fillRect(x * SCALE, y * SCALE, w * SCALE, h * SCALE);
 }
 
@@ -4524,7 +4533,55 @@ function drawHudPixelDigits(num, cx, cy, color, pixelSize) {
 }
 
 
+// Canvas gives no access to glyph outlines, so text boils the only way it can:
+// rendered once into an offscreen, slice-warped three ways and cached. Static
+// labels and titles hit the cache; anything that changes every frame would
+// thrash it, so the cache is capped and falls back to plain drawing when full.
+// This is the least rewarding of the boil sources per unit of work, which is
+// exactly why it has its own switch.
+const TEXT_WARPS = new Map();
+const TEXT_WARP_CAP = 240;
+function warpedText(text, color, size) {
+    const key = text + "|" + size + "|" + color;
+    let e = TEXT_WARPS.get(key);
+    if (!e) {
+        if (TEXT_WARPS.size >= TEXT_WARP_CAP) return null;   // cache full
+        const px = size * SCALE;
+        const pad = Math.ceil(px * 0.35) + 2;
+        const meas = document.createElement("canvas").getContext("2d");
+        meas.font = `${px}px monospace`;
+        const w = Math.ceil(meas.measureText(text).width);
+        const base = document.createElement("canvas");
+        base.width = w + pad * 2;
+        base.height = Math.ceil(px * 1.6) + pad * 2;
+        const bg = base.getContext("2d");
+        bg.font = `${px}px monospace`;
+        bg.fillStyle = color;
+        bg.textAlign = "start";
+        bg.textBaseline = "alphabetic";
+        bg.fillText(text, pad, pad + px);
+        e = { w, pad, asc: pad + px, phases: [] };
+        for (let ph = 0; ph < 3; ph++) e.phases[ph] = sliceWarp(base, ph);
+        TEXT_WARPS.set(key, e);
+    }
+    return e;
+}
 function drawText(text, x, y, color, size) {
+    if (BOIL.on && BOIL.text) {
+        const e = warpedText(String(text), color, size);
+        if (e) {
+            // honour whatever textAlign the caller left set, since drawText
+            // never set it itself and several callers rely on that
+            const a = ctx.textAlign;
+            const off = a === "center" ? -e.w / 2 : (a === "right" || a === "end") ? -e.w : 0;
+            mipping = true;   // the cached copy is already warped; don't re-warp it
+            try {
+                ctx.drawImage(e.phases[boil()],
+                    x * SCALE + off - e.pad, y * SCALE - e.asc);
+            } finally { mipping = false; }
+            return;
+        }
+    }
     ctx.fillStyle = color;
     ctx.font = `${size * SCALE}px monospace`;
     ctx.fillText(text, x * SCALE, y * SCALE);
@@ -6168,7 +6225,7 @@ function mipFor(img, destW) {
 // draw path scales its source rect by width, and every caller sizes art from
 // img.width/height. Bands pushed past the edge lose a pixel into the art's own
 // transparent margin, which is invisible at this amplitude.
-const WARPS = new WeakMap();
+let WARPS = new WeakMap();
 const WARP_BANDS = 14;
 function sliceWarp(src, phase) {
     const c = document.createElement("canvas");
@@ -11426,6 +11483,82 @@ function renderNewInstrument() {
     }
 }
 
+// ---- Boil switchboard (backtick, or the corner button on touch) ----------
+// Not every source is equally good: the grid cells are 96 dense repeating marks
+// and boiling those can read as strobe rather than as a drawn line, which is
+// why they were frozen to begin with. Rather than decide that in the abstract,
+// every source is switchable and freeze pins the phase so you can see exactly
+// what each one contributes.
+let boilMenuOpen = false;
+const BOIL_ROWS = [
+    ["0", "master",  "on"],
+    ["1", "room",    "room"],
+    ["2", "cells",   "grid"],
+    ["3", "buzz+donks", "chars"],
+    ["4", "hud",     "hud"],
+    ["5", "text",    "text"],
+];
+// Amplitude is baked into every cached surface, so changing it has to throw
+// them all away — this is the one thing here that can silently go stale.
+function rebakeBoil() {
+    bakeGridOnTiles();
+    rebuildCaveTextures(currentLevel);
+    WARPS = new WeakMap();
+    TEXT_WARPS.clear();
+}
+function handleBoilKey(k) {
+    if (k === "`") { boilMenuOpen = !boilMenuOpen; return true; }
+    if (!boilMenuOpen) return false;
+    const row = BOIL_ROWS.find(r => r[0] === k);
+    if (row) { BOIL[row[2]] = !BOIL[row[2]]; saveBoilCfg(); return true; }
+    if (k === "f") { BOIL.freeze = !BOIL.freeze; saveBoilCfg(); return true; }
+    if (k === "p") { BOIL.frozenPhase = (BOIL.frozenPhase + 1) % 3; saveBoilCfg(); return true; }
+    if (k === "[" || k === "]") {
+        BOIL.rate = Math.max(40, Math.min(600, BOIL.rate + (k === "]" ? 10 : -10)));
+        saveBoilCfg(); return true;
+    }
+    if (k === "-" || k === "=") {
+        BOIL.amp = Math.max(0, Math.min(4, +(BOIL.amp + (k === "=" ? 0.1 : -0.1)).toFixed(2)));
+        saveBoilCfg(); rebakeBoil(); return true;
+    }
+    return false;
+}
+function renderBoilMenu() {
+    if (!boilMenuOpen) return;
+    const S = SCALE, x = 6, y = 6, w = 92, lh = 7;
+    const h = lh * (BOIL_ROWS.length + 4) + 8;
+    ctx.save();
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = INK.charcoal;
+    ctx.fillRect(x * S, y * S, w * S, h * S);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = INK.mustard;
+    ctx.lineWidth = 1 * S;
+    ctx.strokeRect(x * S, y * S, w * S, h * S);
+    ctx.font = `${4 * S}px monospace`;
+    ctx.textAlign = "start";
+    let ty = y + 8;
+    const line = (label, val, col) => {
+        ctx.fillStyle = INK.silverL;
+        ctx.fillText(label, (x + 4) * S, ty * S);
+        ctx.fillStyle = col;
+        ctx.fillText(val, (x + w - 30) * S, ty * S);
+        ty += lh;
+    };
+    ctx.fillStyle = INK.mustard;
+    ctx.fillText("BOIL  ` to close", (x + 4) * S, ty * S);
+    ty += lh + 2;
+    for (const [key, label, flag] of BOIL_ROWS) {
+        line(key + "  " + label, BOIL[flag] ? "ON" : "off",
+             BOIL[flag] ? INK.green : INK.silverD);
+    }
+    line("[ ]  rate", BOIL.rate + "ms", INK.paper);
+    line("- =  amp", BOIL.amp.toFixed(2), INK.paper);
+    line("f    freeze", BOIL.freeze ? "P" + BOIL.frozenPhase + "  (p)" : "off",
+         BOIL.freeze ? INK.mustard : INK.silverD);
+    ctx.restore();
+}
+
 function gameLoop(timestamp) {
     perfNow = timestamp || 0; // drives the boil clock — one hand inks everything
     const dt = timestamp - lastTime;
@@ -11530,6 +11663,7 @@ function gameLoop(timestamp) {
             console.error("Game loop error:", e);
         }
     }
+    try { renderBoilMenu(); } catch (e) { /* never let the debug UI kill a frame */ }
     requestAnimationFrame(gameLoop);
 }
 
