@@ -1,5 +1,5 @@
 // ============================================================
-// ATTACK OF THE GROOVE GOBLINS - A 16-bit Zelda-style drum sequencer game
+// BUZZ'S RHYTHM RAMPAGE - a drum-sequencer game in the StudioLand style
 // ============================================================
 
 const canvas = document.getElementById("game");
@@ -8261,12 +8261,12 @@ function drawTitleMarquee(riseY) {
         const lw = MQ.w - 24, lh = lw * (TITLE_ART.logo.height / TITLE_ART.logo.width);
         ctx.drawImage(TITLE_ART.logo, (cx - lw / 2) * S, (y0 + 9) * S, lw * S, lh * S);
     } else {
-        centred("ATTACK OF THE", y0 + 15, INK.rust, 4.5);
+        centred("BUZZ'S", y0 + 15, INK.rust, 5);
         // Charcoal letterforms with a mustard offset — a painted sign, not a
         // glowing one. The old title used 8-bit orange and neon green.
-        for (const [text, ty] of [["GROOVE", y0 + 29], ["GOBLINS", y0 + 43]]) {
-            centred(text, ty + 1.1, INK.mustard, 13);
-            centred(text, ty, INK.charcoal, 13);
+        for (const [text, ty] of [["RHYTHM", y0 + 30], ["RAMPAGE", y0 + 45]]) {
+            centred(text, ty + 1.1, INK.mustard, 14);
+            centred(text, ty, INK.charcoal, 14);
         }
     }
 
