@@ -1405,7 +1405,7 @@ const PAL = {
     gridX:     [INK.charcoal, INK.charcoal, INK.charcoal, INK.charcoal, INK.charcoal, INK.charcoal],
     gridBorder:"#c9c0a8",
     playhead:  INK.charcoal,
-    player:    "#efd8a1",
+    player:    INK.paper,
     playerDark:"#927e6a",
     punch:     INK.green,
     punchGlow: "#3c8226",
@@ -2100,7 +2100,6 @@ let catapultSpawnedThisCycle = false; // prevents re-spawning catapult after it 
 //   boulder: null | { startX, startY, targetX, targetY, progress } }
 
 // Tomato projectiles (dancers throw at goblins — purely cosmetic)
-let tomatoSplats = []; // { x, y, timer }
 
 const SKIP_INTRO = false; // Set to true to skip the title screen and intro/story scenes
 let gameState = SKIP_INTRO ? "playing" : "title";
@@ -3622,10 +3621,6 @@ function update(dt) {
 
 
     // Update splats
-    tomatoSplats = tomatoSplats.filter(s => {
-        s.timer--;
-        return s.timer > 0;
-    });
 
     // Sequencer step
     tickSequencer();
@@ -3839,7 +3834,6 @@ function resetGame() {
 
     // Clear dancers and effects
     deathParticles = [];
-    tomatoSplats = [];
     deathText = null;
     screenFlash = 0;
     screenShake = 0;
@@ -4173,7 +4167,6 @@ function advanceLevel() {
 
     // Reset effects
     deathParticles = [];
-    tomatoSplats = [];
     deathText = null;
     screenFlash = 0;
     screenShake = 0;
@@ -4509,11 +4502,11 @@ function renderHUD() {
     drawHudPanel(lvlX, kcY, lvlPanelW, panelH, "#2C2C2A", "#3a3a37", "#4a4a45");
     // "L" icon
     const fx = lvlX + 2, fy = kcY + 3;
-    drawHudRect(fx, fy, p, 5 * p, "#efd8a1");
-    drawHudRect(fx + p, fy + 4 * p, 2 * p, p, "#efd8a1");
+    drawHudRect(fx, fy, p, 5 * p, INK.paper);
+    drawHudRect(fx + p, fy + 4 * p, 2 * p, p, INK.paper);
     // Level digits (centered in remaining panel space after icon)
     const lvlDigitArea = lvlPanelW - iconW;
-    drawHudPixelDigits(lvlStr, lvlX + iconW + lvlDigitArea / 2, numY, "#efd8a1", p);
+    drawHudPixelDigits(lvlStr, lvlX + iconW + lvlDigitArea / 2, numY, INK.paper, p);
     // Tier subtitle below level panel
     const tierNames = ["ROCK", "FUNK", "BREAKS"];
     const tierIdx = currentLevel < 10 ? 0 : currentLevel < 20 ? 1 : 2;
@@ -4532,7 +4525,9 @@ function renderHUD() {
     const isCritical = timerSec <= 10;
     const blinkRate = isCritical ? 15 : 30;
     const blinkOn = !isUrgent || Math.floor(levelTimer / blinkRate) % 2 === 0;
-    const timerColor = isUrgent ? "#FE3636" : "#efd8a1";
+    // 30s is a warning, not a hazard — alert red is reserved for the <=10s
+    // critical state that also drives the vignette
+    const timerColor = isCritical ? "#FE3636" : isUrgent ? INK.mustard : INK.paper;
     const timerBorderColor = isUrgent ? "#550f0a" : "#2C2C2A";
     const timerBgColor = isUrgent ? "#3f3f3b" : "#3a3a37";
     const timerHighlight = isUrgent ? "#661100" : "#4a4a45";
@@ -4556,18 +4551,18 @@ function renderHUD() {
     // Skull icon
     const sx = kcX + 2, sy = kcY + 3;
     const skullBg = "#3a3a37";
-    drawHudRect(sx + p, sy, 3 * p, p, "#efd8a1");
-    drawHudRect(sx, sy + p, 5 * p, 2 * p, "#efd8a1");
-    drawHudRect(sx + p, sy + 3 * p, 3 * p, p, "#efd8a1");
-    drawHudRect(sx + p, sy + 4 * p, p, p, "#efd8a1");
-    drawHudRect(sx + 3 * p, sy + 4 * p, p, p, "#efd8a1");
+    drawHudRect(sx + p, sy, 3 * p, p, INK.paper);
+    drawHudRect(sx, sy + p, 5 * p, 2 * p, INK.paper);
+    drawHudRect(sx + p, sy + 3 * p, 3 * p, p, INK.paper);
+    drawHudRect(sx + p, sy + 4 * p, p, p, INK.paper);
+    drawHudRect(sx + 3 * p, sy + 4 * p, p, p, INK.paper);
     drawHudRect(sx + p, sy + p, p, p, skullBg);
     drawHudRect(sx + 3 * p, sy + p, p, p, skullBg);
     drawHudRect(sx + 2 * p, sy + 2 * p, p, p, skullBg);
     drawHudRect(sx + 2 * p, sy + 4 * p, p, p, skullBg);
     // Score digits (centered in remaining panel space after skull)
     const scoreDigitArea = killPanelW - skullW;
-    drawHudPixelDigits(scoreStr, kcX + skullW + scoreDigitArea / 2, numY, "#efd8a1", p);
+    drawHudPixelDigits(scoreStr, kcX + skullW + scoreDigitArea / 2, numY, INK.paper, p);
 
     // Tick sound during last 10 seconds (once per second)
     if (isCritical && timerSec > 0 && levelTimer % 60 === 0 && audioCtx) {
@@ -4587,7 +4582,7 @@ function renderHUD() {
     if (gameMode === "chill") {
         const cmX = kcX - 4;   // left of the score plate, clear of the timer
         hudCtx.font = `${3 * SCALE}px monospace`;
-        hudCtx.fillStyle = "#3c9f9c";
+        hudCtx.fillStyle = INK.teal;
         hudCtx.textAlign = "right";
         hudCtx.fillText("CHILL", cmX * SCALE, (kcY + panelH - 2) * SCALE);
         hudCtx.textAlign = "start";
@@ -4604,7 +4599,7 @@ function renderHUD() {
                 const ix = trackerX + i * 5;
                 if (i < earned) {
                     drawHudRect(ix, trackerY, 4, 4, "#F6CC60"); // recovered — gold
-                    drawHudRect(ix, trackerY, 4, 1, "#efd8a1"); // highlight
+                    drawHudRect(ix, trackerY, 4, 1, INK.paper); // highlight
                 } else {
                     drawHudRect(ix, trackerY, 4, 4, "#3a2a1a"); // missing — dark
                     drawHudRect(ix, trackerY, 4, 1, "#4a3a2a"); // subtle border
@@ -5111,20 +5106,6 @@ function render() {
     ctx.globalAlpha = 1.0;
 
 
-    // Tomato splats
-    for (const s of tomatoSplats) {
-        const a = s.timer / 25;
-        ctx.globalAlpha = a;
-        // Splat — irregular red blobs
-        drawRect(s.x - 3, s.y - 1, 6, 3, "#FE3636");
-        drawRect(s.x - 1, s.y - 3, 3, 6, "#9b1a0a");
-        drawRect(s.x - 5, s.y, 2, 2, "#FE3636");
-        drawRect(s.x + 4, s.y - 2, 2, 2, "#9b1a0a");
-        drawRect(s.x - 2, s.y + 3, 2, 1, "#FE3636");
-        // Seeds
-        drawRect(s.x + 1, s.y - 1, 1, 1, "#F6CC60");
-        drawRect(s.x - 2, s.y + 1, 1, 1, "#F6CC60");
-    }
     ctx.globalAlpha = 1.0;
 
     // Death text
@@ -5639,10 +5620,10 @@ function drawPunch() {
 
     // Donk-Carl punches with a rubber-hose glove; procedural Carl keeps skin
     const glove = donkReady && DONK_PLAYER;
-    const armCol = glove ? "#2C2C2A" : "#efb775";
+    const armCol = glove ? "#2C2C2A" : INK.mustard;
     const armOutCol = glove ? "#2C2C2A" : "#927e6a";
     const fistShadowCol = glove ? "#b3aa96" : "#a58c27";
-    const fistCol = glove ? "#fcf7e8" : "#efb775";
+    const fistCol = glove ? "#fcf7e8" : INK.mustard;
 
     // BUZZ's punching arm is drawn by the rig itself (correct shoulder, and it
     // replaces the resting arm). Only the impact effects live here.
@@ -5833,7 +5814,7 @@ function drawSubwoofer(sx, sy, pump, side) {
     // Sound lines emanating outward
     if (pump > 0.05) {
         ctx.globalAlpha = pump * 0.6;
-        ctx.strokeStyle = "#efd8a1";
+        ctx.strokeStyle = INK.paper;
         ctx.lineWidth = 1 * SCALE;
         for (let i = 0; i < 3; i++) {
             const dist = (4 + i * 5 + (1 - pump) * 6);
@@ -6741,7 +6722,9 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
     } else if (type === "elite") {
         bodyCol = "#c05838"; darkCol = "#CC00CC"; headCol = "#FF44FF"; eyeCol = "#00FFFF";
     } else if (type === "catapult") {
-        bodyCol = "#FF6600"; darkCol = "#CC4400"; headCol = "#FF8833"; eyeCol = "#00FFFF";
+        // Catapult crew: the one character still drawn procedurally, so it
+        // gets the ink palette by hand until it earns real art
+        bodyCol = INK.rust; darkCol = "#8c5326"; headCol = "#d59258"; eyeCol = INK.mustard;
     } else {
         bodyCol = "#50ad33"; darkCol = "#00CC00"; headCol = "#66FF44"; eyeCol = "#c05838";
     }
@@ -6913,7 +6896,7 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
         ctx.roundRect(sx + bodyOffX + 12 + mOfs, sy + bodyOffY - bob, 24, 9, [0, 0, 4, 4]);
         ctx.fill();
         // Fangs (triangular)
-        ctx.fillStyle = "#efd8a1";
+        ctx.fillStyle = INK.paper;
         // Left fang
         ctx.beginPath();
         ctx.moveTo(sx + bodyOffX + 14 + mOfs, sy + bodyOffY - bob);
@@ -7272,7 +7255,7 @@ function drawDancerSprite(gx, gy, pal, options) {
 
     // === FACE ===
     // Eyes (friendly, round)
-    ctx.fillStyle = "#efd8a1";
+    ctx.fillStyle = INK.paper;
     ctx.beginPath();
     ctx.ellipse(dcx - 5, dcy + 3, 3, 3, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -7288,7 +7271,7 @@ function drawDancerSprite(gx, gy, pal, options) {
     ctx.arc(dcx + 6, dcy + 4, 2, 0, Math.PI * 2);
     ctx.fill();
     // Highlights
-    ctx.fillStyle = "#efd8a1";
+    ctx.fillStyle = INK.paper;
     ctx.beginPath();
     ctx.arc(dcx - 5, dcy + 3, 0.8, 0, Math.PI * 2);
     ctx.fill();
@@ -7726,7 +7709,7 @@ function renderEnding() {
                 ctx.font = `${7 * SCALE}px monospace`;
                 ctx.fillStyle = "#000";
                 ctx.fillText("THE BOOTH IS REBUILT. THE CROWD IS BACK.", (W / 2) * SCALE + SCALE, (H / 2 + 1) * SCALE);
-                ctx.fillStyle = "#efd8a1";
+                ctx.fillStyle = INK.paper;
                 ctx.fillText("THE BOOTH IS REBUILT. THE CROWD IS BACK.", (W / 2) * SCALE, (H / 2) * SCALE);
                 ctx.textAlign = "start";
                 ctx.globalAlpha = 1;
@@ -7932,7 +7915,7 @@ function renderEnding() {
                 const oops = "...HAVE I BEEN PUNCHING PARTY INVITATIONS THIS WHOLE TIME?";
                 const ow = oops.length * 4;
                 drawText(oops, caveW / 2 - ow / 2 + 1, msgY + 17, "#000000", 4);
-                drawText(oops, caveW / 2 - ow / 2, msgY + 16, "#efd8a1", 4);
+                drawText(oops, caveW / 2 - ow / 2, msgY + 16, INK.paper, 4);
             }
             ctx.globalAlpha = 1;
         }
@@ -7974,7 +7957,7 @@ function renderEnding() {
 
             // Final score
             ctx.font = `${8 * SCALE}px monospace`;
-            ctx.fillStyle = "#efd8a1";
+            ctx.fillStyle = INK.paper;
             ctx.fillText("FINAL SCORE: " + finalScore, (caveW / 2) * SCALE, (caveH / 3 + 20) * SCALE);
 
             // Press Enter prompt
@@ -7982,7 +7965,7 @@ function renderEnding() {
                 const blink = Math.sin(endingTimer * 0.08) > 0;
                 if (blink) {
                     ctx.font = `${5 * SCALE}px monospace`;
-                    ctx.fillStyle = "#efd8a1";
+                    ctx.fillStyle = INK.paper;
                     const promptText = scoreQualifies(finalScore) ? "PRESS ENTER FOR HIGH SCORE" : "PRESS ENTER TO CONTINUE";
                     ctx.fillText(promptText, (caveW / 2) * SCALE, (caveH - 20) * SCALE);
                 }
@@ -9175,15 +9158,15 @@ function renderIntro() {
         if (t > 60 && t < 300) {
             const capAlpha = Math.min(1, (t - 60) / 30) * Math.max(0, 1 - (t - 240) / 60);
             ctx.globalAlpha = Math.max(0, capAlpha);
-            drawCentered("BUT DEEP BENEATH THE DANCE FLOOR,", H - 54, "#FE3636", 5);
-            drawCentered("SOMETHING HAD BEEN LISTENING.", H - 44, "#FE3636", 5);
+            drawCentered("BUT DEEP BENEATH THE DANCE FLOOR,", H - 54, INK.rust, 5);
+            drawCentered("SOMETHING HAD BEEN LISTENING.", H - 44, INK.rust, 5);
             ctx.globalAlpha = 1;
         }
         if (t > 300) {
             const capAlpha = Math.min(1, (t - 300) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("THE EARTH SPLIT OPEN.", H - 54, "#FE3636", 5);
-            drawCentered("CRACKS TORE THROUGH THE WALLS LIKE JAGGED TEETH.", H - 44, "#FE3636", 5);
+            drawCentered("THE EARTH SPLIT OPEN.", H - 54, INK.rust, 5);
+            drawCentered("CRACKS TORE THROUGH THE WALLS LIKE JAGGED TEETH.", H - 44, INK.rust, 5);
             ctx.globalAlpha = 1;
         }
     }
@@ -9529,7 +9512,7 @@ function renderIntro() {
             // Flailing arms — skin-colored lines thrashing around the sprite
             const flailAngle = t * 0.8; // rapid rotation
             const flailLen = (8 + Math.sin(t * 0.5) * 4) * SCALE;
-            ctx.strokeStyle = "#efb775";
+            ctx.strokeStyle = INK.mustard;
             ctx.lineWidth = 3 * SCALE;
             ctx.lineCap = "round";
             // Left arm flailing
@@ -9546,7 +9529,7 @@ function renderIntro() {
             ctx.lineTo(armBaseX2 + Math.cos(flailAngle + 2.5) * flailLen, armBaseY + Math.sin(flailAngle + 2.5) * flailLen);
             ctx.stroke();
             // Flailing fists at arm ends
-            ctx.fillStyle = "#efb775";
+            ctx.fillStyle = INK.mustard;
             ctx.beginPath();
             ctx.arc(armBaseX + Math.cos(flailAngle) * flailLen, armBaseY + Math.sin(flailAngle) * flailLen, 2.5 * SCALE, 0, Math.PI * 2);
             ctx.fill();
@@ -9557,7 +9540,7 @@ function renderIntro() {
 
             // Speed lines trailing behind the DJ
             if (knockT > 0.05 && knockT < 0.9) {
-                ctx.strokeStyle = "#efd8a1";
+                ctx.strokeStyle = INK.paper;
                 ctx.lineWidth = 1 * SCALE;
                 ctx.globalAlpha = 0.4 * (1 - knockT);
                 for (let sl = 0; sl < 5; sl++) {
@@ -9804,7 +9787,7 @@ function renderIntro() {
             // Draw raised fists
             const fistY = (djY - 4) * SCALE;
             const fistSize = (3 + punchT * 2) * SCALE;
-            ctx.fillStyle = "#efb775";
+            ctx.fillStyle = INK.mustard;
             // Left fist
             ctx.beginPath();
             ctx.arc((djX + 2) * SCALE, fistY, fistSize, 0, Math.PI * 2);
@@ -9878,7 +9861,7 @@ function renderIntro() {
         const promptPulse = Math.sin(t * 0.06) * 0.3 + 0.7;
         hudCtx.globalAlpha = promptPulse;
         hudCtx.font = `${5 * SCALE}px monospace`;
-        hudCtx.fillStyle = "#efd8a1";
+        hudCtx.fillStyle = INK.paper;
         hudCtx.textAlign = "center";
         hudCtx.fillText(promptText, (COLS * TILE * SCALE) / 2, (HUD_H / 2 + 2) * SCALE);
         hudCtx.textAlign = "start";
@@ -9919,13 +9902,13 @@ function renderHighScoreEntry() {
     ctx.font = `${8 * SCALE}px monospace`;
     ctx.fillStyle = "#000";
     ctx.fillText(scoreStr, (W / 2) * SCALE + SCALE, 42 * SCALE + SCALE);
-    ctx.fillStyle = "#efd8a1";
+    ctx.fillStyle = INK.paper;
     ctx.fillText(scoreStr, (W / 2) * SCALE, 42 * SCALE);
 
     // "ENTER YOUR INITIALS" label — readable instruction
     const label = "ENTER YOUR INITIALS";
     ctx.font = `${5 * SCALE}px monospace`;
-    ctx.fillStyle = "#efb775";
+    ctx.fillStyle = INK.mustard;
     ctx.fillText(label, (W / 2) * SCALE, 68 * SCALE);
     ctx.textAlign = "start";
 
@@ -9967,7 +9950,7 @@ function renderHighScoreEntry() {
         for (let i = 0; i < highScores.length; i++) {
             const entry = highScores[i];
             const rank = (i + 1) + "." + entry.name + " " + String(entry.score).padStart(5, "0");
-            const color = i === 0 ? "#F6CC60" : "#efb775";
+            const color = i === 0 ? "#F6CC60" : INK.mustard;
             drawText(rank, scoreX, scoreStartY + i * 9, color, 3);
         }
     }
@@ -9977,7 +9960,7 @@ function renderHighScoreEntry() {
     if (initialsBlink % 60 < 40) {
         ctx.textAlign = "center";
         ctx.font = `${5 * SCALE}px monospace`;
-        ctx.fillStyle = "#efb775";
+        ctx.fillStyle = INK.mustard;
         ctx.fillText(confirmText, (W / 2) * SCALE, (H - 24) * SCALE);
         ctx.textAlign = "start";
     }
@@ -10046,7 +10029,7 @@ function renderLevelComplete() {
             const bonusText = "TIME BONUS: +" + lastTimeBonus;
             ctx.fillStyle = "#000000";
             ctx.fillText(bonusText, (W * SCALE) / 2 + SCALE, (by + 1) * SCALE);
-            ctx.fillStyle = "#3c9f9c";
+            ctx.fillStyle = INK.teal;
             ctx.fillText(bonusText, (W * SCALE) / 2, by * SCALE);
         }
         const sy = cy + (lastTimeBonus > 0 ? 42 : 28);
@@ -10058,7 +10041,7 @@ function renderLevelComplete() {
         const scoreText = "SCORE: " + levelCelebrateDisplayScore;
         ctx.fillStyle = "#000000";
         ctx.fillText(scoreText, (W * SCALE) / 2 + SCALE, (sy + 1) * SCALE);
-        ctx.fillStyle = "#efd8a1";
+        ctx.fillStyle = INK.paper;
         ctx.fillText(scoreText, (W * SCALE) / 2, sy * SCALE);
 
         // Piece recovery announcement at milestone levels
@@ -10109,7 +10092,7 @@ function renderLevelComplete() {
     }
 
     // Firework bursts + confetti
-    const fwColors = ["#F6CC60", "#FE3636", "#3c9f9c", "#ef692f", "#efd8a1", "#50ad33", "#c05838", "#00FFFF", "#FFD700"];
+    const fwColors = [INK.mustard, INK.teal, INK.rust, INK.green, INK.red, INK.mint, INK.silverL];
     // Launch new fireworks periodically — more frequent
     if (levelCelebrateTimer % 18 === 0 && levelCelebrateTimer < 240) {
         fireworks.push({
@@ -10182,7 +10165,7 @@ function renderLevelComplete() {
 
     // Confetti — varied shapes (rectangles, triangles, pennants)
     if (levelCelebrateTimer % 5 === 0 && levelCelebrateTimer < 240) {
-        const confColors = ["#F6CC60", "#FE3636", "#3c9f9c", "#ef692f", "#efd8a1", "#ab5c1c", "#FFD700", "#FF69B4"];
+        const confColors = [INK.mustard, INK.teal, INK.rust, INK.green, INK.red, INK.mint, INK.silverL];
         for (let ci = 0; ci < 4; ci++) {
             deathParticles.push({
                 x: Math.random() * W,
@@ -10244,7 +10227,7 @@ function renderLevelComplete() {
             const pressText = "PRESS ENTER TO CONTINUE";
             ctx.textAlign = "center";
             ctx.font = `${5 * SCALE}px monospace`;
-            ctx.fillStyle = "#efd8a1";
+            ctx.fillStyle = INK.paper;
             ctx.fillText(pressText, (W * SCALE) / 2, (H - 12) * SCALE);
             ctx.textAlign = "start";
         }
@@ -10423,7 +10406,7 @@ function renderGameOverScreen() {
         // Position below the player (offset by collapse)
         const textY = player.y + player.h + 20;
         drawText(shitText, W / 2 - shitW / 2 + 1, textY + 1, "#000000", 7);
-        drawText(shitText, W / 2 - shitW / 2, textY, "#efb775", 7);
+        drawText(shitText, W / 2 - shitW / 2, textY, INK.mustard, 7);
         ctx.globalAlpha = 1.0;
     }
 
@@ -10706,7 +10689,7 @@ function renderBiomeTransition() {
             const line = GLYPH_REACTIONS[stage - 1];
             const lw = line.length * 5;
             drawText(line, W / 2 - lw / 2 + 1, H - 26 + 1, "#000000", 5);
-            drawText(line, W / 2 - lw / 2, H - 26, "#efd8a1", 5);
+            drawText(line, W / 2 - lw / 2, H - 26, INK.paper, 5);
         }
         ctx.globalAlpha = 1;
     } else {
@@ -11044,7 +11027,7 @@ function renderEnemyWarning() {
         ctx.translate(-cx_w, -cy_w);
         drawGoblinSprite("normal", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
         ctx.restore();
-        drawCenteredText("THEY'LL SCRAMBLE YOUR BEATS THE MOMENT", 115, "#efb775", 5);
+        drawCenteredText("THEY'LL SCRAMBLE YOUR BEATS THE MOMENT", 115, INK.mustard, 5);
         drawCenteredText("YOUR BACK IS TURNED. DON'T LET THEM.", 132, "#F6CC60", 5);
 
     } else if (enemyWarningType === "elite") {
@@ -11058,9 +11041,9 @@ function renderEnemyWarning() {
         ctx.translate(-cx_w, -cy_w);
         drawGoblinSprite("elite", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
         ctx.restore();
-        drawCenteredText("BIGGER. MEANER. THIS ONE DOESN'T GO DOWN EASY.", 115, "#efb775", 5);
+        drawCenteredText("BIGGER. MEANER. THIS ONE DOESN'T GO DOWN EASY.", 115, INK.mustard, 5);
         drawCenteredText("THREE SOLID HITS TO PUT IT ON THE FLOOR.", 132, "#FF44FF", 5);
-        drawCenteredText("AND IT'S FAST.", 149, "#efb775", 5);
+        drawCenteredText("AND IT'S FAST.", 149, INK.mustard, 5);
 
     } else if (enemyWarningType === "catapult") {
         drawCenteredText("WARNING!", 30, "#c05838", 8);
@@ -11073,8 +11056,8 @@ function renderEnemyWarning() {
         ctx.translate(-cx_w, -cy_w);
         drawGoblinSprite("catapult", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
         ctx.restore();
-        drawCenteredText("THIS ONE FIGHTS DIRTY, HURLING BOULDERS", 115, "#efb775", 5);
-        drawCenteredText("AT YOUR GRID FROM ACROSS THE ROOM.", 132, "#efb775", 5);
+        drawCenteredText("THIS ONE FIGHTS DIRTY, HURLING BOULDERS", 115, INK.mustard, 5);
+        drawCenteredText("AT YOUR GRID FROM ACROSS THE ROOM.", 132, INK.mustard, 5);
         drawCenteredText("YOU CAN'T KILL IT. BUT IT CAN SURE KILL YOU.", 149, "#c05838", 5);
     }
 
@@ -11124,7 +11107,7 @@ function renderNewInstrument() {
         // Instrument name
         const nameAlpha = Math.min(1, Math.max(0, (t - 15) / 30));
         ctx.globalAlpha = nameAlpha;
-        drawCenteredText("COWBELL", 52, "#FE3636", 7);
+        drawCenteredText("COWBELL", 52, INK.rust, 7);
         ctx.globalAlpha = 1;
 
         // Animated cowbell icon — larger, centered
@@ -11139,7 +11122,7 @@ function renderNewInstrument() {
             ctx.translate(cx, cy + bob);
             ctx.rotate(swing);
             // Bell body (trapezoid) — bigger
-            ctx.fillStyle = "#FE3636";
+            ctx.fillStyle = INK.rust;
             ctx.beginPath();
             ctx.moveTo(-12 * SCALE, -9 * SCALE);
             ctx.lineTo(12 * SCALE, -9 * SCALE);
@@ -11148,13 +11131,13 @@ function renderNewInstrument() {
             ctx.closePath();
             ctx.fill();
             // Highlight stripe
-            ctx.fillStyle = "#efb775";
+            ctx.fillStyle = INK.mustard;
             ctx.fillRect(-9 * SCALE, -6 * SCALE, 18 * SCALE, 3 * SCALE);
             // Handle on top
-            ctx.fillStyle = "#efd8a1";
+            ctx.fillStyle = INK.paper;
             ctx.fillRect(-4 * SCALE, -15 * SCALE, 8 * SCALE, 6 * SCALE);
             // Clapper at bottom
-            ctx.fillStyle = "#efd8a1";
+            ctx.fillStyle = INK.paper;
             ctx.beginPath();
             ctx.arc(0, 12 * SCALE, 3 * SCALE, 0, Math.PI * 2);
             ctx.fill();
@@ -11166,14 +11149,14 @@ function renderNewInstrument() {
         if (t > 40) {
             const descAlpha = Math.min(1, (t - 40) / 30);
             ctx.globalAlpha = descAlpha;
-            drawCenteredText("A NEW VOICE JOINS THE MIX.", 135, "#efb775", 5);
+            drawCenteredText("A NEW VOICE JOINS THE MIX.", 135, INK.mustard, 5);
             ctx.globalAlpha = 1;
         }
         if (t > 55) {
             const desc2Alpha = Math.min(1, (t - 55) / 30);
             ctx.globalAlpha = desc2Alpha;
-            drawCenteredText("THE GROOVE GROWS DEEPER.", 155, "#FE3636", 5);
-            drawCenteredText("FILL IN THE COWBELL PATTERN TO MAKE IT SING.", 170, "#FE3636", 5);
+            drawCenteredText("THE GROOVE GROWS DEEPER.", 155, INK.rust, 5);
+            drawCenteredText("FILL IN THE COWBELL PATTERN TO MAKE IT SING.", 170, INK.rust, 5);
             ctx.globalAlpha = 1;
         }
 
@@ -11190,7 +11173,7 @@ function renderNewInstrument() {
                 const cx_s = stripX + c * cellW;
                 drawRect(cx_s, stripY, cellW, cellW, PAL.gridBorder);
                 drawRect(cx_s + 1, stripY + 1, cellW - 2, cellW - 2,
-                    cowbellPattern[c] ? "#FE3636" : PAL.gridOff);
+                    cowbellPattern[c] ? INK.rust : PAL.gridOff);
                 // Playhead
                 if (c === demoStep) {
                     ctx.fillStyle = "#F6CC60";
@@ -11200,7 +11183,7 @@ function renderNewInstrument() {
                 }
             }
             // Row label
-            drawText("B", stripX - 8, stripY + 6, "#FE3636", 4);
+            drawText("B", stripX - 8, stripY + 6, INK.rust, 4);
             ctx.globalAlpha = 1;
         }
 
@@ -11214,7 +11197,7 @@ function renderNewInstrument() {
         // Instrument name
         const nameAlpha = Math.min(1, Math.max(0, (t - 15) / 30));
         ctx.globalAlpha = nameAlpha;
-        drawCenteredText("TOM DRUM", 52, "#3c9f9c", 7);
+        drawCenteredText("TOM DRUM", 52, INK.teal, 7);
         ctx.globalAlpha = 1;
 
         // Animated tom drum icon — larger, centered
@@ -11228,10 +11211,10 @@ function renderNewInstrument() {
             ctx.save();
             ctx.translate(cx, cy + bob);
             // Drum body — bigger
-            ctx.fillStyle = hitFlash ? "#F6CC60" : "#3c9f9c";
+            ctx.fillStyle = hitFlash ? "#F6CC60" : INK.teal;
             ctx.fillRect(-15 * SCALE, -6 * SCALE, 30 * SCALE, 18 * SCALE);
             // Drum head (top ellipse)
-            ctx.fillStyle = hitFlash ? "#FFFFFF" : "#efd8a1";
+            ctx.fillStyle = hitFlash ? "#FFFFFF" : INK.paper;
             ctx.beginPath();
             ctx.ellipse(0, -6 * SCALE, 15 * SCALE, 6 * SCALE, 0, 0, Math.PI * 2);
             ctx.fill();
@@ -11252,14 +11235,14 @@ function renderNewInstrument() {
         if (t > 40) {
             const descAlpha = Math.min(1, (t - 40) / 30);
             ctx.globalAlpha = descAlpha;
-            drawCenteredText("THE RHYTHM IS GETTING RICHER.", 135, "#efb775", 5);
+            drawCenteredText("THE RHYTHM IS GETTING RICHER.", 135, INK.mustard, 5);
             ctx.globalAlpha = 1;
         }
         if (t > 55) {
             const desc2Alpha = Math.min(1, (t - 55) / 30);
             ctx.globalAlpha = desc2Alpha;
-            drawCenteredText("THE UNDERGROUND IS WAKING UP.", 155, "#3c9f9c", 5);
-            drawCenteredText("EVEN MORE BEATS TO MASTER.", 170, "#3c9f9c", 5);
+            drawCenteredText("THE UNDERGROUND IS WAKING UP.", 155, INK.teal, 5);
+            drawCenteredText("EVEN MORE BEATS TO MASTER.", 170, INK.teal, 5);
             ctx.globalAlpha = 1;
         }
 
@@ -11276,7 +11259,7 @@ function renderNewInstrument() {
                 const cx_s = stripX + c * cellW;
                 drawRect(cx_s, stripY, cellW, cellW, PAL.gridBorder);
                 drawRect(cx_s + 1, stripY + 1, cellW - 2, cellW - 2,
-                    tomPattern[c] ? "#3c9f9c" : PAL.gridOff);
+                    tomPattern[c] ? INK.teal : PAL.gridOff);
                 if (c === demoStep) {
                     ctx.fillStyle = "#F6CC60";
                     ctx.globalAlpha = stripAlpha * 0.4;
@@ -11284,7 +11267,7 @@ function renderNewInstrument() {
                     ctx.globalAlpha = stripAlpha;
                 }
             }
-            drawText("T", stripX - 8, stripY + 6, "#3c9f9c", 4);
+            drawText("T", stripX - 8, stripY + 6, INK.teal, 4);
             ctx.globalAlpha = 1;
         }
     }
@@ -11313,23 +11296,6 @@ function gameLoop(timestamp) {
             // Clear HUD canvas when not in gameplay
             if (gameState !== "playing") {
                 hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
-                // DEV: Show scene label in HUD during intro (remove before launch)
-                if (gameState === "intro" || gameState === "title") {
-                    const sceneLabels = [
-                        "Scene 0: The Good Times",
-                        "Scene 1: Earthquake + Caves",
-                        "Scene 2: Goblin Attack",
-                        "Scene 3: Call to Action",
-                    ];
-                    const label = gameState === "title"
-                        ? "Title Screen"
-                        : (sceneLabels[introScene] || "Scene " + introScene);
-                    hudCtx.font = `${3 * SCALE}px monospace`;
-                    hudCtx.fillStyle = "#F6CC60";
-                    hudCtx.textAlign = "center";
-                    hudCtx.fillText(label, hudCanvas.width / 2, 10 * SCALE);
-                    hudCtx.textAlign = "start";
-                }
             }
             if (gameState === "title") {
                 renderTitleScreen();
@@ -11371,7 +11337,7 @@ function gameLoop(timestamp) {
                 ctx.fillText("PAUSED", W_p / 2, H_p / 2 - 8 * SCALE);
                 // Subtitle
                 ctx.font = `${4 * SCALE}px monospace`;
-                ctx.fillStyle = "#efd8a1";
+                ctx.fillStyle = INK.paper;
                 ctx.fillText("PRESS ESC TO RESUME", W_p / 2, H_p / 2 + 6 * SCALE);
                 ctx.textAlign = "start";
             } else {
