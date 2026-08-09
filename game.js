@@ -3413,8 +3413,12 @@ function update(dt) {
         }
     }
 
-    // Move toward destination smoothly
-    if (!atDest) {
+    // Move toward the destination EVERY frame — including the one where a new
+    // destination was just chosen. Gating this on `atDest` (computed BEFORE the
+    // input ran) skipped the step on arrival frames, stalling him for one frame
+    // at every tile boundary: about five hitches a second while walking, and it
+    // also made the rig read as "standing" for that frame.
+    {
         const dx = p.destX - p.x;
         const dy = p.destY - p.y;
         if (Math.abs(dx) > 0.5) {
@@ -8526,7 +8530,12 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         }
         donkCarlLastX = gx; donkCarlLastY = gy;
         const moving = dist > 0.05;
-        donkCarlPhase = moving ? donkCarlPhase + dist * DONK_STRIDE : donkSettlePhase(donkCarlPhase);
+        // Ease the walk state. Flipping it per frame made a single stalled
+        // frame snap the feet to their stance and pop the body up by the full
+        // dip — that was the jank.
+        donkCarlWalk += ((moving ? 1 : 0) - donkCarlWalk) * 0.22;
+        donkCarlPhase = moving ? donkCarlPhase + dist * DONK_STRIDE
+            : (donkCarlWalk < 0.25 ? donkSettlePhase(donkCarlPhase) : donkCarlPhase);
         // Facing is sticky: vertical moves keep whichever way he last faced
         if (dir === 2) donkCarlFacing = -1;
         else if (dir === 3) donkCarlFacing = 1;
@@ -8546,7 +8555,7 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
         drawBuzzRig(ox * SCALE, oy * SCALE, K, {
             punchTX: ptx, punchTY: pty,
             phase: donkCarlPhase,
-            moving: moving,
+            walk: donkCarlWalk,
             mirror: donkCarlFacing === -1, // BUZZ's art faces right natively
             punchThrust: punch,
             punchDir: dir,
@@ -9324,6 +9333,7 @@ const DONK_PLAYER = true;
 const BUZZ_SCALE = 75 / 58;   // drawn height vs the 58-unit rig base (was 90 —
                               // at 90 his drum sat a whole tile above his hitbox)
 let donkCarlPhase = 0;        // player stride phase (advances with distance moved)
+let donkCarlWalk = 0;         // eased 0..1 walk amount — a one-frame gap must not pop the pose
 let donkCarlLastX = null, donkCarlLastY = null;
 let donkCarlFacing = 1;       // sticky horizontal facing (+1 right, -1 left)
 const DONK_STRIDE = 0.25;     // stride phase per game px — the legs swing a hair slower than his travel
@@ -9490,7 +9500,7 @@ function hoseIK(m, gauge, sx, sy, tx, ty, L, bow, k, flip) {
 function drawBuzzRig(cx, cy, k, o) {
     const set = heroSet();
     const bodyH = set.bodyH, t = o.punchThrust || 0, ph = o.phase || 0;
-    const moving = !!o.moving;
+    const w = o.walk !== undefined ? o.walk : (o.moving ? 1 : 0); // 0..1, eased
     // Each leg runs a half-cycle out of phase; the swinging leg LIFTS, which is
     // what keeps the passing position readable instead of a jumble.
     const legPh = s => ph + (s > 0 ? 0 : Math.PI);
@@ -9502,7 +9512,7 @@ function drawBuzzRig(cx, cy, k, o) {
     // The legs STRETCH to reach the ground rather than the body ducking to
     // meet them — it's rubber hose, and it buys back the full stride from a
     // pivot that now sits at the body's edge. The body still dips a little.
-    const hipH = BZ.legLen - (moving ? BZ.dip * Math.abs(shape(Math.sin(ph))) : 0);
+    const hipH = BZ.legLen - BZ.dip * Math.abs(shape(Math.sin(ph))) * w;
     ctx.save();
     ctx.translate(cx, cy);
     if (o.mirror) ctx.scale(-1, 1);
@@ -9519,12 +9529,13 @@ function drawBuzzRig(cx, cy, k, o) {
         // into a stance. Shoes are never mirrored per side: both point the way
         // he faces.
         const px = BZ.anchorX + side * BZ.legSplit;
-        const fx = px + (moving ? shape(Math.sin(legPh(side))) * BZ.stride : side * BZ.footOut);
-        const fy = moving ? -Math.max(0, -Math.cos(legPh(side))) * BZ.legLift : 0;
+        const swingX = shape(Math.sin(legPh(side))) * BZ.stride;
+        const fx = px + side * BZ.footOut * (1 - w) + swingX * w;
+        const fy = -Math.max(0, -Math.cos(legPh(side))) * BZ.legLift * w;
         const need = Math.hypot(fx - px, fy - hipY); // stretch only as far as reaching demands
         hoseIK(set.legMeta, BZ.legGauge, px, hipY, fx, fy, Math.max(BZ.legLen, need), -side * 0.3, k, false);
     }
-    const aSw = moving ? Math.sin(ph) * BZ.armSwing : 0;
+    const aSw = Math.sin(ph) * BZ.armSwing * w;
     if (!(t > 0)) {
         hoseIK(set.armMeta, BZ.armGauge, BZ.armX, armY,
             BZ.armX + BZ.armOut - aSw, armY + BZ.armLen, BZ.armLen, -0.5, k, false);
