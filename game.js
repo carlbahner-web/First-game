@@ -9458,25 +9458,26 @@ function heroSet() {
             // are all baked in); only the punching arm is still solved by IK
             // so the glove lands on the tile he actually hits.
             //
-            // shX/shY is the SHOULDER as a fraction of the pose's own box, and
-            // it has to sit ON the drum: parked out where the art's arm piece
-            // used to start, the hose grew out of thin air beside him. Both
-            // poses hang the arm inside the shell and draw it BEHIND the body,
-            // so the hose emerges from the silhouette and the wind-up reads as
-            // the fist coming out from behind him. `h` height-matches the
-            // standing rig. He stays one-armed: the other arm is simply on his
-            // far side.
+            // shX/shY is the SHOULDER as a fraction of the pose's own box. It
+            // belongs on the SHELL — the black cylinder is his torso, the
+            // drumhead is his face, and his legs come out of the shell, so his
+            // arm does too. (Measured off the ink: side shell spans x 50-215,
+            // up shell x 10-200.) The arm draws BEHIND the pose, so the hose
+            // appears only where it clears the silhouette and the wind-up
+            // reads as the fist coming out from behind him. `h` height-matches
+            // the standing rig. He stays one-armed through a punch: the other
+            // arm is simply on his far side.
             punchPose: (DONK_IMG.buzzPunchBody && DONK_IMG.buzzPunchArm) ? {
                 body: DONK_IMG.buzzPunchBody,
                 arm: mk(DONK_IMG.buzzPunchArm, 262, 512, 81, 0.405, 0.556),
                 h: 72.4, solesAt: 0.9994, drumCx: 0.508,
-                shX: 262 / 359, shY: 200 / 512, gauge: 5.03, armLen: 31.8,
+                shX: 190 / 359, shY: 150 / 512, gauge: 5.03, armLen: 31.8,
             } : null,
             upPose: (DONK_IMG.buzzUpBody && DONK_IMG.buzzUpArm) ? {
                 body: DONK_IMG.buzzUpBody,
                 arm: mk(DONK_IMG.buzzUpArm, 256, 512, 71, 0.561, 0.752),
                 h: 72.4, solesAt: 1, drumCx: 0.414,
-                shX: 250 / 408, shY: 130 / 512, gauge: 5.4, armLen: 38.8,
+                shX: 90 / 408, shY: 70 / 512, gauge: 5.4, armLen: 38.8,
                 // The cell above him centres barely over his head, so a truthful
                 // aim buries the fist in his own drum. Lifting inside the target
                 // cell keeps the hit honest and the pose readable.
