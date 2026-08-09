@@ -9432,6 +9432,7 @@ function heroSet() {
             armGauge: 4.2, armLen: 32,   // hose thickness / shoulder-to-hand
             legGauge: 4.8, legLen: 39,   // legs run a slightly heavier gauge
             fistGauge: 6.0,              // the punch arm tenses thicker
+    fistGrow: 0.85,             // how much the glove swells at full extension
             fistBase: 14, fistReach: 30, // wind-up length -> full extension
             armSwing: 0.30,              // walk swing (0.6 read as flapping)
             bodyH: bodyH,
@@ -9471,8 +9472,11 @@ const BZ = {
 
 // Solve one limb: draw the hose from (sx,sy) to a wrist placed so the HAND
 // lands on the target, then stamp the hand aligned to the hose's end tangent.
-function hoseIK(m, gauge, sx, sy, tx, ty, L, bow, k, flip) {
-    const s = gauge / m.hose, handH = m.ah * (1 - m.split) * s, handW = m.aw * s;
+function hoseIK(m, gauge, sx, sy, tx, ty, L, bow, k, flip, handScale) {
+    // handScale grows the HAND without thickening the hose — the classic
+    // cartoon punch reads as a big glove on a thin arm.
+    const hs = handScale || 1;
+    const s = gauge / m.hose, handH = m.ah * (1 - m.split) * s * hs, handW = m.aw * s * hs;
     let dx = tx - sx, dy = ty - sy, d = Math.hypot(dx, dy) || 0.001;
     const maxD = L * 1.12;                    // cannot reach past full extension
     if (d > maxD) { const f = maxD / d; dx *= f; dy *= f; d = maxD; tx = sx + dx; ty = sy + dy; }
@@ -9556,7 +9560,8 @@ function drawBuzzRig(cx, cy, k, o) {
         const hx = sx + (tx - sx) * t, hy = sy + (ty - sy) * t;
         const need = Math.hypot(hx - sx, hy - sy);
         hoseIK(set.fistMeta, BZ.fistGauge, sx, sy, hx, hy,
-            Math.max(BZ.fistBase, need), -0.55 * (1 - t), k, false);
+            Math.max(BZ.fistBase, need), -0.55 * (1 - t), k, false,
+            1 + t * BZ.fistGrow); // fist swells toward the camera as it lands
         const tm = ctx.getTransform(); // real fist tip, for the impact FX
         donkFistTip = { x: tm.a * hx * k + tm.c * hy * k + tm.e,
                         y: tm.b * hx * k + tm.d * hy * k + tm.f };
