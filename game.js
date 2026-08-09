@@ -9477,14 +9477,14 @@ function heroSet() {
                 body: DONK_IMG.buzzPunchBody,
                 arm: mk(DONK_IMG.buzzPunchArm, 262, 512, 81, 0.405, 0.556),
                 h: 72.4, solesAt: 0.9994, drumCx: 0.508,
-                shX: 300 / 359, shY: 195 / 512, gauge: 5.03, armLen: 31.8,
+                shX: 118 / 359, shY: 197 / 512, gauge: 5.03, armLen: 31.8,
                 front: true, minExt: 0.22,
             } : null,
             downPose: (DONK_IMG.buzzDownBody && DONK_IMG.buzzDownArm) ? {
                 body: DONK_IMG.buzzDownBody,
                 arm: mk(DONK_IMG.buzzDownArm, 221, 512, 68, 0.6445, 0.493),
                 h: 75, solesAt: 0.998, drumCx: 0.630,
-                shX: 392 / 427, shY: 235 / 512, gauge: 5.2, armLen: 39,
+                shX: 157 / 427, shY: 157 / 512, gauge: 5.2, armLen: 39,
                 front: true, minExt: 0.22,
             } : null,
             upPose: (DONK_IMG.buzzUpBody && DONK_IMG.buzzUpArm) ? {
