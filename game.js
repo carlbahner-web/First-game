@@ -9466,7 +9466,13 @@ const BZ = {
     frontExtend: 0.25,  // how much further the forward foot reaches
     frontStraight: 0.3, // how much slack the forward leg gives up (straightens it)
     extremes: 0.55, // <1 holds the spread pose, snaps through the pass
-    armX: 20, armXTrail: 22, armGauge: 4.2, armLen: 31, armOut: 6, armSwing: 9,
+    armX: 20, armXTrail: 22, armGauge: 4.2,
+    armLen: 40,          // longer than the old 31 — an elbow needs hose to bend
+    armReach: 0.88,      // hand distance as a fraction of armLen (leaves a crook)
+    armRest: 0.14,       // rad each hand hangs outboard of its shoulder
+    armSwingAng: 0.38,   // rad of fore/aft swing while walking
+    boneBow: 0.35,       // how rounded each bone is (0 = straight sticks)
+    elbowAt: 0.5,        // where the joint sits along the hose
     fistGauge: 6.0, fistBase: 12, fistReach: 32,
     hip2bot: 0.62,                 // drum bottom, relative to the pivot line
     shoulder: -23.39,              // shoulder height relative to the pivot line
@@ -9504,6 +9510,53 @@ function hoseIK(m, gauge, sx, sy, tx, ty, L, bow, k, flip, handScale) {
         -handW * m.px * k, 0, handW * k, handH * k);
     ctx.restore();
     return { x: tx, y: ty };
+}
+
+// Two-bone arm. The ELBOW is solved as a mathematical point (law of cosines),
+// but each bone is drawn as a CURVE and both are stroked as one continuous
+// path — so it reads as a bent hose, not two sticks. bendSign +1 points the
+// elbow backward (away from his facing).
+function armIK(m, gauge, sx, sy, tx, ty, L, bendSign, k, flip, uf, boneBow, handScale) {
+    const hs = handScale || 1;
+    const s = gauge / m.hose, handH = m.ah * (1 - m.split) * s * hs, handW = m.aw * s * hs;
+    const hoseLen = Math.max(2, L - handH);
+    const u = uf === undefined ? 0.5 : uf;
+    const L1 = hoseLen * u, L2 = hoseLen * (1 - u);
+    const d0 = Math.hypot(tx - sx, ty - sy) || 0.001;
+    const a0 = Math.atan2(ty - sy, tx - sx);
+    const wristD = Math.max(d0 * 0.2, d0 - handH);
+    let wx = sx + Math.cos(a0) * wristD, wy = sy + Math.sin(a0) * wristD;
+    let d = Math.hypot(wx - sx, wy - sy);
+    d = Math.max(Math.abs(L1 - L2) + 0.001, Math.min(L1 + L2 - 0.001, d));
+    const ang = Math.atan2(wy - sy, wx - sx);
+    wx = sx + Math.cos(ang) * d; wy = sy + Math.sin(ang) * d;
+    const a = (L1 * L1 - L2 * L2 + d * d) / (2 * d);
+    const h = Math.sqrt(Math.max(0, L1 * L1 - a * a));
+    const ex = sx + Math.cos(ang) * a - Math.sin(ang) * h * bendSign;
+    const ey = sy + Math.sin(ang) * a + Math.cos(ang) * h * bendSign;
+    const seg = (ax, ay, bx, by, amt) => {
+        const t2 = Math.atan2(by - ay, bx - ax);
+        return [(ax + bx) / 2 - Math.sin(t2) * amt, (ay + by) / 2 + Math.cos(t2) * amt];
+    };
+    const bb = boneBow === undefined ? 0.35 : boneBow;
+    const c1 = seg(sx, sy, ex, ey, L1 * bb * bendSign);
+    const c2 = seg(ex, ey, wx, wy, L2 * bb * bendSign);
+    ctx.strokeStyle = HOSE_INK;
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.lineWidth = gauge * k;
+    ctx.beginPath();
+    ctx.moveTo(sx * k, sy * k);
+    ctx.quadraticCurveTo(c1[0] * k, c1[1] * k, ex * k, ey * k);
+    ctx.quadraticCurveTo(c2[0] * k, c2[1] * k, wx * k, wy * k);
+    ctx.stroke();
+    const ta = Math.atan2(wy - c2[1], wx - c2[0]);
+    ctx.save();
+    ctx.translate(wx * k, wy * k);
+    ctx.rotate(ta - Math.PI / 2);
+    if (flip) ctx.scale(-1, 1);
+    ctx.drawImage(m.img, 0, m.ah * m.split, m.aw, m.ah * (1 - m.split),
+        -handW * m.px * k, 0, handW * k, handH * k);
+    ctx.restore();
 }
 
 // BUZZ, drawn with his soles on (cx, cy). k = height/58.
@@ -9551,14 +9604,22 @@ function drawBuzzRig(cx, cy, k, o) {
         hoseIK(set.legMeta, BZ.legGauge, px, hipY, fx, fy, Math.max(restLen, need),
             -side * 0.3 * (1 - fwd * 0.75), k, false);
     }
-    const aSw = Math.sin(ph) * BZ.armSwing * w;
+    // Arms swing as an ARC about the shoulder — the hand is the end effector,
+    // the elbow falls out of the two-bone solve, and the pair oppose.
+    const handAt = (shX, ang) => [shX + Math.sin(ang) * BZ.armLen * BZ.armReach,
+                                  armY + Math.cos(ang) * BZ.armLen * BZ.armReach];
+    const swingA = Math.sin(ph) * BZ.armSwingAng * w;
     if (!(t > 0)) {
-        hoseIK(set.armMeta, BZ.armGauge, BZ.armX, armY,
-            BZ.armX + BZ.armOut - aSw, armY + BZ.armLen, BZ.armLen, -0.5, k, false);
+        const p1 = handAt(BZ.armX, BZ.armRest - swingA);
+        armIK(set.armMeta, BZ.armGauge, BZ.armX, armY, p1[0], p1[1], BZ.armLen,
+            1, k, false, BZ.elbowAt, BZ.boneBow);
     }
     ctx.drawImage(set.body, DK.bx * k, (hipY + BZ.hip2bot - bodyH) * k, DK.bw * k, bodyH * k);
-    hoseIK(set.armMeta, BZ.armGauge, -BZ.armXTrail, armY,
-        -BZ.armXTrail - BZ.armOut + aSw, armY + BZ.armLen, BZ.armLen, 0.5, k, true);
+    {
+        const p2 = handAt(-BZ.armXTrail, -BZ.armRest + swingA);
+        armIK(set.armMeta, BZ.armGauge, -BZ.armXTrail, armY, p2[0], p2[1], BZ.armLen,
+            1, k, true, BZ.elbowAt, BZ.boneBow);
+    }
     if (t > 0) {
         // The hand flies to the TARGET CELL (passed in rig-local units) and the
         // hose whips out behind it — bowed on the way, straight on impact.
