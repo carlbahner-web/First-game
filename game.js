@@ -9389,7 +9389,7 @@ function loadDonkImages() {
     heroImg.onerror = () => {};
     heroImg.src = srcs.hero || DONK_FILES.hero;
     // BUZZ's straight-hose limb pieces (optional; rig falls back to Donk limbs)
-    for (const [key, file] of [["buzzArm", "buzz-arm.png"], ["buzzFist", "buzz-fist.png"], ["buzzWave", "buzz-wave.png"], ["buzzLeg", "buzz-leg.png"]]) {
+    for (const [key, file] of [["buzzArm", "buzz-arm.png"], ["buzzFist", "buzz-fist.png"], ["buzzWave", "buzz-wave.png"], ["buzzLeg", "buzz-leg.png"], ["buzzArmClean", "buzz-arm-clean.png"]]) {
         const im = new Image();
         im.onload = () => { DONK_IMG[key] = im; };
         im.onerror = () => {};
@@ -9402,7 +9402,8 @@ let DONK_HERO = null, DONK_HERO_KEY = -1;
 let donkFistTip = null; // screen-space fist tip during a punch (for impact FX)
 function heroSet() {
     const key = (DONK_IMG.hero ? 1 : 0) + (DONK_IMG.buzzArm ? 2 : 0) +
-        (DONK_IMG.buzzFist ? 4 : 0) + (DONK_IMG.buzzLeg ? 8 : 0);
+        (DONK_IMG.buzzFist ? 4 : 0) + (DONK_IMG.buzzLeg ? 8 : 0) +
+        (DONK_IMG.buzzArmClean ? 16 : 0);
     if (!DONK_HERO || DONK_HERO_KEY !== key) {
         DONK_HERO_KEY = key;
         const img = DONK_IMG.hero;
@@ -9426,6 +9427,9 @@ function heroSet() {
             arm: DONK_IMG.arm,   // fallback if the straight-hose piece is absent
             leg: DONK_IMG.leg,
             armMeta:  mk(DONK_IMG.buzzArm,  127, 512, 38, 0.760, 0.453), // relaxed hand
+            // the same glove with the interior palm crease painted out — the
+            // front hand shows the BACK of the glove, which has no crease
+            armCleanMeta: mk(DONK_IMG.buzzArmClean, 127, 512, 38, 0.760, 0.453),
             legMeta:  mk(DONK_IMG.buzzLeg,  170, 512, 61, 0.725, 0.324), // hose + shoe
             fistMeta: mk(DONK_IMG.buzzFist, 117, 512, 56, 0.758, 0.491), // punch
             waveMeta: mk(DONK_IMG.buzzWave, 143, 512, 56, 0.686, 0.462), // spread hand
@@ -9620,8 +9624,8 @@ function drawBuzzRig(cx, cy, k, o) {
         const p2 = handAt(-BZ.armXTrail, BZ.armRest + swingA);
         // Front glove flipped horizontally (Carl) — the hose is drawn separately,
         // so this only mirrors the hand slice.
-        armIK(set.armMeta, BZ.armGauge, -BZ.armXTrail, armY, p2[0], p2[1], BZ.armLen,
-            1, k, BZ.frontGloveFlip, BZ.elbowAt, BZ.boneBow);
+        armIK(set.armCleanMeta || set.armMeta, BZ.armGauge, -BZ.armXTrail, armY,
+            p2[0], p2[1], BZ.armLen, 1, k, BZ.frontGloveFlip, BZ.elbowAt, BZ.boneBow);
     }
     if (t > 0) {
         // The hand flies to the TARGET CELL (passed in rig-local units) and the
