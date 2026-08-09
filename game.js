@@ -9330,7 +9330,7 @@ const DONK_PLAYER = true;
 let donkCarlPhase = 0;        // player stride phase (advances with distance moved)
 let donkCarlLastX = null, donkCarlLastY = null;
 let donkCarlFacing = 1;       // sticky horizontal facing (+1 right, -1 left)
-const DONK_STRIDE = 0.29;     // stride phase per game px (matched to stride 14, no foot-slide)
+const DONK_STRIDE = 0.25;     // stride phase per game px — the legs swing a hair slower than his travel
 // Standing still = legs actually still: glide the phase to the nearest
 // rest pose (a multiple of pi, where the swing is zero) over a few frames
 function donkSettlePhase(ph) {
