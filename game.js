@@ -8521,7 +8521,6 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
             wob: 7.3,                                // his own walk phase
             mirror: dir === 2,
             stand: frame === 0 && punch <= 0,        // marks time when idle
-            tint: "player",
         });
         if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
         return;
@@ -9300,7 +9299,7 @@ const DONK_FILES = {
     leg:    "assets/donk/donk-leg.png",
 };
 const DONK_IMG = { body: null, button: null, arm: null, leg: null };
-const DONK_TINT = { elite: {}, player: {} }; // tinted variants, baked once on load
+const DONK_TINT = { elite: {} }; // tinted variants, baked once on load
 let donkReady = false;
 // Carl draws as a mustard-washed Donk stand-in until BUZZ art lands.
 // Flip to false to get procedural Carl back.
@@ -9326,11 +9325,6 @@ function donkFinishLoad() {
         DONK_TINT.elite.arm = bakeTint(DONK_IMG.arm, INK.teal, 0.45);
         DONK_TINT.elite.leg = bakeTint(DONK_IMG.leg, INK.teal, 0.45);
         DONK_TINT.elite.button = DONK_IMG.button;
-        // Player stand-in: Midway Mustard wash — clearly the hero at a glance
-        DONK_TINT.player.body = bakeTint(DONK_IMG.body, INK.mustard, 0.4);
-        DONK_TINT.player.arm = bakeTint(DONK_IMG.arm, INK.mustard, 0.4);
-        DONK_TINT.player.leg = bakeTint(DONK_IMG.leg, INK.mustard, 0.4);
-        DONK_TINT.player.button = DONK_IMG.button;
         donkReady = true;
     }
 }
