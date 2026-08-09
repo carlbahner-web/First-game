@@ -8516,16 +8516,26 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
 
     // ---- Donk stand-in for Carl (until BUZZ art lands) ----
     if (donkReady && DONK_PLAYER) {
-        const idle = frame === 0 && punch <= 0;
-        // Stride phase accumulates at a rate matched to procedural Carl's
-        // snappy walk cycle (~0.5s full stride), not the coaster's amble;
-        // idling ticks slowly so the mark-time stays gentle
-        donkCarlPhase += idle ? 0.05 : 0.22;
+        // Stride is locked to DISTANCE TRAVELLED — the legs cover ground at
+        // the speed the character actually moves, like the procedural walk.
+        // A big jump between frames is a teleport (level entry), not a step.
+        let dist = 0;
+        if (donkCarlLastX !== null) {
+            dist = Math.abs(gx - donkCarlLastX) + Math.abs(gy - donkCarlLastY);
+            if (dist > 8) dist = 0;
+        }
+        donkCarlLastX = gx; donkCarlLastY = gy;
+        const moving = dist > 0.05;
+        donkCarlPhase += moving ? dist * DONK_STRIDE : 0.05;
+        // Facing is sticky: vertical moves keep whichever way he last faced
+        if (dir === 2) donkCarlFacing = -1;
+        else if (dir === 3) donkCarlFacing = 1;
         if (ghost) { ctx.globalAlpha = 0.5; ctx.globalCompositeOperation = "lighter"; }
         drawDonk((gx + TILE / 2 + leanX) * SCALE, (gy + TILE - 1 + leanY * 0.5) * SCALE, 90 / 58, {
             phase: donkCarlPhase,
-            mirror: dir === 3, // art faces left natively; mirror walking right
-            stand: idle,       // marks time when idle
+            mirror: donkCarlFacing === 1, // art faces left natively
+            stand: !moving,               // marks time when not travelling
+            hipX: 5.5,                    // hips pulled in from the rig's 9
         });
         if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
         return;
@@ -9309,7 +9319,10 @@ let donkReady = false;
 // Carl draws as a Donk stand-in until BUZZ art lands.
 // Flip to false to get procedural Carl back.
 const DONK_PLAYER = true;
-let donkCarlPhase = 0; // player stride phase (variable rate, smooth)
+let donkCarlPhase = 0;        // player stride phase (advances with distance moved)
+let donkCarlLastX = null, donkCarlLastY = null;
+let donkCarlFacing = 1;       // sticky horizontal facing (+1 right, -1 left)
+const DONK_STRIDE = 0.4;      // stride phase per game px moved
 
 function bakeTint(img, color, amt) {
     const c = document.createElement("canvas");
@@ -9377,12 +9390,14 @@ function drawDonk(cx, cy, k, o) {
         ctx.restore();
     };
 
-    // Legs — hips 9 apart, 31.4 up inside the shell. The swing is
-    // atan2(displacement, leg length), NOT a raw angle: converting a
-    // horizontal displacement through the leg keeps the sole grounded,
-    // and the 8 caps the stride so the feet never cross.
-    legAt(-9, -31.4, Math.atan2(sw * -8, 31.4));
-    legAt(9, -31.4, Math.atan2(sw * 8, 31.4));
+    // Legs — hips o.hipX apart (default 9), 31.4 up inside the shell.
+    // The swing is atan2(displacement, leg length), NOT a raw angle:
+    // converting a horizontal displacement through the leg keeps the sole
+    // grounded, and capping the stride at just under the hip spacing keeps
+    // the feet from ever crossing.
+    const hipX = o.hipX !== undefined ? o.hipX : 9;
+    legAt(-hipX, -31.4, Math.atan2(sw * -(hipX - 1), 31.4));
+    legAt(hipX, -31.4, Math.atan2(sw * (hipX - 1), 31.4));
 
     // Step bob: carries everything above the hips
     ctx.translate(0, -Math.abs(sw) * 1.8 * k);
@@ -9425,7 +9440,7 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
         drawDonk((gx + TILE / 2) * SCALE, (gy + TILE - 2) * SCALE,
             (type === "elite" ? 78 : 66) / 58, {
                 wob: opts.wob || 0,
-                mirror: dir === 3, // art faces left natively; mirror walking right
+                mirror: opts.face !== undefined ? opts.face === 1 : dir === 3, // sticky horizontal facing
                 stand: opts.stand,
                 flash: opts.bodyCol === "#ffffff", // hurt + windup telegraph flashes
                 tint: type === "elite" ? "elite" : null,
@@ -9714,6 +9729,10 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
 }
 
 function drawGoblinFor(g) {
+    // Sticky horizontal facing for the Donk rig: vertical movement keeps
+    // whichever way this goblin last faced
+    if (g.dir === 2) g.donkFace = -1;
+    else if (g.dir === 3) g.donkFace = 1;
     // Color palette: elite changes color based on HP
     let bodyCol, darkCol, headCol, eyeCol;
     if (g.hurtTimer > 0 && g.hurtTimer % 4 < 2) {
@@ -9747,7 +9766,7 @@ function drawGoblinFor(g) {
     drawGoblinSprite(g.elite ? "elite" : "normal", g.x, g.y,
         dancing ? Math.floor(g.danceTimer / 4) % 4 : g.frame, {
         dir: dancing ? 0 : g.dir, bodyCol, darkCol, headCol, eyeCol,
-        wob: g.wob || 0
+        wob: g.wob || 0, face: g.donkFace
     });
 
     if (dancing) {
