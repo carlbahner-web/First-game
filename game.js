@@ -8536,6 +8536,7 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
             mirror: donkCarlFacing === 1, // art faces left natively
             stand: !moving,               // marks time when not travelling
             hipX: 5.5,                    // hips pulled in from the rig's 9
+            stride: 10,                   // long strides — legs cross the midline
         });
         if (ghost) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
         return;
@@ -9393,11 +9394,13 @@ function drawDonk(cx, cy, k, o) {
     // Legs — hips o.hipX apart (default 9), 31.4 up inside the shell.
     // The swing is atan2(displacement, leg length), NOT a raw angle:
     // converting a horizontal displacement through the leg keeps the sole
-    // grounded, and capping the stride at just under the hip spacing keeps
-    // the feet from ever crossing.
+    // grounded. Stride amplitude (o.stride) is INDEPENDENT of hip width —
+    // a fast walker's feet swing past the midline, and tying the two
+    // together made narrow hips waddle.
     const hipX = o.hipX !== undefined ? o.hipX : 9;
-    legAt(-hipX, -31.4, Math.atan2(sw * -(hipX - 1), 31.4));
-    legAt(hipX, -31.4, Math.atan2(sw * (hipX - 1), 31.4));
+    const strideAmp = o.stride !== undefined ? o.stride : 8;
+    legAt(-hipX, -31.4, Math.atan2(sw * -strideAmp, 31.4));
+    legAt(hipX, -31.4, Math.atan2(sw * strideAmp, 31.4));
 
     // Step bob: carries everything above the hips
     ctx.translate(0, -Math.abs(sw) * 1.8 * k);
