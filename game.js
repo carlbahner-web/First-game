@@ -9443,12 +9443,16 @@ function heroSet() {
 // ============================================================
 const HOSE_INK = "#312D2F"; // sampled from the art's own hose
 const BZ = {
-    hipX: 1.5,      // legs hang from near one point — it's a side view
+    // Both legs radiate from ONE anchor tucked behind his tongue — measured
+    // off the art at 68.4% down and 3.6 units right of centre (the drumhead
+    // sits off to one side of the shell). Classic rubber-hose construction,
+    // and it makes the walk symmetric by definition.
+    anchorX: 3.6,
     stanceX: 5.5,   // how far apart the feet park when standing
     stride: 12, legLift: 9, legGauge: 4.8, legLen: 39,
     armX: 20, armXTrail: 22, armGauge: 4.2, armLen: 31, armOut: 6, armSwing: 9,
     fistGauge: 6.0, fistBase: 12, fistReach: 32,
-    hip2bot: DK.by + DK.bh + 31.4, // drum bottom relative to the hip
+    hip2bot: 15.45,                // drum bottom below the tongue anchor
     shoulder: -8.56,               // shoulder height relative to the hip
 };
 
@@ -9506,9 +9510,9 @@ function drawBuzzRig(cx, cy, k, o) {
         // other crosses into an X — a limp, not a walk. Standing, they part
         // into a stance. Shoes are never mirrored per side: both point the way
         // he faces.
-        const fx = moving ? Math.sin(legPh(side)) * BZ.stride : side * BZ.stanceX;
+        const fx = BZ.anchorX + (moving ? Math.sin(legPh(side)) * BZ.stride : side * BZ.stanceX);
         const fy = moving ? -Math.max(0, -Math.cos(legPh(side))) * BZ.legLift : 0;
-        hoseIK(set.legMeta, BZ.legGauge, side * BZ.hipX, hipY, fx, fy, BZ.legLen, -side * 0.3, k, false);
+        hoseIK(set.legMeta, BZ.legGauge, BZ.anchorX, hipY, fx, fy, BZ.legLen, -side * 0.3, k, false);
     }
     const aSw = moving ? Math.sin(ph) * BZ.armSwing : 0;
     if (!(t > 0)) {
