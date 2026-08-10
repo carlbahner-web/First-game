@@ -8056,26 +8056,34 @@ const REDUCED_MOTION = typeof window !== "undefined" && window.matchMedia
 
 // Marquee geometry, in logical units. Everything else derives from these.
 const MQ = {
-    // Shaped to the billboard art's 16:9 — 204/115 = 1.774 against the file's
-    // 1.778, which is under a quarter of a percent of distortion. The old board
-    // was 196x68 (2.88:1) and would have squashed the card by nearly 40%.
+    // THE BOARD is w x h. The ART is inset by `pad` — the coaster's .bbSign is a
+    // teal board with 20px of padding and the cover image clipped inside it, so
+    // the card reads as a printed sheet MOUNTED IN A FRAME rather than as the
+    // sign itself. That frame is what was missing.
     //
-    // The rest is dictated by the room: 320x160 with the HUD band starting at
-    // y=144. Hung at 20 the bottom edge lands at 135 and the soffit's bulbs at
-    // 138, clear of the HUD, and there are still 12 units of visible rod above —
-    // a sign with a stub for a rod reads as stuck to the ceiling rather than
-    // suspended from it.
-    // 160/90 is 1.7778 — the card's aspect exactly, zero distortion. It is
-    // smaller than it could be on purpose: the coaster's billboard renders at
-    // 0.9 of stage scale "so the legs have room", and this is the same trade.
-    w: 160, h: 90,
-    top: 18,               // top edge, below the lamp bar
-    legSpread: 52,         // half-distance between the two legs at the top
-    legSplay: 4,           // how far each foot kicks out — dead-vertical posts
+    // The art is 128x72 = 1.7778, the card's aspect to four decimals, and the
+    // frame adds 7 a side. The board got SMALLER when it gained a frame, twice
+    // over: the lamp hoods have to clear the ceiling band at y=8, and the
+    // catwalk straddling the bottom edge has to stay above BUZZ's head at
+    // y=112 — at 97 tall it was cutting straight across his face.
+    w: 142, h: 86,
+    pad: 7,                // teal frame around the art
+    top: 18,
+    radius: 4,             // the board's rounded corners
+    legSpread: 46,         // half-distance between the leg tops
+    legSplay: 5,           // how far each foot kicks out — dead-vertical posts
                            // read as a diagram (billboard doc, section 8)
-    floorY: 134,           // where the feet land, just past BUZZ's own footing
-    overhang: 9,           // how far the lamp bar projects past the face each side
+    floorY: 136,           // where the feet land, just past BUZZ's own footing
+    overhang: 6,           // how far the truss projects past the board each side
+    lamps: 5,              // gooseneck floodlights along the top
 };
+
+// Path a rounded rect in LOGICAL units (roundRect itself takes device px, and
+// every caller here thinks in game units).
+function roundRectPath(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.roundRect(x * SCALE, y * SCALE, w * SCALE, h * SCALE, r * SCALE);
+}
 
 // The bulb chase runs on the SEQUENCER's step, not a free-running timer — the
 // marquee blinks on the beat playing behind it.
@@ -8124,7 +8132,30 @@ function drawTitleMarquee(sinkY) {
 
     // ---- z1: THE FACE — opaque, occludes everything above -------------------
     if (TITLE_ART.face) {
-        ctx.drawImage(TITLE_ART.face, x0 * S, y0 * S, MQ.w * S, MQ.h * S);
+        // Hard offset shadow first — the house style is a second printing pass
+        // slightly out of register, never a blur.
+        ctx.fillStyle = "rgba(20,20,19,0.55)";
+        roundRectPath(x0 + 3, y0 + 4, MQ.w, MQ.h, MQ.radius);
+        ctx.fill();
+        // the teal board
+        ctx.fillStyle = INK.teal;
+        roundRectPath(x0, y0, MQ.w, MQ.h, MQ.radius);
+        ctx.fill();
+        ctx.strokeStyle = INK.charcoal;
+        ctx.lineWidth = 1.2 * S;
+        ctx.stroke();
+        // the card, clipped into the frame's opening
+        const p = MQ.pad;
+        ctx.save();
+        roundRectPath(x0 + p, y0 + p, MQ.w - p * 2, MQ.h - p * 2, MQ.radius * 0.6);
+        ctx.clip();
+        ctx.drawImage(TITLE_ART.face, (x0 + p) * S, (y0 + p) * S,
+                      (MQ.w - p * 2) * S, (MQ.h - p * 2) * S);
+        ctx.restore();
+        ctx.strokeStyle = INK.charcoal;
+        ctx.lineWidth = 0.6 * S;
+        roundRectPath(x0 + p, y0 + p, MQ.w - p * 2, MQ.h - p * 2, MQ.radius * 0.6);
+        ctx.stroke();
     } else {
         // teal casing with a boiled charcoal keyline
         ctx.fillStyle = INK.teal;
@@ -8211,38 +8242,69 @@ function drawTitleMarquee(sinkY) {
         }
     }
 
-    // ---- z2: THE LIGHT — the floodlight bar, IN FRONT of the face -----------
-    // On TOP now. Floodlights on a billboard are mounted above the board and
-    // point down at it; a lit bar along the bottom is a theatre marquee's
-    // anatomy. Straddles the top edge and overhangs both sides by the same
-    // amount, so it reads as bolted on rather than butted up against an edge.
-    const sx0 = x0 - MQ.overhang, sw = MQ.w + MQ.overhang * 2, sy = y0 - 4;
-    drawRect(sx0, sy, sw, 6, INK.charcoal);
-    drawRect(sx0, sy, sw, 1, INK.silverD);
-    const BULBS = 15;
-    for (let i = 0; i < BULBS; i++) {
-        const bx = sx0 + 5 + (sw - 10) * (i / (BULBS - 1));
-        const lit = REDUCED_MOTION ? (i % 2 === 0) : marqueeBulbLit(i, titleStep);
-        // the bulb itself
-        ctx.fillStyle = lit ? INK.mustard : INK.silverD;
-        ctx.beginPath();
-        ctx.arc(bx * S, (sy + 6) * S, 1.9 * S, 0, Math.PI * 2);
-        ctx.fill();
+    // ---- z2: THE LIGHT — gooseneck floodlights, IN FRONT of the face --------
+    // Individual fixtures on stalks that rise from behind the board and bend
+    // over it, each throwing a soft cone DOWN the face. This was a marquee's
+    // bulb bar before, which is the wrong fixture for a billboard: the doc's
+    // lamp heads point down and carry a mustard lens on the underside, so the
+    // fitting reads as a fitting even before the beam is drawn.
+    for (let i = 0; i < MQ.lamps; i++) {
+        const lx = x0 + MQ.w * ((i + 0.5) / MQ.lamps);
+        const headY = y0 - 7;
+        // stalk: up from behind the board, then a gooseneck bend over the top
         ctx.strokeStyle = INK.charcoal;
         ctx.lineWidth = 0.7 * S;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(lx * S, (y0 + 3) * S);
+        ctx.quadraticCurveTo(lx * S, (headY - 1) * S, (lx + 3) * S, headY * S);
         ctx.stroke();
-        if (!lit) continue;
-        // and the light it throws DOWN over the room
-        const g = ctx.createRadialGradient(bx * S, (sy + 6) * S, 0, bx * S, (sy + 6) * S, 15 * S);
-        g.addColorStop(0, INK.mustard);
-        g.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.globalAlpha = 0.22;
+        // hood, pointing down
+        ctx.fillStyle = INK.charcoal;
+        ctx.beginPath();
+        ctx.moveTo((lx - 1) * S, headY * S);
+        ctx.lineTo((lx + 7) * S, headY * S);
+        ctx.lineTo((lx + 5.5) * S, (headY + 3) * S);
+        ctx.lineTo((lx + 0.5) * S, (headY + 3) * S);
+        ctx.closePath();
+        ctx.fill();
+        // the mustard lens on the underside
+        drawRect(lx + 0.6, headY + 2.6, 4.8, 0.9, INK.mustard);
+        if (REDUCED_MOTION && i % 2) continue;
+        // and the beam it throws down the face — soft-edged, because a beam
+        // with a clean edge reads as a shape rather than as light
+        const bx = lx + 3, by = headY + 3.4;
+        const reach = MQ.h * 0.72;
+        const g = ctx.createLinearGradient(0, by * S, 0, (by + reach) * S);
+        g.addColorStop(0, "rgba(246,204,96,0.30)");
+        g.addColorStop(1, "rgba(246,204,96,0)");
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.arc(bx * S, (sy + 6) * S, 15 * S, 0, Math.PI * 2);
+        ctx.moveTo((bx - 2.5) * S, by * S);
+        ctx.lineTo((bx + 2.5) * S, by * S);
+        ctx.lineTo((bx + 13) * S, (by + reach) * S);
+        ctx.lineTo((bx - 13) * S, (by + reach) * S);
+        ctx.closePath();
         ctx.fill();
-        ctx.globalAlpha = 1;
     }
+
+    // The maintenance catwalk, straddling the bottom edge IN FRONT of the board
+    // — the doc's z2 walkway. It is what stops the board reading as a decal:
+    // something crosses in front of it.
+    const tw0 = x0 - MQ.overhang, tww = MQ.w + MQ.overhang * 2, tY = y1 - 2;
+    drawRect(tw0, tY, tww, 2.4, INK.charcoal);
+    drawRect(tw0, tY + 2.4, tww, 0.8, INK.silverD);
+    ctx.strokeStyle = INK.charcoal;
+    ctx.lineWidth = 0.5 * S;
+    ctx.beginPath();
+    for (let i = 0; i <= 14; i++) {          // railing posts along the deck
+        const px = tw0 + tww * (i / 14);
+        ctx.moveTo(px * S, tY * S);
+        ctx.lineTo(px * S, (tY - 3) * S);
+    }
+    ctx.moveTo(tw0 * S, (tY - 3) * S);
+    ctx.lineTo((tw0 + tww) * S, (tY - 3) * S);
+    ctx.stroke();
     ctx.restore();
 }
 
