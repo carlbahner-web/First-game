@@ -109,10 +109,14 @@ const lighter = (c, t) => mixC(c, INK.paper, t);
 // dense repeating marks (the 96 grid cells) can read as strobe rather than as a
 // drawn line, which is why they were frozen in the first place. The debug menu
 // (backtick) is there to judge that rather than assume it.
+// Carl's settings off the switchboard, promoted from his localStorage to the
+// defaults so a fresh load — or anyone else opening the link — gets the same
+// game. The room, the HUD and the text are deliberately still: with grain on and
+// the linework boiling, everything moving at once was too much.
 const BOIL = {
-    on: true, rate: 130, amp: 1.0, freeze: false, frozenPhase: 0,
-    room: true, grid: true, chars: true, hud: true, text: true,
-    grain: true, grainAlpha: 0.5,
+    on: true, rate: 130, amp: 0.7, freeze: false, frozenPhase: 0,
+    room: false, grid: true, chars: true, hud: false, text: false,
+    grain: true, grainAlpha: 0.56,
 };
 try {
     const saved = localStorage.getItem("boilCfg");
@@ -2662,7 +2666,7 @@ function rowPixelY(r) {
 function drawGridLattice() {
     if (!TEX_GRID_OFF.length) return;
     const ar = getActiveRows();
-    const ph = boilPhase("grid");
+    const live = boilPhase("grid");
     const S = SCALE;
     const x0 = GRID_X * TILE, y0 = rowPixelY(0);
     ctx.save();
@@ -2695,11 +2699,29 @@ function drawGridLattice() {
     //     was the bigger of the two.
     const SUB = 4;
     const STEP = 61;   // > vnoise's wavelength, so each sample is independent
+    // Only the ACTIVE part of the grid breathes. The empty two thirds of the
+    // field shimmering was the reason the whole thing had to be frozen to be
+    // bearable; a step that is on is worth animating, a step that is off is not.
+    //
+    // The phase is chosen PER SAMPLED POINT rather than per cell, and that is
+    // the whole trick. Stroking each lit cell's outline separately would be the
+    // obvious way to do it and would re-create the exact bug this lattice was
+    // built to kill: two adjacent lit cells share an edge, so that edge would be
+    // drawn twice. Here the lines stay single and continuous — one stroke each,
+    // exactly as before — and only which phase a point samples changes. Where a
+    // live stretch meets a frozen one the line interpolates, so the wobble fades
+    // out along its length instead of stopping at a visible join.
+    const litAt = (r, c) => r >= 0 && r < ar && c >= 0 && c < GRID_COLS && !!grid[r][c];
     for (let c = 0; c <= GRID_COLS; c++) {
         const x = x0 + c * TILE;
         ctx.beginPath();
         for (let i = 0; i <= ar * SUB; i++) {
             const y = y0 + (i / SUB) * TILE;
+            // the up-to-four cells this point touches: the rows either side of
+            // it, in the columns either side of the boundary it runs along
+            const rA = Math.floor((i - 0.5) / SUB), rB = Math.floor((i + 0.5) / SUB);
+            const ph = (litAt(rA, c - 1) || litAt(rA, c) || litAt(rB, c - 1) || litAt(rB, c))
+                ? live : 0;
             ctx.lineTo(x * S + pjit(c * 131 + i * STEP, 2.7, ph, amp),
                        y * S + pjit(c * 71 + i * 43, 5.3, ph, 0.7));
         }
@@ -2710,6 +2732,9 @@ function drawGridLattice() {
         ctx.beginPath();
         for (let i = 0; i <= GRID_COLS * SUB; i++) {
             const x = x0 + (i / SUB) * TILE;
+            const cA = Math.floor((i - 0.5) / SUB), cB = Math.floor((i + 0.5) / SUB);
+            const ph = (litAt(r - 1, cA) || litAt(r, cA) || litAt(r - 1, cB) || litAt(r, cB))
+                ? live : 0;
             ctx.lineTo(x * S + pjit(r * 89 + i * 53, 6.1, ph, 0.7),
                        y * S + pjit(r * 149 + i * STEP, 3.9, ph, amp));
         }
@@ -11627,7 +11652,7 @@ let boilMenuOpen = false;
 const BOIL_ROWS = [
     ["0", "master",  "on"],
     ["1", "room",    "room"],
-    ["2", "cells",   "grid"],
+    ["2", "lit cells", "grid"],
     ["3", "buzz+donks", "chars"],
     ["4", "hud",     "hud"],
     ["5", "text",    "text"],
