@@ -76,7 +76,8 @@ html = """<meta charset="utf-8">
     -webkit-tap-highlight-color: transparent;
   }
   /* the HUD overlays the room's wall band, so the page only fits the room */
-  #game-container { position:relative; line-height:0; border:4px solid var(--frame); }
+  /* No frame: the play area meets the letterbox directly, as the coaster's does. */
+  #game-container { position:relative; line-height:0; }
   canvas {
     /* not `pixelated` — BUZZ is hand-drawn art, and the canvas is almost
        never displayed at an integer multiple of its width */

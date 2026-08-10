@@ -20,7 +20,9 @@
         #game-container {
             position: relative;
             line-height: 0;
-            border: 4px solid #2C2C2A;
+            /* No frame. A 4px charcoal border around the whole thing read as a
+               picture frame hung on the page; the coaster's play area has no rim
+               at all, it just meets the letterbox. */
         }
         canvas {
             /* NOT `pixelated`: that forces nearest-neighbour at the final
