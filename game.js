@@ -916,21 +916,16 @@ function generateStoneTile(seed, baseColor, darkColor, highlightColor, opts) {
     return c;
 }
 
-// Generate an UNLIT grid tile — charcoal stone with a hand-drawn keyline.
-//
-// The unlit field is inked out, and that inverts the keyline: the style bible's
-// "every outline is charcoal" assumes ink sitting on paper, and where the paper
-// itself has been inked the drawn line can only be the ABSENCE of ink. So the
-// border is paper, low alpha, and reads as chalk on slate. Everything else about
-// the line — the boil, the three baked phases, the per-tile ink pressure — is
-// unchanged; only which end of the palette it comes from has flipped.
+// Generate stone tile for the grid — paper stone with a hand-inked
+// charcoal border. Static wonk, not boil: 96 repeating tiles boiling in
+// lockstep reads as strobe (coaster bible, the rail-ties lesson).
 function generateGridStoneTile(seed, biome, phase) {
     const gs = biome.gridStone;
     const c = generateStoneTile(seed, gs.base, gs.dark, gs.hi, { mossColor: gs.moss });
     const g = c.getContext('2d');
     const size = TILE * SCALE;
-    g.strokeStyle = INK.paper;
-    g.globalAlpha = 0.28;
+    g.strokeStyle = INK.charcoal;
+    g.globalAlpha = 0.8;
     g.lineWidth = 2;
     g.lineJoin = "round";
     g.beginPath();
@@ -1056,8 +1051,8 @@ const BIOMES = [
             { base: "#c6d2c7", dark: "#9cb0a3", hi: "#eef2ee" },
         ],
         wallMoss: "#93a89a",
-        gridStone: { base: mixC(INK.charcoal, INK.mint, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.mint, 0.17) },
-        gridWall: { base: INK.charcoal, dark: INK.charcoal, hi: mixC(INK.charcoal, INK.mint, 0.22) },
+        gridStone: { base: "#f3ecd8", dark: "#b3aa96", hi: "#ffffff", moss: "#dfe7df" },
+        gridWall: { base: "#e9eee9", dark: "#93a89a", hi: "#ffffff" },
         lights: ["#50ad33", "#8fbf7a", "#BFCDC0", "#6fae57", "#a5c99a", "#50ad33"],
         lightHi: "#ffffff",
         caveGlow: "143,168,150",
@@ -1073,8 +1068,8 @@ const BIOMES = [
             { base: "#88a8ac", dark: "#40686f", hi: "#dbe5e6" },
         ],
         wallMoss: "#3A6168",
-        gridStone: { base: mixC(INK.charcoal, INK.teal, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.teal, 0.17) },
-        gridWall: { base: INK.charcoal, dark: INK.charcoal, hi: mixC(INK.charcoal, INK.teal, 0.22) },
+        gridStone: { base: "#f3ecd8", dark: "#b3aa96", hi: "#ffffff", moss: "#d5e0e1" },
+        gridWall: { base: "#d5e0e1", dark: "#3A6168", hi: "#ffffff" },
         lights: ["#3A6168", "#5d8a90", "#7fb2b8", "#4a777e", "#6d9ba1", "#3A6168"],
         lightHi: "#ffffff",
         caveGlow: "58,97,104",
@@ -1090,8 +1085,8 @@ const BIOMES = [
             { base: "#ecc667", dark: "#c29a3f", hi: "#fbf1d3" },
         ],
         wallMoss: "#b8923a",
-        gridStone: { base: mixC(INK.charcoal, INK.mustard, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.mustard, 0.17) },
-        gridWall: { base: INK.charcoal, dark: INK.charcoal, hi: mixC(INK.charcoal, INK.mustard, 0.22) },
+        gridStone: { base: "#f3ecd8", dark: "#b3aa96", hi: "#ffffff", moss: "#f5ecd0" },
+        gridWall: { base: "#faeec9", dark: "#b8923a", hi: "#ffffff" },
         lights: ["#F6CC60", "#e0b34a", "#f2d788", "#d3a63f", "#f8dfa0", "#F6CC60"],
         lightHi: "#ffffff",
         caveGlow: "246,204,96",
@@ -1107,8 +1102,8 @@ const BIOMES = [
             { base: "#87c271", dark: "#428c2b", hi: "#e3f1da" },
         ],
         wallMoss: "#3c8226",
-        gridStone: { base: mixC(INK.charcoal, INK.green, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.green, 0.17) },
-        gridWall: { base: INK.charcoal, dark: INK.charcoal, hi: mixC(INK.charcoal, INK.green, 0.22) },
+        gridStone: { base: "#f3ecd8", dark: "#b3aa96", hi: "#ffffff", moss: "#e2efdb" },
+        gridWall: { base: "#dcedd2", dark: "#3c8226", hi: "#ffffff" },
         lights: ["#50ad33", "#71c153", "#8fd077", "#3c8226", "#a8dc94", "#50ad33"],
         lightHi: "#ffffff",
         caveGlow: "80,173,51",
@@ -1124,8 +1119,8 @@ const BIOMES = [
             { base: "#c8d1ca", dark: "#83988e", hi: "#eceeec" },
         ],
         wallMoss: "#7A8F85",
-        gridStone: { base: mixC(INK.charcoal, INK.silverL, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.silverL, 0.17) },
-        gridWall: { base: INK.charcoal, dark: INK.charcoal, hi: mixC(INK.charcoal, INK.silverL, 0.22) },
+        gridStone: { base: "#f3ecd8", dark: "#b3aa96", hi: "#ffffff", moss: "#e6eae7" },
+        gridWall: { base: "#e6eae7", dark: "#7A8F85", hi: "#ffffff" },
         lights: ["#BFC9C1", "#9fb0a6", "#d5dcd6", "#8ba095", "#c8d1ca", "#BFC9C1"],
         lightHi: "#ffffff",
         caveGlow: "122,143,133",
@@ -1141,8 +1136,8 @@ const BIOMES = [
             { base: "#d69a64", dark: "#a55c2c", hi: "#f4e0cc" },
         ],
         wallMoss: "#9a5426",
-        gridStone: { base: mixC(INK.charcoal, INK.rust, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.rust, 0.17) },
-        gridWall: { base: INK.charcoal, dark: INK.charcoal, hi: mixC(INK.charcoal, INK.rust, 0.22) },
+        gridStone: { base: "#f3ecd8", dark: "#b3aa96", hi: "#ffffff", moss: "#f2e2cf" },
+        gridWall: { base: "#f0d9c2", dark: "#9a5426", hi: "#ffffff" },
         lights: ["#BF7538", "#c05838", "#d99a5e", "#a85f2a", "#c98547", "#c05838"],
         lightHi: "#ffffff",
         caveGlow: "191,117,56",
@@ -1167,10 +1162,7 @@ let texturesBuiltForLevel = -1;
 const gradCache = {};
 
 // Grid glow tiles (active blocks — per row color, multiple variants per row)
-// Must stay in lockstep with PAL.gridOn — this list bakes the tile art, that one
-// draws the indicators over it, and if they disagree a row's target outline is a
-// different colour from the cell it is asking you to light.
-const GLOW_COLORS = [INK.green, INK.mustard, INK.mint, INK.red, INK.silverD, INK.rust];
+const GLOW_COLORS = [INK.green, INK.mustard, INK.teal, INK.red, INK.silverD, INK.rust];
 // Grid tiles are noise, so a POOL of variants indexed by cell is visually
 // identical to one bake per cell — and it is what makes three phases affordable:
 // 16 variants x 3 phases x 2 states, against 576 canvases for one bake per cell.
@@ -1511,20 +1503,10 @@ const PAL = {
     wallTop:   "#b6c3b8",
     floor:     INK.paper,
     floorAlt:  "#f3ecd8",
-    // The unlit field is inked out, so a lit cell is a real luminance step above
-    // it rather than the same paper tile wearing a wash. This value is what the
-    // cutscene mini-grids draw; it has to track the real field or the previews
-    // teach the player the wrong thing.
-    gridOff:   INK.charcoal,
-    // Snare was teal, and teal is the second-darkest colour in the palette —
-    // on an inked-out field it measured 2.06:1 and all but vanished, taking the
-    // row's target outline with it. Mint keeps the row cool and reads at 8.47:1.
-    gridOn:    [INK.green, INK.mustard, INK.mint, INK.red, INK.silverD, INK.rust], // rows O,H,S,K,B,T
-    // The "needs to be OFF" X is drawn on a LIT cell, so it stays ink.
+    gridOff:   "#f3ecd8",
+    gridOn:    [INK.green, INK.mustard, INK.teal, INK.red, INK.silverD, INK.rust], // rows O,H,S,K,B,T
     gridX:     [INK.charcoal, INK.charcoal, INK.charcoal, INK.charcoal, INK.charcoal, INK.charcoal],
-    // The gap between mini-grid cells. On an inked-out field it has to be the
-    // LIGHTER line, same inversion as the real tile's keyline.
-    gridBorder: mixC(INK.charcoal, INK.paper, 0.18),
+    gridBorder:"#c9c0a8",
     playhead:  INK.charcoal,
     player:    INK.paper,
     playerDark:"#927e6a",
