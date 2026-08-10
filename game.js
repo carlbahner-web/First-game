@@ -8065,10 +8065,16 @@ const MQ = {
     // 138, clear of the HUD, and there are still 12 units of visible rod above —
     // a sign with a stub for a rod reads as stuck to the ceiling rather than
     // suspended from it.
-    w: 190, h: 107,
-    top: 17,               // hangs this far below the ceiling
-    rodSpread: 72,         // half-distance between the two hanger rods
-    overhang: 9,           // how far the soffit projects past the face each side
+    // 160/90 is 1.7778 — the card's aspect exactly, zero distortion. It is
+    // smaller than it could be on purpose: the coaster's billboard renders at
+    // 0.9 of stage scale "so the legs have room", and this is the same trade.
+    w: 160, h: 90,
+    top: 18,               // top edge, below the lamp bar
+    legSpread: 52,         // half-distance between the two legs at the top
+    legSplay: 4,           // how far each foot kicks out — dead-vertical posts
+                           // read as a diagram (billboard doc, section 8)
+    floorY: 134,           // where the feet land, just past BUZZ's own footing
+    overhang: 9,           // how far the lamp bar projects past the face each side
 };
 
 // The bulb chase runs on the SEQUENCER's step, not a free-running timer — the
@@ -8077,34 +8083,44 @@ function marqueeBulbLit(i, step) {
     return ((i + step) % 4) === 0;
 }
 
-function drawTitleMarquee(riseY) {
+function drawTitleMarquee(sinkY) {
     const W = COLS * TILE;
     const cx = W / 2;
-    const x0 = cx - MQ.w / 2, y0 = MQ.top - riseY;
+    const x0 = cx - MQ.w / 2, y0 = MQ.top + sinkY;
     const x1 = x0 + MQ.w, y1 = y0 + MQ.h;
     const S = SCALE;
-    const sway = REDUCED_MOTION ? 0 : Math.sin(titleBlink * 0.013) * 0.9;
-
     ctx.save();
-    // The whole assembly sways about its hanging point, like a hung sign
-    ctx.translate(cx * S, (WALL_TOP) * S);
-    ctx.rotate(sway * Math.PI / 180);
-    ctx.translate(-cx * S, -(WALL_TOP) * S);
+    // No sway. The assembly used to swing about a hanging point a few degrees,
+    // which is what a suspended sign does; a billboard bolted to two legs in the
+    // ground does not move at all until it is struck.
 
     // ---- z0: STRUCTURE — drawn in full, about to be occluded ----------------
+    // It STANDS. This used to be two hanger rods from the ceiling, which is a
+    // marquee's anatomy, not a billboard's — a billboard has legs that reach the
+    // ground. They start well inside the board so their tops are hidden by an
+    // opaque face rather than clipped, which is the whole z-order trick.
+    const footY = MQ.floorY + sinkY;
     for (const side of [-1, 1]) {
-        const rx = cx + side * MQ.rodSpread;
-        // hanger rod, running from the ceiling right down INTO the board
+        const lx = cx + side * MQ.legSpread;
+        const fx = lx + side * MQ.legSplay;   // splayed: vertical posts read as a diagram
         ctx.strokeStyle = INK.charcoal;
-        ctx.lineWidth = 1.6 * S;
+        ctx.lineWidth = 2.2 * S;
+        ctx.lineCap = "round";
         ctx.beginPath();
-        ctx.moveTo((rx + jit(rx, 5, 0.3)) * S, WALL_TOP * S);
-        ctx.lineTo((rx + jit(rx + 40, 5, 0.3)) * S, (y0 + 14) * S);
+        ctx.moveTo((lx + jit(lx, 5, 0.3)) * S, (y1 - 12) * S);
+        ctx.lineTo((fx + jit(fx + 40, 5, 0.3)) * S, footY * S);
         ctx.stroke();
-        // ceiling mounting plate
-        drawRect(rx - 5, WALL_TOP - 1, 10, 3, INK.charcoal);
-        drawRect(rx - 4, WALL_TOP, 8, 1, INK.silverD);
+        // foot plate on the floor
+        drawRect(fx - 4, footY - 1, 8, 2, INK.charcoal);
     }
+    // cross-brace between the legs, below the board
+    ctx.strokeStyle = INK.charcoal;
+    ctx.lineWidth = 1.1 * S;
+    ctx.beginPath();
+    const braceY = (y1 + footY) / 2;
+    ctx.moveTo((cx - MQ.legSpread - 1) * S, (braceY + jit(cx, 7, 0.4)) * S);
+    ctx.lineTo((cx + MQ.legSpread + 1) * S, (braceY + jit(cx + 30, 7, 0.4)) * S);
+    ctx.stroke();
 
     // ---- z1: THE FACE — opaque, occludes everything above -------------------
     if (TITLE_ART.face) {
@@ -8172,7 +8188,11 @@ function drawTitleMarquee(riseY) {
     // sized to leave that strip clear of the HUD band.
     // Two lines, 8 units apart, whether they sit on the plate or on the floor.
     const onArt = !!TITLE_ART.face;
-    const modeY = onArt ? y0 + MQ.h + 8 : y0 + MQ.h - 13;
+    // Pinned to the FLOOR, not to the sign. Below the board there is only a
+    // 4-unit gap before BUZZ's head, so the text cannot sit there; the strip
+    // between his feet and the HUD is clear, and being independent of the sign
+    // means it also stays put while the sign sinks past it.
+    const modeY = onArt ? ROWS * TILE - HUD_H - 11 : y0 + MQ.h - 13;
     if (!onArt) drawRect(x0 + 9, y0 + MQ.h - 20, MQ.w - 18, 16, INK.charcoal);
     if (!titleFadingOut) {
         const modeLabel = gameMode === "thrill" ? "THRILL MODE" : "CHILL MODE";
@@ -8191,10 +8211,12 @@ function drawTitleMarquee(riseY) {
         }
     }
 
-    // ---- z2: THE LIGHT — soffit and bulbs, IN FRONT of the face -------------
-    // Straddles the bottom edge and overhangs both sides by the same amount, so
-    // it reads as bolted on rather than butted up against an edge.
-    const sx0 = x0 - MQ.overhang, sw = MQ.w + MQ.overhang * 2, sy = y1 - 3;
+    // ---- z2: THE LIGHT — the floodlight bar, IN FRONT of the face -----------
+    // On TOP now. Floodlights on a billboard are mounted above the board and
+    // point down at it; a lit bar along the bottom is a theatre marquee's
+    // anatomy. Straddles the top edge and overhangs both sides by the same
+    // amount, so it reads as bolted on rather than butted up against an edge.
+    const sx0 = x0 - MQ.overhang, sw = MQ.w + MQ.overhang * 2, sy = y0 - 4;
     drawRect(sx0, sy, sw, 6, INK.charcoal);
     drawRect(sx0, sy, sw, 1, INK.silverD);
     const BULBS = 15;
@@ -8288,13 +8310,17 @@ function renderTitleScreen() {
     // doc warns against: it puts the transition on the panel rather than on the
     // exit, so "the screen visibly slides into place on first paint". A sign
     // that is hanging in the room was already hanging there when you walked in.
+    // IT SINKS, IT DOES NOT FADE — and a thing standing on legs sinks DOWNWARD,
+    // where a hung sign would fly up. The distance is measured from the topmost
+    // part (the lamp bar, not the board) so nothing is left poking above the
+    // frame for the last few frames.
     const flyEase = t => t * t * (3 - 2 * t);
-    const lowest = MQ.top + MQ.h + 9;
-    const riseY = titleFadingOut
-        ? flyEase(Math.min(1, titleFadeTimer / TITLE_FADE_DURATION)) * (lowest + 8)
+    const highest = MQ.top - 7;
+    const sinkY = titleFadingOut
+        ? flyEase(Math.min(1, titleFadeTimer / TITLE_FADE_DURATION)) * (ROWS * TILE - highest + 10)
         : 0;
 
-    drawTitleMarquee(riseY);
+    drawTitleMarquee(sinkY);
 
 }
 
