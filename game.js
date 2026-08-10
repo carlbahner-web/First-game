@@ -933,20 +933,22 @@ function generateGlowTile(seed, glowColor) {
     g.fillStyle = "#f3ecd8";
     g.fillRect(0, 0, size, size);
 
-    // Gouache wash fill
-    const innerPad = 3;
+    // Gouache wash — EDGE TO EDGE, and square.
+    // It used to be inset 3px with rounded corners, which was invisible while
+    // every tile drew its own border on top of the inset. With the border gone
+    // and the lattice ruled between cells instead, that inset was exposed as a
+    // rounded colour square floating in a cream frame — the cell read as an
+    // object sitting in its container rather than as the container being lit.
     g.fillStyle = glowColor;
     g.globalAlpha = 0.92;
-    g.beginPath();
-    g.roundRect(innerPad, innerPad, size - innerPad * 2, size - innerPad * 2, 4);
-    g.fill();
+    g.fillRect(0, 0, size, size);
     g.globalAlpha = 1;
 
     // Paper-white energy veins (unpainted cracks in the wash)
     const numVeins = 3 + Math.floor(rng() * 3);
     for (let i = 0; i < numVeins; i++) {
-        const x1 = innerPad + rng() * (size - innerPad * 2);
-        const y1 = innerPad + rng() * (size - innerPad * 2);
+        const x1 = rng() * size;
+        const y1 = rng() * size;
         const segments = 2 + Math.floor(rng() * 3);
         g.strokeStyle = "rgba(252,247,232,0.55)";
         g.lineWidth = 1 + rng() * 1.5;
@@ -962,8 +964,8 @@ function generateGlowTile(seed, glowColor) {
     }
 
     // Brush-light hotspot
-    const hx = innerPad + rng() * (size - innerPad * 2);
-    const hy = innerPad + rng() * (size - innerPad * 2);
+    const hx = rng() * size;
+    const hy = rng() * size;
     const hr = 5 + rng() * 8;
     const grad = g.createRadialGradient(hx, hy, 0, hx, hy, hr);
     grad.addColorStop(0, "rgba(255,255,255,0.35)");
@@ -2668,19 +2670,37 @@ function drawGridLattice() {
     // The doubled per-cell borders this replaces were 2px each, so a boundary
     // carried about 4px of ink. One line has to carry that weight on its own or
     // the field reads as washed out rather than ruled.
-    ctx.lineWidth = 0.7 * S;
+    ctx.lineWidth = 0.8 * S;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    // Sampled every half tile, so a line bends a few times along its length the
-    // way a ruled-by-hand line does — rather than being a straight edge with
-    // noise on it.
-    const SUB = 2;
+    // THE INVARIANT: a lit cell's wash is a hard rectangle filling its tile
+    // exactly, so this line is the only thing hiding the seam between two of
+    // them. It covers that seam only while it never wanders further than its own
+    // half-width, so the amplitude is DERIVED from the weight rather than being
+    // a second constant that happens to be small enough today.
+    //
+    // The division is not cosmetic: pjit multiplies by BOIL.amp, which is a
+    // slider on the debug panel. Left alone, winding that up past ~1.3 would
+    // walk the line off the seam and expose the wash's hard edge. Dividing it
+    // back out pins the effective amplitude at the safe maximum while still
+    // letting the slider calm the lattice down.
+    const amp = (ctx.lineWidth / 2 - 0.5) / Math.max(1, BOIL.amp);
+    // Two things make a hand-ruled line bump rather than drift, and the first
+    // pass only had one of them:
+    //   * sample often enough — every quarter tile, which is the density the
+    //     per-cell borders had across their much shorter edges;
+    //   * and step the noise by MORE THAN ITS WAVELENGTH (46, see vnoise) per
+    //     sample. Stepping by 17 or 23 put consecutive points on the same slope
+    //     of the same hump, so the line slid smoothly instead of bending. This
+    //     was the bigger of the two.
+    const SUB = 4;
+    const STEP = 61;   // > vnoise's wavelength, so each sample is independent
     for (let c = 0; c <= GRID_COLS; c++) {
         const x = x0 + c * TILE;
         ctx.beginPath();
         for (let i = 0; i <= ar * SUB; i++) {
             const y = y0 + (i / SUB) * TILE;
-            ctx.lineTo(x * S + pjit(c * 131 + i * 17, 2.7, ph, 1.5),
+            ctx.lineTo(x * S + pjit(c * 131 + i * STEP, 2.7, ph, amp),
                        y * S + pjit(c * 71 + i * 43, 5.3, ph, 0.7));
         }
         ctx.stroke();
@@ -2691,7 +2711,7 @@ function drawGridLattice() {
         for (let i = 0; i <= GRID_COLS * SUB; i++) {
             const x = x0 + (i / SUB) * TILE;
             ctx.lineTo(x * S + pjit(r * 89 + i * 53, 6.1, ph, 0.7),
-                       y * S + pjit(r * 149 + i * 23, 3.9, ph, 1.5));
+                       y * S + pjit(r * 149 + i * STEP, 3.9, ph, amp));
         }
         ctx.stroke();
     }
