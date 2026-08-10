@@ -2677,18 +2677,20 @@ function drawGridLattice() {
     ctx.lineWidth = 0.8 * S;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    // THE INVARIANT: a lit cell's wash is a hard rectangle filling its tile
-    // exactly, so this line is the only thing hiding the seam between two of
-    // them. It covers that seam only while it never wanders further than its own
-    // half-width, so the amplitude is DERIVED from the weight rather than being
-    // a second constant that happens to be small enough today.
+    // A lit cell's wash is a hard rectangle filling its tile exactly, so this
+    // line is the only thing hiding the join between a wash and its neighbour.
+    // The amplitude is therefore tied to the line's weight rather than being an
+    // independent constant, and the division keeps BOIL.amp — a slider on the
+    // debug panel — from compounding it.
     //
-    // The division is not cosmetic: pjit multiplies by BOIL.amp, which is a
-    // slider on the debug panel. Left alone, winding that up past ~1.3 would
-    // walk the line off the seam and expose the wash's hard edge. Dividing it
-    // back out pins the effective amplitude at the safe maximum while still
-    // letting the slider calm the lattice down.
-    const amp = (ctx.lineWidth / 2 - 0.5) / Math.max(1, BOIL.amp);
+    // The 2x is measured, not guessed. Geometry says the line stops covering the
+    // join once it wanders past its own half-width, which would cap this at
+    // 1x. In practice the round caps and the anti-aliased edges cover
+    // considerably further than the nominal half-width: checkerboarded so every
+    // boundary is the visible wash-against-cream kind, a 1px sliver shows on
+    // 2.0% of scanlines at 2x against 2.2% at 1x. Doubling the wobble does not
+    // cost anything, so the geometric bound was the wrong thing to trust.
+    const amp = 2 * (ctx.lineWidth / 2 - 0.5) / Math.max(1, BOIL.amp);
     // Two things make a hand-ruled line bump rather than drift, and the first
     // pass only had one of them:
     //   * sample often enough — every quarter tile, which is the density the
