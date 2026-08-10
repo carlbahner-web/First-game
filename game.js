@@ -2165,7 +2165,6 @@ const rowTrigger = new Array(GRID_ROWS).fill(0); // countdown frames per row
 // Scene transition effect
 let sceneTransition = { active: false, from: null, to: null, progress: 0, duration: 20 };
 // Title text entrance/exit animation
-let titleEntrancePhase = 0; // frames since title screen entered
 let titleFadingOut = false;  // true when transitioning title→intro
 let titleFadeTimer = 0;      // frames since fade-out started
 const TITLE_FADE_DURATION = 20; // frames for title text to fade out
@@ -3972,7 +3971,6 @@ function resetGame() {
     screenFlash = 0;
     screenShake = 0;
     hitFreeze = 0;
-    titleEntrancePhase = 0;
     fireworks = [];
     playerDeathAnim.active = false;
     for (let r = 0; r < GRID_ROWS; r++)
@@ -8013,7 +8011,6 @@ function stopTitleDrums() {
 let titleStep = 0;        // simulated sequencer step (0-15)
 let titleStepTimer = 0;   // frame counter for step advance
 let titleKickPump = 0;    // 0-1 speaker pump intensity on kick hits
-titleEntrancePhase = 0;   // reset entrance animation
 const TITLE_STEP_FRAMES = 8.2; // frames per sixteenth note at 110bpm @ 60fps
 
 // Title screen drum pattern (matches audio)
@@ -8259,7 +8256,6 @@ function renderTitleScreen() {
     render();
 
     // === THE MARQUEE ===
-    titleEntrancePhase++;
 
     if (titleFadingOut) {
         titleFadeTimer++;
@@ -8286,11 +8282,17 @@ function renderTitleScreen() {
     // leaves — straight up into the grid. The distance is measured from the
     // LOWEST part (the soffit and its bulbs), not the board, so nothing is left
     // poking into frame for the last few frames.
+    //
+    // AND IT ONLY MOVES ON THE WAY OUT. It used to slide down into place over
+    // the first 34 frames, which is precisely the thing the coaster's billboard
+    // doc warns against: it puts the transition on the panel rather than on the
+    // exit, so "the screen visibly slides into place on first paint". A sign
+    // that is hanging in the room was already hanging there when you walked in.
     const flyEase = t => t * t * (3 - 2 * t);
     const lowest = MQ.top + MQ.h + 9;
     const riseY = titleFadingOut
         ? flyEase(Math.min(1, titleFadeTimer / TITLE_FADE_DURATION)) * (lowest + 8)
-        : (1 - Math.min(1, titleEntrancePhase / 34)) * -(lowest + 8);
+        : 0;
 
     drawTitleMarquee(riseY);
 
