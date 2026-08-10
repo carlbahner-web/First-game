@@ -8173,75 +8173,19 @@ function renderTitleScreen() {
 
     const beatOn = titleStep % 4 === 0;
 
-    // === CAVE SCENE BACKGROUND === (same textured cave as gameplay)
-    drawSceneBackground(0);
-
-    // Mushroom lights (animated, bioluminescent)
-    const TITLE_MUSH_COLORS = [INK.mint, INK.silverL, INK.green, INK.silverD, INK.mint, INK.green];
-    for (let c = 1; c < COLS - 1; c++) {
-        const mushY = WALL_TOP - 3;   // recessed into the ceiling, not hung from it
-        const mushX = c * TILE + TILE / 2;
-        const mushCol = TITLE_MUSH_COLORS[c % TITLE_MUSH_COLORS.length];
-        const chase = Math.sin(titleBlink * 0.05 + c * 0.6) * 0.5 + 0.5;
-        const isCrystal = c % 4 === 0;
-        ctx.globalAlpha = 0.5 + chase * 0.5;
-        if (isCrystal) {
-            ctx.fillStyle = mushCol;
-            ctx.beginPath();
-            ctx.moveTo(mushX * SCALE, (mushY - 1) * SCALE);
-            ctx.lineTo((mushX + 3) * SCALE, (mushY + 2) * SCALE);
-            ctx.lineTo(mushX * SCALE, (mushY + 5) * SCALE);
-            ctx.lineTo((mushX - 3) * SCALE, (mushY + 2) * SCALE);
-            ctx.closePath();
-            ctx.fill();
-        } else {
-            ctx.fillStyle = "#55554f";
-            ctx.fillRect((mushX - 0.5) * SCALE, (mushY - 1) * SCALE, 1 * SCALE, 4 * SCALE);
-            ctx.fillStyle = mushCol;
-            ctx.beginPath();
-            ctx.arc(mushX * SCALE, (mushY + 3) * SCALE, 2.5 * SCALE, Math.PI, 0);
-            ctx.fill();
-        }
-        // Glow
-        ctx.fillStyle = mushCol;
-        ctx.globalAlpha = 0.08 + chase * 0.1;
-        ctx.beginPath();
-        ctx.arc(mushX * SCALE, (mushY + 3) * SCALE, 5 * SCALE, 0, Math.PI * 2);
-        ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-
-    // (The DJ booth and its equipment stood here. Carl: simplify — the room
-    // and the beat stay, the clutter goes, so the marquee is the subject.)
-
-    // Beat grid (small, showing the beat)
-    // Two rows, low, under the sign: the beat plays on the floor BUZZ is
-    // standing on, rather than filling the wall the marquee hangs on.
-    const miniGridY = (ROWS - 4) * TILE + 8;   // clear of the marquee's soffit
-    const miniGridX = GRID_X * TILE;   // centred like the real sequencer
-    const patterns = [INTRO_BEAT.S, INTRO_BEAT.K];
-    for (let r = 0; r < patterns.length; r++) {
-        for (let c = 0; c < 16; c++) {
-            const gx = miniGridX + c * TILE;
-            const gy = miniGridY + r * TILE;
-            const on = patterns[r][c];
-            ctx.globalAlpha = 0.72;   // present, but subordinate to the sign
-            drawRect(gx, gy, TILE, TILE, PAL.gridBorder);
-            drawRect(gx + 1, gy + 1, TILE - 2, TILE - 2, on ? PAL.gridOn[r] : PAL.gridOff);
-            ctx.globalAlpha = 1;
-        }
-    }
-    // Playhead
-    const phX = miniGridX + titleStep * TILE;
-    ctx.fillStyle = PAL.playhead;
-    ctx.globalAlpha = 0.35;
-    ctx.fillRect(phX * SCALE, miniGridY * SCALE, TILE * SCALE, (2 * TILE) * SCALE);
-    ctx.globalAlpha = 1;
-
-    // (The 16-strong crowd danced here. Gone with the booth — BUZZ alone under
-    // his own marquee reads better than a stage full of extras.)
-
-    // Beat pulse background — removed for accessibility
+    // THE TITLE SCREEN IS THE GAME, with a sign hung in front of it.
+    //
+    // It used to be an imitation: a hand-drawn copy of the room's ceiling
+    // lights, and a two-row 32-cell mock grid of flat rectangles sitting low
+    // under the sign — different art, different size, different place from the
+    // real sequencer. So the handover was a cut between two pictures, and it
+    // needed a fade to black to hide the join.
+    //
+    // Now it draws the actual field, at its actual position, with the real
+    // tiles and the ruled lattice, and the beat runs underneath. Nothing has to
+    // change when play starts, so nothing has to be hidden.
+    tickSequencer();
+    render();
 
     // === THE MARQUEE ===
     titleEntrancePhase++;
@@ -8258,10 +8202,11 @@ function renderTitleScreen() {
             // This is now exactly what chill mode does a few lines up; the two
             // modes only differed because one of them detoured through a
             // cutscene.
-            resetGame();
             gameState = "playing";
             resetSequencerClock();
-            sceneTransition = { active: true, from: "title", to: "playing", progress: 0, duration: 20 };
+            // No sceneTransition. There is nothing to cover: the same room, the
+            // same grid and the same BUZZ are already on screen, so a fade to
+            // black would be hiding a join that no longer exists.
             return;
         }
     }
@@ -8275,14 +8220,6 @@ function renderTitleScreen() {
     const riseY = titleFadingOut
         ? flyEase(Math.min(1, titleFadeTimer / TITLE_FADE_DURATION)) * (lowest + 8)
         : (1 - Math.min(1, titleEntrancePhase / 34)) * -(lowest + 8);
-
-    // BUZZ waits on the floor beneath his own marquee
-    {
-        const bx = COLS * TILE / 2 - TILE / 2;
-        const by = (ROWS - 2) * TILE;
-        const bob = REDUCED_MOTION ? 0 : (titleStep % 4 === 0 ? 1 : 0);
-        drawPlayerSprite(bx, by - bob, Math.floor(titleBlink / 10) % 4, 0, {});
-    }
 
     drawTitleMarquee(riseY);
 
@@ -10183,6 +10120,11 @@ initTouchControls();
 
 loadHighScores();
 function startGame() {
+    // The title screen draws the real room now, so the world has to exist
+    // before the first frame rather than being built when the player presses
+    // Enter. resetGame() runs again on start — it is idempotent for level 1 and
+    // produces the same field, which is the point: nothing moves at the handover.
+    try { resetGame(); } catch (e) { console.error("startGame init error:", e); }
     requestAnimationFrame(gameLoop);
 }
 
