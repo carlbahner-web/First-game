@@ -61,13 +61,21 @@ const GRID_Y = 2;          // grid start tile-y (centered: 2 + 6 + 2 = 10)
 // device px, so they'd shrink relative to the room when SCALE changes. This
 // pins them to the tile instead.
 const RIG = SCALE / 4;
-// The ceiling is HALF a tile, not a full one. BUZZ is 1.46 tiles tall, so a
-// full-tile ceiling forced a whole row of headroom he could never stand in —
-// the up-clamp was TILE*2, not TILE. Thinning it hands that row back to the
-// play field. The floor and side walls stay a full tile: the floor has no
-// headroom problem, and his sprite is wider than a tile, so he'd overlap a
-// half-width side wall however the clamp reads.
+// The ceiling and the side walls are HALF a tile, not a full one. BUZZ is 1.46
+// tiles tall and wider than a tile, so full-thickness bands spent a whole row
+// and column on masonry he could never stand in — and once the page frame came
+// off, those bands WERE the frame. Thinning them hands the space back to the
+// room.
+//
+// The movement clamps stay where they are (one whole tile in from each edge):
+// everything walks on the tile lattice, so a clamp at the new wall face would
+// have to be a half-tile, which is not a position anything can occupy. The
+// half tile that opens up beyond the clamp is walked *over* rather than stood
+// on — it's the overhang his sprite already spilled into, now reading as floor
+// instead of as wall. The top wall has worked exactly this way since it was
+// thinned, and the floor keeps its full tile because the HUD band sits on it.
 const WALL_TOP = TILE / 2;
+const WALL_SIDE = TILE / 2;
 const GRID_Y_OFFSET = 0;   // no offset needed with centered layout
 const DOOR_TILE_Y = Math.floor(ROWS / 2); // exit door on the right wall
 // (gap row after kick removed)
@@ -1285,13 +1293,18 @@ function buildCaveBgTexture(biome, LS) {
     for (let col = 0; col < COLS; col++) {
         g.drawImage(TEX_WALL_BOT[col], col * TILE * SCALE, (ROWS - 1) * TILE * SCALE);
     }
-    // Left wall tiles
+    // Left wall tiles — squashed into the half-tile band, same as the ceiling.
+    // Squashing rather than cropping keeps every tile's whole mark pattern; a
+    // crop would lop the right half off each one and the band would read as a
+    // column of sliced stones.
     for (let r = 0; r < ROWS; r++) {
-        g.drawImage(TEX_WALL_LEFT[r], 0, r * TILE * SCALE);
+        g.drawImage(TEX_WALL_LEFT[r], 0, r * TILE * SCALE,
+            WALL_SIDE * SCALE, TILE * SCALE);
     }
-    // Right wall tiles
+    // Right wall tiles, right-aligned against the room's edge
     for (let r = 0; r < ROWS; r++) {
-        g.drawImage(TEX_WALL_RIGHT[r], (COLS - 1) * TILE * SCALE, r * TILE * SCALE);
+        g.drawImage(TEX_WALL_RIGHT[r], (COLS * TILE - WALL_SIDE) * SCALE, r * TILE * SCALE,
+            WALL_SIDE * SCALE, TILE * SCALE);
     }
 
     // Stalactites & stalagmites: positions rolled once per level, then
@@ -1366,7 +1379,7 @@ function buildCaveBgTexture(biome, LS) {
         const hp = (y) => { const a = []; for (let x = 0; x <= w; x += 14) a.push([x, y]); return a; };
         const vp = (x) => { const a = []; for (let y = topY; y <= botY; y += 14) a.push([x, y]); return a; };
         line(hp(topY), 11); line(hp(botY), 22);
-        line(vp(TILE * SCALE), 33); line(vp((COLS - 1) * TILE * SCALE), 44);
+        line(vp(WALL_SIDE * SCALE), 33); line(vp((COLS * TILE - WALL_SIDE) * SCALE), 44);
 
         // Stalagmites
         for (let si = 0; si < smites.length; si++) {
@@ -4889,17 +4902,21 @@ function render() {
 
     // ---- Level-exit door (right wall) — barred until the beat is restored ----
     {
-        const dX = (COLS - 1) * TILE;
+        // The door is cut through the wall, so it is as thick as the wall is:
+        // it spans the whole half-tile band and runs out to the room's edge,
+        // which is why its right corners are square and its left ones round.
+        const dW = WALL_SIDE;
+        const dX = COLS * TILE - dW;
         const dY = (DOOR_TILE_Y - 1) * TILE + 6;
         const dH = TILE * 2 - 8;
         // Doorway recess
         ctx.fillStyle = doorOpen ? "#dcedd2" : "#3a3a37";
         ctx.beginPath();
-        ctx.roundRect(dX * SCALE, dY * SCALE, (TILE - 2) * SCALE, dH * SCALE, [8 , 0, 0, 8]);
+        ctx.roundRect(dX * SCALE, dY * SCALE, dW * SCALE, dH * SCALE, [8 , 0, 0, 8]);
         ctx.fill();
         // Hand-inked boiling outline around the doorway
         {
-            const x0 = dX * SCALE, y0 = dY * SCALE, ww = (TILE - 2) * SCALE, hh = dH * SCALE;
+            const x0 = dX * SCALE, y0 = dY * SCALE, ww = dW * SCALE, hh = dH * SCALE;
             const pts = [];
             for (let xx = x0 + ww; xx >= x0; xx -= 10) pts.push([xx, y0]);
             for (let yy = y0; yy <= y0 + hh; yy += 10) pts.push([x0, yy]);
@@ -4912,7 +4929,7 @@ function render() {
             ctx.globalAlpha = doorPulse;
             ctx.fillStyle = "#50ad33";
             ctx.beginPath();
-            ctx.roundRect((dX + 2) * SCALE, (dY + 3) * SCALE, (TILE - 6) * SCALE, (dH - 6) * SCALE, [6, 0, 0, 6]);
+            ctx.roundRect((dX + 1.5) * SCALE, (dY + 3) * SCALE, (dW - 1.5) * SCALE, (dH - 6) * SCALE, [4, 0, 0, 4]);
             ctx.fill();
             ctx.globalAlpha = 1.0;
             // Pulsing arrow pointing the way out
@@ -4929,11 +4946,11 @@ function render() {
             const drop = doorSlamFx > 8 ? (doorSlamFx - 8) / 6 : 0;
             ctx.fillStyle = "#5C3A1E";
             for (let bi = 0; bi < 3; bi++) {
-                ctx.fillRect((dX + 1) * SCALE, (dY + 4 + bi * 8 - drop * dH) * SCALE, (TILE - 4) * SCALE, 2.5 * SCALE);
+                ctx.fillRect((dX + 1) * SCALE, (dY + 4 + bi * 8 - drop * dH) * SCALE, (dW - 2) * SCALE, 2.5 * SCALE);
             }
             if (doorSlamFx <= 8) {
                 ctx.fillStyle = "#F6CC60";
-                ctx.fillRect((dX + 5) * SCALE, (dY + dH / 2 - 1) * SCALE, 4 * SCALE, 5 * SCALE);
+                ctx.fillRect((dX + dW / 2 - 2) * SCALE, (dY + dH / 2 - 1) * SCALE, 4 * SCALE, 5 * SCALE);
             }
         }
         // Dust puff from the slam
@@ -4943,7 +4960,7 @@ function render() {
             for (let i = 0; i < 5; i++) {
                 const ang = Math.PI * 0.6 + i * 0.45;
                 const dist = 2 + df * (0.8 + i * 0.15);
-                const puffX = dX + 4 + Math.cos(ang) * dist;
+                const puffX = dX + dW / 2 + Math.cos(ang) * dist;
                 const puffY = DOOR_TILE_Y * TILE + 4 + Math.sin(ang) * dist * 0.6;
                 ctx.globalAlpha = (doorSlamFx / 14) * 0.5;
                 ctx.beginPath();
@@ -7708,8 +7725,8 @@ function renderEnding() {
             drawRect(c * TILE, (ROWS - 1) * TILE, TILE, TILE, (c * 11 + 5) % 3 === 0 ? "#343430" : "#3a3a37");
         }
         for (let r = 0; r < ROWS; r++) {
-            drawRect(0, r * TILE, TILE, TILE, (r * 7) % 3 === 0 ? "#343430" : "#3a3a37");
-            drawRect((COLS - 1) * TILE, r * TILE, TILE, TILE, (r * 11) % 3 === 0 ? "#343430" : "#3a3a37");
+            drawRect(0, r * TILE, WALL_SIDE, TILE, (r * 7) % 3 === 0 ? "#343430" : "#3a3a37");
+            drawRect(COLS * TILE - WALL_SIDE, r * TILE, WALL_SIDE, TILE, (r * 11) % 3 === 0 ? "#343430" : "#3a3a37");
         }
 
         // String lights (fade in during phase 0)
