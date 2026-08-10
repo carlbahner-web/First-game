@@ -8062,22 +8062,24 @@ const MQ = {
     // sign itself. That frame is what was missing.
     //
     // As big as the room allows. HEIGHT is the binding constraint, not width:
-    // the lamp hoods have to clear the ceiling band at y=8 and the feet have to
-    // land by the HUD at y=144, which leaves 17..123 for the board and 19 for
-    // the legs. Art 160x90 = 1.7778, the card's aspect to four decimals, with
-    // the frame adding 8 a side.
+    // the lamp hoods have to clear the ceiling band at y=8, and the feet now
+    // reach the BOTTOM OF THE SCREEN rather than stopping at the HUD — the legs
+    // are drawn onto the HUD canvas as well, so they pass in front of it. That
+    // bought 16 units, all of which went into the board.
+    //
+    // Art 192x108 = 1.7778, the card's aspect to four decimals, frame 8 a side.
     //
     // It covers BUZZ, and that is correct — the billboard is drawn over the
-    // room, so he is standing BEHIND it with his feet showing below the frame.
-    w: 176, h: 106,
+    // room, so he is standing BEHIND it.
+    w: 208, h: 124,
     pad: 8,                // teal frame around the art
     top: 17,
     radius: 5,             // the board's rounded corners
-    legSpread: 56,         // half-distance between the leg tops
-    legSplay: 6,           // how far each foot kicks out — dead-vertical posts
+    legSpread: 66,         // half-distance between the leg tops
+    legSplay: 7,           // how far each foot kicks out — dead-vertical posts
                            // read as a diagram (billboard doc, section 8)
-    floorY: 142,           // the feet land on the HUD band's edge, which is this
-                           // game's letterbox edge
+    floorY: 157,           // the feet land at the very bottom of the screen,
+                           // in front of the HUD
     overhang: 7,           // how far the truss projects past the board each side
     lamps: 6,              // gooseneck floodlights along the top
 };
@@ -8108,31 +8110,40 @@ function drawTitleMarquee(sinkY) {
 
     // ---- z0: STRUCTURE — drawn in full, about to be occluded ----------------
     // It STANDS. This used to be two hanger rods from the ceiling, which is a
-    // marquee's anatomy, not a billboard's — a billboard has legs that reach the
-    // ground. They start well inside the board so their tops are hidden by an
-    // opaque face rather than clipped, which is the whole z-order trick.
+    // marquee's anatomy, not a billboard's.
+    //
+    // The legs are drawn TWICE: once on the game canvas, and again on the HUD
+    // canvas with the origin shifted, because the HUD is a separate canvas
+    // stacked on top and anything on the game canvas is behind it. Drawing them
+    // again up there lets the legs pass IN FRONT of the HUD and reach the floor
+    // of the screen — which is what let the board grow.
     const footY = MQ.floorY + sinkY;
-    for (const side of [-1, 1]) {
-        const lx = cx + side * MQ.legSpread;
-        const fx = lx + side * MQ.legSplay;   // splayed: vertical posts read as a diagram
-        ctx.strokeStyle = INK.charcoal;
-        ctx.lineWidth = 2.2 * S;
-        ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo((lx + jit(lx, 5, 0.3)) * S, (y1 - 12) * S);
-        ctx.lineTo((fx + jit(fx + 40, 5, 0.3)) * S, footY * S);
-        ctx.stroke();
-        // foot plate on the floor
-        drawRect(fx - 4, footY - 1, 8, 2, INK.charcoal);
-    }
-    // cross-brace between the legs, below the board
-    ctx.strokeStyle = INK.charcoal;
-    ctx.lineWidth = 1.1 * S;
-    ctx.beginPath();
-    const braceY = (y1 + footY) / 2;
-    ctx.moveTo((cx - MQ.legSpread - 1) * S, (braceY + jit(cx, 7, 0.4)) * S);
-    ctx.lineTo((cx + MQ.legSpread + 1) * S, (braceY + jit(cx + 30, 7, 0.4)) * S);
-    ctx.stroke();
+    const hudTop = ROWS * TILE - HUD_H;
+    const legPass = (g, yOff) => {
+        g.save();
+        g.strokeStyle = INK.charcoal;
+        g.lineCap = "round";
+        for (const side of [-1, 1]) {
+            const lx = cx + side * MQ.legSpread;
+            const fx = lx + side * MQ.legSplay;   // splayed: vertical posts read as a diagram
+            g.lineWidth = 2.4 * S;
+            g.beginPath();
+            g.moveTo((lx + jit(lx, 5, 0.3)) * S, (y1 - 14 - yOff) * S);
+            g.lineTo((fx + jit(fx + 40, 5, 0.3)) * S, (footY - yOff) * S);
+            g.stroke();
+            g.fillStyle = INK.charcoal;
+            g.fillRect((fx - 5) * S, (footY - 1.5 - yOff) * S, 10 * S, 2.5 * S);
+        }
+        // cross-brace between the legs, below the board
+        g.lineWidth = 1.2 * S;
+        g.beginPath();
+        const braceY = (y1 + footY) / 2 - yOff;
+        g.moveTo((cx - MQ.legSpread - 2) * S, (braceY + jit(cx, 7, 0.4)) * S);
+        g.lineTo((cx + MQ.legSpread + 2) * S, (braceY + jit(cx + 30, 7, 0.4)) * S);
+        g.stroke();
+        g.restore();
+    };
+    legPass(ctx, 0);
 
     // ---- z1: THE FACE — opaque, occludes everything above -------------------
     if (TITLE_ART.face) {
@@ -8330,6 +8341,11 @@ function drawTitleMarquee(sinkY) {
     ctx.lineTo((tw0 + tww) * S, (tY - 3) * S);
     ctx.stroke();
     ctx.restore();
+
+    // The second leg pass, onto the HUD canvas. It runs last so it is over the
+    // HUD's own drawing, and the canvas is only the bottom band, so the part of
+    // the leg above it is simply clipped away.
+    if (hudCtx) legPass(hudCtx, hudTop);
 }
 
 function renderTitleScreen() {
