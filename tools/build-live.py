@@ -69,7 +69,7 @@ html = """<style>
     /* not `pixelated` — BUZZ is hand-drawn art, and the canvas is almost
        never displayed at an integer multiple of its width */
     image-rendering: auto;
-    width: min(calc(100vw - 8px), calc((100vh - 12px) * 2.4));
+    width: min(calc(100vw - 8px), calc((100vh - 12px) * 2.0));
     height: auto;
   }
   #game { display:block; }

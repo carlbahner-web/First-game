@@ -39,11 +39,23 @@ const TILE = 16;
 const SCALE = 5;           // 80 device px per tile — cells 25% larger than the
                            // old SCALE 4, which is what the sequencer needed to
                            // stay readable on a phone
-const COLS = 24;           // room width in tiles
+// The slack was all horizontal. A 16-column grid in a 24-column room left FOUR
+// tiles of empty floor on each side — a third of the room was margin — and that
+// is what made it read as too widescreen. Two tiles a side is enough to frame
+// it, which takes the room to 2.00:1, cuts the letterboxing on a 16:9 desktop,
+// and makes everything about 20% bigger on screen since the canvas is scaled to
+// fit the window.
+//
+// The vertical axis is NOT the same story and is deliberately untouched: the
+// grid already sits 2 rows down with 2 below it, one of those is the HUD, and
+// BUZZ at 1.46 tiles already overlaps the grid's bottom edge. What looks like
+// empty space down there on early levels is rows 5 and 6 of the grid waiting
+// for cowbell (L11) and tom (L23).
+const COLS = 20;           // room width in tiles
 const ROWS = 10;           // room height in tiles
 const GRID_COLS = 16;      // sequencer steps
 const GRID_ROWS = 6;       // max drum channels (O, H, S, K, B, T)
-const GRID_X = 4;          // grid start tile-x (centered: 4 + 16 + 4 = 24)
+const GRID_X = 2;          // grid start tile-x (centered: 2 + 16 + 2 = 20)
 const GRID_Y = 2;          // grid start tile-y (centered: 2 + 6 + 2 = 10)
 // Character rigs are authored in a 58-unit space and converted straight to
 // device px, so they'd shrink relative to the room when SCALE changes. This
@@ -5101,8 +5113,12 @@ function render() {
     // Row labels (O, H, S, K, B, T) in the column just left of the first beat block
     const ROW_LETTERS = ["O", "H", "S", "K", "B", "T"];
     const ar = getActiveRows();
+    ctx.textAlign = "right";
     for (let r = 0; r < ar; r++) {
-        const lx = (GRID_X - 1) * TILE + 3;
+        // Right-aligned just clear of the grid rather than measured in from the
+        // wall — the left margin is two tiles now, and a left-aligned letter at
+        // this size ran into the first column.
+        const lx = GRID_X * TILE - 5;
         const ly = rowPixelY(r) + 12;
         // These sit on the inked-out floor, not on the cells. Teal snare
         // measures 2.06:1 against it and all but disappears, so each letter is
@@ -5110,6 +5126,7 @@ function render() {
         // the luminance does the work of being visible.
         drawText(ROW_LETTERS[r], lx, ly, lighter(PAL.gridOn[r], 0.45), 7);
     }
+    ctx.textAlign = "start";
 
     // Stone wall background behind grid (sprite or pre-rendered fallback)
     {
@@ -5264,15 +5281,20 @@ function render() {
         for (let r = 0; r < arP; r++)
             for (let c = 0; c < GRID_COLS; c++)
                 if (grid[r][c] === targetPat[r][c]) cellsCorrect++;
-        // Parked in the right margin as a two-line plate. Above the grid is the
-        // light rig's band and below it is the step-number line, so the margin
-        // is the only place left that never collides.
-        const progX = (GRID_X + GRID_COLS) * TILE + 5;
-        const progY = GRID_Y * TILE + GRID_Y_OFFSET + 2;
-        const progCol = cellsCorrect === cellsTotal ? "#50ad33"
-            : cellsCorrect >= cellsTotal - 4 ? "#F6CC60" : "#8a9a8f";
-        drawText("PATTERN", progX, progY, progCol, 3);
-        drawText(cellsCorrect + "/" + cellsTotal, progX, progY + 9, progCol, 3);
+        // Third home for this. It was a two-line plate in the right margin,
+        // which stopped working when the margin went from four tiles to two and
+        // it ran into the wall. Moving it below the grid then collided with the
+        // bottom wall at six active rows — the grid's BOTTOM edge moves with the
+        // level, so nothing measured from it is safe. Its top edge does not:
+        // above the grid, right-aligned, is the one anchor that holds for every
+        // level, and it sits in the gap between the light rig and the field.
+        const progX = (GRID_X + GRID_COLS) * TILE;
+        const progY = GRID_Y * TILE + GRID_Y_OFFSET - 4;
+        const progCol = cellsCorrect === cellsTotal ? INK.green
+            : cellsCorrect >= cellsTotal - 4 ? INK.mustard : INK.silverD;
+        ctx.textAlign = "right";
+        drawText("PATTERN " + cellsCorrect + "/" + cellsTotal, progX, progY, progCol, 3);
+        ctx.textAlign = "start";
     }
 
     // HUD is rendered on separate canvas
