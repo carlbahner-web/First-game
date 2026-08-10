@@ -4656,96 +4656,69 @@ function fillRoundRect(context, x, y, w, h, r, color) {
 function renderHUD() {
     hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
 
-
-    const pxSz = 2;                       // was 3 — the strip is a third shorter
-    const digitW = hudDigitWidth(pxSz) + 1;
-    const panelH = 5 * pxSz + 4;
-    const panelGap = 4;
-
-    const kcY = Math.floor((HUD_H - panelH) / 2);
+    // NO PANELS. Every readout used to sit in a charcoal plate with a border, a
+    // top highlight and a bottom shadow — four rects of furniture around each
+    // number. The coaster's HUD has none of that: section 2 gets its hierarchy
+    // from SIZE AND FACE, and the primary number survives a moving backdrop on a
+    // hard offset shadow rather than on a box.
+    //
+    // Losing the plates flips every colour. The numbers were paper-on-charcoal
+    // because the plate was charcoal; the band behind them is the room's pale
+    // bottom wall, so they are charcoal-on-pale now, with the mustard offset
+    // doing the work the plate used to.
     const W = COLS * TILE;
-    const margin = TILE; // 1-tile margin from edges
+    const margin = TILE;
+    const numSize = 9;                  // display face — the numbers
+    const labSize = 4;                  // body face — the words
+    const baseY = HUD_H / 2 + numSize * 0.42;
 
-    // Panel drawing helper — adds border, fill, top highlight, and bottom shadow
-    function drawHudPanel(x, y, w, h, borderCol, bgCol, hiCol) {
-        drawHudRect(x - 2, y - 2, w + 4, h + 4, borderCol);
-        drawHudRect(x, y, w, h, bgCol);
-        drawHudRect(x, y, w, 1, hiCol);                    // top highlight
-        drawHudRect(x, y + h - 1, w, 1, "rgba(0,0,0,0.2)"); // bottom shadow
-    }
+    const label = (text, x, align) => {
+        hudCtx.font = fbody(labSize * SCALE);
+        hudCtx.fillStyle = mixC(INK.charcoal, INK.paper, 0.32);
+        hudCtx.textAlign = align || "start";
+        hudCtx.fillText(text, x * SCALE, (baseY - 0.5) * SCALE);
+        hudCtx.textAlign = "start";
+        return hudCtx.measureText(text).width / SCALE;
+    };
+    const number = (text, x, col, align) => {
+        hudCtx.font = fdisp(numSize * SCALE);
+        hudCtx.textAlign = align || "start";
+        hudCtx.fillStyle = INK.mustard;
+        hudCtx.fillText(text, (x + 0.7) * SCALE, (baseY + 0.7) * SCALE);
+        hudCtx.fillStyle = col;
+        hudCtx.fillText(text, x * SCALE, baseY * SCALE);
+        hudCtx.textAlign = "start";
+        return hudCtx.measureText(text).width / SCALE;
+    };
 
-    const iconW = 3 * pxSz + 2;
-    const numY = kcY + 3;
-    const p = pxSz;
+    // --- LEVEL, left ---------------------------------------------------------
+    const lw = label("LEVEL", margin);
+    number(String(currentLevel + 1).padStart(2, "0"), margin + lw + 3, INK.charcoal);
 
-    // --- Level counter (left-aligned) ---
-    const lvlStr = String(currentLevel + 1).padStart(2, "0");
-    const lvlPanelW = iconW + 2 * digitW + 6;
-    const lvlX = margin;
-    drawHudPanel(lvlX, kcY, lvlPanelW, panelH, "#2C2C2A", "#3a3a37", "#4a4a45");
-    // "L" icon
-    const fx = lvlX + 2, fy = kcY + 3;
-    drawHudRect(fx, fy, p, 5 * p, INK.paper);
-    drawHudRect(fx + p, fy + 4 * p, 2 * p, p, INK.paper);
-    // Level digits (centered in remaining panel space after icon)
-    const lvlDigitArea = lvlPanelW - iconW;
-    drawHudPixelDigits(lvlStr, lvlX + iconW + lvlDigitArea / 2, numY, INK.paper, p);
-    // Tier subtitle below level panel
+    // --- the zone's tier, after it -------------------------------------------
     const tierNames = ["ROCK", "FUNK", "BREAKS"];
     const tierIdx = currentLevel < 10 ? 0 : currentLevel < 20 ? 1 : 2;
-    // Beside the level panel, not beneath it — there is no "beneath" now
-    hudCtx.font = gfont(2.5 * SCALE);
-    hudCtx.fillStyle = "#8a7a5a";
-    hudCtx.textAlign = "start";
-    hudCtx.fillText(tierNames[tierIdx], (lvlX + lvlPanelW + 5) * SCALE, (kcY + panelH - 3) * SCALE);
+    label(tierNames[tierIdx], margin + lw + 26);
 
-    // --- Timer counter (right-aligned) ---
+    // --- SCORE, centred and biggest ------------------------------------------
+    const scoreStr = String(score).padStart(5, "0");
+    number(scoreStr, W / 2, INK.charcoal, "center");
+
+    // --- TIME, right ---------------------------------------------------------
     const timerSec = Math.max(0, Math.ceil(levelTimer / 60));
     const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
-    const timerPanelW = iconW + timerStr.length * digitW + 6;
-    const timerX = W - margin - timerPanelW;
     const isUrgent = timerSec <= 30;
     const isCritical = timerSec <= 10;
     const blinkRate = isCritical ? 15 : 30;
     const blinkOn = !isUrgent || Math.floor(levelTimer / blinkRate) % 2 === 0;
-    // 30s is a warning, not a hazard — alert red is reserved for the <=10s
-    // critical state that also drives the vignette
-    const timerColor = isCritical ? "#FE3636" : isUrgent ? INK.mustard : INK.paper;
-    const timerBorderColor = isUrgent ? "#550f0a" : "#2C2C2A";
-    const timerBgColor = isUrgent ? "#3f3f3b" : "#3a3a37";
-    const timerHighlight = isUrgent ? "#661100" : "#4a4a45";
-    drawHudPanel(timerX, kcY, timerPanelW, panelH, timerBorderColor, timerBgColor, timerHighlight);
-    // "T" icon
-    const tx2 = timerX + 2, ty2 = kcY + 3;
-    drawHudRect(tx2, ty2, 3 * p, p, blinkOn ? timerColor : timerBgColor);
-    drawHudRect(tx2 + p, ty2 + p, p, 4 * p, blinkOn ? timerColor : timerBgColor);
-    // Timer digits (centered in remaining panel space after icon)
-    if (blinkOn) {
-        const timerDigitArea = timerPanelW - iconW;
-        drawHudPixelDigits(timerStr, timerX + iconW + timerDigitArea / 2, numY, timerColor, p);
-    }
-
-    // --- Score counter (centered) ---
-    const scoreStr = String(score).padStart(5, "0");
-    const skullW = 5 * p + 2;
-    const killPanelW = skullW + 5 * digitW + 6;
-    const kcX = Math.floor((W - killPanelW) / 2);
-    drawHudPanel(kcX, kcY, killPanelW, panelH, "#2C2C2A", "#3a3a37", "#4a4a45");
-    // Skull icon
-    const sx = kcX + 2, sy = kcY + 3;
-    const skullBg = "#3a3a37";
-    drawHudRect(sx + p, sy, 3 * p, p, INK.paper);
-    drawHudRect(sx, sy + p, 5 * p, 2 * p, INK.paper);
-    drawHudRect(sx + p, sy + 3 * p, 3 * p, p, INK.paper);
-    drawHudRect(sx + p, sy + 4 * p, p, p, INK.paper);
-    drawHudRect(sx + 3 * p, sy + 4 * p, p, p, INK.paper);
-    drawHudRect(sx + p, sy + p, p, p, skullBg);
-    drawHudRect(sx + 3 * p, sy + p, p, p, skullBg);
-    drawHudRect(sx + 2 * p, sy + 2 * p, p, p, skullBg);
-    drawHudRect(sx + 2 * p, sy + 4 * p, p, p, skullBg);
-    // Score digits (centered in remaining panel space after skull)
-    const scoreDigitArea = killPanelW - skullW;
-    drawHudPixelDigits(scoreStr, kcX + skullW + scoreDigitArea / 2, numY, INK.paper, p);
+    // On a pale band mustard is 1.43:1 and vanishes, so the warning state is
+    // rust and only the lethal <=10s state wears alert red — which is still the
+    // reserved colour, and this is still a thing that can kill you.
+    const timerColor = isCritical ? INK.alert : isUrgent ? INK.rust : INK.charcoal;
+    if (blinkOn) number(timerStr, W - margin, timerColor, "right");
+    hudCtx.font = fbody(labSize * SCALE);
+    const tlw = hudCtx.measureText("TIME").width / SCALE;
+    label("TIME", W - margin - hudDigitWidth(2) * 2 - 4 - tlw);
 
     // Tick sound during last 10 seconds (once per second)
     if (isCritical && timerSec > 0 && levelTimer % 60 === 0 && audioCtx) {
@@ -4763,34 +4736,29 @@ function renderHUD() {
 
     // Chill mode indicator
     if (gameMode === "chill") {
-        const cmX = kcX - 4;   // left of the score plate, clear of the timer
-        hudCtx.font = gfont(3 * SCALE);
+        hudCtx.font = fbody(3 * SCALE);
         hudCtx.fillStyle = INK.teal;
         hudCtx.textAlign = "right";
-        hudCtx.fillText("CHILL", cmX * SCALE, (kcY + panelH - 2) * SCALE);
+        hudCtx.fillText("CHILL", (W / 2 - 30) * SCALE, (baseY - 0.5) * SCALE);
         hudCtx.textAlign = "start";
     }
 
-    // Equipment recovery tracker (thrill mode only — shows DJ setup piece progress)
+    // Equipment recovery tracker — the stage gear recovered so far
     if (gameMode === "thrill") {
         const earned = djSetupEarned.length;
         const total = DJ_SETUP_PIECES.length;
-        if (earned > 0 || currentLevel >= 4) { // show after level 5 (first minigame milestone)
-            const trackerX = timerX - total * 5 - 8;
-            const trackerY = kcY + Math.floor((panelH - 4) / 2);
+        if (earned > 0 || currentLevel >= 4) {
+            const trackerY = HUD_H / 2 - 2;
+            const trackerX = W / 2 + 34;
             for (let i = 0; i < total; i++) {
                 const ix = trackerX + i * 5;
-                if (i < earned) {
-                    drawHudRect(ix, trackerY, 4, 4, "#F6CC60"); // recovered — gold
-                    drawHudRect(ix, trackerY, 4, 1, INK.paper); // highlight
-                } else {
-                    drawHudRect(ix, trackerY, 4, 4, "#3a2a1a"); // missing — dark
-                    drawHudRect(ix, trackerY, 4, 1, "#4a3a2a"); // subtle border
-                }
+                // charcoal for missing rather than near-black on near-black:
+                // these used to sit on a dark plate and now sit on the pale wall
+                drawHudRect(ix, trackerY, 4, 4, i < earned ? INK.mustard : mixC(INK.charcoal, INK.paper, 0.55));
+                drawHudRect(ix, trackerY, 4, 4.6, "rgba(0,0,0,0)");
             }
         }
     }
-
 }
 
 
