@@ -1946,6 +1946,13 @@ let screenFlash = 0; // white flash frames remaining
 let hitFreeze = 0;        // frames to skip update() but still render
 let screenShake = 0;      // frames of screen shake remaining
 let shakeIntensity = 0;   // pixel magnitude of shake offset
+// Where the shake is centred, in logical units, or null for a whole-screen one.
+// A punch is a local event — BUZZ hitting a pad should not rock the far end of
+// the room — so punches set this and everything else (taking a hit, dying, a
+// boulder landing, the door slamming) leaves it null and shakes the lot.
+let shakeAt = null;
+const SHAKE_RADIUS = 2 * TILE;   // two grid blocks, per Carl
+const playerCentre = () => ({ x: player.x + player.w / 2, y: player.y + player.h / 2 });
 let pendingShake = false;  // triggers shake after freeze ends
 let pendingShakeElite = false;
 
@@ -1986,6 +1993,7 @@ function triggerPocketHit(row, col) {
     deathText = { x: player.x - 26, y: player.y - 16, timer: 60, text: "IN THE POCKET!", color: INK.mustard, scale: 5 };
     screenShake = 5;
     shakeIntensity = 2;
+    shakeAt = playerCentre();
     for (const g of goblins) {
         if (!g.dead) {
             g.danceTimer = 180;
@@ -2852,6 +2860,7 @@ function update(dt) {
         if (hitFreeze === 0 && pendingShake) {
             screenShake = pendingShakeElite ? 10 : 6;
             shakeIntensity = pendingShakeElite ? 4 : 2;
+            shakeAt = playerCentre();
             pendingShake = false;
         }
         return;
@@ -3132,6 +3141,7 @@ function update(dt) {
                 // Screen shake for impact feel
                 screenShake = 8;
                 shakeIntensity = 3;
+                shakeAt = playerCentre();
                 // "WHAT THE...?" floating text above player
                 deathText = { x: p.x - 16, y: p.y - 14, timer: 50, text: "WHAT THE...?", color: "#FFFFFF", scale: 3 };
             }
@@ -3148,6 +3158,7 @@ function update(dt) {
             p.punchHitCol = PAL.gridOn[row] || INK.mustard;
             screenShake = Math.max(screenShake, 3);
             shakeIntensity = Math.max(shakeIntensity, 1);
+            shakeAt = playerCentre();
             // play a toggle blip
             if (audioCtx) {
                 const now = audioCtx.currentTime;
@@ -3512,6 +3523,7 @@ function update(dt) {
                     p.stunTimer = 60;
                     screenFlash = 15;
                     screenShake = 8;
+                    shakeAt = null;
                     shakeIntensity = 3;
                     deathText = { x: p.x - 16, y: p.y - 14, timer: 50, text: "STUNNED!", color: "#FF4444", scale: 5 };
                     // Knock Carl back 2 tiles away from the elite
@@ -3791,6 +3803,7 @@ function triggerGameOver() {
     // Initial hit freeze + shake
     screenShake = 15;
     shakeIntensity = 6;
+    shakeAt = null;
     hitFreeze = 10; // dramatic pause
 
     // Impact thud sound
@@ -4470,6 +4483,7 @@ function updateCatapultGoblin() {
             if (audioCtx) playCatapultImpact(audioCtx.currentTime);
             screenShake = 12;
             shakeIntensity = 5;
+            shakeAt = null;
             // Dust particles at impact
             const impactX = cg.boulder.targetX;
             const impactY = cg.boulder.targetY;
@@ -4494,6 +4508,7 @@ function updateCatapultGoblin() {
                 player.freezeTimer = 600;
                 player.stunTimer = 0; // freeze overrides stun
                 screenShake = 12;
+                shakeAt = null;
                 shakeIntensity = 5;
                 screenFlash = 20;
                 deathText = { x: player.x - 20, y: player.y - 14, timer: 60, text: "FROZEN!", color: "#44CCFF", scale: 6 };
@@ -4503,6 +4518,7 @@ function updateCatapultGoblin() {
                     const distTiles = Math.abs(pGridCol - cc) + Math.abs(pGridRow - cr);
                     player.stunTimer = distTiles <= 2 ? 90 : 30;
                     screenShake = 6;
+                    shakeAt = null;
                     shakeIntensity = 2;
                     deathText = { x: player.x - 8, y: player.y - 14, timer: 40, text: "...", color: "#AAAAAA", scale: 5 };
                 }
@@ -4787,13 +4803,48 @@ function renderHUD() {
 
 
 // ---- Render ----
+let shakeBuf = null;
+// Displace a feathered disc of the FINISHED frame instead of translating the
+// whole canvas. A hard-edged disc would announce itself as a circle; the
+// gradient mask lets the shifted copy fade back into the still frame at the rim,
+// so what you see is a jolt that dies off a couple of blocks out.
+function applyLocalShake(sx, sy) {
+    const R = Math.round(SHAKE_RADIUS * SCALE), d = R * 2;
+    const cx = Math.round(shakeAt.x * SCALE), cy = Math.round(shakeAt.y * SCALE);
+    if (!shakeBuf) shakeBuf = document.createElement("canvas");
+    if (shakeBuf.width !== d) { shakeBuf.width = d; shakeBuf.height = d; }
+    const g = shakeBuf.getContext("2d");
+    mipping = true;   // these are raw blits; the mip/warp patch must not touch them
+    try {
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, d, d);
+        g.drawImage(canvas, cx - R, cy - R, d, d, 0, 0, d, d);
+        // The opaque core is most of the disc, with only the outer quarter
+        // feathering out. At 0.4 the crossfade band was wide enough that the
+        // shifted copy and the still frame were both visible across it — it read
+        // as a ghost rather than as a jolt.
+        const grad = g.createRadialGradient(R, R, R * 0.72, R, R, R);
+        grad.addColorStop(0, "rgba(0,0,0,1)");
+        grad.addColorStop(1, "rgba(0,0,0,0)");
+        g.globalCompositeOperation = "destination-in";
+        g.fillStyle = grad;
+        g.fillRect(0, 0, d, d);
+        g.globalCompositeOperation = "source-over";
+        ctx.drawImage(shakeBuf, cx - R + sx, cy - R + sy);
+    } finally { mipping = false; }
+}
+
 function render() {
-    // Screen shake offset
+    // A shake with no origin rocks the whole room, the way it always did. One
+    // with an origin is applied at the END of the frame instead — see below.
+    let shakeSX = 0, shakeSY = 0;
     if (screenShake > 0) {
-        const sx = (Math.random() - 0.5) * 2 * shakeIntensity * SCALE;
-        const sy = (Math.random() - 0.5) * 2 * shakeIntensity * SCALE;
-        ctx.save();
-        ctx.translate(sx, sy);
+        shakeSX = (Math.random() - 0.5) * 2 * shakeIntensity * SCALE;
+        shakeSY = (Math.random() - 0.5) * 2 * shakeIntensity * SCALE;
+        if (!shakeAt) {
+            ctx.save();
+            ctx.translate(shakeSX, shakeSY);
+        }
     }
 
     // Clear & draw cave background (sprite scaled to canvas, or pre-rendered fallback)
@@ -5450,9 +5501,9 @@ function render() {
     if (biomeBannerTimer > 0) biomeBannerTimer--;
 
 
-    // Restore screen shake transform
     if (screenShake > 0) {
-        ctx.restore();
+        if (shakeAt) applyLocalShake(shakeSX, shakeSY);
+        else ctx.restore();
     }
 }
 
@@ -9157,7 +9208,7 @@ function renderSabotageAnim() {
             grid[cell.r][cell.c] = !grid[cell.r][cell.c];
             cellFlash[cell.r][cell.c] = 30;
             cellRecent[cell.r][cell.c] = 180;
-            if (sabotageFlipIndex % 4 === 0) screenShake = 2;
+            if (sabotageFlipIndex % 4 === 0) { screenShake = 2; shakeAt = null; }
         }
         sabotageFlipIndex++;
     }
@@ -9281,6 +9332,7 @@ function renderSabotageAnim() {
                 doorBarsDown = true;
                 doorSlamFx = 14;
                 screenShake = 8;
+                shakeAt = null;
                 shakeIntensity = 4;
                 playDoorSlam();
             }
