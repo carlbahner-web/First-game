@@ -8059,12 +8059,18 @@ const REDUCED_MOTION = typeof window !== "undefined" && window.matchMedia
 
 // Marquee geometry, in logical units. Everything else derives from these.
 const MQ = {
-    // Narrow enough that the sequencer still shows either side of it, and hung
-    // low enough that there is real rod above — a sign with a 4px stub reads as
-    // stuck to the ceiling, not suspended from it.
-    w: 196, h: 68,
-    top: 30,               // hangs this far below the ceiling
-    rodSpread: 74,         // half-distance between the two hanger rods
+    // Shaped to the billboard art's 16:9 — 204/115 = 1.774 against the file's
+    // 1.778, which is under a quarter of a percent of distortion. The old board
+    // was 196x68 (2.88:1) and would have squashed the card by nearly 40%.
+    //
+    // The rest is dictated by the room: 320x160 with the HUD band starting at
+    // y=144. Hung at 20 the bottom edge lands at 135 and the soffit's bulbs at
+    // 138, clear of the HUD, and there are still 12 units of visible rod above —
+    // a sign with a stub for a rod reads as stuck to the ceiling rather than
+    // suspended from it.
+    w: 190, h: 107,
+    top: 17,               // hangs this far below the ceiling
+    rodSpread: 72,         // half-distance between the two hanger rods
     overhang: 9,           // how far the soffit projects past the face each side
 };
 
@@ -8145,7 +8151,11 @@ function drawTitleMarquee(riseY) {
     if (TITLE_ART.logo) {
         const lw = MQ.w - 24, lh = lw * (TITLE_ART.logo.height / TITLE_ART.logo.width);
         ctx.drawImage(TITLE_ART.logo, (cx - lw / 2) * S, (y0 + 9) * S, lw * S, lh * S);
-    } else {
+    } else if (!TITLE_ART.face) {
+        // Only when nothing has been supplied. A face image is a FINISHED sign
+        // and carries its own lettering; this gate used to be on `logo` alone,
+        // so dropping in the billboard drew the old type straight over the type
+        // already in the artwork.
         centred("BUZZ'S", y0 + 15, INK.rust, 5);
         // Charcoal letterforms with a mustard offset — a painted sign, not a
         // glowing one. The old title used 8-bit orange and neon green.
@@ -8156,8 +8166,17 @@ function drawTitleMarquee(riseY) {
     }
 
     // ---- the reader board: where a marquee puts its showtimes ---------------
-    const rbY = y0 + MQ.h - 20;
-    drawRect(x0 + 9, rbY, MQ.w - 18, 16, INK.charcoal);
+    // The filled charcoal plate this used to sit on is drawn ONLY for the
+    // procedural sign. On the billboard there is nowhere on the art to put it:
+    // the bottom fifth is BUZZ's shoes and the dust clouds, and the first
+    // attempt at plate-less type landed straight on his legs. So the live UI
+    // goes BELOW the sign, on the room's own charcoal floor, where paper type
+    // reads cleanly and nothing competes with the illustration. The board is
+    // sized to leave that strip clear of the HUD band.
+    // Two lines, 8 units apart, whether they sit on the plate or on the floor.
+    const onArt = !!TITLE_ART.face;
+    const modeY = onArt ? y0 + MQ.h + 8 : y0 + MQ.h - 13;
+    if (!onArt) drawRect(x0 + 9, y0 + MQ.h - 20, MQ.w - 18, 16, INK.charcoal);
     if (!titleFadingOut) {
         const modeLabel = gameMode === "thrill" ? "THRILL MODE" : "CHILL MODE";
         const modeCol = gameMode === "thrill" ? INK.rust : INK.mint;
@@ -8165,12 +8184,13 @@ function drawTitleMarquee(riseY) {
         ctx.globalAlpha = arrowPulse;
         // Two arrows placed by offset, not one string padded with spaces — the
         // padding only held them apart while everything was monospace.
-        centred("<", rbY + 7, INK.silverD, 5, -34);
-        centred(">", rbY + 7, INK.silverD, 5, 34);
+        centred("<", modeY, INK.silverD, 5, -44);
+        centred(">", modeY, INK.silverD, 5, 44);
         ctx.globalAlpha = 1;
-        centred(modeLabel, rbY + 7, modeCol, 5);
+        centred(modeLabel, modeY, modeCol, 5);
         if (REDUCED_MOTION || titleBlink % 45 < 32) {
-            centred("PRESS ENTER", rbY + 14, (titleStep % 4 === 0) ? INK.mustard : INK.silverL, 5);
+            centred("PRESS ENTER", modeY + 8,
+                    (titleStep % 4 === 0) ? INK.mustard : INK.silverL, 5);
         }
     }
 
