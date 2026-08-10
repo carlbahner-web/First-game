@@ -1044,7 +1044,7 @@ const BIOMES = [
     { // Levels 1-5 → THE LEFT SPEAKER (soft mint, closest to plain paper)
         name: "MOSSY HOLLOWS",
         tagline: "WHERE THE GROOVE BEGINS",
-        floor: { base: "#fcf7e8", dark: "#ded6c0", hi: "#ffffff", moss: "#dfe7df" },
+        floor: { base: mixC(INK.charcoal, INK.mint, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.mint, 0.17) },
         walls: [
             { base: "#BFCDC0", dark: "#93a89a", hi: "#e9eee9" },
             { base: "#b7c6b8", dark: "#8aa091", hi: "#e4eae4" },
@@ -1061,7 +1061,7 @@ const BIOMES = [
     { // Levels 6-10 → THE RIGHT SPEAKER (harbor teal wash)
         name: "ECHOING DEPTHS",
         tagline: "EVERY BEAT ECHOES TWICE",
-        floor: { base: "#fcf7e8", dark: "#dcd8c8", hi: "#ffffff", moss: "#d5e0e1" },
+        floor: { base: mixC(INK.charcoal, INK.teal, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.teal, 0.17) },
         walls: [
             { base: "#7fa0a4", dark: "#3A6168", hi: "#d5e0e1" },
             { base: "#75989c", dark: "#35595f", hi: "#cfdcdd" },
@@ -1078,7 +1078,7 @@ const BIOMES = [
     { // Levels 11-15 → THE TURNTABLE (midway mustard wash)
         name: "AMBER GROTTO",
         tagline: "GOLDEN WALLS, WARMER GROOVES",
-        floor: { base: "#fcf7e8", dark: "#e2d8ba", hi: "#ffffff", moss: "#f5ecd0" },
+        floor: { base: mixC(INK.charcoal, INK.mustard, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.mustard, 0.17) },
         walls: [
             { base: "#e5bd57", dark: "#b8923a", hi: "#faeec9" },
             { base: "#ddb44e", dark: "#ad8834", hi: "#f7e9bd" },
@@ -1095,7 +1095,7 @@ const BIOMES = [
     { // Levels 16-20 → THE MIXER (neon green wash — the funk is green)
         name: "FUNGAL MIRE",
         tagline: "THE FUNK GROWS THICK DOWN HERE",
-        floor: { base: "#fcf7e8", dark: "#dcdcc4", hi: "#ffffff", moss: "#e2efdb" },
+        floor: { base: mixC(INK.charcoal, INK.green, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.green, 0.17) },
         walls: [
             { base: "#7dba66", dark: "#3c8226", hi: "#dcedd2" },
             { base: "#74b15d", dark: "#377a22", hi: "#d5e9ca" },
@@ -1112,7 +1112,7 @@ const BIOMES = [
     { // Levels 21-25 → THE LIGHT RIG (robot silver — crystal as chrome)
         name: "CRYSTAL VAULT",
         tagline: "A THOUSAND LIGHTS, ONE BEAT",
-        floor: { base: "#fcf7e8", dark: "#dfdcd2", hi: "#ffffff", moss: "#e6eae7" },
+        floor: { base: mixC(INK.charcoal, INK.silverL, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.silverL, 0.17) },
         walls: [
             { base: "#BFC9C1", dark: "#7A8F85", hi: "#e6eae7" },
             { base: "#b4c0b8", dark: "#71867c", hi: "#e0e5e1" },
@@ -1129,7 +1129,7 @@ const BIOMES = [
     { // Levels 26-30 → THE DISCO BALL (rusty turnstile — the finale burns)
         name: "MOLTEN CORE",
         tagline: "THE GOBLIN KING'S DANCE FLOOR",
-        floor: { base: "#fcf7e8", dark: "#e4d6c2", hi: "#ffffff", moss: "#f2e2cf" },
+        floor: { base: mixC(INK.charcoal, INK.rust, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.rust, 0.17) },
         walls: [
             { base: "#cf8f55", dark: "#9a5426", hi: "#f0d9c2" },
             { base: "#c98547", dark: "#8f4d21", hi: "#ecd2b8" },
@@ -1512,7 +1512,10 @@ const PAL = {
     playerDark:"#927e6a",
     punch:     INK.green,
     punchGlow: "#3c8226",
-    shadow:    "rgba(44,44,42,0.25)",
+    // Contact shadow. At 0.25 this was charcoal-on-charcoal once the floor was
+    // inked out — about two values of separation, so everything standing on the
+    // floor floated. It has to bite harder against a dark ground.
+    shadow:    "rgba(20,20,19,0.5)",
     startBtn:  INK.green,
     stopBtn:   INK.red,
     labelText: INK.teal,
@@ -5075,7 +5078,11 @@ function render() {
     for (let r = 0; r < ar; r++) {
         const lx = (GRID_X - 1) * TILE + 3;
         const ly = rowPixelY(r) + 12;
-        drawText(ROW_LETTERS[r], lx, ly, PAL.gridOn[r], 7);
+        // These sit on the inked-out floor, not on the cells. Teal snare
+        // measures 2.06:1 against it and all but disappears, so each letter is
+        // lifted toward paper — it keeps the row's hue as the identifier while
+        // the luminance does the work of being visible.
+        drawText(ROW_LETTERS[r], lx, ly, lighter(PAL.gridOn[r], 0.45), 7);
     }
 
     // Stone wall background behind grid (sprite or pre-rendered fallback)
@@ -5216,7 +5223,12 @@ function render() {
         const num = String(c + 1);
         const tx = (GRID_X + c) * TILE + (c < 9 ? 4 : 1);
         const soundingCol = (currentStep + GRID_COLS - 1) % GRID_COLS;
-        drawText(num, tx, gridBottomTileY() * TILE + 8 + GRID_Y_OFFSET, c === soundingCol && playing ? PAL.playhead : "#5a8a8f", 3);
+        // The sounding step used to be charcoal, which was the darkest thing on
+        // a cream floor. On an inked-out floor that is invisible, so the
+        // playhead marker becomes the BRIGHTEST thing instead — the emphasis has
+        // to flip with the ground it stands on.
+        drawText(num, tx, gridBottomTileY() * TILE + 8 + GRID_Y_OFFSET,
+                 c === soundingCol && playing ? INK.mustard : mixC(INK.charcoal, INK.paper, 0.55), 3);
     }
 
     // Pattern-progress counter (below grid, right-aligned) — "PATTERN 18/22"
@@ -5597,18 +5609,18 @@ function render() {
             ctx.globalAlpha = hintAlpha * 0.85;
             ctx.font = gfont(3.5 * SCALE);
             ctx.textAlign = "center";
-            // Line 1: objective — charcoal ink with a paper-white relief
-            ctx.fillStyle = "rgba(255,255,255,0.8)";
-            ctx.fillText("PUNCH cells to match the beat pattern!", W_t / 2 * SCALE + SCALE, hintY * SCALE + SCALE);
-            ctx.fillStyle = INK.charcoal;
-            ctx.fillText("PUNCH cells to match the beat pattern!", W_t / 2 * SCALE, hintY * SCALE);
-            // Line 2: hint about indicators
-            if (!tutorialFirstToggle) {
-                ctx.fillStyle = "rgba(255,255,255,0.8)";
-                ctx.fillText("Dotted outlines show what needs toggling.", W_t / 2 * SCALE + SCALE, (hintY + 7) * SCALE + SCALE);
+            // Paper letterform with a charcoal relief offset down-right. This
+            // used to be the other way round, which worked on a cream floor and
+            // left only the relief legible once the floor was inked out — the
+            // body has to be the light one now, not the drop.
+            const relief = (s, y) => {
                 ctx.fillStyle = INK.charcoal;
-                ctx.fillText("Dotted outlines show what needs toggling.", W_t / 2 * SCALE, (hintY + 7) * SCALE);
-            }
+                ctx.fillText(s, W_t / 2 * SCALE + SCALE, y * SCALE + SCALE);
+                ctx.fillStyle = INK.paper;
+                ctx.fillText(s, W_t / 2 * SCALE, y * SCALE);
+            };
+            relief("PUNCH cells to match the beat pattern!", hintY);
+            if (!tutorialFirstToggle) relief("Dotted outlines show what needs toggling.", hintY + 7);
             ctx.textAlign = "start";
             ctx.globalAlpha = 1;
         }
