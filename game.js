@@ -784,29 +784,10 @@ function texRNG(seed) {
     };
 }
 
-// ---- Goblin rune alphabet ----
-// Each letter maps to a deterministic rune (same letter → same rune, a real
-// substitution cipher — the lore message is technically decodable early).
-// Strokes are normalized to a 0..1 box; cached per character. Used by the
-// glyph cutscenes and as ambient carvings in the cave wall textures.
-const runeStrokeCache = {};
-function getRuneStrokes(ch) {
-    if (runeStrokeCache[ch]) return runeStrokeCache[ch];
-    const rng = texRNG(ch.charCodeAt(0) * 7331 + 13);
-    const strokes = [];
-    const stemX = 0.25 + Math.floor(rng() * 3) * 0.25; // stem at 1/4, 1/2, or 3/4
-    strokes.push([stemX, 0, stemX, 1]);
-    const branches = 2 + Math.floor(rng() * 2);
-    for (let i = 0; i < branches; i++) {
-        const y1 = 0.1 + rng() * 0.6;
-        const dir = rng() > 0.5 ? 1 : -1;
-        const x2 = Math.max(0, Math.min(1, stemX + dir * (0.3 + rng() * 0.45)));
-        const y2 = Math.max(0, Math.min(1, rng() > 0.5 ? y1 + 0.25 + rng() * 0.3 : y1 - 0.2 - rng() * 0.2));
-        strokes.push([stemX, y1, x2, y2]);
-    }
-    runeStrokeCache[ch] = strokes;
-    return strokes;
-}
+// The goblin rune alphabet lived here — a real substitution cipher, one rune
+// per letter, feeding the glyph cutscenes and the carvings in the wall bands.
+// The cutscenes went with the lore and the carvings have now gone too, so it
+// had no callers left.
 
 // Helper: parse hex color to [r,g,b]
 function hexToRGB(hex) {
@@ -1007,10 +988,26 @@ function generateGlowTile(seed, glowColor) {
     return c;
 }
 
-// Generate cave wall tile (rougher, more variation)
+// Generate a wall-band tile. Plain, for the same reason the grid cells are:
+// the mottled patches, blobs, cracks and moss spots are 4-20px marks on an
+// 80px tile, and the band is only half a tile deep now, so they read as
+// procedural smudge rather than as paper. The edge bevels go with them — those
+// were the worst of it, because every tile drew a highlight down its left edge
+// and a shadow down its right, which is what made the seams between tiles
+// visible and turned a continuous wall into a row of bricks.
+//
+// The band is a flat wash and the real StudioLand grain over the whole screen
+// does the texturing. Same argument, same call, as generateGridStoneTile.
+// ...and one colour, not three. Each biome carries three wall palettes and every
+// tile picked one of them, which was fine when each tile was also a mottled
+// stone with its own cracks — the variation hid inside the texture. On a flat
+// wash it has nowhere to hide: the palettes are 13 luminance levels apart, so
+// the band reads as a row of slightly mismatched panels. `variant` is kept in
+// the signature because the seed still varies the per-pixel roughness, which is
+// the one difference between tiles that is meant to be invisible.
 function generateCaveWallTile(seed, variant, biome) {
-    const pal = biome.walls[variant % biome.walls.length];
-    return generateStoneTile(seed, pal.base, pal.dark, pal.hi, { mossColor: biome.wallMoss });
+    const pal = biome.walls[0];
+    return generateStoneTile(seed, pal.base, pal.dark, pal.hi, { mossColor: biome.wallMoss, plain: true });
 }
 
 // Generate cave floor tile (dark, with subtle variation)
@@ -1323,34 +1320,12 @@ function buildCaveBgTexture(biome, LS) {
         smites.push({ x: sm * TILE + TILE / 2, h: smH, fill });
     }
 
-    // Faint carved marks in the walls. These used to spell out the goblin
-    // message in a substitution cipher; the lore is retired, so they are now
-    // just marks — nobody could read them anyway.
-    {
-        const words = ["THUMP", "CLAP", "RATTLE", "HISS", "BOOM"];
-        const runeSnips = 2 + Math.floor(stRNG() * 3);
-        g.strokeStyle = INK.charcoal;
-        g.lineWidth = SCALE * 0.6;
-        for (let i = 0; i < runeSnips; i++) {
-            const word = words[Math.floor(stRNG() * words.length)];
-            const onTop = stRNG() > 0.45;
-            const chH = 6, chW = 4.5;
-            let rx = (2 + stRNG() * (COLS - 6)) * TILE;
-            const ry = onTop ? 5 + stRNG() * 3 : (ROWS - 1) * TILE + 5 + stRNG() * 3;
-            g.globalAlpha = 0.14 + stRNG() * 0.1;
-            g.beginPath();
-            for (const chr of word) {
-                const strokes = getRuneStrokes(chr);
-                for (const s of strokes) {
-                    g.moveTo((rx + s[0] * chW) * SCALE, (ry + s[1] * chH) * SCALE);
-                    g.lineTo((rx + s[2] * chW) * SCALE, (ry + s[3] * chH) * SCALE);
-                }
-                rx += chW + 1.5;
-            }
-            g.stroke();
-        }
-        g.globalAlpha = 1;
-    }
+    // The faint carved marks in the wall bands are gone. They were the last of
+    // the goblin lore — a substitution cipher spelling THUMP / CLAP / RATTLE —
+    // and once the lore was retired they were letter-shaped strokes with
+    // nothing behind them, scattered at random through the one band the HUD
+    // also prints into. Next to a real word like LEVEL they read as a rendering
+    // fault rather than as decoration, which is exactly what they became.
 
     // ---- Per-phase ink pass: the hand that re-inks the room 3x/sec ----
     const phases = [];
@@ -2674,9 +2649,16 @@ function drawGridLattice() {
     //     was the bigger of the two.
     const SUB = 4;
     const STEP = 61;   // > vnoise's wavelength, so each sample is independent
-    // Only the ACTIVE part of the grid breathes. The empty two thirds of the
-    // field shimmering was the reason the whole thing had to be frozen to be
-    // bearable; a step that is on is worth animating, a step that is off is not.
+    // Only the WRONG part of the grid breathes — a cell whose current state
+    // disagrees with the level's target, either lit when it should be dark or
+    // dark when it should be lit. That is the set of cells the player still has
+    // to touch, so the ink is alive exactly where there is work to do and the
+    // field goes quiet behind you as you fix it. Finish the pattern and the
+    // whole lattice rules itself straight, which is the tell that you are done.
+    //
+    // It used to follow the LIT cells, which meant a correctly-placed hit kept
+    // wobbling forever and a missing one sat dead still — the boil was busiest
+    // where nothing needed doing.
     //
     // The phase is chosen PER SAMPLED POINT rather than per cell, and that is
     // the whole trick. Stroking each lit cell's outline separately would be the
@@ -2692,8 +2674,13 @@ function drawGridLattice() {
     // takes no displacement at all, so the run is ruler-straight and the ink
     // only comes alive where something is happening. It also skips the noise
     // entirely for the majority of points, which is most of the field.
-    const litAt = (r, c) => r >= 0 && r < ar && c >= 0 && c < GRID_COLS && !!grid[r][c];
-    const gridBoils = BOIL.on && BOIL.grid;
+    // L30 has no target, so nothing there is ever "wrong" and the field stays
+    // still — which is right for a level that is only a groove to play with.
+    const lv = currentLevel < LEVELS.length ? LEVELS[currentLevel] : null;
+    const target = lv && !lv.noPattern ? lv.pattern : null;
+    const wrongAt = (r, c) => r >= 0 && r < ar && c >= 0 && c < GRID_COLS &&
+        !!grid[r][c] !== !!target[r][c];
+    const gridBoils = BOIL.on && BOIL.grid && !!target;
     for (let c = 0; c <= GRID_COLS; c++) {
         const x = x0 + c * TILE;
         ctx.beginPath();
@@ -2703,7 +2690,7 @@ function drawGridLattice() {
             // it, in the columns either side of the boundary it runs along
             const rA = Math.floor((i - 0.5) / SUB), rB = Math.floor((i + 0.5) / SUB);
             const wob = gridBoils &&
-                (litAt(rA, c - 1) || litAt(rA, c) || litAt(rB, c - 1) || litAt(rB, c));
+                (wrongAt(rA, c - 1) || wrongAt(rA, c) || wrongAt(rB, c - 1) || wrongAt(rB, c));
             ctx.lineTo(x * S + (wob ? pjit(c * 131 + i * STEP, 2.7, live, amp) : 0),
                        y * S + (wob ? pjit(c * 71 + i * 43, 5.3, live, 0.7) : 0));
         }
@@ -2716,7 +2703,7 @@ function drawGridLattice() {
             const x = x0 + (i / SUB) * TILE;
             const cA = Math.floor((i - 0.5) / SUB), cB = Math.floor((i + 0.5) / SUB);
             const wob = gridBoils &&
-                (litAt(r - 1, cA) || litAt(r, cA) || litAt(r - 1, cB) || litAt(r, cB));
+                (wrongAt(r - 1, cA) || wrongAt(r, cA) || wrongAt(r - 1, cB) || wrongAt(r, cB));
             ctx.lineTo(x * S + (wob ? pjit(r * 89 + i * 53, 6.1, live, 0.7) : 0),
                        y * S + (wob ? pjit(r * 149 + i * STEP, 3.9, live, amp) : 0));
         }
@@ -4708,10 +4695,12 @@ function renderHUD() {
     const lw = label("LEVEL", margin);
     number(String(currentLevel + 1).padStart(2, "0"), margin + lw + 3, INK.charcoal);
 
-    // --- the zone's tier, after it -------------------------------------------
-    const tierNames = ["ROCK", "FUNK", "BREAKS"];
-    const tierIdx = currentLevel < 10 ? 0 : currentLevel < 20 ? 1 : 2;
-    label(tierNames[tierIdx], margin + lw + 26);
+    // The tier word that used to sit after the level number — ROCK / FUNK /
+    // BREAKS, one per ten levels — is gone. Section 4 of the HUD doc: hierarchy
+    // comes from size and face, and three sizes is the budget. The tier was a
+    // fourth thing in the left block at the same size and colour as LEVEL,
+    // saying something the level number already said, and floating loose in the
+    // band with nothing tying it to the number it described.
 
     // --- SCORE, centred and biggest ------------------------------------------
     const scoreStr = String(score).padStart(5, "0");
