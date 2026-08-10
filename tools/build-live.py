@@ -47,9 +47,21 @@ game = game.replace("</script", "<\\/script")
 
 rows = ",\n".join('"%s":"%s"' % (k, v) for k, v in table.items())
 
-# No <meta>/<title> here: the host wraps this file in its own <head>, and the
-# game installs its own viewport meta on coarse-pointer devices.
-html = """<style>
+# No <title> here: the host wraps this file in its own <head>, and the game
+# installs its own viewport meta on coarse-pointer devices.
+#
+# The charset IS declared, though, and it must not be left to the wrapper. This
+# file is UTF-8 and carries ~445 non-ASCII characters — 403 em-dashes, the door
+# arrow, the switchboard's ≡, the ▲◀▶▼ touch d-pad. Served anywhere that does not
+# put a charset in the Content-Type header, the browser guesses a legacy encoding
+# and every one of them mojibakes. The artifact host happens to declare utf-8 in
+# its own head so the published page is fine, but that made a locally-served
+# bundle render differently from the one that ships — which is how a real defect
+# gets missed. The encoding sniffer reads the first 1024 bytes regardless of
+# element nesting, so first line is enough; the host's own declaration precedes
+# this one and they agree.
+html = """<meta charset="utf-8">
+<style>
   /* One committed visual world: charcoal ink on BUZZ's off-white paper.
      No theme switch — the game's own palette is the page's palette. */
   :root { --ground:#232321; --frame:#2C2C2A; --paper:#fcf7e8; }
