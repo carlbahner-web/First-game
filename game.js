@@ -808,6 +808,15 @@ function generateStoneTile(seed, baseColor, darkColor, highlightColor, opts) {
     g.fillStyle = baseColor;
     g.fillRect(0, 0, size, size);
 
+    // `plain` skips every one of the mottled patches, blobs and cracks below.
+    // They are cave-stone leftovers: 4-16px rectangles and 6-20px circles on an
+    // 80px tile, which at the size a sequencer cell is actually displayed read
+    // as big procedural smudges rather than as paper. The real paper grain is
+    // the 512px StudioLand tile, and it is already laid over the whole screen by
+    // the #grain canvas — a cell wants to be a flat wash and let that do the
+    // texturing. The fine pixel noise at the end still runs.
+    if (o.plain) return finishStoneTile(g, c, size, rng);
+
     // Stone grain — varied patches of slightly different shades
     for (let i = 0; i < 18; i++) {
         const px = Math.floor(rng() * (size - 8));
@@ -897,7 +906,13 @@ function generateStoneTile(seed, baseColor, darkColor, highlightColor, opts) {
     g.fillRect(size - 2, 0, 2, size);
     g.globalAlpha = 1;
 
-    // Pixel noise for roughness
+    return finishStoneTile(g, c, size, rng);
+}
+
+// Fine per-pixel roughness — the one texture pass that survives on a plain tile,
+// because its marks are 1px. Mark size is what makes a texture subtle, not ink
+// coverage (StudioLand grain notes).
+function finishStoneTile(g, c, size, rng) {
     const imgData = g.getImageData(0, 0, size, size);
     const d = imgData.data;
     for (let i = 0; i < d.length; i += 4) {
@@ -907,7 +922,6 @@ function generateStoneTile(seed, baseColor, darkColor, highlightColor, opts) {
         d[i+2] = Math.max(0, Math.min(255, d[i+2] + noise));
     }
     g.putImageData(imgData, 0, 0);
-
     return c;
 }
 
@@ -916,12 +930,14 @@ function generateStoneTile(seed, baseColor, darkColor, highlightColor, opts) {
 // lockstep reads as strobe (coaster bible, the rail-ties lesson).
 function generateGridStoneTile(seed, biome) {
     const gs = biome.gridStone;
+    // Plain: a sequencer cell is a flat wash, textured by the paper grain that
+    // already covers the screen — not by cave-stone blobs of its own.
     // No border. Every tile used to close its own rectangle, so each boundary
     // in the field carried TWO lines — one from the cell on each side — boiling
     // independently of one another. At a glance that reads as tram-lines rather
     // than as a ruled grid. The lattice is one set of lines now, drawn across
     // the whole field by drawGridLattice.
-    return generateStoneTile(seed, gs.base, gs.dark, gs.hi, { mossColor: gs.moss });
+    return generateStoneTile(seed, gs.base, gs.dark, gs.hi, { mossColor: gs.moss, plain: true });
 }
 
 // Generate an active grid tile — flat ink-wash fill in the row's color,
@@ -948,26 +964,15 @@ function generateGlowTile(seed, glowColor) {
     g.fillRect(0, 0, size, size);
     g.globalAlpha = 1;
 
-    // Paper-white energy veins (unpainted cracks in the wash)
-    const numVeins = 3 + Math.floor(rng() * 3);
-    for (let i = 0; i < numVeins; i++) {
-        const x1 = rng() * size;
-        const y1 = rng() * size;
-        const segments = 2 + Math.floor(rng() * 3);
-        g.strokeStyle = "rgba(252,247,232,0.55)";
-        g.lineWidth = 1 + rng() * 1.5;
-        g.beginPath();
-        g.moveTo(x1, y1);
-        let vx = x1, vy = y1;
-        for (let s = 0; s < segments; s++) {
-            vx += (rng() - 0.5) * 20;
-            vy += (rng() - 0.5) * 20;
-            g.lineTo(vx, vy);
-        }
-        g.stroke();
-    }
+    // The paper-white "energy veins" that used to scribble across every lit cell
+    // are gone. They were cave-crystal decoration, they were the size of a
+    // finger at the scale a cell is actually displayed, and they read as random
+    // marks rather than as paint. The wash is a wash; the paper grain over the
+    // top is what gives it a surface.
 
-    // Brush-light hotspot
+    // Brush-light hotspot — the one unevenness worth keeping, because it is what
+    // stops a flat fill reading as a flat fill
+
     const hx = rng() * size;
     const hy = rng() * size;
     const hr = 5 + rng() * 8;
@@ -6323,21 +6328,42 @@ function mipFor(img, destW) {
 // img.width/height. Bands pushed past the edge lose a pixel into the art's own
 // transparent margin, which is invisible at this amplitude.
 let WARPS = new WeakMap();
-const WARP_BANDS = 14;
+// Two things this got wrong the first time, and they compounded into the
+// "flashing lines" across BUZZ:
+//
+//   * 14 bands over a 512px source is a 37px step, so the warp was a staircase
+//     rather than a wobble — every band boundary put a visible horizontal jog
+//     through his linework. Bands are ~4px of source now, well under a
+//     displayed pixel, so the warp reads as continuous.
+//   * each band was also offset VERTICALLY, and neighbouring offsets can differ
+//     by more than nothing — so a transparent line opened up between two bands
+//     and the background showed straight through him. Every band is now drawn
+//     with a few rows of overlap, which is invisible (it is the same opaque art
+//     drawn over itself) and makes a gap impossible.
+//
+// The warp is spatially the same shape as before: the noise argument is
+// normalised down the image so raising the band count does not also multiply
+// the frequency.
+const WARP_BAND_PX = 4;      // source px per band
+const WARP_SPAN = 169;       // noise argument across the whole image
+const WARP_OVERLAP = 3;      // source px of overlap — must exceed the dy swing
 function sliceWarp(src, phase) {
     const c = document.createElement("canvas");
     c.width = src.width; c.height = src.height;
     const g = c.getContext("2d");
     g.imageSmoothingEnabled = true;
     g.imageSmoothingQuality = "high";
-    const bh = src.height / WARP_BANDS;
+    const bands = Math.max(1, Math.round(src.height / WARP_BAND_PX));
+    const bh = src.height / bands;
     mipping = true;   // don't let the drawImage patch recurse into itself
     try {
-        for (let i = 0; i < WARP_BANDS; i++) {
+        for (let i = 0; i < bands; i++) {
             const sy = i * bh;
-            const h = (i === WARP_BANDS - 1) ? src.height - sy : bh;
-            const dx = pjit(i * 13, 31, phase, 0.9);
-            const dy = pjit(i * 29, 47, phase, 0.45);
+            const h = Math.min(src.height - sy, bh + WARP_OVERLAP);
+            if (h <= 0) continue;
+            const t = (i / bands) * WARP_SPAN;
+            const dx = pjit(t, 31, phase, 0.9);
+            const dy = pjit(t + 400, 47, phase, 0.45);
             g.drawImage(src, 0, sy, src.width, h, dx, sy + dy, src.width, h);
         }
     } finally { mipping = false; }
