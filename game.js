@@ -1019,7 +1019,7 @@ function generateFloorTile(seed, biome) {
 // ============================================================
 const BIOMES = [
     { // Levels 1-5 → THE LEFT SPEAKER (soft mint, closest to plain paper)
-        name: "MOSSY HOLLOWS",
+        name: "THE WARM-UP ROOM",
         tagline: "WHERE THE GROOVE BEGINS",
         floor: { base: mixC(INK.charcoal, INK.mint, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.mint, 0.17) },
         walls: [
@@ -1036,7 +1036,7 @@ const BIOMES = [
         stal: { a: "#BFCDC0", b: "#a9bcab", hi: "#e9eee9", drip: "rgba(44,44,42,0.25)" },
     },
     { // Levels 6-10 → THE RIGHT SPEAKER (harbor teal wash)
-        name: "ECHOING DEPTHS",
+        name: "THE ECHO CHAMBER",
         tagline: "EVERY BEAT ECHOES TWICE",
         floor: { base: mixC(INK.charcoal, INK.teal, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.teal, 0.17) },
         walls: [
@@ -1053,7 +1053,7 @@ const BIOMES = [
         stal: { a: "#7fa0a4", b: "#527d82", hi: "#d5e0e1", drip: "rgba(44,44,42,0.25)" },
     },
     { // Levels 11-15 → THE TURNTABLE (midway mustard wash)
-        name: "AMBER GROTTO",
+        name: "THE AMBER LOUNGE",
         tagline: "GOLDEN WALLS, WARMER GROOVES",
         floor: { base: mixC(INK.charcoal, INK.mustard, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.mustard, 0.17) },
         walls: [
@@ -1070,8 +1070,8 @@ const BIOMES = [
         stal: { a: "#e5bd57", b: "#c9a13e", hi: "#faeec9", drip: "rgba(44,44,42,0.25)" },
     },
     { // Levels 16-20 → THE MIXER (neon green wash — the funk is green)
-        name: "FUNGAL MIRE",
-        tagline: "THE FUNK GROWS THICK DOWN HERE",
+        name: "THE FUNK HOUSE",
+        tagline: "THE FUNK GROWS THICK IN HERE",
         floor: { base: mixC(INK.charcoal, INK.green, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.green, 0.17) },
         walls: [
             { base: "#7dba66", dark: "#3c8226", hi: "#dcedd2" },
@@ -1087,7 +1087,7 @@ const BIOMES = [
         stal: { a: "#7dba66", b: "#4f9739", hi: "#dcedd2", drip: "rgba(44,44,42,0.25)" },
     },
     { // Levels 21-25 → THE LIGHT RIG (robot silver — crystal as chrome)
-        name: "CRYSTAL VAULT",
+        name: "THE MIRRORBALL HALL",
         tagline: "A THOUSAND LIGHTS, ONE BEAT",
         floor: { base: mixC(INK.charcoal, INK.silverL, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.silverL, 0.17) },
         walls: [
@@ -1104,8 +1104,8 @@ const BIOMES = [
         stal: { a: "#BFC9C1", b: "#93a69b", hi: "#e6eae7", drip: "rgba(44,44,42,0.25)" },
     },
     { // Levels 26-30 → THE DISCO BALL (rusty turnstile — the finale burns)
-        name: "MOLTEN CORE",
-        tagline: "THE GOBLIN KING'S DANCE FLOOR",
+        name: "THE MAIN STAGE",
+        tagline: "THE LOUDEST ROOM IN THE PARK",
         floor: { base: mixC(INK.charcoal, INK.rust, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.rust, 0.17) },
         walls: [
             { base: "#cf8f55", dark: "#9a5426", hi: "#f0d9c2" },
@@ -1310,11 +1310,11 @@ function buildCaveBgTexture(biome, LS) {
         smites.push({ x: sm * TILE + TILE / 2, h: smH, fill });
     }
 
-    // Faint goblin runes carved into the walls — the same message is
-    // everywhere once you know to look for it. (Duplicated word list here:
-    // GOBLIN_MESSAGE is declared later and this runs at startup.)
+    // Faint carved marks in the walls. These used to spell out the goblin
+    // message in a substitution cipher; the lore is retired, so they are now
+    // just marks — nobody could read them anyway.
     {
-        const words = ["WE", "JUST", "WANT", "TO", "DANCE", "WITH", "YOU"];
+        const words = ["THUMP", "CLAP", "RATTLE", "HISS", "BOOM"];
         const runeSnips = 2 + Math.floor(stRNG() * 3);
         g.strokeStyle = INK.charcoal;
         g.lineWidth = SCALE * 0.6;
@@ -2205,7 +2205,7 @@ let thiefCarriedPiece = null; // DJ piece the thief runs off with on milestone l
 let doorBarsDown = true;      // false while the thief is still in the room (pre-slam)
 let doorSlamFx = 0;           // impact frames after the slam (dust + bar drop)
 
-// ---- Biome banner ("~ AMBER GROTTO ~") ----
+// ---- Biome banner ("~ THE AMBER LOUNGE ~") ----
 let biomeBannerTimer = 0;
 let biomeBannerPending = false; // set during sabotage, fires when play starts
 
@@ -2253,7 +2253,6 @@ let endingPiecesPlaced = 0;    // 0-6, tracks which pieces have landed on booth
 let endingDJX = 0;             // DJ position during ending
 let endingDJY = 0;
 let endingDancers = [];        // surface dancers for phases 0-3
-let endingCavePartygoers = []; // mixed dancers + goblins for cave rave
 let endingKickPump = 0;        // speaker pump animation
 let endingBeatStep = 0;        // sequencer step for ending beat
 let endingBeatTimer = 0;       // frame counter for beat stepping
@@ -5443,7 +5442,7 @@ function render() {
         }
     }
 
-    // The "~ MOSSY HOLLOWS ~" biome banner is gone with the rest of the grid
+    // The "~ THE WARM-UP ROOM ~" biome banner is gone with the rest of the grid
     // chrome. It was drawn at y=36 — INSIDE the field, since the grid starts at
     // 32 — so it sat right on top of the play area, in the old neon green with a
     // hard black drop shadow that is not in the palette any more. Its timer
@@ -7594,22 +7593,6 @@ function startEnding() {
         { x: -20, targetX: 17 * TILE, y: danceFloorY + 14, pal: 5, phase: 6 },
     ];
     endingDancers = positions;
-
-    // Set up cave rave partygoers (mixed dancers and goblins)
-    endingCavePartygoers = [];
-    const caveDanceY = 6 * TILE;
-    for (let i = 0; i < 16; i++) {
-        const isGoblin = i % 2 === 1; // alternate human/goblin
-        endingCavePartygoers.push({
-            isGoblin,
-            x: (2 + (i % 8) * 2.2) * TILE,
-            y: caveDanceY + Math.floor(i / 8) * 4 * TILE + (i % 3) * 6,
-            pal: i % DANCER_PALETTES.length,
-            gobType: i === 7 ? "elite" : "normal",
-            phase: i * 2.3,
-            frame: 0,
-        });
-    }
 }
 
 const ENDING_BEAT_FRAMES = 8.2; // ~110bpm at 60fps
@@ -7674,36 +7657,14 @@ function updateEnding() {
             endingDrumGain.gain.setValueAtTime(0.5 + rampT * 0.5, audioCtx.currentTime);
         }
         if (endingTimer >= 240) {
-            endingPhase = 3;
-            endingTimer = 0;
-        }
-    } else if (endingPhase === 3) {
-        // Fade drums and fade to black
-        if (endingDrumGain && audioCtx && endingTimer < 120) {
-            const fadeT = Math.min(1, endingTimer / 120);
-            endingDrumGain.gain.setValueAtTime(1.0 * (1 - fadeT), audioCtx.currentTime);
-        }
-        if (endingTimer === 120) {
-            stopEndingDrums();
-        }
-        if (endingTimer >= 240) {
-            endingPhase = 4;
-            endingTimer = 0;
-            startEndingDrums(1.0);
-        }
-    } else if (endingPhase === 4) {
-        // Cave rave — animate partygoers
-        for (const p of endingCavePartygoers) {
-            if (p.isGoblin) {
-                p.frame = Math.floor(endingGlobalTimer / 10) % 4;
-            }
-        }
-        if (endingTimer >= 540) {
+            // Straight to the score. Phase 3 faded to black for a revelation and
+            // phase 4 was the rave that delivered it; both are retired, and
+            // phase 5 is still what the Enter-to-high-score path keys off.
             endingPhase = 5;
             endingTimer = 0;
         }
     }
-    // Phase 5: just wait for Enter
+    // Phase 5: hold on the venue and wait for Enter.
 }
 
 function renderEnding() {
@@ -7718,8 +7679,10 @@ function renderEnding() {
         ctx.textAlign = "start";
     }
 
-    if (endingPhase <= 3) {
-        // === SURFACE VENUE ===
+    {
+        // === THE VENUE — the curtain call ===
+        // Was gated on endingPhase <= 3, with an underground rave on the other
+        // side of the else. There is no other side any more.
         // Dark floor
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
@@ -7816,276 +7779,30 @@ function renderEnding() {
             }
         }
 
-        // Phase 3: Three-beat revelation + fade to black
-        if (endingPhase === 3) {
-            // Beat 1 (frames 10-70): Acknowledge the rebuild
-            if (endingTimer > 10 && endingTimer < 70) {
-                const a = endingTimer < 30 ? (endingTimer - 10) / 20 : Math.max(0, 1 - (endingTimer - 50) / 20);
-                ctx.globalAlpha = a;
-                ctx.textAlign = "center";
-                ctx.font = gfont(7 * SCALE);
-                ctx.fillStyle = "#000";
-                ctx.fillText("THE BOOTH IS REBUILT. THE CROWD IS BACK.", (W / 2) * SCALE + SCALE, (H / 2 + 1) * SCALE);
-                ctx.fillStyle = INK.paper;
-                ctx.fillText("THE BOOTH IS REBUILT. THE CROWD IS BACK.", (W / 2) * SCALE, (H / 2) * SCALE);
-                ctx.textAlign = "start";
-                ctx.globalAlpha = 1;
-            }
-            // Beat 2 (frames 75-135): The caves
-            if (endingTimer > 75 && endingTimer < 135) {
-                const a = endingTimer < 95 ? (endingTimer - 75) / 20 : Math.max(0, 1 - (endingTimer - 115) / 20);
-                ctx.globalAlpha = a;
-                ctx.textAlign = "center";
-                ctx.font = gfont(8 * SCALE);
-                ctx.fillStyle = "#000";
-                ctx.fillText("...BUT THE CAVES ARE SILENT.", (W / 2) * SCALE + SCALE, (H / 2 + 1) * SCALE);
-                ctx.fillStyle = "#7a6a5a";
-                ctx.fillText("...BUT THE CAVES ARE SILENT.", (W / 2) * SCALE, (H / 2) * SCALE);
-                ctx.textAlign = "start";
-                ctx.globalAlpha = 1;
-            }
-
-            // Fade to black
-            if (endingTimer > 120) {
-                const fadeAlpha = Math.min(1, (endingTimer - 120) / 60);
-                ctx.globalAlpha = fadeAlpha;
-                ctx.fillStyle = "#000";
-                ctx.fillRect(0, 0, W * SCALE, H * SCALE);
-                ctx.globalAlpha = 1;
-            }
-
-            // Beat 3 (frames 155-230): The realization — drawn ON TOP of the black
-            if (endingTimer > 155 && endingTimer < 230) {
-                const a = endingTimer < 175 ? (endingTimer - 155) / 20 : Math.max(0, 1 - (endingTimer - 210) / 20);
-                ctx.globalAlpha = a;
-                ctx.textAlign = "center";
-                ctx.font = gfont(6 * SCALE);
-                ctx.fillStyle = "#3a3a35";
-                ctx.fillText("MAYBE THEY WEREN'T ATTACKING.", (W / 2) * SCALE + SCALE, (H / 2 - 6) * SCALE);
-                ctx.fillStyle = "#50ad33";
-                ctx.fillText("MAYBE THEY WEREN'T ATTACKING.", (W / 2) * SCALE, (H / 2 - 7) * SCALE);
-                ctx.fillStyle = "#3a3a35";
-                ctx.fillText("MAYBE THEY WERE ASKING TO JOIN IN.", (W / 2) * SCALE + SCALE, (H / 2 + 8) * SCALE);
-                ctx.fillStyle = "#50ad33";
-                ctx.fillText("MAYBE THEY WERE ASKING TO JOIN IN.", (W / 2) * SCALE, (H / 2 + 7) * SCALE);
-                ctx.textAlign = "start";
-                ctx.globalAlpha = 1;
-            }
-        }
-
-    } else {
-        // === PHASES 4-5: UNDERGROUND RAVE ===
-        const caveW = CAVE_COLS * CAVE_TILE;
-        const caveH = CAVE_ROWS * CAVE_TILE;
-
-        // Cave background
-        drawRect(0, 0, caveW, caveH, "#2C2C2A");
-
-        // Stone floor
-        for (let r = 3; r < CAVE_ROWS - 1; r++) {
-            for (let c = 1; c < CAVE_COLS - 1; c++) {
-                let seed = r * 997 + c * 31;
-                seed = (seed * 9301 + 49297) % 233280;
-                const bright = (seed / 233280) > 0.6;
-                const floorCol = bright ? "#343430" : "#2a2a27";
-                drawRect(c * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, floorCol);
-            }
-        }
-
-        // Cave walls
-        for (let c = 0; c < CAVE_COLS; c++) {
-            // Top wall (3 rows for grand stage area)
-            for (let r = 0; r < 3; r++) {
-                drawRect(c * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, (c + r) % 2 === 0 ? "#3f3f3b" : "#3a3a37");
-            }
-            // Bottom wall
-            drawRect(c * CAVE_TILE, (CAVE_ROWS - 1) * CAVE_TILE, CAVE_TILE, CAVE_TILE, c % 2 === 0 ? "#3f3f3b" : "#3a3a37");
-            // Stalactites
-            if (c % 3 === 1) {
-                const stalH = 4 + (c * 7) % 6;
-                drawRect(c * CAVE_TILE + 5, 3 * CAVE_TILE, 3, stalH, "#4a4a45");
-                drawRect(c * CAVE_TILE + 6, 3 * CAVE_TILE, 1, stalH + 2, "#55554f");
-            }
-        }
-        // Side walls
-        for (let r = 0; r < CAVE_ROWS; r++) {
-            drawRect(0, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, r % 2 === 0 ? "#3f3f3b" : "#3a3a37");
-            drawRect((CAVE_COLS - 1) * CAVE_TILE, r * CAVE_TILE, CAVE_TILE, CAVE_TILE, r % 2 === 0 ? "#3f3f3b" : "#3a3a37");
-        }
-
-        // Torches on walls
-        const torchPositions = [
-            { x: 1 * CAVE_TILE + 2, y: 4 * CAVE_TILE },
-            { x: 1 * CAVE_TILE + 2, y: 10 * CAVE_TILE },
-            { x: (CAVE_COLS - 2) * CAVE_TILE - 2, y: 4 * CAVE_TILE },
-            { x: (CAVE_COLS - 2) * CAVE_TILE - 2, y: 10 * CAVE_TILE },
-            { x: 5 * CAVE_TILE, y: 2 * CAVE_TILE + 8 },
-            { x: (CAVE_COLS - 6) * CAVE_TILE, y: 2 * CAVE_TILE + 8 },
-        ];
-        for (const tp of torchPositions) {
-            drawCaveTorch(tp.x, tp.y);
-        }
-
-        // Grand DJ stage at back of cave
-        const stageX = caveW / 2 - 40;
-        const stageY = 3 * CAVE_TILE;
-
-        // Stage platform (wider than normal booth)
-        drawRect(stageX - 16, stageY + 16, 112, 10, "#3f3f3b");
-        drawRect(stageX - 16, stageY + 16, 112, 2, "#4a4a45");
-        // Stage risers
-        drawRect(stageX - 20, stageY + 26, 120, 6, "#3a3a37");
-
-        // All 6 equipment pieces on the grand stage
-        const sBoothX = caveW / 2 - 24;
-        const sBoothY = stageY;
-        for (let i = 0; i < 6; i++) {
-            drawDJSetupPiece(i, sBoothX, sBoothY, { pump: endingKickPump });
-        }
-
-        // DJ at the booth
-        const djFrame = Math.floor(endingGlobalTimer / 10) % 4;
-        const djBob = endingKickPump > 0.1 ? 3 : 0;
-        drawPlayerSprite(caveW / 2 - 8, stageY - 8 - djBob, djFrame, 0, {});
-
-        // Disco ball with light reflections
-        const ballX = caveW / 2 - 4;
-        const ballY = CAVE_TILE + 4;
-        drawDiscoBall(ballX, ballY);
-
-        // Disco ball light reflections sweeping cave walls
-        const reflectionColors = [INK.rust, "#F6CC60", INK.green, INK.teal, INK.red, INK.mustard,
-                                   "#FF6600", "#88FF44", "#44DDFF", "#FF88CC", "#AAFFEE", "#FFAA44"];
-        for (let ri = 0; ri < 12; ri++) {
-            const speed = 0.015 + (ri % 4) * 0.005;
-            const angle = endingGlobalTimer * speed + ri * (Math.PI * 2 / 12);
-            const radius = 60 + (ri % 3) * 30;
-            const rx = ballX + 4 + Math.cos(angle) * radius;
-            const ry = ballY + 4 + Math.sin(angle) * radius * 0.6;
-
-            // Only draw if on a wall or ceiling (not in the middle of the floor)
-            if (rx < 2 * CAVE_TILE || rx > (CAVE_COLS - 2) * CAVE_TILE || ry < 3 * CAVE_TILE || ry > (CAVE_ROWS - 2) * CAVE_TILE) {
-                const pulse = 0.3 + Math.sin(endingGlobalTimer * 0.08 + ri) * 0.2;
-                ctx.globalAlpha = pulse;
-                ctx.fillStyle = reflectionColors[ri];
-                ctx.beginPath();
-                ctx.ellipse(rx * SCALE, ry * SCALE, 6 * SCALE, 3 * SCALE, angle * 0.3, 0, Math.PI * 2);
-                ctx.fill();
-                // Glow
-                ctx.globalAlpha = pulse * 0.3;
-                ctx.beginPath();
-                ctx.ellipse(rx * SCALE, ry * SCALE, 12 * SCALE, 6 * SCALE, angle * 0.3, 0, Math.PI * 2);
-                ctx.fill();
-            }
-            ctx.globalAlpha = 1;
-        }
-
-        // Mixed crowd: dancers and goblins partying together
-        const beatOn = INTRO_BEAT.K[endingBeatStep];
-        for (const p of endingCavePartygoers) {
-            if (p.isGoblin) {
-                drawGoblinSprite(p.gobType, p.x, p.y, p.frame, { dir: 0, showShadow: false });
-            } else {
-                const step = (endingBeatStep + p.phase) % 16;
-                const bobWave = Math.sin(step * Math.PI / 2);
-                const bob = Math.abs(bobWave) * 3;
-                const armBlend = Math.abs(bobWave);
-                const footOffset = bobWave * 1.5;
-                drawDancerSprite(p.x, p.y, DANCER_PALETTES[p.pal], { bob, armBlend, footOffset });
-            }
-        }
-
-        // Fade in from black at start of phase 4
-        if (endingPhase === 4 && endingTimer < 60) {
-            const fadeAlpha = 1 - endingTimer / 60;
-            ctx.globalAlpha = fadeAlpha;
-            ctx.fillStyle = "#000";
-            ctx.fillRect(0, 0, caveW * SCALE, caveH * SCALE);
-            ctx.globalAlpha = 1;
-        }
-
-        // The glyph message finally resolves — the last words decode as the
-        // goblins dance. This is what was carved on every wall all along.
-        if (endingPhase === 4 && endingTimer > 40 && endingTimer < 330) {
-            const RESOLVE = { "TO": 100, "DANCE": 145, "YOU": 190 };
-            const mAlpha = endingTimer < 60 ? (endingTimer - 40) / 20
-                : endingTimer > 300 ? Math.max(0, 1 - (endingTimer - 300) / 30) : 1;
-            const decoded = ["WE", "JUST", "WANT", "WITH"];
-            const highlight = {};
-            for (const wrd in RESOLVE) {
-                if (endingTimer >= RESOLVE[wrd]) {
-                    decoded.push(wrd);
-                    // Freshly resolved words flash white, then settle to gold
-                    if (endingTimer < RESOLVE[wrd] + 25) highlight[wrd] = "#ffffff";
-                }
-            }
-            const msgY = caveH / 2 + 4;
-            ctx.globalAlpha = mAlpha * 0.55;
-            ctx.fillStyle = "#000000";
-            ctx.fillRect(0, (msgY - 9) * SCALE, caveW * SCALE, 14 * SCALE);
-            ctx.globalAlpha = mAlpha;
-            drawGlyphMessage(caveW / 2, msgY, 7, decoded, { highlight });
-            // Carl's realization
-            if (endingTimer > 225) {
-                const rA = Math.min(1, (endingTimer - 225) / 25);
-                ctx.globalAlpha = mAlpha * rA;
-                const oops = "...HAVE I BEEN PUNCHING PARTY INVITATIONS THIS WHOLE TIME?";
-                const ow = oops.length * 4;
-                drawText(oops, caveW / 2 - ow / 2 + 1, msgY + 17, "#000000", 4);
-                drawText(oops, caveW / 2 - ow / 2, msgY + 16, INK.paper, 4);
-            }
-            ctx.globalAlpha = 1;
-        }
-
-        // Caption text
-        if (endingPhase === 4) {
-            if (endingTimer > 120 && endingTimer < 360) {
-                const capAlpha = endingTimer < 150 ? (endingTimer - 120) / 30 : endingTimer > 300 ? Math.max(0, 1 - (endingTimer - 300) / 60) : 1;
-                ctx.globalAlpha = capAlpha;
-                drawCentered("THE UNDERGROUND CAME ALIVE AGAIN.", caveH - 40, INK.mustard, 6);
-                ctx.globalAlpha = 1;
-            }
-            if (endingTimer > 360) {
-                const capAlpha = Math.min(1, (endingTimer - 360) / 30);
-                ctx.globalAlpha = capAlpha;
-                drawCentered("BUT THIS TIME, EVERYONE WAS INVITED.", caveH - 40, INK.green, 6);
-                ctx.globalAlpha = 1;
-            }
-        }
-
-        // Phase 5: Score overlay
+        // Phase 3 used to run a three-beat revelation here, and phases 4-5 cut
+        // to an underground rave where the goblin glyphs finally resolved. Both
+        // are gone with the rest of the story. What is left is a curtain call,
+        // so the score lands on the venue rather than on a cave.
         if (endingPhase === 5) {
-            // Semi-transparent overlay
-            ctx.globalAlpha = Math.min(0.5, endingTimer / 60);
+            ctx.globalAlpha = Math.min(0.55, endingTimer / 60);
             ctx.fillStyle = "#000";
-            ctx.fillRect(0, 0, caveW * SCALE, caveH * SCALE);
-            ctx.globalAlpha = 1;
-
-            const overlayAlpha = Math.min(1, endingTimer / 60);
-            ctx.globalAlpha = overlayAlpha;
-
-            // "THE END" header
+            ctx.fillRect(0, 0, W * SCALE, H * SCALE);
+            ctx.globalAlpha = Math.min(1, endingTimer / 60);
             ctx.textAlign = "center";
             ctx.font = gfont(12 * SCALE);
-            ctx.fillStyle = "#000";
-            ctx.fillText("THE END", (caveW / 2) * SCALE + SCALE, (caveH / 3 + 1) * SCALE);
+            ctx.fillStyle = INK.charcoal;
+            ctx.fillText("THAT'S THE SHOW", (W / 2) * SCALE + SCALE, (H / 3 + 1) * SCALE);
             ctx.fillStyle = INK.mustard;
-            ctx.fillText("THE END", (caveW / 2) * SCALE, (caveH / 3) * SCALE);
-
-            // Final score
+            ctx.fillText("THAT'S THE SHOW", (W / 2) * SCALE, (H / 3) * SCALE);
             ctx.font = gfont(8 * SCALE);
             ctx.fillStyle = INK.paper;
-            ctx.fillText("FINAL SCORE: " + finalScore, (caveW / 2) * SCALE, (caveH / 3 + 20) * SCALE);
-
-            // Press Enter prompt
-            if (endingTimer > 90) {
-                const blink = Math.sin(endingTimer * 0.08) > 0;
-                if (blink) {
-                    ctx.font = gfont(5 * SCALE);
-                    ctx.fillStyle = INK.paper;
-                    const promptText = scoreQualifies(finalScore) ? "PRESS ENTER FOR HIGH SCORE" : "PRESS ENTER TO CONTINUE";
-                    ctx.fillText(promptText, (caveW / 2) * SCALE, (caveH - 20) * SCALE);
-                }
+            ctx.fillText("FINAL SCORE: " + finalScore, (W / 2) * SCALE, (H / 3 + 20) * SCALE);
+            if (endingTimer > 90 && Math.sin(endingTimer * 0.08) > 0) {
+                ctx.font = gfont(5 * SCALE);
+                ctx.fillStyle = INK.paper;
+                ctx.fillText(scoreQualifies(finalScore) ? "PRESS ENTER FOR HIGH SCORE"
+                                                        : "PRESS ENTER TO CONTINUE",
+                             (W / 2) * SCALE, (H - 20) * SCALE);
             }
             ctx.textAlign = "start";
             ctx.globalAlpha = 1;
@@ -8887,10 +8604,10 @@ function renderLevelComplete() {
             if (lvl === 1) narrative = "The rhythm returns...";
             else if (lvl === 2) narrative = "The beat grows stronger.";
             else if (lvl === 5 || lvl === 10 || lvl === 15 || lvl === 20 || lvl === 25 || lvl === 30)
-                narrative = earned > 0 ? earned + " / 6 pieces recovered." : "Something stirs in the caves...";
+                narrative = earned > 0 ? earned + " / 6 pieces recovered." : "The room is filling up...";
             else if (lvl === 10) narrative = "Rock fundamentals mastered.";
             else if (lvl === 20) narrative = "Funk and soul reclaimed.";
-            else if (lvl === 30) narrative = "The underground remembers.";
+            else if (lvl === 30) narrative = "The whole park heard that.";
             else if (earned > 0 && earned < 6) narrative = earned + " / 6 pieces recovered.";
             if (narrative) {
                 // Sits lower when the piece-recovery banner is showing above it
@@ -9219,11 +8936,12 @@ function renderGameOverScreen() {
         const textAlpha = gameOverTimer >= 540 ? Math.max(0, 1 - (gameOverTimer - 540) / 60) : Math.min(1, (gameOverTimer - 75) / 30);
         ctx.globalAlpha = textAlpha;
         const shitText = "ummmmm RUDE!";
-        const shitW = shitText.length * 7;
         // Position below the player (offset by collapse)
         const textY = player.y + player.h + 20;
-        drawText(shitText, W / 2 - shitW / 2 + 1, textY + 1, "#000000", 7);
-        drawText(shitText, W / 2 - shitW / 2, textY, INK.mustard, 7);
+        ctx.textAlign = "center";
+        drawText(shitText, W / 2 + 1, textY + 1, "#000000", 7);
+        drawText(shitText, W / 2, textY, INK.mustard, 7);
+        ctx.textAlign = "start";
         ctx.globalAlpha = 1.0;
     }
 
@@ -9232,11 +8950,12 @@ function renderGameOverScreen() {
         const narAlpha = gameOverTimer < 230 ? (gameOverTimer - 200) / 30
             : gameOverTimer >= 540 ? Math.max(0, 1 - (gameOverTimer - 540) / 60) : 1;
         ctx.globalAlpha = narAlpha;
-        const narText = "THE GOBLINS RECLAIMED THE STAGE.";
-        const narW = narText.length * 5;
+        const narText = "THE DONKS TOOK THE ROOM.";
         const narY = player.y + player.h + 34;
-        drawText(narText, W / 2 - narW / 2 + 1, narY + 1, "#000000", 5);
-        drawText(narText, W / 2 - narW / 2, narY, "#50ad33", 5);
+        ctx.textAlign = "center";
+        drawText(narText, W / 2 + 1, narY + 1, "#000000", 5);
+        drawText(narText, W / 2, narY, "#50ad33", 5);
+        ctx.textAlign = "start";
         ctx.globalAlpha = 1.0;
     }
 
@@ -9258,67 +8977,6 @@ function renderGameOverScreen() {
             gameState = "title";
             startTitleDrums();
         }
-    }
-}
-
-// ---- The Goblin Glyphs (lore thread) ----
-// A message in goblin script is carved into the tunnel walls. Carl finds a
-// fragment after every milestone level and deciphers it word by word. The
-// partial readings play as threats ("WANT"... "WANT WITH"...) until the
-// ending reveals the whole sentence at the underground rave.
-const GOBLIN_MESSAGE = ["WE", "JUST", "WANT", "TO", "DANCE", "WITH", "YOU"];
-// Words readable at each stage (stage = DJ pieces recovered, 1-5)
-const GLYPH_DECODE_STAGES = [
-    [],                                 // after L5:  all runes
-    ["WANT"],                           // after L10
-    ["WANT", "WITH"],                   // after L15
-    ["JUST", "WANT", "WITH"],           // after L20
-    ["WE", "JUST", "WANT", "WITH"],     // after L25
-];
-const GLYPH_REACTIONS = [
-    "...IS THIS WRITING?",
-    "I CAN READ ONE WORD NOW. 'WANT'. WANT WHAT?!",
-    "'WANT'... 'WITH'... OK, THAT'S NOT OMINOUS AT ALL.",
-    "'JUST WANT WITH'?! WITH WHAT?! WITH WHO?!",
-    "'WE JUST WANT ... WITH ...' — I'M SO CLOSE.",
-];
-
-// Draw one rune in a character cell. x,y match drawText's convention:
-// y is the text baseline, the cell is `size` game units per character.
-function drawRuneChar(ch, x, y, size, color) {
-    const strokes = getRuneStrokes(ch);
-    const top = y - size * 0.75;
-    const w = size * 0.55;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = Math.max(1, SCALE * 0.75);
-    ctx.beginPath();
-    for (const s of strokes) {
-        ctx.moveTo((x + s[0] * w) * SCALE, (top + s[1] * size * 0.75) * SCALE);
-        ctx.lineTo((x + s[2] * w) * SCALE, (top + s[3] * size * 0.75) * SCALE);
-    }
-    ctx.stroke();
-}
-
-// Draw the goblin message centered at centerX: decoded words as gold text,
-// the rest as runes. decodedWords: array of readable words (or true = all).
-// opts.highlight: {word: color} overrides for freshly decoded words.
-function drawGlyphMessage(centerX, y, size, decodedWords, opts) {
-    const o = opts || {};
-    const totalChars = GOBLIN_MESSAGE.reduce((n, w) => n + w.length, 0) + GOBLIN_MESSAGE.length - 1;
-    let x = centerX - (totalChars * size) / 2;
-    for (const word of GOBLIN_MESSAGE) {
-        const decoded = decodedWords === true || decodedWords.includes(word);
-        if (decoded) {
-            const col = (o.highlight && o.highlight[word]) || o.decodedColor || INK.mustard;
-            for (let i = 0; i < word.length; i++) {
-                drawText(word[i], x + i * size + size * 0.15, y, col, size);
-            }
-        } else {
-            for (let i = 0; i < word.length; i++) {
-                drawRuneChar(word[i], x + i * size + size * 0.15, y, size, o.runeColor || INK.silverD);
-            }
-        }
-        x += (word.length + 1) * size;
     }
 }
 
@@ -9377,8 +9035,10 @@ function renderBiomeTransition() {
 
     const PH_A = 220;   // celebration: piece held high
     const PH_B = 360;   // goblins drag the next piece deeper
-    const PH_G = 560;   // goblin glyphs carved into the tunnel wall
-    const PH_END = 800; // auto-advance (~13s total; Enter skips)
+    // The glyph phase that used to sit between PH_B and the descent is gone,
+    // and PH_END comes in by its length so the transition is not left holding
+    // 200 frames of nothing.
+    const PH_END = 600; // auto-advance (~10s total; Enter skips)
 
     drawRect(0, 0, W, H, "#2C2C2A");
 
@@ -9413,9 +9073,10 @@ function renderBiomeTransition() {
 
         if (t > 25 && biomeTransPiece) {
             const line = "THE " + biomeTransPiece.toUpperCase() + " IS BACK!";
-            const lw = line.length * 7;
-            drawText(line, W / 2 - lw / 2 + 1, 26, "#000000", 7);
-            drawText(line, W / 2 - lw / 2, 25, "#F6CC60", 7);
+            ctx.textAlign = "center";
+            drawText(line, W / 2 + 1, 26, "#000000", 7);
+            drawText(line, W / 2, 25, "#F6CC60", 7);
+            ctx.textAlign = "start";
         }
 
         // DJ setup progress: six slots, earned ones lit gold
@@ -9425,8 +9086,9 @@ function renderBiomeTransition() {
             const sx0 = W / 2 - totalW / 2;
             const sy0 = H - 42;
             const label = "DJ SETUP: " + djSetupEarned.length + "/" + DJ_SETUP_PIECES.length;
-            const lblW = label.length * 5;
-            drawText(label, W / 2 - lblW / 2, sy0 - 10, "#7A8F85", 5);
+            ctx.textAlign = "center";
+            drawText(label, W / 2, sy0 - 10, "#7A8F85", 5);
+            ctx.textAlign = "start";
             for (let i = 0; i < DJ_SETUP_PIECES.length; i++) {
                 const sx = sx0 + i * (slotW + gap);
                 const earned = i < djSetupEarned.length;
@@ -9458,61 +9120,19 @@ function renderBiomeTransition() {
         if (biomeTransNextPiece) drawDJPieceGlow(gx + 8, gy - 8, t);
 
         if (biomeTransNextPiece && pt > 15) {
-            const line1 = "BUT THE GOBLINS DRAG THE " + biomeTransNextPiece.toUpperCase();
-            const line2 = "DEEPER INTO THE CAVES...";
-            const w1 = line1.length * 6, w2 = line2.length * 6;
-            drawText(line1, W / 2 - w1 / 2 + 1, 26, "#000000", 6);
-            drawText(line1, W / 2 - w1 / 2, 25, "#50ad33", 6);
-            drawText(line2, W / 2 - w2 / 2 + 1, 36, "#000000", 6);
-            drawText(line2, W / 2 - w2 / 2, 35, "#50ad33", 6);
+            const line1 = "THE DONKS HAUL THE " + biomeTransNextPiece.toUpperCase();
+            const line2 = "OFF TO THE NEXT ROOM...";
+            ctx.textAlign = "center";
+            drawText(line1, W / 2 + 1, 26, "#000000", 6);
+            drawText(line1, W / 2, 25, "#50ad33", 6);
+            drawText(line2, W / 2 + 1, 36, "#000000", 6);
+            drawText(line2, W / 2, 35, "#50ad33", 6);
+            ctx.textAlign = "start";
         }
-    } else if (t < PH_G) {
-        // === Phase 3: the goblin glyphs on the tunnel wall ===
-        const pt = t - PH_B;
-        const fade = Math.min(1, pt / 25);
-        const stage = Math.max(1, Math.min(GLYPH_DECODE_STAGES.length, djSetupEarned.length));
-        const decoded = GLYPH_DECODE_STAGES[stage - 1];
-
-        ctx.globalAlpha = fade;
-        // Stone slab, lit by Carl's torchlight
-        const slabW = 220, slabH = 64;
-        const slabX = W / 2 - slabW / 2, slabY = H / 2 - 40;
-        const glowGrad = ctx.createRadialGradient(
-            W / 2 * SCALE, (slabY + slabH / 2) * SCALE, 8 * SCALE,
-            W / 2 * SCALE, (slabY + slabH / 2) * SCALE, slabW * 0.7 * SCALE);
-        glowGrad.addColorStop(0, "rgba(239,172,40,0.10)");
-        glowGrad.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.fillStyle = glowGrad;
-        ctx.fillRect(0, 0, W * SCALE, H * SCALE);
-        drawRect(slabX - 2, slabY - 2, slabW + 4, slabH + 4, biomeTransTo.gridWall.dark);
-        drawRect(slabX, slabY, slabW, slabH, biomeTransTo.gridWall.base);
-        drawRect(slabX, slabY, slabW, 2, biomeTransTo.gridWall.hi);
-
-        const cap = "CARVED INTO THE TUNNEL WALL:";
-        drawText(cap, W / 2 - cap.length * 5 / 2, slabY - 8, "#7A8F85", 5);
-
-        // The message — decoded words in gold, the rest still runes
-        if (pt > 30) {
-            const mAlpha = Math.min(1, (pt - 30) / 20);
-            ctx.globalAlpha = fade * mAlpha;
-            drawGlyphMessage(W / 2, slabY + 36, 7, decoded, {});
-        }
-
-        // Carl puzzling it out below
-        drawPlayerSprite(W / 2 - 8, slabY + slabH + 10, 0, 1, {}); // facing the wall
-        if (pt > 80) {
-            const rAlpha = Math.min(1, (pt - 80) / 20);
-            ctx.globalAlpha = fade * rAlpha;
-            const line = GLYPH_REACTIONS[stage - 1];
-            const lw = line.length * 5;
-            drawText(line, W / 2 - lw / 2 + 1, H - 26 + 1, "#000000", 5);
-            drawText(line, W / 2 - lw / 2, H - 26, INK.paper, 5);
-        }
-        ctx.globalAlpha = 1;
     } else {
-        // === Phase 4: descend into the new zone ===
-        const pt = t - PH_G;
-        const dur = PH_END - PH_G - 30;
+        // === Phase 3: descend into the new zone ===
+        const pt = t - PH_B;
+        const dur = PH_END - PH_B - 30;
         const p = Math.min(1, pt / dur);
 
         // Crossfade: old zone's glow behind, new zone's glow ahead
@@ -9552,16 +9172,19 @@ function renderBiomeTransition() {
             const a = Math.min(1, (pt - 40) / 30);
             ctx.globalAlpha = a;
             const title = "~ " + biomeTransTo.name + " ~";
-            const tw = title.length * 8;
-            drawText(title, W / 2 - tw / 2 + 1, 26, "#000000", 8);
-            drawText(title, W / 2 - tw / 2, 25, biomeTransTo.lights[0], 8);
+            ctx.textAlign = "center";
+            drawText(title, W / 2 + 1, 26, "#000000", 8);
+            drawText(title, W / 2, 25, biomeTransTo.lights[0], 8);
+            ctx.textAlign = "start";
             const tag = biomeTransTo.tagline || "";
-            const tgw = tag.length * 5;
-            drawText(tag, W / 2 - tgw / 2, 37, "#7A8F85", 5);
+            ctx.textAlign = "center";
+            drawText(tag, W / 2, 37, "#7A8F85", 5);
+            ctx.textAlign = "start";
             if (biomeTransNextPiece) {
                 const goal = "RECOVER THE " + biomeTransNextPiece.toUpperCase() + "!";
-                const gw2 = goal.length * 6;
-                drawText(goal, W / 2 - gw2 / 2, H - 30, "#F6CC60", 6);
+                ctx.textAlign = "center";
+                drawText(goal, W / 2, H - 30, "#F6CC60", 6);
+                ctx.textAlign = "start";
             }
             ctx.globalAlpha = 1;
         }
@@ -9709,10 +9332,11 @@ function renderSabotageAnim() {
                 }
                 // Callout so the player knows what this zone's prize is
                 const stealText = "THE THIEF HAS THE " + thiefCarriedPiece.toUpperCase() + "!";
-                const stW = stealText.length * 6;
                 const W_t = COLS * TILE;
-                drawText(stealText, W_t / 2 - stW / 2 + 1, TILE * 3 + 1, "#000000", 6);
-                drawText(stealText, W_t / 2 - stW / 2, TILE * 3, "#F6CC60", 6);
+                ctx.textAlign = "center";
+                drawText(stealText, W_t / 2 + 1, TILE * 3 + 1, "#000000", 6);
+                drawText(stealText, W_t / 2, TILE * 3, "#F6CC60", 6);
+                ctx.textAlign = "start";
             }
 
             if (tt === THIEF_RUN) {
@@ -9835,7 +9459,7 @@ function renderEnemyWarning() {
 
     if (enemyWarningType === "normal") {
         drawCenteredText("WATCH OUT!", 30, "#50ad33", 8);
-        drawCenteredText("GOBLINS!", 55, "#50ad33", 6);
+        drawCenteredText("DONKS!", 55, "#50ad33", 6);
         ctx.save();
         const cx_w = (W / 2) * SCALE;
         const cy_w = (80 + bobOffset + 8) * SCALE;
@@ -9849,7 +9473,7 @@ function renderEnemyWarning() {
 
     } else if (enemyWarningType === "elite") {
         drawCenteredText("WARNING!", 30, "#c05838", 8);
-        drawCenteredText("ELITE GOBLIN", 55, INK.rust, 6);
+        drawCenteredText("ELITE DONK", 55, INK.rust, 6);
         ctx.save();
         const cx_w = (W / 2) * SCALE;
         const cy_w = (80 + bobOffset + 8) * SCALE;
@@ -9864,7 +9488,7 @@ function renderEnemyWarning() {
 
     } else if (enemyWarningType === "catapult") {
         drawCenteredText("WARNING!", 30, "#c05838", 8);
-        drawCenteredText("CATAPULT GOBLIN", 55, INK.mint, 6);
+        drawCenteredText("CATAPULT DONK", 55, INK.mint, 6);
         ctx.save();
         const cx_w = (W / 2) * SCALE;
         const cy_w = (80 + bobOffset + 8) * SCALE;
@@ -9873,8 +9497,8 @@ function renderEnemyWarning() {
         ctx.translate(-cx_w, -cy_w);
         drawGoblinSprite("catapult", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
         ctx.restore();
-        drawCenteredText("THIS ONE FIGHTS DIRTY, HURLING BOULDERS", 115, INK.mustard, 5);
-        drawCenteredText("AT YOUR GRID FROM ACROSS THE ROOM.", 132, INK.mustard, 5);
+        drawCenteredText("THIS ONE FIGHTS DIRTY, LOBBING GEAR", 115, INK.mustard, 5);
+        drawCenteredText("AT YOUR PADS FROM ACROSS THE ROOM.", 132, INK.mustard, 5);
         drawCenteredText("YOU CAN'T KILL IT. BUT IT CAN SURE KILL YOU.", 149, "#c05838", 5);
     }
 
@@ -10058,7 +9682,7 @@ function renderNewInstrument() {
         if (t > 55) {
             const desc2Alpha = Math.min(1, (t - 55) / 30);
             ctx.globalAlpha = desc2Alpha;
-            drawCenteredText("THE UNDERGROUND IS WAKING UP.", 155, INK.teal, 5);
+            drawCenteredText("THE PARK IS WAKING UP.", 155, INK.teal, 5);
             drawCenteredText("EVEN MORE BEATS TO MASTER.", 170, INK.teal, 5);
             ctx.globalAlpha = 1;
         }
