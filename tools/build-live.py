@@ -85,7 +85,7 @@ html = """<meta charset="utf-8">
     height: auto;
   }
   #game { display:block; }
-  #hud  { position:absolute; left:0; bottom:0; width:100%%; }
+  #hud  { position:absolute; left:0; bottom:0; width:100%%; pointer-events:none; }
   /* Paper grain: its own canvas, sized to its CSS box and filled 1:1, so the
      pattern is never stretched. See the note in game.js. */
   #grain { position:absolute; left:0; top:0; width:100%%; height:100%%; pointer-events:none; }

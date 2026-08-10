@@ -2347,19 +2347,6 @@ function confirmHighScore() {
 }
 
 
-// ---- Pixel-art digit bitmaps (3 wide × 5 tall) ----
-const DIGIT_BITMAPS = [
-    [0b111, 0b101, 0b101, 0b101, 0b111], // 0
-    [0b010, 0b110, 0b010, 0b010, 0b111], // 1
-    [0b111, 0b001, 0b111, 0b100, 0b111], // 2
-    [0b111, 0b001, 0b111, 0b001, 0b111], // 3
-    [0b101, 0b101, 0b111, 0b001, 0b001], // 4
-    [0b111, 0b100, 0b111, 0b001, 0b111], // 5
-    [0b111, 0b100, 0b111, 0b101, 0b111], // 6
-    [0b111, 0b001, 0b010, 0b010, 0b010], // 7
-    [0b111, 0b101, 0b111, 0b101, 0b111], // 8
-    [0b111, 0b101, 0b111, 0b001, 0b111], // 9
-];
 
 
 // ---- Input ----
@@ -4570,22 +4557,36 @@ function drawHudRect(x, y, w, h, color) {
     hudCtx.fillRect(x * SCALE, y * SCALE, w * SCALE, h * SCALE);
 }
 
+// The readout's numbers. These were 3x5 pixel bitmaps stamped out of rects —
+// the last of the 8-bit look left in the game, still sitting there after the
+// palette, the fonts, the grid and the title all moved on.
+//
+// Now it is real type in the display face with a hard mustard offset shadow.
+// That shadow is the house grammar — a second printing pass slightly out of
+// register, never a blur — and it does real work here: it keeps a charcoal-dark
+// number legible over a HUD band whose backdrop changes with the biome.
+//
+// Signature is unchanged (centred on cx, top at cy) so every caller's layout
+// maths still holds.
 function drawHudPixelDigits(num, cx, cy, color, pixelSize) {
     const str = String(num);
-    const digitW = 3 * pixelSize + pixelSize;
-    const totalW = str.length * digitW - pixelSize;
-    let startX = cx - totalW / 2;
-    for (let d = 0; d < str.length; d++) {
-        const bitmap = DIGIT_BITMAPS[parseInt(str[d])];
-        const dx = startX + d * digitW;
-        for (let row = 0; row < 5; row++) {
-            for (let col = 0; col < 3; col++) {
-                if (bitmap[row] & (1 << (2 - col))) {
-                    drawHudRect(dx + col * pixelSize, cy + row * pixelSize, pixelSize, pixelSize, color);
-                }
-            }
-        }
-    }
+    const size = pixelSize * 5;                 // the bitmaps were 5 rows tall
+    hudCtx.font = gfont(size * SCALE);
+    hudCtx.textAlign = "center";
+    hudCtx.textBaseline = "alphabetic";
+    const baseY = (cy + size * 0.94) * SCALE;
+    hudCtx.fillStyle = INK.mustard;
+    hudCtx.fillText(str, (cx + 0.7) * SCALE, baseY + 0.7 * SCALE);
+    hudCtx.fillStyle = color;
+    hudCtx.fillText(str, cx * SCALE, baseY);
+    hudCtx.textAlign = "start";
+}
+
+// How wide one digit is in that face, so the panels size themselves off the
+// type rather than off a bitmap grid that no longer exists.
+function hudDigitWidth(pixelSize) {
+    hudCtx.font = gfont(pixelSize * 5 * SCALE);
+    return hudCtx.measureText("0").width / SCALE;
 }
 
 
@@ -4657,7 +4658,7 @@ function renderHUD() {
 
 
     const pxSz = 2;                       // was 3 — the strip is a third shorter
-    const digitW = 3 * pxSz + pxSz;
+    const digitW = hudDigitWidth(pxSz) + 1;
     const panelH = 5 * pxSz + 4;
     const panelGap = 4;
 

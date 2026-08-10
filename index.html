@@ -41,6 +41,9 @@
             left: 0;
             bottom: 0;
             width: 100%;
+            /* The readout must never eat a tap. It is a canvas stacked over the
+               bottom of the play field, and the game is driven by tapping. */
+            pointer-events: none;
         }
         /* Paper grain. Sized to its own CSS pixel box (x dpr) and filled 1:1 —
            NEVER stretched — because a pattern squeezed at fill time reads as
