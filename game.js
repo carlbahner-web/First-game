@@ -5,6 +5,35 @@
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
+// The single-file bundle inlines every asset as a data URI into window.__ASSETS
+// and shims Image.src to look them up. Fonts and patterns don't go through
+// Image.src, so they ask here instead — one branch, and the source keeps working
+// unchanged from disk.
+const assetURL = (p) => (window.__ASSETS && (window.__ASSETS[p] || window.__ASSETS[p.toLowerCase()])) || p;
+
+// ---- The two StudioLand faces (shared with BUZZ's Wild Ride) ---------------
+// Declared once and used only through these two constants, so nothing in the
+// game hardcodes a family name. The fallback stacks are close in width to keep
+// font-display:swap from reflowing much.
+const FONT_DISP = "'DWFairfield','Arial Narrow',sans-serif";       // titles, big numbers
+const FONT_BODY = "'TAYWingman','Segoe UI',system-ui,sans-serif";  // everything else
+const fdisp = (px) => `${px}px ${FONT_DISP}`;
+const fbody = (px) => `${px}px ${FONT_BODY}`;
+// Every call site sizes text in logical units x SCALE, so one threshold sorts
+// "titles and big numbers" from "everything else" without auditing 40 call
+// sites by hand — and it keeps sorting them correctly when a size is animated.
+const gfont = (px) => (px >= 7 * SCALE ? fdisp(px) : fbody(px));
+(function declareFonts() {
+    // The headless harnesses run game.js against a stubbed DOM with no <head>,
+    // and a font declaration is not worth taking a whole test run down for.
+    if (typeof document === "undefined" || !document.head) return;
+    const s = document.createElement("style");
+    s.textContent =
+        `@font-face{font-family:'DWFairfield';src:url(${assetURL("assets/shared/dwfairfield.woff2")}) format('woff2');font-display:swap;}` +
+        `@font-face{font-family:'TAYWingman';src:url(${assetURL("assets/shared/taywingman.woff2")}) format('woff2');font-display:swap;}`;
+    document.head.appendChild(s);
+})();
+
 // ---- Constants ----
 const TILE = 16;
 const SCALE = 5;           // 80 device px per tile — cells 25% larger than the
@@ -64,6 +93,11 @@ const INK = {
 const BOIL = {
     on: true, rate: 130, amp: 1.0, freeze: false, frozenPhase: 0,
     room: true, grid: true, chars: true, hud: true, text: true,
+    grain: true, grainAlpha: 0.5,
+    // Whether the 96 cells re-ink TOGETHER (one hand redrawing the whole frame,
+    // which is what happens on paper) or staggered across the period. Off by
+    // default; on, it reads looser but less like a single drawing.
+    stagger: false,
 };
 try {
     const saved = localStorage.getItem("boilCfg");
@@ -73,9 +107,13 @@ function saveBoilCfg() {
     try { localStorage.setItem("boilCfg", JSON.stringify(BOIL)); } catch (e) {}
 }
 let perfNow = 0; // advanced once per frame in gameLoop
+// Three drawings, stepped 0,1,2,1 — a PING-PONG, not a cycle. Counting
+// 0,1,2,0,1,2 makes the wobble crawl in one direction, which is the giveaway
+// that it's a loop; bouncing off the end is how boil is held on paper.
+const BOIL_ORDER = [0, 1, 2, 1];
 const boil = () => (!BOIL.on ? 0
     : BOIL.freeze ? BOIL.frozenPhase
-    : Math.floor(perfNow / BOIL.rate) % 3);
+    : BOIL_ORDER[Math.floor(perfNow / BOIL.rate) % 4]);
 // Which baked phase a given surface should show. Off -> phase 0, frozen forever.
 const boilPhase = (src) => (BOIL.on && BOIL[src]) ? boil() : 0;
 function hashN(i, seed) { const s = Math.sin(i * 127.1 + seed * 311.7) * 43758.5453; return s - Math.floor(s); }
@@ -91,6 +129,11 @@ function sjit(x, seed, amp) { return (vnoise(x, seed) - 0.5) * 2 * amp * BOIL.am
 // Phase-explicit jitter for pre-rendered boil variants (textures are baked
 // once per level in 3 phases, so they can't read the live clock)
 function pjit(x, seed, phase, amp) { return (vnoise(x, seed + phase * 7.31) - 0.5) * 2 * amp * BOIL.amp; }
+// How hard this particular tile was inked, 0.55x to 1.45x. A pool of tiles all
+// boiling by the same amount reads as one mechanism running 96 times; varying
+// the amplitude per tile is what makes it read as 96 separate drawings. Baked
+// into the tile, so it costs nothing at draw time.
+function inkPressure(seed) { return 0.55 + hashN(seed, 9.4) * 0.9; }
 
 // Stroke a wobbly hand-inked polyline through the given points (device px),
 // displacing each interior point by the live boil. Used for per-frame ink
@@ -688,54 +731,10 @@ let assetsReady = true;
 // Load audio samples in background — they'll be available when ready
 Promise.all(AUDIO_SAMPLES.map(([key, src]) => loadAudioSample(key, src))).catch(() => {});
 
-// ---- Grain texture overlay (screen-print / block-print effect) ----
-const grainCanvas = document.createElement('canvas');
-grainCanvas.width = COLS * TILE * SCALE;
-grainCanvas.height = ROWS * TILE * SCALE;
-const grainCtx = grainCanvas.getContext('2d');
-(function generateGrain() {
-    const w = grainCanvas.width, h = grainCanvas.height;
-    const imageData = grainCtx.createImageData(w, h);
-    const data = imageData.data;
-    let seed = 42;
-    for (let i = 0; i < w * h; i++) {
-        seed = (seed * 9301 + 49297) % 233280;
-        if (seed / 233280 < 0.08) { // ~8% of pixels get a grain dot
-            const idx = i * 4;
-            seed = (seed * 9301 + 49297) % 233280;
-            const dark = seed / 233280 > 0.5;
-            data[idx]     = dark ? 0 : 255;
-            data[idx + 1] = dark ? 0 : 255;
-            data[idx + 2] = dark ? 0 : 255;
-            data[idx + 3] = dark ? 18 : 10; // subtle alpha
-        }
-    }
-    grainCtx.putImageData(imageData, 0, 0);
-})();
-
-const hudGrainCanvas = document.createElement('canvas');
-hudGrainCanvas.width = COLS * TILE * SCALE;
-hudGrainCanvas.height = HUD_H * SCALE;
-const hudGrainCtx = hudGrainCanvas.getContext('2d');
-(function generateHudGrain() {
-    const w = hudGrainCanvas.width, h = hudGrainCanvas.height;
-    const imageData = hudGrainCtx.createImageData(w, h);
-    const data = imageData.data;
-    let seed = 7777;
-    for (let i = 0; i < w * h; i++) {
-        seed = (seed * 9301 + 49297) % 233280;
-        if (seed / 233280 < 0.08) {
-            const idx = i * 4;
-            seed = (seed * 9301 + 49297) % 233280;
-            const dark = seed / 233280 > 0.5;
-            data[idx]     = dark ? 0 : 255;
-            data[idx + 1] = dark ? 0 : 255;
-            data[idx + 2] = dark ? 0 : 255;
-            data[idx + 3] = dark ? 18 : 10;
-        }
-    }
-    hudGrainCtx.putImageData(imageData, 0, 0);
-})();
+// The two hand-rolled speckle canvases that used to live here are gone. One
+// (grainCanvas) was generated every load and never drawn at all; the other
+// grained only the HUD. Both are replaced by the real StudioLand paper tile,
+// which overlays the whole container on its own canvas — see PAPER GRAIN.
 
 // ============================================================
 // PROCEDURAL TEXTURE GENERATION SYSTEM
@@ -912,12 +911,16 @@ function generateGridStoneTile(seed, biome, phase) {
     g.lineJoin = "round";
     g.beginPath();
     const corners = [[2, 2], [size - 2, 2], [size - 2, size - 2], [2, size - 2]];
+    // Ink pressure varies per tile. One shared amplitude across the pool made
+    // every cell breathe by exactly the same amount, which reads as a mechanism;
+    // a hand redraws some marks tightly and some loosely.
+    const amp = 1.6 * inkPressure(seed);
     for (let e = 0; e < 4; e++) {
         const [x1, y1] = corners[e], [x2, y2] = corners[(e + 1) % 4];
         for (let s = 0; s <= 4; s++) {
             const t = s / 4, x = x1 + (x2 - x1) * t, y = y1 + (y2 - y1) * t;
-            const px = x + pjit(seed * 0.13 + e * 97 + s * 29, 3.1, phase, 1.6);
-            const py = y + pjit(seed * 0.17 + e * 61 + s * 41, 4.7, phase, 1.6);
+            const px = x + pjit(seed * 0.13 + e * 97 + s * 29, 3.1, phase, amp);
+            const py = y + pjit(seed * 0.17 + e * 61 + s * 41, 4.7, phase, amp);
             (e === 0 && s === 0) ? g.moveTo(px, py) : g.lineTo(px, py);
         }
     }
@@ -978,18 +981,19 @@ function generateGlowTile(seed, glowColor, phase) {
     g.fillStyle = grad;
     g.fillRect(hx - hr, hy - hr, hr * 2, hr * 2);
 
-    // Hand-inked charcoal border — static wonk (dense tiles must not boil)
+    // Hand-inked charcoal border, boiled per phase at this tile's own pressure
     g.strokeStyle = INK.charcoal;
     g.lineWidth = 2.5;
     g.lineJoin = "round";
     g.beginPath();
+    const gamp = 1.8 * inkPressure(seed);
     const corners = [[innerPad, innerPad], [size - innerPad, innerPad], [size - innerPad, size - innerPad], [innerPad, size - innerPad]];
     for (let e = 0; e < 4; e++) {
         const [x1, y1] = corners[e], [x2, y2] = corners[(e + 1) % 4];
         for (let s = 0; s <= 4; s++) {
             const t = s / 4, x = x1 + (x2 - x1) * t, y = y1 + (y2 - y1) * t;
-            const px = x + pjit(seed * 0.11 + e * 97 + s * 29, 8.3, phase, 1.8);
-            const py = y + pjit(seed * 0.19 + e * 61 + s * 41, 9.1, phase, 1.8);
+            const px = x + pjit(seed * 0.11 + e * 97 + s * 29, 8.3, phase, gamp);
+            const py = y + pjit(seed * 0.19 + e * 61 + s * 41, 9.1, phase, gamp);
             (e === 0 && s === 0) ? g.moveTo(px, py) : g.lineTo(px, py);
         }
     }
@@ -1142,9 +1146,54 @@ const gradCache = {};
 const GLOW_COLORS = [INK.green, INK.mustard, INK.teal, INK.red, INK.silverD, INK.rust];
 // Grid tiles are noise, so a POOL of variants indexed by cell is visually
 // identical to one bake per cell — and it is what makes three phases affordable:
-// 8 variants x 3 phases x 2 states = 48 canvases, against 576 for per-cell.
-const GRID_VARIANTS = 8;
-const gridVariant = (r, c) => (r * 7 + c * 5) % GRID_VARIANTS;
+// 16 variants x 3 phases x 2 states, against 576 canvases for one bake per cell.
+//
+// The pool alone is not enough, though, and getting this wrong is what made the
+// field read as one mechanism instead of 96 drawings. A cell's LOOK comes from
+// its variant and its MOTION from which of that variant's three phases it is
+// showing, so both have to be decided per cell:
+//
+//   * the variant index is hashed, not arithmetic. `(r*7 + c*5) % 8` repeats
+//     every 8 columns in a 16-column grid, and the eye locks onto a repeat at
+//     a fixed spacing long before it notices the tiles themselves.
+//   * the phase gets a per-cell OFFSET, so two cells sharing a variant are
+//     showing different drawings of it at any instant instead of being
+//     pixel-identical and wobbling in lockstep.
+//
+// WHICH drawing a cell shows and WHEN it flips are separate questions, and it
+// matters not to conflate them. On paper the whole frame is redrawn at once —
+// so by default every cell flips on the same tick — but each square is still a
+// DIFFERENT drawing on that frame. The offset gives us the second without
+// giving up the first. `stagger` is the other axis: it desynchronises the flip
+// instants as well, which reads looser but no longer like one sheet of paper.
+const GRID_VARIANTS = 16;
+const gridVariantTbl = [];   // [r][c] -> variant
+const cellPhaseOff = [];     // [r][c] -> 0..2, always applied
+const cellTimeOff = [];      // [r][c] -> ms into the cycle, applied only when staggering
+function buildCellPhaseTable() {
+    for (let r = 0; r < GRID_ROWS; r++) {
+        gridVariantTbl[r] = [];
+        cellPhaseOff[r] = [];
+        cellTimeOff[r] = [];
+        for (let c = 0; c < GRID_COLS; c++) {
+            gridVariantTbl[r][c] = Math.floor(hashN(r * 131.7 + c, 4.2) * GRID_VARIANTS) % GRID_VARIANTS;
+            // Independent hashes from the variant's, or look and motion would be
+            // correlated and the de-correlation would only be half done.
+            cellPhaseOff[r][c] = Math.floor(hashN(r * 57.3 + c * 2.1, 8.8) * 3) % 3;
+            cellTimeOff[r][c] = hashN(r * 19.7 + c * 3.3, 2.6) * 4;   // in whole cycles
+        }
+    }
+}
+buildCellPhaseTable();
+const gridVariant = (r, c) => gridVariantTbl[r][c];
+// The phase a given cell should show.
+const cellPhase = (r, c) => {
+    let base = boilPhase("grid");
+    if (BOIL.on && BOIL.grid && BOIL.stagger && !BOIL.freeze) {
+        base = BOIL_ORDER[Math.floor(perfNow / BOIL.rate + cellTimeOff[r][c]) % 4];
+    }
+    return (base + cellPhaseOff[r][c]) % 3;
+};
 const TEX_GRID_ON = [];   // [variant][phase]
 for (let v = 0; v < GRID_VARIANTS; v++) {
     TEX_GRID_ON[v] = [];
@@ -4549,13 +4598,13 @@ function warpedText(text, color, size) {
         const px = size * SCALE;
         const pad = Math.ceil(px * 0.35) + 2;
         const meas = document.createElement("canvas").getContext("2d");
-        meas.font = `${px}px monospace`;
+        meas.font = gfont(px);
         const w = Math.ceil(meas.measureText(text).width);
         const base = document.createElement("canvas");
         base.width = w + pad * 2;
         base.height = Math.ceil(px * 1.6) + pad * 2;
         const bg = base.getContext("2d");
-        bg.font = `${px}px monospace`;
+        bg.font = gfont(px);
         bg.fillStyle = color;
         bg.textAlign = "start";
         bg.textBaseline = "alphabetic";
@@ -4583,7 +4632,7 @@ function drawText(text, x, y, color, size) {
         }
     }
     ctx.fillStyle = color;
-    ctx.font = `${size * SCALE}px monospace`;
+    ctx.font = gfont(size * SCALE);
     ctx.fillText(text, x * SCALE, y * SCALE);
 }
 
@@ -4637,7 +4686,7 @@ function renderHUD() {
     const tierNames = ["ROCK", "FUNK", "BREAKS"];
     const tierIdx = currentLevel < 10 ? 0 : currentLevel < 20 ? 1 : 2;
     // Beside the level panel, not beneath it — there is no "beneath" now
-    hudCtx.font = `${2.5 * SCALE}px monospace`;
+    hudCtx.font = gfont(2.5 * SCALE);
     hudCtx.fillStyle = "#8a7a5a";
     hudCtx.textAlign = "start";
     hudCtx.fillText(tierNames[tierIdx], (lvlX + lvlPanelW + 5) * SCALE, (kcY + panelH - 3) * SCALE);
@@ -4707,7 +4756,7 @@ function renderHUD() {
     // Chill mode indicator
     if (gameMode === "chill") {
         const cmX = kcX - 4;   // left of the score plate, clear of the timer
-        hudCtx.font = `${3 * SCALE}px monospace`;
+        hudCtx.font = gfont(3 * SCALE);
         hudCtx.fillStyle = INK.teal;
         hudCtx.textAlign = "right";
         hudCtx.fillText("CHILL", cmX * SCALE, (kcY + panelH - 2) * SCALE);
@@ -4734,8 +4783,6 @@ function renderHUD() {
         }
     }
 
-    // Grain texture overlay for HUD
-    hudCtx.drawImage(hudGrainCanvas, 0, 0);
 }
 
 
@@ -4858,7 +4905,7 @@ function render() {
             ctx.fill();
             ctx.globalAlpha = 1.0;
             // Pulsing arrow pointing the way out
-            ctx.font = `${7 * SCALE}px monospace`;
+            ctx.font = gfont(7 * SCALE);
             ctx.textAlign = "center";
             ctx.globalAlpha = 0.6 + Math.sin(performance.now() * 0.008) * 0.4;
             ctx.fillStyle = "#50ad33";
@@ -5031,18 +5078,19 @@ function render() {
             const bxs = bx * SCALE, bys = by * SCALE;
             const ts = TILE * SCALE;
 
-            // Rotation for sprite variety: 0°, 90°, 180°, 270° based on cell position
-            const rotIndex = (r + c) % 4;
-            const rotAngle = rotIndex * Math.PI / 2;
+            // Which drawing of this cell to show. Per-cell, not global — see
+            // cellPhase: a single shared index made every cell of a variant
+            // pixel-identical and wobbling in lockstep.
+            const ph = cellPhase(r, c);
 
             if (on) {
                 // Draw glow tile (sprite with rotation, or pre-rendered fallback).
                 // NOTE: no draw-time shadowBlur here — the glow is baked into
                 // the tile art itself; shadowBlur per cell was a huge perf cost.
-                ctx.drawImage(TEX_GRID_ON[gridVariant(r, c)][boilPhase("grid")][r], bxs, bys);
+                ctx.drawImage(TEX_GRID_ON[gridVariant(r, c)][ph][r], bxs, bys);
             } else {
                 // Draw dark stone tile (sprite with rotation, or pre-rendered fallback)
-                ctx.drawImage(TEX_GRID_OFF[gridVariant(r, c)][boilPhase("grid")], bxs, bys);
+                ctx.drawImage(TEX_GRID_OFF[gridVariant(r, c)][ph], bxs, bys);
             }
 
             // Block toggle pop animation (scale + glow burst)
@@ -5353,7 +5401,7 @@ function render() {
         const freezeSecs = Math.ceil(player.freezeTimer / 60);
         const countX = player.x + player.w / 2;
         const countY = player.y - 12;
-        ctx.font = `${8 * SCALE}px monospace`;
+        ctx.font = gfont(8 * SCALE);
         ctx.textAlign = "center";
         ctx.fillStyle = "#000000";
         ctx.fillText(freezeSecs + "s", countX * SCALE + 2, countY * SCALE + 2);
@@ -5369,7 +5417,7 @@ function render() {
     if (!sequencerStarted && gameState === "playing") {
         const blinkStart = Math.floor(performance.now() / 500) % 2 === 0;
         if (blinkStart) {
-            ctx.font = `${6 * SCALE}px monospace`;
+            ctx.font = gfont(6 * SCALE);
             ctx.textAlign = "center";
             ctx.fillStyle = "#000000";
             ctx.fillText("PRESS ANY KEY TO DROP THE BEAT", (COLS * TILE * SCALE) / 2 + SCALE, 14 * SCALE + SCALE);
@@ -5383,7 +5431,7 @@ function render() {
     if (doorOpen && !levelComplete) {
         const blink = Math.floor(performance.now() / 400) % 2 === 0;
         if (blink) {
-            ctx.font = `${6 * SCALE}px monospace`;
+            ctx.font = gfont(6 * SCALE);
             ctx.textAlign = "center";
             ctx.fillStyle = "#000000";
             ctx.fillText("THE DOOR IS OPEN! →", (COLS * TILE * SCALE) / 2 + SCALE, 14 * SCALE + SCALE);
@@ -5489,7 +5537,7 @@ function render() {
             drawRect(x + kw - 1, y, 1, keySize, borderColor);
 
             // Key label
-            ctx.font = `${3 * SCALE}px monospace`;
+            ctx.font = gfont(3 * SCALE);
             ctx.textAlign = "center";
             ctx.fillStyle = lit ? "#fff" : "#8a6a4a";
             const labelX = label === "SPACE" ? x + 15 : x + keySize / 2;
@@ -5498,7 +5546,7 @@ function render() {
         };
 
         // "MOVE" label + arrow key layout
-        ctx.font = `${3 * SCALE}px monospace`;
+        ctx.font = gfont(3 * SCALE);
         ctx.fillStyle = "#8a7a5a";
         ctx.fillText("MOVE", (boxX + 5) * SCALE, (overlayY + 7) * SCALE);
 
@@ -5510,7 +5558,7 @@ function render() {
         drawKeyCap(arrowBaseX + 20, arrowBaseY + 10, "\u2192", "RIGHT"); // →
 
         // "PUNCH" label + spacebar
-        ctx.font = `${3 * SCALE}px monospace`;
+        ctx.font = gfont(3 * SCALE);
         ctx.fillStyle = "#8a7a5a";
         ctx.fillText("PUNCH", (boxX + 55) * SCALE, (overlayY + 7) * SCALE);
 
@@ -5528,7 +5576,7 @@ function render() {
             const W_t = COLS * TILE;
             const hintY = gridBottomTileY() * TILE + 16 + GRID_Y_OFFSET;
             ctx.globalAlpha = hintAlpha * 0.85;
-            ctx.font = `${3.5 * SCALE}px monospace`;
+            ctx.font = gfont(3.5 * SCALE);
             ctx.textAlign = "center";
             // Line 1: objective — charcoal ink with a paper-white relief
             ctx.fillStyle = "rgba(255,255,255,0.8)";
@@ -7139,7 +7187,7 @@ function drawCatapultGoblin() {
         for (let ni = 0; ni < 2; ni++) {
             const nPhase = (180 - cg.danceTimer + ni * 30) % 60;
             ctx.globalAlpha = (1 - nPhase / 60) * 0.9;
-            ctx.font = `${5 * SCALE}px monospace`;
+            ctx.font = gfont(5 * SCALE);
             ctx.fillStyle = ni === 0 ? "#50ad33" : "#FFD700";
             ctx.fillText(ni === 0 ? "♪" : "♫",
                 (cg.x + (ni === 0 ? 1 : 11)) * SCALE,
@@ -7310,7 +7358,7 @@ function drawGoblinFor(g) {
         for (let ni = 0; ni < 2; ni++) {
             const nPhase = (180 - g.danceTimer + ni * 30) % 60;
             ctx.globalAlpha = (1 - nPhase / 60) * 0.9;
-            ctx.font = `${5 * SCALE}px monospace`;
+            ctx.font = gfont(5 * SCALE);
             ctx.fillStyle = ni === 0 ? "#50ad33" : "#FFD700";
             ctx.fillText(ni === 0 ? "♪" : "♫",
                 (g.x + (ni === 0 ? 1 : 11)) * SCALE,
@@ -7330,7 +7378,7 @@ function drawGoblinFor(g) {
     // Punch telegraph: pulsing red "!" above the elite during wind-up
     if (g.elite && g.windupTimer > 0) {
         const wuPulse = 1 + Math.sin(g.windupTimer * 0.5) * 0.2;
-        ctx.font = `${Math.round(9 * SCALE * wuPulse)}px monospace`;
+        ctx.font = gfont(Math.round(9 * SCALE * wuPulse));
         ctx.textAlign = "center";
         const exX = (g.x + g.w / 2) * SCALE;
         const exY = (g.y - 14) * SCALE;
@@ -7764,7 +7812,7 @@ function renderEnding() {
     const H = ROWS * TILE;
 
     function drawCentered(text, y, color, size) {
-        ctx.font = `${size * SCALE}px monospace`;
+        ctx.font = gfont(size * SCALE);
         ctx.fillStyle = color;
         ctx.textAlign = "center";
         ctx.fillText(text, (W * SCALE) / 2, y * SCALE);
@@ -7876,7 +7924,7 @@ function renderEnding() {
                 const a = endingTimer < 30 ? (endingTimer - 10) / 20 : Math.max(0, 1 - (endingTimer - 50) / 20);
                 ctx.globalAlpha = a;
                 ctx.textAlign = "center";
-                ctx.font = `${7 * SCALE}px monospace`;
+                ctx.font = gfont(7 * SCALE);
                 ctx.fillStyle = "#000";
                 ctx.fillText("THE BOOTH IS REBUILT. THE CROWD IS BACK.", (W / 2) * SCALE + SCALE, (H / 2 + 1) * SCALE);
                 ctx.fillStyle = INK.paper;
@@ -7889,7 +7937,7 @@ function renderEnding() {
                 const a = endingTimer < 95 ? (endingTimer - 75) / 20 : Math.max(0, 1 - (endingTimer - 115) / 20);
                 ctx.globalAlpha = a;
                 ctx.textAlign = "center";
-                ctx.font = `${8 * SCALE}px monospace`;
+                ctx.font = gfont(8 * SCALE);
                 ctx.fillStyle = "#000";
                 ctx.fillText("...BUT THE CAVES ARE SILENT.", (W / 2) * SCALE + SCALE, (H / 2 + 1) * SCALE);
                 ctx.fillStyle = "#7a6a5a";
@@ -7912,7 +7960,7 @@ function renderEnding() {
                 const a = endingTimer < 175 ? (endingTimer - 155) / 20 : Math.max(0, 1 - (endingTimer - 210) / 20);
                 ctx.globalAlpha = a;
                 ctx.textAlign = "center";
-                ctx.font = `${6 * SCALE}px monospace`;
+                ctx.font = gfont(6 * SCALE);
                 ctx.fillStyle = "#3a3a35";
                 ctx.fillText("MAYBE THEY WEREN'T ATTACKING.", (W / 2) * SCALE + SCALE, (H / 2 - 6) * SCALE);
                 ctx.fillStyle = "#50ad33";
@@ -8119,14 +8167,14 @@ function renderEnding() {
 
             // "THE END" header
             ctx.textAlign = "center";
-            ctx.font = `${12 * SCALE}px monospace`;
+            ctx.font = gfont(12 * SCALE);
             ctx.fillStyle = "#000";
             ctx.fillText("THE END", (caveW / 2) * SCALE + SCALE, (caveH / 3 + 1) * SCALE);
             ctx.fillStyle = "#FFD700";
             ctx.fillText("THE END", (caveW / 2) * SCALE, (caveH / 3) * SCALE);
 
             // Final score
-            ctx.font = `${8 * SCALE}px monospace`;
+            ctx.font = gfont(8 * SCALE);
             ctx.fillStyle = INK.paper;
             ctx.fillText("FINAL SCORE: " + finalScore, (caveW / 2) * SCALE, (caveH / 3 + 20) * SCALE);
 
@@ -8134,7 +8182,7 @@ function renderEnding() {
             if (endingTimer > 90) {
                 const blink = Math.sin(endingTimer * 0.08) > 0;
                 if (blink) {
-                    ctx.font = `${5 * SCALE}px monospace`;
+                    ctx.font = gfont(5 * SCALE);
                     ctx.fillStyle = INK.paper;
                     const promptText = scoreQualifies(finalScore) ? "PRESS ENTER FOR HIGH SCORE" : "PRESS ENTER TO CONTINUE";
                     ctx.fillText(promptText, (caveW / 2) * SCALE, (caveH - 20) * SCALE);
@@ -8420,11 +8468,11 @@ function drawTitleMarquee(riseY) {
     }
 
     // ---- the lettering, on the face ----------------------------------------
-    const centred = (text, y, col, size) => {
-        ctx.font = `${size * S}px monospace`;
+    const centred = (text, y, col, size, dx) => {
+        ctx.font = gfont(size * S);
         ctx.fillStyle = col;
         ctx.textAlign = "center";
-        ctx.fillText(text, cx * S, y * S);
+        ctx.fillText(text, (cx + (dx || 0)) * S, y * S);
         ctx.textAlign = "start";
     };
     if (TITLE_ART.logo) {
@@ -8448,7 +8496,10 @@ function drawTitleMarquee(riseY) {
         const modeCol = gameMode === "thrill" ? INK.rust : INK.mint;
         const arrowPulse = REDUCED_MOTION ? 0.8 : 0.5 + Math.sin(titleBlink * 0.08) * 0.3;
         ctx.globalAlpha = arrowPulse;
-        centred("<              >", rbY + 7, INK.silverD, 5);
+        // Two arrows placed by offset, not one string padded with spaces — the
+        // padding only held them apart while everything was monospace.
+        centred("<", rbY + 7, INK.silverD, 5, -34);
+        centred(">", rbY + 7, INK.silverD, 5, 34);
         ctx.globalAlpha = 1;
         centred(modeLabel, rbY + 7, modeCol, 5);
         if (REDUCED_MOTION || titleBlink % 45 < 32) {
@@ -8977,7 +9028,7 @@ function renderIntro() {
 
     // Helper
     function drawCentered(text, y, color, scale) {
-        ctx.font = `${scale * SCALE}px monospace`;
+        ctx.font = gfont(scale * SCALE);
         ctx.fillStyle = color;
         ctx.textAlign = "center";
         ctx.fillText(text, (W * SCALE) / 2, y * SCALE);
@@ -10065,7 +10116,7 @@ function renderIntro() {
         // Centered prompt text with gentle pulse
         const promptPulse = Math.sin(t * 0.06) * 0.3 + 0.7;
         hudCtx.globalAlpha = promptPulse;
-        hudCtx.font = `${5 * SCALE}px monospace`;
+        hudCtx.font = gfont(5 * SCALE);
         hudCtx.fillStyle = INK.paper;
         hudCtx.textAlign = "center";
         hudCtx.fillText(promptText, (COLS * TILE * SCALE) / 2, (HUD_H / 2 + 2) * SCALE);
@@ -10096,7 +10147,7 @@ function renderHighScoreEntry() {
     // "NEW HIGH SCORE!" header — prominent, celebratory
     const header = "NEW HIGH SCORE!";
     ctx.textAlign = "center";
-    ctx.font = `${8 * SCALE}px monospace`;
+    ctx.font = gfont(8 * SCALE);
     ctx.fillStyle = "#000";
     ctx.fillText(header, (W / 2) * SCALE + SCALE, 20 * SCALE + SCALE);
     ctx.fillStyle = "#F6CC60";
@@ -10104,7 +10155,7 @@ function renderHighScoreEntry() {
 
     // Score display — big and proud
     const scoreStr = String(finalScore);
-    ctx.font = `${8 * SCALE}px monospace`;
+    ctx.font = gfont(8 * SCALE);
     ctx.fillStyle = "#000";
     ctx.fillText(scoreStr, (W / 2) * SCALE + SCALE, 42 * SCALE + SCALE);
     ctx.fillStyle = INK.paper;
@@ -10112,7 +10163,7 @@ function renderHighScoreEntry() {
 
     // "ENTER YOUR INITIALS" label — readable instruction
     const label = "ENTER YOUR INITIALS";
-    ctx.font = `${5 * SCALE}px monospace`;
+    ctx.font = gfont(5 * SCALE);
     ctx.fillStyle = INK.mustard;
     ctx.fillText(label, (W / 2) * SCALE, 68 * SCALE);
     ctx.textAlign = "start";
@@ -10164,7 +10215,7 @@ function renderHighScoreEntry() {
     const confirmText = "PRESS ENTER TO CONFIRM";
     if (initialsBlink % 60 < 40) {
         ctx.textAlign = "center";
-        ctx.font = `${5 * SCALE}px monospace`;
+        ctx.font = gfont(5 * SCALE);
         ctx.fillStyle = INK.mustard;
         ctx.fillText(confirmText, (W / 2) * SCALE, (H - 24) * SCALE);
         ctx.textAlign = "start";
@@ -10173,7 +10224,7 @@ function renderHighScoreEntry() {
     // Controls hint — minimum readable size
     const hint = "UP/DOWN: LETTER   ENTER: CONFIRM";
     ctx.textAlign = "center";
-    ctx.font = `${3 * SCALE}px monospace`;
+    ctx.font = gfont(3 * SCALE);
     ctx.fillStyle = "#4a4a45";
     ctx.fillText(hint, (W / 2) * SCALE, (H - 12) * SCALE);
     ctx.textAlign = "start";
@@ -10211,7 +10262,7 @@ function renderLevelComplete() {
 
         // Draw centered using textAlign
         ctx.textAlign = "center";
-        ctx.font = `${textScale * SCALE}px monospace`;
+        ctx.font = gfont(textScale * SCALE);
         // Shadow
         ctx.fillStyle = "#000000";
         ctx.fillText(levelText, (W * SCALE) / 2 + SCALE, (ty + bounce + 1) * SCALE);
@@ -10228,7 +10279,7 @@ function renderLevelComplete() {
 
         // Time bonus and score below
         const bonusScale = 8;
-        ctx.font = `${bonusScale * SCALE}px monospace`;
+        ctx.font = gfont(bonusScale * SCALE);
         if (lastTimeBonus > 0) {
             const by = cy + 28;
             const bonusText = "TIME BONUS: +" + lastTimeBonus;
@@ -10254,21 +10305,21 @@ function renderLevelComplete() {
             const pcAlpha = Math.min(1, (levelCelebrateTimer - 60) / 30);
             const pcPulse = 1 + Math.sin(levelCelebrateTimer * 0.1) * 0.06;
             ctx.globalAlpha = pcAlpha;
-            ctx.font = `${Math.round(6 * SCALE * pcPulse)}px monospace`;
+            ctx.font = gfont(Math.round(6 * SCALE * pcPulse));
             const pcText = "RECOVERED: THE " + pieceRecoveredThisLevel.toUpperCase() + "!";
             ctx.fillStyle = "#000000";
             ctx.fillText(pcText, (W * SCALE) / 2 + SCALE, (sy + 12) * SCALE);
             ctx.fillStyle = "#FFD700";
             ctx.fillText(pcText, (W * SCALE) / 2, (sy + 11) * SCALE);
             ctx.globalAlpha = 1;
-            ctx.font = `${8 * SCALE}px monospace`;
+            ctx.font = gfont(8 * SCALE);
         }
 
         // Narrative breadcrumb — brief one-liner about progress
         if (levelCelebrateTimer > 90) {
             const narrativeAlpha = Math.min(1, (levelCelebrateTimer - 90) / 40);
             ctx.globalAlpha = narrativeAlpha;
-            ctx.font = `${4 * SCALE}px monospace`;
+            ctx.font = gfont(4 * SCALE);
             let narrative = "";
             const earned = djSetupEarned.length;
             const lvl = currentLevel + 1;
@@ -10431,7 +10482,7 @@ function renderLevelComplete() {
         if (blink) {
             const pressText = "PRESS ENTER TO CONTINUE";
             ctx.textAlign = "center";
-            ctx.font = `${5 * SCALE}px monospace`;
+            ctx.font = gfont(5 * SCALE);
             ctx.fillStyle = INK.paper;
             ctx.fillText(pressText, (W * SCALE) / 2, (H - 12) * SCALE);
             ctx.textAlign = "start";
@@ -11012,7 +11063,7 @@ function renderSabotageAnim() {
         const flashAlpha = 1 - t / 30;
         ctx.globalAlpha = flashAlpha;
         const W_s2 = COLS * TILE;
-        ctx.font = `${12 * SCALE}px monospace`;
+        ctx.font = gfont(12 * SCALE);
         ctx.fillStyle = "#000000";
         ctx.textAlign = "center";
         ctx.fillText("SABOTAGE!", (W_s2 * SCALE) / 2 + SCALE, (ROWS * TILE / 2) * SCALE + SCALE);
@@ -11177,7 +11228,7 @@ function renderEnemyWarning() {
 
     // Centered text helper (same as story/tutorial screens)
     function drawCenteredText(text, y, color, scale) {
-        ctx.font = `${scale * SCALE}px monospace`;
+        ctx.font = gfont(scale * SCALE);
         ctx.fillStyle = color;
         ctx.textAlign = "center";
         ctx.fillText(text, (W * SCALE) / 2, y * SCALE);
@@ -11295,7 +11346,7 @@ function renderNewInstrument() {
     ctx.globalAlpha = 1;
 
     function drawCenteredText(text, y, color, scale) {
-        ctx.font = `${scale * SCALE}px monospace`;
+        ctx.font = gfont(scale * SCALE);
         ctx.fillStyle = color;
         ctx.textAlign = "center";
         ctx.fillText(text, (W * SCALE) / 2, y * SCALE);
@@ -11483,6 +11534,74 @@ function renderNewInstrument() {
     }
 }
 
+// ============================================================
+// PAPER GRAIN
+// A 512x512 greyscale tile, recoloured so its DENSITY becomes the alpha of
+// charcoal ink specks, then tiled as a pattern. It is what stops the cream
+// reading as a flat fill.
+//
+// THE HARD RULE: never scale the pattern at fill time. A squeezed pattern
+// samples badly, reads as pixelation, and measured 2.5x slower. So the grain
+// does NOT live on the game canvas — that's a 1920x800 buffer the browser then
+// shrinks to fit the window, which would drag the grain down with it and turn
+// 1px marks into mush. It gets its own canvas sized to the CSS pixel box it
+// actually occupies, filled 1:1, and repainted only when that box changes.
+// ============================================================
+const grainCanvas = document.getElementById("grain");
+const grainCtx = grainCanvas ? grainCanvas.getContext("2d") : null;
+let grainTile = null;
+let grainW = 0, grainH = 0;
+
+function paintGrain() {
+    if (!grainCtx) return;
+    const r = grainCanvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.max(1, Math.round(r.width * dpr));
+    const h = Math.max(1, Math.round(r.height * dpr));
+    if (w !== grainW || h !== grainH) {
+        grainCanvas.width = grainW = w;
+        grainCanvas.height = grainH = h;
+    }
+    grainCtx.clearRect(0, 0, w, h);
+    if (!grainTile || !BOIL.grain || BOIL.grainAlpha <= 0) return;
+    grainCtx.globalAlpha = BOIL.grainAlpha;
+    grainCtx.fillStyle = grainCtx.createPattern(grainTile, "repeat");
+    grainCtx.fillRect(0, 0, w, h);   // 1:1, no transform — see the rule above
+    grainCtx.globalAlpha = 1;
+}
+
+(function loadGrain() {
+    if (!grainCtx) return;
+    const im = new Image();
+    im.onload = () => {
+        const cv = document.createElement("canvas");
+        cv.width = cv.height = im.width || 512;
+        const g = cv.getContext("2d");
+        g.drawImage(im, 0, 0);
+        try {
+            const id = g.getImageData(0, 0, cv.width, cv.height), d = id.data;
+            for (let i = 0; i < d.length; i += 4) {
+                const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+                d[i] = 44; d[i + 1] = 44; d[i + 2] = 42;   // charcoal ink...
+                d[i + 3] = (255 - lum) * 0.8;              // ...carrying the tile's density
+            }
+            g.putImageData(id, 0, 0);
+        } catch (e) {
+            // Opening index.html straight off disk taints the canvas, so the
+            // recolour can't run and the grain simply sits this one out. Over
+            // http, and from the inlined data URI the bundle ships, it's fine.
+            console.warn("grain: tile unreadable (" + e.name + ") — skipping");
+            return;
+        }
+        grainTile = cv;
+        paintGrain();
+    };
+    im.onerror = () => {};
+    im.src = "assets/shared/noise.webp";
+    window.addEventListener("resize", paintGrain);
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", paintGrain);
+})();
+
 // ---- Boil switchboard (backtick, or the corner button on touch) ----------
 // Not every source is equally good: the grid cells are 96 dense repeating marks
 // and boiling those can read as strobe rather than as a drawn line, which is
@@ -11497,6 +11616,8 @@ const BOIL_ROWS = [
     ["3", "buzz+donks", "chars"],
     ["4", "hud",     "hud"],
     ["5", "text",    "text"],
+    ["6", "grain",   "grain"],
+    ["7", "stagger", "stagger"],
 ];
 // Amplitude is baked into every cached surface, so changing it has to throw
 // them all away — this is the one thing here that can silently go stale.
@@ -11510,7 +11631,13 @@ function handleBoilKey(k) {
     if (k === "`") { boilMenuOpen = !boilMenuOpen; return true; }
     if (!boilMenuOpen) return false;
     const row = BOIL_ROWS.find(r => r[0] === k);
-    if (row) { BOIL[row[2]] = !BOIL[row[2]]; saveBoilCfg(); return true; }
+    if (row) {
+        BOIL[row[2]] = !BOIL[row[2]];
+        // The grain lives on its own canvas and is only painted on change, so
+        // its switch has to ask for a repaint — every other row is read live.
+        if (row[2] === "grain") paintGrain();
+        saveBoilCfg(); return true;
+    }
     if (k === "f") { BOIL.freeze = !BOIL.freeze; saveBoilCfg(); return true; }
     if (k === "p") { BOIL.frozenPhase = (BOIL.frozenPhase + 1) % 3; saveBoilCfg(); return true; }
     if (k === "[" || k === "]") {
@@ -11521,13 +11648,77 @@ function handleBoilKey(k) {
         BOIL.amp = Math.max(0, Math.min(4, +(BOIL.amp + (k === "=" ? 0.1 : -0.1)).toFixed(2)));
         saveBoilCfg(); rebakeBoil(); return true;
     }
+    if (k === "," || k === ".") {
+        BOIL.grainAlpha = Math.max(0, Math.min(1, +(BOIL.grainAlpha + (k === "." ? 0.02 : -0.02)).toFixed(2)));
+        saveBoilCfg(); paintGrain(); return true;
+    }
     return false;
 }
-function renderBoilMenu() {
-    if (!boilMenuOpen) return;
-    const S = SCALE, x = 6, y = 6, w = 92, lh = 7;
-    const h = lh * (BOIL_ROWS.length + 4) + 8;
+
+// ---- The switchboard's geometry, in logical room units --------------------
+// Kept as data rather than baked into the draw code so the pointer path and the
+// renderer can never disagree about where a row is.
+const BOIL_UI = { x: 6, y: 6, w: 92, lh: 7, tabW: 26, tabH: 8, tabPad: 3 };
+const boilTabRect = () => [COLS * TILE - BOIL_UI.tabW - BOIL_UI.tabPad, BOIL_UI.tabPad,
+                           BOIL_UI.tabW, BOIL_UI.tabH];
+// Row i (0-based) of the panel body, counting the toggles then rate/amp/grain/freeze.
+const BOIL_EXTRA = ["rate", "amp", "grain", "freeze"];
+const boilPanelH = () => BOIL_UI.lh * (BOIL_ROWS.length + BOIL_EXTRA.length + 1) + 12;
+function boilRowY(i) { return BOIL_UI.y + 8 + BOIL_UI.lh + 2 + i * BOIL_UI.lh; }
+
+// Which control, if any, is under a point given in logical room units. Returns a
+// KEY, not an action — the pointer path then feeds it to handleBoilKey so there
+// is exactly one implementation of what every control does.
+function boilHitTest(px, py) {
+    const [tx, ty, tw, th] = boilTabRect();
+    if (px >= tx && px <= tx + tw && py >= ty && py <= ty + th) return "`";
+    if (!boilMenuOpen) return null;
+    const { x, y, w, lh } = BOIL_UI;
+    const h = boilPanelH();
+    if (px < x || px > x + w || py < y || py > y + h) return null;
+    const idx = Math.floor((py - (boilRowY(0) - lh + 2)) / lh);
+    const rows = BOIL_ROWS.length;
+    if (idx >= 0 && idx < rows) return BOIL_ROWS[idx][0];
+    const extra = BOIL_EXTRA[idx - rows];
+    if (!extra) return "`";                   // inside the panel, not on a row: close
+    // The value column doubles as a -/+ pair, split down its middle.
+    const minus = px < x + w - 15;
+    if (extra === "rate")   return minus ? "[" : "]";
+    if (extra === "amp")    return minus ? "-" : "=";
+    if (extra === "grain")  return minus ? "," : ".";
+    return minus ? "f" : "p";
+}
+
+function renderBoilUI() {
+    const S = SCALE;
     ctx.save();
+    // If a render threw between a save() and its restore(), the context is still
+    // carrying that frame's transform or clip — and the switchboard would be
+    // drawn off-screen or clipped away exactly when something has gone wrong and
+    // you most want to reach it. Start from a known state.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.textAlign = "start";
+    // The panel is an instrument, not part of the room — it stays monospace on
+    // purpose while everything else moves to the StudioLand faces.
+    ctx.font = `${4 * S}px monospace`;
+
+    // ---- the tab: the only thing on screen that says the menu exists --------
+    const [tx, ty, tw, th] = boilTabRect();
+    ctx.globalAlpha = boilMenuOpen ? 0.95 : 0.55;
+    ctx.fillStyle = INK.charcoal;
+    ctx.fillRect(tx * S, ty * S, tw * S, th * S);
+    ctx.strokeStyle = INK.mustard;
+    ctx.lineWidth = 0.6 * S;
+    ctx.strokeRect(tx * S, ty * S, tw * S, th * S);
+    ctx.fillStyle = INK.mustard;
+    ctx.fillText("≡ BOIL", (tx + 3) * S, (ty + 5.6) * S);
+    ctx.globalAlpha = 1;
+
+    if (!boilMenuOpen) { ctx.restore(); return; }
+
+    const { x, y, w, lh } = BOIL_UI;
+    const h = boilPanelH();
     ctx.globalAlpha = 0.92;
     ctx.fillStyle = INK.charcoal;
     ctx.fillRect(x * S, y * S, w * S, h * S);
@@ -11535,29 +11726,42 @@ function renderBoilMenu() {
     ctx.strokeStyle = INK.mustard;
     ctx.lineWidth = 1 * S;
     ctx.strokeRect(x * S, y * S, w * S, h * S);
-    ctx.font = `${4 * S}px monospace`;
-    ctx.textAlign = "start";
-    let ty = y + 8;
+
+    let i = 0;
     const line = (label, val, col) => {
+        const ty2 = boilRowY(i++);
         ctx.fillStyle = INK.silverL;
-        ctx.fillText(label, (x + 4) * S, ty * S);
+        ctx.fillText(label, (x + 4) * S, ty2 * S);
         ctx.fillStyle = col;
-        ctx.fillText(val, (x + w - 30) * S, ty * S);
-        ty += lh;
+        ctx.fillText(val, (x + w - 30) * S, ty2 * S);
     };
     ctx.fillStyle = INK.mustard;
-    ctx.fillText("BOIL  ` to close", (x + 4) * S, ty * S);
-    ty += lh + 2;
+    ctx.fillText("BOIL  ≡ or ` to close", (x + 4) * S, (y + 8) * S);
     for (const [key, label, flag] of BOIL_ROWS) {
         line(key + "  " + label, BOIL[flag] ? "ON" : "off",
              BOIL[flag] ? INK.green : INK.silverD);
     }
     line("[ ]  rate", BOIL.rate + "ms", INK.paper);
     line("- =  amp", BOIL.amp.toFixed(2), INK.paper);
+    line(",.   grain amt", BOIL.grainAlpha.toFixed(2), INK.paper);
     line("f    freeze", BOIL.freeze ? "P" + BOIL.frozenPhase + "  (p)" : "off",
          BOIL.freeze ? INK.mustard : INK.silverD);
     ctx.restore();
 }
+
+// One pointer listener for the whole game — the tab and every row route through
+// handleBoilKey, so mouse, touch and keyboard cannot drift apart.
+if (canvas.addEventListener) canvas.addEventListener("pointerdown", (e) => {
+    const r = canvas.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const px = (e.clientX - r.left) / r.width * COLS * TILE;
+    const py = (e.clientY - r.top) / r.height * ROWS * TILE;
+    const k = boilHitTest(px, py);
+    if (!k) return;
+    e.preventDefault();
+    e.stopPropagation();
+    handleBoilKey(k);
+});
 
 function gameLoop(timestamp) {
     perfNow = timestamp || 0; // drives the boil clock — one hand inks everything
@@ -11610,14 +11814,14 @@ function gameLoop(timestamp) {
                 ctx.fillStyle = "rgba(0,0,0,0.6)";
                 ctx.fillRect(0, 0, W_p, H_p);
                 // "PAUSED" text
-                ctx.font = `${10 * SCALE}px monospace`;
+                ctx.font = gfont(10 * SCALE);
                 ctx.textAlign = "center";
                 ctx.fillStyle = "#000000";
                 ctx.fillText("PAUSED", W_p / 2 + 2 * SCALE, H_p / 2 - 6 * SCALE);
                 ctx.fillStyle = "#F6CC60";
                 ctx.fillText("PAUSED", W_p / 2, H_p / 2 - 8 * SCALE);
                 // Subtitle
-                ctx.font = `${4 * SCALE}px monospace`;
+                ctx.font = gfont(4 * SCALE);
                 ctx.fillStyle = INK.paper;
                 ctx.fillText("PRESS ESC TO RESUME", W_p / 2, H_p / 2 + 6 * SCALE);
                 ctx.textAlign = "start";
@@ -11663,7 +11867,7 @@ function gameLoop(timestamp) {
             console.error("Game loop error:", e);
         }
     }
-    try { renderBoilMenu(); } catch (e) { /* never let the debug UI kill a frame */ }
+    try { renderBoilUI(); } catch (e) { /* never let the debug UI kill a frame */ }
     requestAnimationFrame(gameLoop);
 }
 
@@ -11768,6 +11972,16 @@ function initTouchControls() {
         // During gameplay Enter is a no-op, so stray taps cost nothing.
         const tapEnter = (e) => {
             if (e.target.closest && e.target.closest(".tc-btn")) return;
+            // A tap the boil switchboard claimed must not ALSO advance the game.
+            // pointerdown and touchstart are separate events, so stopPropagation
+            // over there can't do this for us — it has to be asked explicitly.
+            const t = e.touches && e.touches[0];
+            if (t) {
+                const r = canvas.getBoundingClientRect();
+                if (r.width && r.height && boilHitTest(
+                        (t.clientX - r.left) / r.width * COLS * TILE,
+                        (t.clientY - r.top) / r.height * ROWS * TILE)) return;
+            }
             sendKey("keydown", "Enter");
             sendKey("keyup", "Enter");
         };
@@ -11797,4 +12011,22 @@ function startGame() {
     }
     requestAnimationFrame(gameLoop);
 }
-if (assetsReady) startGame();
+
+// Canvas does NOT wait for a web font: it silently draws in the fallback and
+// carries on. That would be cosmetic if we painted every frame, but warpedText
+// bakes each string into three canvases and caches them, so a string drawn one
+// frame too early keeps its fallback glyphs for the rest of the session.
+// So: ask for both faces first, start regardless if they're slow, and throw the
+// text cache away once they land.
+function startWhenFontsReady() {
+    const go = () => { try { startGame(); } catch (e) { console.error(e); } };
+    if (!document.fonts || !document.fonts.load) { go(); return; }
+    const wanted = [`${12 * SCALE}px ${FONT_DISP}`, `${5 * SCALE}px ${FONT_BODY}`];
+    Promise.race([
+        Promise.all(wanted.map(f => document.fonts.load(f, "BUZZ"))),
+        new Promise(res => setTimeout(res, 2500)),   // never block the game on a font
+    ]).catch(() => {}).then(go);
+    // Belt and braces: anything baked before the faces arrived gets re-baked.
+    document.fonts.ready.then(() => { try { TEXT_WARPS.clear(); } catch (e) {} });
+}
+if (assetsReady) startWhenFontsReady();

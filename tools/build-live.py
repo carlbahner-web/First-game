@@ -13,19 +13,31 @@ from PIL import Image
 ROOT = "/home/user/First-game"
 OUT = sys.argv[1] if len(sys.argv) > 1 else "/tmp/live/groove-goblins.html"
 
+# Files that are already in their final form. Re-encoding a .woff2 as WebP would
+# be nonsense, and the grain tile is a hand-tuned WebP whose mark size is the
+# whole point — a second lossy pass is exactly what it must not get.
+VERBATIM = {".woff2": "font/woff2", ".webp": "image/webp"}
+
 table, raw, enc = {}, 0, 0
 for dirpath, _, files in os.walk(os.path.join(ROOT, "assets")):
     for fn in sorted(files):
-        if not fn.lower().endswith((".png", ".jpg", ".jpeg")):
-            continue
+        ext = os.path.splitext(fn)[1].lower()
         path = os.path.join(dirpath, fn)
         key = os.path.relpath(path, ROOT).replace(os.sep, "/")
-        im = Image.open(path)
-        buf = io.BytesIO()
-        im.save(buf, "WEBP", quality=90, method=6)
-        raw += os.path.getsize(path)
-        enc += buf.tell()
-        uri = "data:image/webp;base64," + base64.b64encode(buf.getvalue()).decode()
+        if ext in VERBATIM:
+            data = open(path, "rb").read()
+            raw += len(data)
+            enc += len(data)
+            uri = "data:%s;base64,%s" % (VERBATIM[ext], base64.b64encode(data).decode())
+        elif ext in (".png", ".jpg", ".jpeg"):
+            im = Image.open(path)
+            buf = io.BytesIO()
+            im.save(buf, "WEBP", quality=90, method=6)
+            raw += os.path.getsize(path)
+            enc += buf.tell()
+            uri = "data:image/webp;base64," + base64.b64encode(buf.getvalue()).decode()
+        else:
+            continue
         table[key] = uri
         if key.lower() != key:
             table[key.lower()] = uri
@@ -62,11 +74,15 @@ html = """<style>
   }
   #game { display:block; }
   #hud  { position:absolute; left:0; bottom:0; width:100%%; }
+  /* Paper grain: its own canvas, sized to its CSS box and filled 1:1, so the
+     pattern is never stretched. See the note in game.js. */
+  #grain { position:absolute; left:0; top:0; width:100%%; height:100%%; pointer-events:none; }
   @media (prefers-reduced-motion: reduce) { canvas { transition:none; } }
 </style>
 <div id="game-container">
   <canvas id="game"></canvas>
   <canvas id="hud"></canvas>
+  <canvas id="grain"></canvas>
 </div>
 <script>
 window.__ASSETS = {
