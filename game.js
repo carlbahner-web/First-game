@@ -2533,13 +2533,6 @@ window.addEventListener("keydown", (e) => {
         return;
     }
 
-    // Toggle game mode on title screen with left/right arrows
-    if (gameState === "title" && !titleFadingOut) {
-        if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
-            gameMode = gameMode === "thrill" ? "chill" : "thrill";
-        }
-    }
-
     if (e.code === "Enter") {
         e.preventDefault();
         if (gameState === "sabotage-anim") return; // ignore input during animations
@@ -8234,47 +8227,42 @@ function drawTitleMarquee(sinkY) {
     // sized to leave that strip clear of the HUD band.
     // Two lines, 8 units apart, whether they sit on the plate or on the floor.
     const onArt = !!TITLE_ART.face;
-    // Back ON the art. The board now reaches from the ceiling lamps to the HUD,
-    // so there is no floor strip left to put this on — and the reference does
-    // exactly this anyway, sitting its two buttons on the illustration. It gets
-    // a plate so it reads against a busy background.
-    const modeY = onArt ? y0 + MQ.h - 20 : y0 + MQ.h - 13;
+    // ONE BUTTON, sized to its own type. There is no mode selector any more, and
+    // the plate is no longer a reader board that has to hold two lines — so it
+    // shrinks to the measured width of the word plus a little padding, which is
+    // what lets it sit in the clear strip UNDER BUZZ's feet at the bottom of the
+    // card instead of covering his shoes.
+    // No blink. It was inherited from a prompt that was bare text; now that it
+    // is a solid plate, blinking flashes the whole button off and on, which
+    // reads as a glitch. The reference's button just sits there.
     if (onArt && !titleFadingOut) {
-        const pw = 76, ph = 20, px = cx - pw / 2, py = modeY - 8;
+        const label = "PRESS ENTER";
+        const fs = 5;
+        ctx.font = gfont(fs * S);
+        const tw = ctx.measureText(label).width / S;
+        const pw = tw + 11, ph = fs + 5.5;
+        const px = cx - pw / 2, py = y0 + MQ.h - MQ.pad - ph - 1.5;
         ctx.fillStyle = "rgba(20,20,19,0.5)";
-        roundRectPath(px + 2, py + 2.5, pw, ph, 3);
+        roundRectPath(px + 1.6, py + 2, pw, ph, 2.5);
         ctx.fill();
         // Mustard, not cream. A cream plate on a cream illustration half
         // vanishes; the reference's primary button is yellow for the same
-        // reason. Mustard is also the palette's action colour.
+        // reason, and mustard is the palette's action colour.
         ctx.fillStyle = INK.mustard;
-        roundRectPath(px, py, pw, ph, 3);
+        roundRectPath(px, py, pw, ph, 2.5);
         ctx.fill();
         ctx.strokeStyle = INK.charcoal;
         ctx.lineWidth = 0.9 * S;
         ctx.stroke();
-    }
-    if (!onArt) drawRect(x0 + 9, y0 + MQ.h - 20, MQ.w - 18, 16, INK.charcoal);
-    if (!titleFadingOut) {
-        const modeLabel = gameMode === "thrill" ? "THRILL MODE" : "CHILL MODE";
-        // mint is invisible on mustard; teal is the palette's other cool colour
-        // and reads at 6.35:1 against it
-        const modeCol = gameMode === "thrill" ? INK.rust
-                      : (onArt ? INK.teal : INK.mint);
-        const arrowPulse = REDUCED_MOTION ? 0.8 : 0.5 + Math.sin(titleBlink * 0.08) * 0.3;
-        ctx.globalAlpha = arrowPulse;
-        // Two arrows placed by offset, not one string padded with spaces — the
-        // padding only held them apart while everything was monospace.
-        const arrowCol = onArt ? INK.charcoal : INK.silverD;
-        centred("<", modeY, arrowCol, 5, -30);
-        centred(">", modeY, arrowCol, 5, 30);
-        ctx.globalAlpha = 1;
-        centred(modeLabel, modeY, modeCol, 5);
-        if (REDUCED_MOTION || titleBlink % 45 < 32) {
-            centred("PRESS ENTER", modeY + 8,
-                    onArt ? ((titleStep % 4 === 0) ? INK.rust : INK.charcoal)
-                          : ((titleStep % 4 === 0) ? INK.mustard : INK.silverL), 5);
-        }
+        ctx.fillStyle = INK.charcoal;
+        ctx.textAlign = "center";
+        ctx.fillText(label, cx * S, (py + ph - 2.2) * S);
+        ctx.textAlign = "start";
+    } else if (!onArt && !titleFadingOut) {
+        // the procedural sign keeps its reader board
+        drawRect(x0 + 9, y0 + MQ.h - 20, MQ.w - 18, 16, INK.charcoal);
+        centred("PRESS ENTER", y0 + MQ.h - 8,
+                (titleStep % 4 === 0) ? INK.mustard : INK.silverL, 5);
     }
 
     // ---- z2: THE LIGHT — gooseneck floodlights, IN FRONT of the face --------
