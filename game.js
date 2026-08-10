@@ -79,6 +79,25 @@ const INK = {
     alert:    "#FE3636", // DEADLY ONLY — never decorative (design bible)
 };
 
+// Every derived tone goes through here. The rule from the style doc is that
+// nothing outside the palette may hardcode a tone: a shade written as a literal
+// is orphaned the moment the palette moves, and this file had 208 distinct hex
+// literals against a nine-colour system when that was last counted.
+function mixC(a, b, t) {
+    const p = (h) => {
+        h = h.replace("#", "");
+        if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+    };
+    const [r1, g1, b1] = p(a), [r2, g2, b2] = p(b);
+    const m = (x, y) => Math.round(x + (y - x) * t).toString(16).padStart(2, "0");
+    return "#" + m(r1, r2) + m(g1, g2) + m(b1, b2);
+}
+// Shorthands for the two mixes that come up constantly: toward the ink, and
+// toward the paper.
+const darker = (c, t) => mixC(c, INK.charcoal, t);
+const lighter = (c, t) => mixC(c, INK.paper, t);
+
 // The boil clock + noise (verbatim from the coaster; amplitudes in device px)
 //
 // Every boiling surface exists as THREE baked copies and drawing is a swap —
@@ -2023,7 +2042,7 @@ function triggerPocketHit(row, col) {
     entourageCheer = 90;
     carlGlowBoost = 45;
     pocketRing = { x: (GRID_X + col) * TILE + TILE / 2, y: rowPixelY(row) + TILE / 2, timer: 30 };
-    deathText = { x: player.x - 26, y: player.y - 16, timer: 60, text: "IN THE POCKET!", color: "#FFD700", scale: 5 };
+    deathText = { x: player.x - 26, y: player.y - 16, timer: 60, text: "IN THE POCKET!", color: INK.mustard, scale: 5 };
     screenShake = 5;
     shakeIntensity = 2;
     for (const g of goblins) {
@@ -2999,8 +3018,8 @@ function update(dt) {
                     const deathOwTexts = ["OW MY SPLEEN!", "OW MY WEENIS!", "OW MY SKULL!", "OW MY FACE!", "OW MY EVERYTHING!"];
                     const deathOw = deathOwTexts[Math.floor(Math.random() * deathOwTexts.length)];
                     deathText = wasElite
-                        ? { x: hitGob.x - 40, y: hitGob.y - 12, timer: 120, text: "bro why you gotta stab me?", color: "#00FFFF", scale: 4 }
-                        : { x: hitGob.x - 20, y: hitGob.y - 8, timer: 60, text: deathOw, color: "#FF0044", scale: 5 };
+                        ? { x: hitGob.x - 40, y: hitGob.y - 12, timer: 120, text: "bro why you gotta stab me?", color: INK.mint, scale: 4 }
+                        : { x: hitGob.x - 20, y: hitGob.y - 8, timer: 60, text: deathOw, color: INK.red, scale: 5 };
 
                     if (wasElite) screenFlash = 15;
 
@@ -3082,7 +3101,7 @@ function update(dt) {
                         vx: (Math.random() - 0.5) * 4,
                         vy: (Math.random() - 0.5) * 4 - 1,
                         life: 10 + Math.random() * 10,
-                        color: Math.random() > 0.5 ? "#00FFFF" : "#ffffff",
+                        color: Math.random() > 0.5 ? INK.mint : "#ffffff",
                         size: 1 + Math.random() * 2,
                         sparkle: true,
                     });
@@ -3687,8 +3706,8 @@ function update(dt) {
                     vy: Math.sin(angle) * speed - 0.5,
                     life: wasElite ? 40 + Math.random() * 30 : 20 + Math.random() * 20,
                     color: wasElite
-                        ? (isSparkle ? "#00FFFF" : Math.random() > 0.3 ? "#c05838" : "#FF44FF")
-                        : (Math.random() > 0.3 ? "#50ad33" : "#00CC00"),
+                        ? (isSparkle ? INK.mint : Math.random() > 0.3 ? "#c05838" : INK.rust)
+                        : (Math.random() > 0.3 ? "#50ad33" : darker(INK.green, 0.3)),
                     size: 1 + Math.random() * 2,
                     sparkle: isSparkle,
                 });
@@ -3708,8 +3727,8 @@ function update(dt) {
                     vy: (Math.random() - 0.5) * spreadMul - 1.2,
                     life: wasElite ? 50 + Math.random() * 50 : 30 + Math.random() * 30,
                     color: wasElite
-                        ? (isSparkle ? "#00FFFF" : Math.random() > 0.3 ? "#c05838" : "#FF44FF")
-                        : (Math.random() > 0.5 ? "#50ad33" : Math.random() > 0.3 ? "#00CC00" : "#66FF44"),
+                        ? (isSparkle ? INK.mint : Math.random() > 0.3 ? "#c05838" : INK.rust)
+                        : (Math.random() > 0.5 ? "#50ad33" : Math.random() > 0.3 ? darker(INK.green, 0.3) : lighter(INK.green, 0.35)),
                     size: wasElite ? 2 + Math.random() * 4 : 2 + Math.random() * 3,
                     sparkle: isSparkle,
                 });
@@ -4185,7 +4204,7 @@ function drawCaveTorch(x, y) {
     // Outer flame (orange)
     drawRect(x + 5 + flicker2, y - 1, 5, 6, "#FF6600");
     // Inner flame (yellow)
-    drawRect(x + 6 + flicker, y, 3, 4, "#FFD700");
+    drawRect(x + 6 + flicker, y, 3, 4, INK.mustard);
     // Core (white-hot)
     drawRect(x + 7, y + 1, 1, 2, "#FFFACD");
     // Glow effect
@@ -4863,7 +4882,7 @@ function render() {
         // Eye gleam inside cave — always draw (gameplay indicator for goblin respawn)
         for (const g of goblins) {
             if (g.dead && g.respawnTimer < 60 && ci === g.spawnCave) {
-                const caveEyeCol = g.elite ? "#00FFFF" : "#50ad33";
+                const caveEyeCol = g.elite ? INK.mint : "#50ad33";
                 ctx.fillStyle = caveEyeCol;
                 ctx.beginPath();
                 ctx.arc((cx + 6) * SCALE, (cy + 6) * SCALE, 2 * SCALE, 0, Math.PI * 2);
@@ -5252,7 +5271,7 @@ function render() {
             // Flash between normal colors and white as it dissolves
             if (progress > 0.5 && Math.floor(g.deathAnimTimer) % 3 === 0) {
                 drawGoblinSprite(g.deathAnimElite ? "elite" : "normal", g.x, g.y, 0, {
-                    dir: g.dir, bodyCol: "#ffffff", darkCol: "#dddddd", headCol: "#ffffff", eyeCol: "#00FFFF"
+                    dir: g.dir, bodyCol: "#ffffff", darkCol: "#dddddd", headCol: "#ffffff", eyeCol: INK.mint
                 });
             } else {
                 drawGoblinFor(g);
@@ -5285,7 +5304,7 @@ function render() {
     // Death text
     if (deathText) {
         ctx.globalAlpha = Math.min(1, deathText.timer / 20);
-        drawText(deathText.text, deathText.x, deathText.y, deathText.color || "#FF0044", deathText.scale || 5);
+        drawText(deathText.text, deathText.x, deathText.y, deathText.color || INK.red, deathText.scale || 5);
         ctx.globalAlpha = 1.0;
     }
 
@@ -5295,7 +5314,7 @@ function render() {
         const prT = 1 - pocketRing.timer / 30; // 0→1
         const prX = pocketRing.x * SCALE;
         const prY = pocketRing.y * SCALE;
-        ctx.strokeStyle = "#FFD700";
+        ctx.strokeStyle = INK.mustard;
         ctx.lineWidth = 3 * SCALE;
         ctx.globalAlpha = (1 - prT) * 0.8;
         ctx.beginPath();
@@ -6059,20 +6078,20 @@ function drawMixer(mx, my) {
     ctx.arc((mx + 6) * SCALE, (my + 6) * SCALE, 1.5 * SCALE, 0, Math.PI * 2);
     ctx.fill();
     // Level meters (small circles)
-    ctx.fillStyle = "#00FF88";
+    ctx.fillStyle = INK.green;
     ctx.beginPath();
     ctx.arc((mx + 2) * SCALE, (my + 8.5) * SCALE, 1 * SCALE, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
     ctx.arc((mx + 6) * SCALE, (my + 8.5) * SCALE, 1 * SCALE, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#FF4400";
+    ctx.fillStyle = INK.rust;
     ctx.beginPath();
     ctx.arc((mx + 10) * SCALE, (my + 8.5) * SCALE, 1 * SCALE, 0, Math.PI * 2);
     ctx.fill();
 }
 
-const LIGHT_RIG_COLORS = ["#FF4400", "#F6CC60", "#00FF88", "#4488FF", "#FF44AA", "#F6CC60"];
+const LIGHT_RIG_COLORS = [INK.rust, "#F6CC60", INK.green, INK.teal, INK.red, "#F6CC60"];
 function drawLightRig(lx, ly, pump) {
     // Two vertical light arrays flanking the stage (left and right)
     // lx, ly is top-left reference (boothX - 8, boothY - 18)
@@ -6938,13 +6957,13 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
     if (opts.bodyCol) {
         bodyCol = opts.bodyCol; darkCol = opts.darkCol; headCol = opts.headCol; eyeCol = opts.eyeCol;
     } else if (type === "elite") {
-        bodyCol = "#c05838"; darkCol = "#CC00CC"; headCol = "#FF44FF"; eyeCol = "#00FFFF";
+        bodyCol = "#c05838"; darkCol = darker(INK.rust, 0.35); headCol = INK.rust; eyeCol = INK.mint;
     } else if (type === "catapult") {
         // Catapult crew: the one character still drawn procedurally, so it
         // gets the ink palette by hand until it earns real art
         bodyCol = INK.rust; darkCol = "#8c5326"; headCol = "#d59258"; eyeCol = INK.mustard;
     } else {
-        bodyCol = "#50ad33"; darkCol = "#00CC00"; headCol = "#66FF44"; eyeCol = "#c05838";
+        bodyCol = "#50ad33"; darkCol = darker(INK.green, 0.3); headCol = lighter(INK.green, 0.35); eyeCol = "#c05838";
     }
 
     // Screen-pixel base position
@@ -7167,7 +7186,7 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
     if (type === "catapult") {
         const shimmerPhase = (performance.now() / 100) % (Math.PI * 2);
         const shimmerAlpha = 0.15 + Math.sin(shimmerPhase) * 0.1;
-        ctx.fillStyle = "#00FFFF";
+        ctx.fillStyle = INK.mint;
         ctx.globalAlpha = shimmerAlpha;
         ctx.fillRect(sx, (sy - 18 * 1) - bob, 48, 60);
         ctx.globalAlpha = 1.0;
@@ -7188,7 +7207,7 @@ function drawCatapultGoblin() {
             const nPhase = (180 - cg.danceTimer + ni * 30) % 60;
             ctx.globalAlpha = (1 - nPhase / 60) * 0.9;
             ctx.font = gfont(5 * SCALE);
-            ctx.fillStyle = ni === 0 ? "#50ad33" : "#FFD700";
+            ctx.fillStyle = ni === 0 ? "#50ad33" : INK.mustard;
             ctx.fillText(ni === 0 ? "♪" : "♫",
                 (cg.x + (ni === 0 ? 1 : 11)) * SCALE,
                 (cg.y - 6 - nPhase * 0.3) * SCALE);
@@ -7319,18 +7338,18 @@ function drawGoblinFor(g) {
     // Color palette: elite changes color based on HP
     let bodyCol, darkCol, headCol, eyeCol;
     if (g.hurtTimer > 0 && g.hurtTimer % 4 < 2) {
-        bodyCol = "#ffffff"; darkCol = "#dddddd"; headCol = "#ffffff"; eyeCol = "#00FFFF";
+        bodyCol = "#ffffff"; darkCol = "#dddddd"; headCol = "#ffffff"; eyeCol = INK.mint;
     } else if (g.elite && g.windupTimer > 0 && g.windupTimer % 8 < 4) {
         // Punch telegraph: rapid white flash during wind-up
-        bodyCol = "#ffffff"; darkCol = "#ffdddd"; headCol = "#ffffff"; eyeCol = "#FF0000";
+        bodyCol = "#ffffff"; darkCol = "#ffdddd"; headCol = "#ffffff"; eyeCol = INK.red;
     } else if (!g.elite) {
-        bodyCol = "#50ad33"; darkCol = "#00CC00"; headCol = "#66FF44"; eyeCol = "#c05838";
+        bodyCol = "#50ad33"; darkCol = darker(INK.green, 0.3); headCol = lighter(INK.green, 0.35); eyeCol = "#c05838";
     } else if (g.hp === 3) {
-        bodyCol = "#c05838"; darkCol = "#CC00CC"; headCol = "#FF44FF"; eyeCol = "#00FFFF";
+        bodyCol = "#c05838"; darkCol = darker(INK.rust, 0.35); headCol = INK.rust; eyeCol = INK.mint;
     } else if (g.hp === 2) {
-        bodyCol = "#CC00CC"; darkCol = "#990099"; headCol = "#DD33DD"; eyeCol = "#FF3333";
+        bodyCol = darker(INK.rust, 0.35); darkCol = "#990099"; headCol = "#DD33DD"; eyeCol = "#FF3333";
     } else {
-        bodyCol = "#FF0044"; darkCol = "#CC0033"; headCol = "#FF3366"; eyeCol = "#00FFFF";
+        bodyCol = INK.red; darkCol = darker(INK.red, 0.3); headCol = lighter(INK.red, 0.25); eyeCol = INK.mint;
     }
 
     // GROOVED! Silly involuntary dance — hip-wobble, fast footwork, music notes
@@ -7359,7 +7378,7 @@ function drawGoblinFor(g) {
             const nPhase = (180 - g.danceTimer + ni * 30) % 60;
             ctx.globalAlpha = (1 - nPhase / 60) * 0.9;
             ctx.font = gfont(5 * SCALE);
-            ctx.fillStyle = ni === 0 ? "#50ad33" : "#FFD700";
+            ctx.fillStyle = ni === 0 ? "#50ad33" : INK.mustard;
             ctx.fillText(ni === 0 ? "♪" : "♫",
                 (g.x + (ni === 0 ? 1 : 11)) * SCALE,
                 (g.y - 6 - nPhase * 0.3) * SCALE);
@@ -7843,7 +7862,7 @@ function renderEnding() {
         const lightsAlpha = endingPhase === 0 ? Math.min(1, endingPiecesPlaced / 4) : 1;
         if (lightsAlpha > 0) {
             ctx.globalAlpha = lightsAlpha;
-            const bulbColors = ["#FF4400", "#F6CC60", "#00FF88", "#4488FF", "#FF44AA", "#F6CC60"];
+            const bulbColors = [INK.rust, "#F6CC60", INK.green, INK.teal, INK.red, "#F6CC60"];
             for (let c = 0; c < 18; c++) {
                 const bulbX = 2 * TILE + c * (TILE + 2);
                 const bulbY = TILE + 4;
@@ -8055,7 +8074,7 @@ function renderEnding() {
         drawDiscoBall(ballX, ballY);
 
         // Disco ball light reflections sweeping cave walls
-        const reflectionColors = ["#FF4400", "#F6CC60", "#00FF88", "#4488FF", "#FF44AA", "#FFD700",
+        const reflectionColors = [INK.rust, "#F6CC60", INK.green, INK.teal, INK.red, INK.mustard,
                                    "#FF6600", "#88FF44", "#44DDFF", "#FF88CC", "#AAFFEE", "#FFAA44"];
         for (let ri = 0; ri < 12; ri++) {
             const speed = 0.015 + (ri % 4) * 0.005;
@@ -8143,13 +8162,13 @@ function renderEnding() {
             if (endingTimer > 120 && endingTimer < 360) {
                 const capAlpha = endingTimer < 150 ? (endingTimer - 120) / 30 : endingTimer > 300 ? Math.max(0, 1 - (endingTimer - 300) / 60) : 1;
                 ctx.globalAlpha = capAlpha;
-                drawCentered("THE UNDERGROUND CAME ALIVE AGAIN.", caveH - 40, "#FFD700", 6);
+                drawCentered("THE UNDERGROUND CAME ALIVE AGAIN.", caveH - 40, INK.mustard, 6);
                 ctx.globalAlpha = 1;
             }
             if (endingTimer > 360) {
                 const capAlpha = Math.min(1, (endingTimer - 360) / 30);
                 ctx.globalAlpha = capAlpha;
-                drawCentered("BUT THIS TIME, EVERYONE WAS INVITED.", caveH - 40, "#00FF88", 6);
+                drawCentered("BUT THIS TIME, EVERYONE WAS INVITED.", caveH - 40, INK.green, 6);
                 ctx.globalAlpha = 1;
             }
         }
@@ -8170,7 +8189,7 @@ function renderEnding() {
             ctx.font = gfont(12 * SCALE);
             ctx.fillStyle = "#000";
             ctx.fillText("THE END", (caveW / 2) * SCALE + SCALE, (caveH / 3 + 1) * SCALE);
-            ctx.fillStyle = "#FFD700";
+            ctx.fillStyle = INK.mustard;
             ctx.fillText("THE END", (caveW / 2) * SCALE, (caveH / 3) * SCALE);
 
             // Final score
@@ -9986,8 +10005,8 @@ function renderIntro() {
         if (t >= aftermathStart) {
             const capAlpha = Math.min(1, (t - aftermathStart) / 30);
             ctx.globalAlpha = capAlpha;
-            drawCentered("THEY TORE THE SETUP APART AND DRAGGED IT", H - 50, "#FF4400", 5);
-            drawCentered("BACK INTO THE CAVES, PIECE BY PIECE.", H - 40, "#FF4400", 5);
+            drawCentered("THEY TORE THE SETUP APART AND DRAGGED IT", H - 50, INK.rust, 5);
+            drawCentered("BACK INTO THE CAVES, PIECE BY PIECE.", H - 40, INK.rust, 5);
             ctx.globalAlpha = 1;
         }
     }
@@ -10309,7 +10328,7 @@ function renderLevelComplete() {
             const pcText = "RECOVERED: THE " + pieceRecoveredThisLevel.toUpperCase() + "!";
             ctx.fillStyle = "#000000";
             ctx.fillText(pcText, (W * SCALE) / 2 + SCALE, (sy + 12) * SCALE);
-            ctx.fillStyle = "#FFD700";
+            ctx.fillStyle = INK.mustard;
             ctx.fillText(pcText, (W * SCALE) / 2, (sy + 11) * SCALE);
             ctx.globalAlpha = 1;
             ctx.font = gfont(8 * SCALE);
@@ -11208,7 +11227,7 @@ function renderEnemyWarning() {
     // Dark background with threat color tint by enemy type
     drawRect(0, 0, W, H, "#2C2C2A");
     // Threat color tint — subtle background hue based on enemy type
-    const threatCol = enemyWarningType === "normal" ? "#50ad33" : (enemyWarningType === "elite" ? "#c05838" : "#00FFFF");
+    const threatCol = enemyWarningType === "normal" ? "#50ad33" : (enemyWarningType === "elite" ? "#c05838" : INK.mint);
     const threatPulse = 0.03 + Math.sin(t * 0.06) * 0.02;
     ctx.fillStyle = threatCol;
     ctx.globalAlpha = threatPulse;
@@ -11249,7 +11268,7 @@ function renderEnemyWarning() {
 
     // Danger border effect — animated hazard stripes pulsing on edges
     const borderPulse = 0.3 + Math.sin(t * 0.1) * 0.2;
-    const borderCol = enemyWarningType === "normal" ? "#50ad33" : (enemyWarningType === "elite" ? "#c05838" : "#00FFFF");
+    const borderCol = enemyWarningType === "normal" ? "#50ad33" : (enemyWarningType === "elite" ? "#c05838" : INK.mint);
     const stripeW = 8; // stripe width in game pixels
     const borderThick = 4;
     const stripeOffset = (t * 0.5) % (stripeW * 2); // animation offset
@@ -11288,7 +11307,7 @@ function renderEnemyWarning() {
 
     } else if (enemyWarningType === "elite") {
         drawCenteredText("WARNING!", 30, "#c05838", 8);
-        drawCenteredText("ELITE GOBLIN", 55, "#FF44FF", 6);
+        drawCenteredText("ELITE GOBLIN", 55, INK.rust, 6);
         ctx.save();
         const cx_w = (W / 2) * SCALE;
         const cy_w = (80 + bobOffset + 8) * SCALE;
@@ -11298,12 +11317,12 @@ function renderEnemyWarning() {
         drawGoblinSprite("elite", W / 2 - 8, 80 + bobOffset, gobFrame, { showShadow: false });
         ctx.restore();
         drawCenteredText("BIGGER. MEANER. THIS ONE DOESN'T GO DOWN EASY.", 115, INK.mustard, 5);
-        drawCenteredText("THREE SOLID HITS TO PUT IT ON THE FLOOR.", 132, "#FF44FF", 5);
+        drawCenteredText("THREE SOLID HITS TO PUT IT ON THE FLOOR.", 132, INK.rust, 5);
         drawCenteredText("AND IT'S FAST.", 149, INK.mustard, 5);
 
     } else if (enemyWarningType === "catapult") {
         drawCenteredText("WARNING!", 30, "#c05838", 8);
-        drawCenteredText("CATAPULT GOBLIN", 55, "#00FFFF", 6);
+        drawCenteredText("CATAPULT GOBLIN", 55, INK.mint, 6);
         ctx.save();
         const cx_w = (W / 2) * SCALE;
         const cy_w = (80 + bobOffset + 8) * SCALE;
