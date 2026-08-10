@@ -113,10 +113,6 @@ const BOIL = {
     on: true, rate: 130, amp: 1.0, freeze: false, frozenPhase: 0,
     room: true, grid: true, chars: true, hud: true, text: true,
     grain: true, grainAlpha: 0.5,
-    // Whether the 96 cells re-ink TOGETHER (one hand redrawing the whole frame,
-    // which is what happens on paper) or staggered across the period. Off by
-    // default; on, it reads looser but less like a single drawing.
-    stagger: false,
 };
 try {
     const saved = localStorage.getItem("boilCfg");
@@ -148,11 +144,6 @@ function sjit(x, seed, amp) { return (vnoise(x, seed) - 0.5) * 2 * amp * BOIL.am
 // Phase-explicit jitter for pre-rendered boil variants (textures are baked
 // once per level in 3 phases, so they can't read the live clock)
 function pjit(x, seed, phase, amp) { return (vnoise(x, seed + phase * 7.31) - 0.5) * 2 * amp * BOIL.amp; }
-// How hard this particular tile was inked, 0.55x to 1.45x. A pool of tiles all
-// boiling by the same amount reads as one mechanism running 96 times; varying
-// the amplitude per tile is what makes it read as 96 separate drawings. Baked
-// into the tile, so it costs nothing at draw time.
-function inkPressure(seed) { return 0.55 + hashN(seed, 9.4) * 0.9; }
 
 // Stroke a wobbly hand-inked polyline through the given points (device px),
 // displacing each interior point by the live boil. Used for per-frame ink
@@ -919,39 +910,19 @@ function generateStoneTile(seed, baseColor, darkColor, highlightColor, opts) {
 // Generate stone tile for the grid — paper stone with a hand-inked
 // charcoal border. Static wonk, not boil: 96 repeating tiles boiling in
 // lockstep reads as strobe (coaster bible, the rail-ties lesson).
-function generateGridStoneTile(seed, biome, phase) {
+function generateGridStoneTile(seed, biome) {
     const gs = biome.gridStone;
-    const c = generateStoneTile(seed, gs.base, gs.dark, gs.hi, { mossColor: gs.moss });
-    const g = c.getContext('2d');
-    const size = TILE * SCALE;
-    g.strokeStyle = INK.charcoal;
-    g.globalAlpha = 0.8;
-    g.lineWidth = 2;
-    g.lineJoin = "round";
-    g.beginPath();
-    const corners = [[2, 2], [size - 2, 2], [size - 2, size - 2], [2, size - 2]];
-    // Ink pressure varies per tile. One shared amplitude across the pool made
-    // every cell breathe by exactly the same amount, which reads as a mechanism;
-    // a hand redraws some marks tightly and some loosely.
-    const amp = 1.6 * inkPressure(seed);
-    for (let e = 0; e < 4; e++) {
-        const [x1, y1] = corners[e], [x2, y2] = corners[(e + 1) % 4];
-        for (let s = 0; s <= 4; s++) {
-            const t = s / 4, x = x1 + (x2 - x1) * t, y = y1 + (y2 - y1) * t;
-            const px = x + pjit(seed * 0.13 + e * 97 + s * 29, 3.1, phase, amp);
-            const py = y + pjit(seed * 0.17 + e * 61 + s * 41, 4.7, phase, amp);
-            (e === 0 && s === 0) ? g.moveTo(px, py) : g.lineTo(px, py);
-        }
-    }
-    g.closePath();
-    g.stroke();
-    g.globalAlpha = 1;
-    return c;
+    // No border. Every tile used to close its own rectangle, so each boundary
+    // in the field carried TWO lines — one from the cell on each side — boiling
+    // independently of one another. At a glance that reads as tram-lines rather
+    // than as a ruled grid. The lattice is one set of lines now, drawn across
+    // the whole field by drawGridLattice.
+    return generateStoneTile(seed, gs.base, gs.dark, gs.hi, { mossColor: gs.moss });
 }
 
 // Generate an active grid tile — flat ink-wash fill in the row's color,
 // paper-white veins, and a hand-inked charcoal border (static wonk).
-function generateGlowTile(seed, glowColor, phase) {
+function generateGlowTile(seed, glowColor) {
     const size = TILE * SCALE;
     const c = document.createElement('canvas');
     c.width = size; c.height = size;
@@ -1000,25 +971,8 @@ function generateGlowTile(seed, glowColor, phase) {
     g.fillStyle = grad;
     g.fillRect(hx - hr, hy - hr, hr * 2, hr * 2);
 
-    // Hand-inked charcoal border, boiled per phase at this tile's own pressure
-    g.strokeStyle = INK.charcoal;
-    g.lineWidth = 2.5;
-    g.lineJoin = "round";
-    g.beginPath();
-    const gamp = 1.8 * inkPressure(seed);
-    const corners = [[innerPad, innerPad], [size - innerPad, innerPad], [size - innerPad, size - innerPad], [innerPad, size - innerPad]];
-    for (let e = 0; e < 4; e++) {
-        const [x1, y1] = corners[e], [x2, y2] = corners[(e + 1) % 4];
-        for (let s = 0; s <= 4; s++) {
-            const t = s / 4, x = x1 + (x2 - x1) * t, y = y1 + (y2 - y1) * t;
-            const px = x + pjit(seed * 0.11 + e * 97 + s * 29, 8.3, phase, gamp);
-            const py = y + pjit(seed * 0.19 + e * 61 + s * 41, 9.1, phase, gamp);
-            (e === 0 && s === 0) ? g.moveTo(px, py) : g.lineTo(px, py);
-        }
-    }
-    g.closePath();
-    g.stroke();
-
+    // No border here either — see generateGridStoneTile. A lit cell is a block
+    // of colour and the lattice is ruled over the top of it.
     return c;
 }
 
@@ -1164,70 +1118,34 @@ const gradCache = {};
 // Grid glow tiles (active blocks — per row color, multiple variants per row)
 const GLOW_COLORS = [INK.green, INK.mustard, INK.teal, INK.red, INK.silverD, INK.rust];
 // Grid tiles are noise, so a POOL of variants indexed by cell is visually
-// identical to one bake per cell — and it is what makes three phases affordable:
-// 16 variants x 3 phases x 2 states, against 576 canvases for one bake per cell.
+// identical to one bake per cell, at 32 canvases rather than 192.
 //
-// The pool alone is not enough, though, and getting this wrong is what made the
-// field read as one mechanism instead of 96 drawings. A cell's LOOK comes from
-// its variant and its MOTION from which of that variant's three phases it is
-// showing, so both have to be decided per cell:
+// The index is HASHED, not arithmetic. It used to be `(r*7 + c*5) % 8`, which
+// repeats every 8 columns in a 16-column grid, and the eye locks onto a repeat
+// at a fixed spacing long before it notices the tiles themselves.
 //
-//   * the variant index is hashed, not arithmetic. `(r*7 + c*5) % 8` repeats
-//     every 8 columns in a 16-column grid, and the eye locks onto a repeat at
-//     a fixed spacing long before it notices the tiles themselves.
-//   * the phase gets a per-cell OFFSET, so two cells sharing a variant are
-//     showing different drawings of it at any instant instead of being
-//     pixel-identical and wobbling in lockstep.
-//
-// WHICH drawing a cell shows and WHEN it flips are separate questions, and it
-// matters not to conflate them. On paper the whole frame is redrawn at once —
-// so by default every cell flips on the same tick — but each square is still a
-// DIFFERENT drawing on that frame. The offset gives us the second without
-// giving up the first. `stagger` is the other axis: it desynchronises the flip
-// instants as well, which reads looser but no longer like one sheet of paper.
+// There is no phase dimension here any more. The tiles carry no linework now —
+// only stone texture — so there was nothing in them for a phase to change, and
+// the three "phases" were three identical canvases. What boils is the lattice
+// ruled over the top of them, which is where the ink actually is.
 const GRID_VARIANTS = 16;
 const gridVariantTbl = [];   // [r][c] -> variant
-const cellPhaseOff = [];     // [r][c] -> 0..2, always applied
-const cellTimeOff = [];      // [r][c] -> ms into the cycle, applied only when staggering
-function buildCellPhaseTable() {
+function buildCellVariantTable() {
     for (let r = 0; r < GRID_ROWS; r++) {
         gridVariantTbl[r] = [];
-        cellPhaseOff[r] = [];
-        cellTimeOff[r] = [];
         for (let c = 0; c < GRID_COLS; c++) {
             gridVariantTbl[r][c] = Math.floor(hashN(r * 131.7 + c, 4.2) * GRID_VARIANTS) % GRID_VARIANTS;
-            // Independent hashes from the variant's, or look and motion would be
-            // correlated and the de-correlation would only be half done.
-            cellPhaseOff[r][c] = Math.floor(hashN(r * 57.3 + c * 2.1, 8.8) * 3) % 3;
-            cellTimeOff[r][c] = hashN(r * 19.7 + c * 3.3, 2.6) * 4;   // in whole cycles
         }
     }
 }
-buildCellPhaseTable();
+buildCellVariantTable();
 const gridVariant = (r, c) => gridVariantTbl[r][c];
-// The phase a given cell should show.
-const cellPhase = (r, c) => {
-    let base = boilPhase("grid");
-    if (BOIL.on && BOIL.grid && BOIL.stagger && !BOIL.freeze) {
-        base = BOIL_ORDER[Math.floor(perfNow / BOIL.rate + cellTimeOff[r][c]) % 4];
-    }
-    return (base + cellPhaseOff[r][c]) % 3;
-};
-const TEX_GRID_ON = [];   // [variant][phase]
-for (let v = 0; v < GRID_VARIANTS; v++) {
-    TEX_GRID_ON[v] = [];
-}
+const TEX_GRID_ON = [];   // [variant][row]
 function bakeGridOnTiles() {
     for (let v = 0; v < GRID_VARIANTS; v++) {
-        for (let ph = 0; ph < 3; ph++) {
-            TEX_GRID_ON[v][ph] = [];
-        }
-    }
-    for (let r = 0; r < GRID_ROWS; r++) {
-        for (let v = 0; v < GRID_VARIANTS; v++) {
-            for (let ph = 0; ph < 3; ph++) {
-                TEX_GRID_ON[v][ph][r] = generateGlowTile(r * 100 + v * 17 + 7777, GLOW_COLORS[r], ph);
-            }
+        TEX_GRID_ON[v] = [];
+        for (let r = 0; r < GRID_ROWS; r++) {
+            TEX_GRID_ON[v][r] = generateGlowTile(r * 100 + v * 17 + 7777, GLOW_COLORS[r]);
         }
     }
 }
@@ -1474,12 +1392,9 @@ function rebuildCaveTextures(levelIdx) {
         TEX_WALL_RIGHT[r] = generateCaveWallTile(LS + r * 83 + 444, (r * 11) % 3, biome);
     }
 
-    TEX_GRID_OFF = [];   // [variant][phase]
+    TEX_GRID_OFF = [];   // [variant]
     for (let v = 0; v < GRID_VARIANTS; v++) {
-        TEX_GRID_OFF[v] = [];
-        for (let ph = 0; ph < 3; ph++) {
-            TEX_GRID_OFF[v][ph] = generateGridStoneTile(LS + v * 17 + 9999, biome, ph);
-        }
+        TEX_GRID_OFF[v] = generateGridStoneTile(LS + v * 17 + 9999, biome);
     }
 
     TEX_GRID_WALL = buildGridWallTexture(biome, LS);
@@ -2729,6 +2644,58 @@ function getActiveRows() {
 // ---- Helper: pixel Y for a grid row ----
 function rowPixelY(r) {
     return (GRID_Y + r) * TILE + GRID_Y_OFFSET;
+}
+
+// The grid is RULED, not assembled out of bordered cells.
+//
+// Every tile used to close its own rectangle, which meant each internal
+// boundary carried two lines — one drawn by the cell on each side — wobbling
+// independently. Zoom in and it reads as tram-lines, not as a grid. So the
+// tiles carry no border at all and the lattice is drawn here: one continuous
+// line per boundary, running the full width or height of the field.
+//
+// This is the one place the game inks per frame rather than from a baked copy,
+// and it is worth it: ~24 short polylines against 96 tiles, and it means the
+// lattice does not need re-baking when the row count changes between levels.
+function drawGridLattice() {
+    if (!TEX_GRID_OFF.length) return;
+    const ar = getActiveRows();
+    const ph = boilPhase("grid");
+    const S = SCALE;
+    const x0 = GRID_X * TILE, y0 = rowPixelY(0);
+    ctx.save();
+    ctx.strokeStyle = INK.charcoal;
+    // The doubled per-cell borders this replaces were 2px each, so a boundary
+    // carried about 4px of ink. One line has to carry that weight on its own or
+    // the field reads as washed out rather than ruled.
+    ctx.lineWidth = 0.7 * S;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    // Sampled every half tile, so a line bends a few times along its length the
+    // way a ruled-by-hand line does — rather than being a straight edge with
+    // noise on it.
+    const SUB = 2;
+    for (let c = 0; c <= GRID_COLS; c++) {
+        const x = x0 + c * TILE;
+        ctx.beginPath();
+        for (let i = 0; i <= ar * SUB; i++) {
+            const y = y0 + (i / SUB) * TILE;
+            ctx.lineTo(x * S + pjit(c * 131 + i * 17, 2.7, ph, 1.5),
+                       y * S + pjit(c * 71 + i * 43, 5.3, ph, 0.7));
+        }
+        ctx.stroke();
+    }
+    for (let r = 0; r <= ar; r++) {
+        const y = y0 + r * TILE;
+        ctx.beginPath();
+        for (let i = 0; i <= GRID_COLS * SUB; i++) {
+            const x = x0 + (i / SUB) * TILE;
+            ctx.lineTo(x * S + pjit(r * 89 + i * 53, 6.1, ph, 0.7),
+                       y * S + pjit(r * 149 + i * 23, 3.9, ph, 1.5));
+        }
+        ctx.stroke();
+    }
+    ctx.restore();
 }
 
 // ---- Helper: tile Y of the bottom of the active grid ----
@@ -5104,19 +5071,14 @@ function render() {
             const bxs = bx * SCALE, bys = by * SCALE;
             const ts = TILE * SCALE;
 
-            // Which drawing of this cell to show. Per-cell, not global — see
-            // cellPhase: a single shared index made every cell of a variant
-            // pixel-identical and wobbling in lockstep.
-            const ph = cellPhase(r, c);
-
             if (on) {
                 // Draw glow tile (sprite with rotation, or pre-rendered fallback).
                 // NOTE: no draw-time shadowBlur here — the glow is baked into
                 // the tile art itself; shadowBlur per cell was a huge perf cost.
-                ctx.drawImage(TEX_GRID_ON[gridVariant(r, c)][ph][r], bxs, bys);
+                ctx.drawImage(TEX_GRID_ON[gridVariant(r, c)][r], bxs, bys);
             } else {
                 // Draw dark stone tile (sprite with rotation, or pre-rendered fallback)
-                ctx.drawImage(TEX_GRID_OFF[gridVariant(r, c)][ph], bxs, bys);
+                ctx.drawImage(TEX_GRID_OFF[gridVariant(r, c)], bxs, bys);
             }
 
             // Block toggle pop animation (scale + glow burst)
@@ -5190,6 +5152,8 @@ function render() {
             }
         }
     }
+
+    drawGridLattice();
 
     // Playhead with beat pulse on active blocks.
     // currentStep is the NEXT column to play (tickSequencer advances it right
@@ -11648,7 +11612,6 @@ const BOIL_ROWS = [
     ["4", "hud",     "hud"],
     ["5", "text",    "text"],
     ["6", "grain",   "grain"],
-    ["7", "stagger", "stagger"],
 ];
 // Amplitude is baked into every cached surface, so changing it has to throw
 // them all away — this is the one thing here that can silently go stale.
