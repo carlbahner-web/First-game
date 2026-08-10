@@ -8061,21 +8061,25 @@ const MQ = {
     // the card reads as a printed sheet MOUNTED IN A FRAME rather than as the
     // sign itself. That frame is what was missing.
     //
-    // The art is 128x72 = 1.7778, the card's aspect to four decimals, and the
-    // frame adds 7 a side. The board got SMALLER when it gained a frame, twice
-    // over: the lamp hoods have to clear the ceiling band at y=8, and the
-    // catwalk straddling the bottom edge has to stay above BUZZ's head at
-    // y=112 — at 97 tall it was cutting straight across his face.
-    w: 142, h: 86,
-    pad: 7,                // teal frame around the art
-    top: 18,
-    radius: 4,             // the board's rounded corners
-    legSpread: 46,         // half-distance between the leg tops
-    legSplay: 5,           // how far each foot kicks out — dead-vertical posts
+    // As big as the room allows. HEIGHT is the binding constraint, not width:
+    // the lamp hoods have to clear the ceiling band at y=8 and the feet have to
+    // land by the HUD at y=144, which leaves 17..123 for the board and 19 for
+    // the legs. Art 160x90 = 1.7778, the card's aspect to four decimals, with
+    // the frame adding 8 a side.
+    //
+    // It covers BUZZ, and that is correct — the billboard is drawn over the
+    // room, so he is standing BEHIND it with his feet showing below the frame.
+    w: 176, h: 106,
+    pad: 8,                // teal frame around the art
+    top: 17,
+    radius: 5,             // the board's rounded corners
+    legSpread: 56,         // half-distance between the leg tops
+    legSplay: 6,           // how far each foot kicks out — dead-vertical posts
                            // read as a diagram (billboard doc, section 8)
-    floorY: 136,           // where the feet land, just past BUZZ's own footing
-    overhang: 6,           // how far the truss projects past the board each side
-    lamps: 5,              // gooseneck floodlights along the top
+    floorY: 142,           // the feet land on the HUD band's edge, which is this
+                           // game's letterbox edge
+    overhang: 7,           // how far the truss projects past the board each side
+    lamps: 6,              // gooseneck floodlights along the top
 };
 
 // Path a rounded rect in LOGICAL units (roundRect itself takes device px, and
@@ -8219,26 +8223,46 @@ function drawTitleMarquee(sinkY) {
     // sized to leave that strip clear of the HUD band.
     // Two lines, 8 units apart, whether they sit on the plate or on the floor.
     const onArt = !!TITLE_ART.face;
-    // Pinned to the FLOOR, not to the sign. Below the board there is only a
-    // 4-unit gap before BUZZ's head, so the text cannot sit there; the strip
-    // between his feet and the HUD is clear, and being independent of the sign
-    // means it also stays put while the sign sinks past it.
-    const modeY = onArt ? ROWS * TILE - HUD_H - 11 : y0 + MQ.h - 13;
+    // Back ON the art. The board now reaches from the ceiling lamps to the HUD,
+    // so there is no floor strip left to put this on — and the reference does
+    // exactly this anyway, sitting its two buttons on the illustration. It gets
+    // a plate so it reads against a busy background.
+    const modeY = onArt ? y0 + MQ.h - 20 : y0 + MQ.h - 13;
+    if (onArt && !titleFadingOut) {
+        const pw = 76, ph = 20, px = cx - pw / 2, py = modeY - 8;
+        ctx.fillStyle = "rgba(20,20,19,0.5)";
+        roundRectPath(px + 2, py + 2.5, pw, ph, 3);
+        ctx.fill();
+        // Mustard, not cream. A cream plate on a cream illustration half
+        // vanishes; the reference's primary button is yellow for the same
+        // reason. Mustard is also the palette's action colour.
+        ctx.fillStyle = INK.mustard;
+        roundRectPath(px, py, pw, ph, 3);
+        ctx.fill();
+        ctx.strokeStyle = INK.charcoal;
+        ctx.lineWidth = 0.9 * S;
+        ctx.stroke();
+    }
     if (!onArt) drawRect(x0 + 9, y0 + MQ.h - 20, MQ.w - 18, 16, INK.charcoal);
     if (!titleFadingOut) {
         const modeLabel = gameMode === "thrill" ? "THRILL MODE" : "CHILL MODE";
-        const modeCol = gameMode === "thrill" ? INK.rust : INK.mint;
+        // mint is invisible on mustard; teal is the palette's other cool colour
+        // and reads at 6.35:1 against it
+        const modeCol = gameMode === "thrill" ? INK.rust
+                      : (onArt ? INK.teal : INK.mint);
         const arrowPulse = REDUCED_MOTION ? 0.8 : 0.5 + Math.sin(titleBlink * 0.08) * 0.3;
         ctx.globalAlpha = arrowPulse;
         // Two arrows placed by offset, not one string padded with spaces — the
         // padding only held them apart while everything was monospace.
-        centred("<", modeY, INK.silverD, 5, -44);
-        centred(">", modeY, INK.silverD, 5, 44);
+        const arrowCol = onArt ? INK.charcoal : INK.silverD;
+        centred("<", modeY, arrowCol, 5, -30);
+        centred(">", modeY, arrowCol, 5, 30);
         ctx.globalAlpha = 1;
         centred(modeLabel, modeY, modeCol, 5);
         if (REDUCED_MOTION || titleBlink % 45 < 32) {
             centred("PRESS ENTER", modeY + 8,
-                    (titleStep % 4 === 0) ? INK.mustard : INK.silverL, 5);
+                    onArt ? ((titleStep % 4 === 0) ? INK.rust : INK.charcoal)
+                          : ((titleStep % 4 === 0) ? INK.mustard : INK.silverL), 5);
         }
     }
 
