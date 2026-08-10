@@ -2711,7 +2711,14 @@ function drawGridLattice() {
     // exactly as before — and only which phase a point samples changes. Where a
     // live stretch meets a frozen one the line interpolates, so the wobble fades
     // out along its length instead of stopping at a visible join.
+    // Not boiling means STRAIGHT, not "frozen mid-wobble". A phase-0 sample is
+    // still a displacement — it just stops changing — so a dead line held a
+    // resting bend that read as a wonky line nobody was drawing. A dead point
+    // takes no displacement at all, so the run is ruler-straight and the ink
+    // only comes alive where something is happening. It also skips the noise
+    // entirely for the majority of points, which is most of the field.
     const litAt = (r, c) => r >= 0 && r < ar && c >= 0 && c < GRID_COLS && !!grid[r][c];
+    const gridBoils = BOIL.on && BOIL.grid;
     for (let c = 0; c <= GRID_COLS; c++) {
         const x = x0 + c * TILE;
         ctx.beginPath();
@@ -2720,10 +2727,10 @@ function drawGridLattice() {
             // the up-to-four cells this point touches: the rows either side of
             // it, in the columns either side of the boundary it runs along
             const rA = Math.floor((i - 0.5) / SUB), rB = Math.floor((i + 0.5) / SUB);
-            const ph = (litAt(rA, c - 1) || litAt(rA, c) || litAt(rB, c - 1) || litAt(rB, c))
-                ? live : 0;
-            ctx.lineTo(x * S + pjit(c * 131 + i * STEP, 2.7, ph, amp),
-                       y * S + pjit(c * 71 + i * 43, 5.3, ph, 0.7));
+            const wob = gridBoils &&
+                (litAt(rA, c - 1) || litAt(rA, c) || litAt(rB, c - 1) || litAt(rB, c));
+            ctx.lineTo(x * S + (wob ? pjit(c * 131 + i * STEP, 2.7, live, amp) : 0),
+                       y * S + (wob ? pjit(c * 71 + i * 43, 5.3, live, 0.7) : 0));
         }
         ctx.stroke();
     }
@@ -2733,10 +2740,10 @@ function drawGridLattice() {
         for (let i = 0; i <= GRID_COLS * SUB; i++) {
             const x = x0 + (i / SUB) * TILE;
             const cA = Math.floor((i - 0.5) / SUB), cB = Math.floor((i + 0.5) / SUB);
-            const ph = (litAt(r - 1, cA) || litAt(r, cA) || litAt(r - 1, cB) || litAt(r, cB))
-                ? live : 0;
-            ctx.lineTo(x * S + pjit(r * 89 + i * 53, 6.1, ph, 0.7),
-                       y * S + pjit(r * 149 + i * STEP, 3.9, ph, amp));
+            const wob = gridBoils &&
+                (litAt(r - 1, cA) || litAt(r, cA) || litAt(r - 1, cB) || litAt(r, cB));
+            ctx.lineTo(x * S + (wob ? pjit(r * 89 + i * 53, 6.1, live, 0.7) : 0),
+                       y * S + (wob ? pjit(r * 149 + i * STEP, 3.9, live, amp) : 0));
         }
         ctx.stroke();
     }
