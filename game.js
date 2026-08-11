@@ -1026,6 +1026,7 @@ const BIOMES = [
     { // Levels 1-5 → THE LEFT SPEAKER (soft mint, closest to plain paper)
         name: "THE WARM-UP ROOM",
         tagline: "WHERE THE GROOVE BEGINS",
+        art: "warm-up-room",   // assets/room/warm-up-room.png — see ROOM_ART
         floor: { base: mixC(INK.charcoal, INK.mint, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.mint, 0.17) },
         walls: [
             { base: "#BFCDC0", dark: "#93a89a", hi: "#e9eee9" },
@@ -1139,6 +1140,26 @@ let TEX_GRID_OFF = [];
 let TEX_GRID_WALL = null;
 let TEX_CAVE_BG = null;
 let texturesBuiltForLevel = -1;
+
+// ---- Hand-drawn rooms -----------------------------------------------------
+// A biome can supply a drawn room instead of the procedural cave. The art is
+// the whole floor plus the top and side walls, painted 1:1 into the 1600x800
+// room, and where it exists the procedural floor tiles and those three wall
+// bands are not drawn at all.
+//
+// The BOTTOM band is deliberately NOT the art's job, and this is the one part
+// worth not being clever about. The HUD prints on it, and its legibility was
+// measured against a pale wall: 7.66:1 under LEVEL, 6.99:1 under the score.
+// Measured against the first drawn room, charcoal type on what the art puts
+// there came out at 1.30:1 under the score — no contrast at all, because that
+// part of the picture is dark floor. So the game keeps painting its own bottom
+// band over whatever the art has down there, and the readout keeps the numbers
+// it was designed against. Art below y=720 will not be seen; that strip is the
+// HUD's.
+//
+// Keyed by biome, so rooms can arrive one at a time and every biome without one
+// simply stays a cave.
+const ROOM_ART = {};
 
 // Cached per-frame gradients (biome colors bake in — cleared on rebuild)
 const gradCache = {};
@@ -1274,34 +1295,43 @@ function buildCaveBgTexture(biome, LS) {
     g.fillStyle = INK.paper;
     g.fillRect(0, 0, w, h);
 
-    // Draw floor tiles
-    for (let r = 0; r < ROWS; r++) {
+    // A drawn room replaces the floor and the top and side walls in one go.
+    const art = biome.art ? ROOM_ART[biome.art] : null;
+
+    if (art) {
+        g.drawImage(art, 0, 0, w, h);
+    } else {
+        // Draw floor tiles
+        for (let r = 0; r < ROWS; r++) {
+            for (let col = 0; col < COLS; col++) {
+                g.drawImage(TEX_FLOOR[r][col], col * TILE * SCALE, r * TILE * SCALE);
+            }
+        }
+
+        // Top wall tiles
         for (let col = 0; col < COLS; col++) {
-            g.drawImage(TEX_FLOOR[r][col], col * TILE * SCALE, r * TILE * SCALE);
+            g.drawImage(TEX_WALL_TOP[col], col * TILE * SCALE, 0,
+                TILE * SCALE, WALL_TOP * SCALE);
+        }
+        // Left wall tiles — squashed into the half-tile band, same as the ceiling.
+        // Squashing rather than cropping keeps every tile's whole mark pattern; a
+        // crop would lop the right half off each one and the band would read as a
+        // column of sliced stones.
+        for (let r = 0; r < ROWS; r++) {
+            g.drawImage(TEX_WALL_LEFT[r], 0, r * TILE * SCALE,
+                WALL_SIDE * SCALE, TILE * SCALE);
+        }
+        // Right wall tiles, right-aligned against the room's edge
+        for (let r = 0; r < ROWS; r++) {
+            g.drawImage(TEX_WALL_RIGHT[r], (COLS * TILE - WALL_SIDE) * SCALE, r * TILE * SCALE,
+                WALL_SIDE * SCALE, TILE * SCALE);
         }
     }
 
-    // Top wall tiles
-    for (let col = 0; col < COLS; col++) {
-        g.drawImage(TEX_WALL_TOP[col], col * TILE * SCALE, 0,
-            TILE * SCALE, WALL_TOP * SCALE);
-    }
-    // Bottom wall tiles
+    // Bottom wall tiles, always — see the note on ROOM_ART. This band carries
+    // the HUD, so it is the game's to paint whether there is art or not.
     for (let col = 0; col < COLS; col++) {
         g.drawImage(TEX_WALL_BOT[col], col * TILE * SCALE, (ROWS - 1) * TILE * SCALE);
-    }
-    // Left wall tiles — squashed into the half-tile band, same as the ceiling.
-    // Squashing rather than cropping keeps every tile's whole mark pattern; a
-    // crop would lop the right half off each one and the band would read as a
-    // column of sliced stones.
-    for (let r = 0; r < ROWS; r++) {
-        g.drawImage(TEX_WALL_LEFT[r], 0, r * TILE * SCALE,
-            WALL_SIDE * SCALE, TILE * SCALE);
-    }
-    // Right wall tiles, right-aligned against the room's edge
-    for (let r = 0; r < ROWS; r++) {
-        g.drawImage(TEX_WALL_RIGHT[r], (COLS * TILE - WALL_SIDE) * SCALE, r * TILE * SCALE,
-            WALL_SIDE * SCALE, TILE * SCALE);
     }
 
     // Stalactites & stalagmites: positions rolled once per level, then
@@ -1353,11 +1383,19 @@ function buildCaveBgTexture(biome, LS) {
         const topY = WALL_TOP * SCALE, botY = (ROWS - 1) * TILE * SCALE;
         const hp = (y) => { const a = []; for (let x = 0; x <= w; x += 14) a.push([x, y]); return a; };
         const vp = (x) => { const a = []; for (let y = topY; y <= botY; y += 14) a.push([x, y]); return a; };
-        line(hp(topY), 11); line(hp(botY), 22);
-        line(vp(WALL_SIDE * SCALE), 33); line(vp((COLS * TILE - WALL_SIDE) * SCALE), 44);
+        // The boiling boundary is the inked edge of the CAVE. A drawn room has
+        // already inked its own top and side walls, so re-inking them there
+        // would double the line. The bottom edge still boils either way,
+        // because that band is still the game's.
+        if (!art) {
+            line(hp(topY), 11);
+            line(vp(WALL_SIDE * SCALE), 33);
+            line(vp((COLS * TILE - WALL_SIDE) * SCALE), 44);
+        }
+        line(hp(botY), 22);
 
-        // Stalagmites
-        for (let si = 0; si < smites.length; si++) {
+        // Stalagmites — cave dressing, so they stay out of a drawn room
+        for (let si = 0; si < (art ? 0 : smites.length); si++) {
             const sm = smites[si];
             const bx = sm.x * SCALE, by = (ROWS - 1) * TILE * SCALE, hh = sm.h * SCALE;
             const pts = [
@@ -1416,6 +1454,23 @@ function rebuildCaveTextures(levelIdx) {
     texturesBuiltForLevel = levelIdx;
 }
 rebuildCaveTextures(0);
+
+// Rooms load after that first bake, so a room that lands has to ask for another
+// one. Any biome without a file just stays a cave — onerror is the fallback,
+// not an error.
+for (const b of BIOMES) {
+    if (!b.art || ROOM_ART[b.art]) continue;
+    const im = new Image();
+    const slug = b.art;
+    im.onload = () => {
+        ROOM_ART[slug] = im;
+        if (currentBiome && currentBiome.art === slug) {
+            rebuildCaveTextures(Math.max(0, texturesBuiltForLevel));
+        }
+    };
+    im.onerror = () => {};
+    im.src = "assets/room/" + slug + ".png";
+}
 
 // ============================================================
 // END PROCEDURAL TEXTURE GENERATION
@@ -4815,7 +4870,11 @@ function render() {
     // (Room variety now comes from the biome system — each level regenerates
     // its textures with a unique seed and the zone's palette.)
 
-    // Cave openings (goblin spawn points) — skip structure if bg sprite has them painted in
+    // Spawn openings. The player has to be able to see where the Donks come
+    // from, so these are drawn whatever the room is — but the rocky lintel,
+    // sill, jambs and the four stalactite teeth are cave. In a drawn room the
+    // same opening is just a doorway: the hole, an inked edge, and the glow.
+    const roomArt = currentBiome && currentBiome.art ? ROOM_ART[currentBiome.art] : null;
     for (let ci = 0; ci < CAVES.length; ci++) {
         const cave = CAVES[ci];
         const cx = cave.tileX * TILE;
@@ -4828,6 +4887,13 @@ function render() {
                 ctx.beginPath();
                 ctx.roundRect(cx * SCALE, (cy - 2) * SCALE, TILE * SCALE, (TILE + 4) * SCALE, [6, 6, 2, 2]);
                 ctx.fill();
+                if (roomArt) {
+                    ctx.strokeStyle = INK.charcoal;
+                    ctx.lineWidth = 2.5;
+                    ctx.stroke();
+                }
+            }
+            if (!roomArt) {
                 ctx.fillStyle = "#4a4a45";
                 ctx.beginPath();
                 ctx.roundRect((cx - 2) * SCALE, (cy - 5) * SCALE, (TILE + 4) * SCALE, 4 * SCALE, [4, 4, 0, 0]);
@@ -4968,8 +5034,10 @@ function render() {
     const ar_lights = getActiveRows();
     const now_lights = performance.now();
     {
+    // The bioluminescent ceiling is a cave fixture. A drawn room has its own
+    // ceiling and its own light, so these stay in the cave.
     const topCaveCol = Math.floor(COLS / 2);
-    for (let c = 1; c < COLS - 1; c++) {
+    for (let c = 1; c < (currentBiome && currentBiome.art ? 1 : COLS - 1); c++) {
         if (c === topCaveCol) continue;
         const mushX = c * TILE + TILE / 2;
         const mushY = WALL_TOP - 3;   // recessed into the ceiling, not hung from it
@@ -5040,8 +5108,9 @@ function render() {
     }
     }
 
-    // Floor crystals along bottom wall — drum-synced glowing formations
-    for (let c = 1; c < COLS - 1; c++) {
+    // Floor crystals along the bottom wall — drum-synced glowing formations,
+    // and cave, so they stay in the cave like the ceiling above them.
+    for (let c = 1; c < (currentBiome && currentBiome.art ? 1 : COLS - 1); c++) {
         const crX = c * TILE + TILE / 2;
         const crBaseY = (ROWS - 1) * TILE + 2;
         const rowIdx = (c + 2) % ar_lights;
@@ -5321,7 +5390,7 @@ function render() {
         const tx = ttx * TILE;
         const ty = tty * TILE + GRID_Y_OFFSET;
         const pulse = 0.35 + Math.sin(performance.now() * 0.004) * 0.2;
-        const c = PAL.punch; // "#F6CC60"
+        const c = PAL.punch; // INK.green — mustard is the sequencer's colour
         const s = 2; // bracket stroke width
         const L = 5; // bracket arm length
         // Subtle filled highlight behind brackets
