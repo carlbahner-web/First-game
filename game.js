@@ -5453,6 +5453,21 @@ function render() {
         ctx.globalAlpha = 1.0;
     }
 
+    // ---- THE IMPACT LANDS HERE, and BUZZ is drawn after it ------------------
+    // A local shake is the room reacting to a hit, so it is applied to
+    // everything drawn so far — the floor, the sequencer, the Donks, the
+    // effects — and BUZZ goes down on top of it untouched. He stays planted and
+    // the room jolts around him, which reads as him hitting it rather than the
+    // camera being knocked about.
+    //
+    // The punch reticle is deliberately on the shaking side of this line: it
+    // marks a TILE, so it belongs to the room, not to him.
+    //
+    // Whole-screen shakes (dying, a boulder landing) still move everything
+    // including BUZZ — those are not his doing, and there the point is that he
+    // is not in control.
+    if (screenShake > 0 && shakeAt) applyLocalShake(shakeSX, shakeSY);
+
     // Persistent amber/gold glow under Carl's feet — flares up on groove hits.
     // Gradient is cached at unit radius and scaled via transform.
     {
@@ -5565,10 +5580,9 @@ function render() {
     if (biomeBannerTimer > 0) biomeBannerTimer--;
 
 
-    if (screenShake > 0) {
-        if (shakeAt) applyLocalShake(shakeSX, shakeSY);
-        else ctx.restore();
-    }
+    // The local shake already ran, further up, before BUZZ was drawn. All that
+    // is left here is closing the whole-screen one's translate.
+    if (screenShake > 0 && !shakeAt) ctx.restore();
 }
 
 // Draw at screen-pixel resolution (1:1) — for high-detail 48x48 sprites
