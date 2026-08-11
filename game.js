@@ -77,7 +77,9 @@ const RIG = SCALE / 4;
 const WALL_TOP = TILE / 2;
 const WALL_SIDE = TILE / 2;
 const GRID_Y_OFFSET = 0;   // no offset needed with centered layout
-const DOOR_TILE_Y = Math.floor(ROWS / 2); // exit door on the right wall
+// The row BUZZ enters a new room on. It was the exit door's row; there is no
+// exit door now, but the middle of the wall is still where you walk in.
+const DOOR_TILE_Y = Math.floor(ROWS / 2);
 // (gap row after kick removed)
 
 // ============================================================
@@ -1133,12 +1135,6 @@ function biomeForLevel(levelIdx) {
 }
 let currentBiome = BIOMES[0];
 
-// The colour of the biome's wall, which is also the colour of anything cut
-// into that wall.
-function biomeWallColor() {
-    return (currentBiome && currentBiome.walls && currentBiome.walls[0].base) || INK.mint;
-}
-
 
 // ---- Texture atlas (rebuilt per level — every room gets its own layout & biome) ----
 let TEX_FLOOR = [];
@@ -1335,10 +1331,12 @@ function buildCaveBgTexture(biome, LS) {
         }
     }
 
-    // Bottom wall tiles, always — see the note on ROOM_ART. This band carries
-    // the HUD, so it is the game's to paint whether there is art or not.
-    for (let col = 0; col < COLS; col++) {
-        g.drawImage(TEX_WALL_BOT[col], col * TILE * SCALE, (ROWS - 1) * TILE * SCALE);
+    // Bottom wall tiles — only where there is no drawing. A drawn room paints
+    // its own band and the HUD prints straight onto it.
+    if (!art) {
+        for (let col = 0; col < COLS; col++) {
+            g.drawImage(TEX_WALL_BOT[col], col * TILE * SCALE, (ROWS - 1) * TILE * SCALE);
+        }
     }
 
     // Stalactites & stalagmites: positions rolled once per level, then
@@ -1396,10 +1394,10 @@ function buildCaveBgTexture(biome, LS) {
         // because that band is still the game's.
         if (!art) {
             line(hp(topY), 11);
+            line(hp(botY), 22);
             line(vp(WALL_SIDE * SCALE), 33);
             line(vp((COLS * TILE - WALL_SIDE) * SCALE), 44);
         }
-        line(hp(botY), 22);
 
         // Stalagmites — cave dressing, so they stay out of a drawn room
         for (let si = 0; si < (art ? 0 : smites.length); si++) {
@@ -2025,7 +2023,6 @@ let entourageCheer = 0;   // frames the fan entourage throws its arms up
 let carlGlowBoost = 0;    // frames of amplified amber glow after a YEAH
 
 // ---- Room progression: exit door + fan entourage ----
-let doorOpen = false;         // pattern restored — right-wall door unbarred
 // entourageCheer survives as a flourish timer on YEAH / IN THE POCKET;
 // the conga line it used to animate is gone.
 
@@ -2264,8 +2261,9 @@ const SABOTAGE_FRAMES_PER_CELL = 2;  // 2 frames/cell at 90fps
 // After scrambling the grid the goblin bolts through the right door and
 // slams it shut — that's why the exit is barred until the beat is restored.
 let thiefCarriedPiece = null; // DJ piece the thief runs off with on milestone levels
-let doorBarsDown = true;      // false while the thief is still in the room (pre-slam)
-let doorSlamFx = 0;           // impact frames after the slam (dust + bar drop)
+// The thief still bolts out of the room after scrambling the grid; what is
+// gone is the door he used to slam behind him, and the bars and padlock that
+// kept the exit shut until the pattern was restored.
 
 // ---- Biome banner ("~ THE AMBER LOUNGE ~") ----
 let biomeBannerTimer = 0;
@@ -2608,7 +2606,9 @@ window.addEventListener("keydown", (e) => {
             titleFadeTimer = 0;
             return;
         }
-        if (gameState === "levelcomplete" && levelCelebrateTimer > 120) {
+        // 120 + the 45-frame hold, so the panel still gets its full two seconds
+        // on screen before a key can skip past it.
+        if (gameState === "levelcomplete" && levelCelebrateTimer > 165) {
             // (Kidnap mini-levels retired — DJ pieces are now awarded directly
             // in triggerLevelComplete at milestone levels)
             // Show all feature screens (instruments + enemy warnings) before advancing
@@ -2885,7 +2885,7 @@ function update(dt) {
     }
 
     // Level countdown timer
-    if (levelTimer > 0 && !doorOpen) { // clock stops once the beat is restored
+    if (levelTimer > 0 && !levelComplete) { // clock stops once the beat is restored
         levelTimer--;
         if (levelTimer <= 0) {
             // Level 30: timer expiry triggers ending, not game over
@@ -3349,13 +3349,8 @@ function update(dt) {
 
     if (entourageCheer > 0) entourageCheer--;
 
-    // Walk through the open door to finish the level
-    if (doorOpen && !levelComplete &&
-        Math.round(p.x / TILE) === COLS - 2 &&
-        Math.round(p.y / TILE) === DOOR_TILE_Y) {
-        triggerLevelComplete();
-        return;
-    }
+    // (The walk-to-the-exit check lived here. The level now ends the instant
+    // the pattern lands, so there is nothing left to walk to.)
 
     // Update all goblins (multiple concurrent)
     const maxGobs = getMaxGoblins();
@@ -3381,7 +3376,7 @@ function update(dt) {
         // loop body: dead goblins still need their death-poof timer (at the
         // loop tail) to tick, or a goblin killed mid-flee freezes on poof
         // frame zero and looks stuck in place.
-        if (!doorOpen) {
+        if (!levelComplete) {
         gob.respawnTimer--;
         if (gob.respawnTimer <= 0) {
             // Every 6th goblin is a catapult goblin instead of normal/elite (from L15+)
@@ -3470,7 +3465,7 @@ function update(dt) {
             }
         }
         } // end else (non-catapult spawn)
-        } // end if (!doorOpen)
+        } // end if (!levelComplete)
     } else if (gob.danceTimer > 0) {
         // GROOVED! Involuntary dance break — can't move, sabotage, or punch
         gob.danceTimer--;
@@ -3998,9 +3993,6 @@ function resetGame() {
     catapultSpawnedThisCycle = false;
 
     // Reset room progression + entourage
-    doorOpen = false;
-    doorBarsDown = true;   // level 1 starts with the door already slammed
-    doorSlamFx = 0;
     thiefCarriedPiece = null;
     biomeBannerTimer = 300; // announce the first biome when gameplay starts
     biomeBannerPending = false;
@@ -4073,38 +4065,26 @@ function tryCompleteLevelOrWait() {
         patternMatched = false;
         return;
     }
-    // Pattern restored — the goblins flee in terror and the exit door opens.
-    // The level completes when Carl walks through it.
-    openDoor();
+    // Pattern restored. The level ends HERE, on the beat it is finished —
+    // there is no exit door to walk to any more. Getting it right was the
+    // achievement; making the player then trudge across the room to a door put
+    // a chore between the win and the reward, and left the best moment in the
+    // game happening somewhere the player was not looking.
+    celebrateBeatRestored();
+    triggerLevelComplete();
 }
 
-function openDoor() {
-    if (doorOpen) return;
-    doorOpen = true;
+// The burst on the beat landing: the room cheers, the Donks bolt, the fanfare
+// plays. It used to be the door opening; it is now the win itself.
+function celebrateBeatRestored() {
     entourageCheer = 120;
     deathText = { x: player.x - 28, y: player.y - 18, timer: 90, text: "BEAT RESTORED!", color: "#50ad33", scale: 5 };
     playLevelFanfare();
-    // Goblins can't stand the finished groove — they bolt for their caves
-    for (const g of goblins) {
-        if (!g.dead) {
-            g.fleeing = true;
-            g.danceTimer = 0;
-            g.windupTimer = 0;
-            g.gloatTimer = 0;
-            g.targetRow = -1;
-            const fleeBase = currentLevel < LEVELS.length ? LEVELS[currentLevel].goblinSpeed : 0.5;
-            g.speed = fleeBase * 1.8; // panic sprint
-        }
-    }
-    // Catapult crew packs up too (unless a boulder is already mid-air —
-    // the firing branch handles its own retreat after impact)
-    if (catapultGoblin && catapultGoblin.phase !== "firing" && catapultGoblin.phase !== "retreating") {
-        catapultGoblin.danceTimer = 0;
-        catapultGoblin.phase = "retreating";
-        const cgCave = CAVES[catapultGoblin.caveIndex];
-        catapultGoblin.destX = cgCave.tileX === 0 ? TILE : cgCave.tileX === COLS - 1 ? (COLS - 2) * TILE : cgCave.tileX * TILE;
-        catapultGoblin.destY = Math.max(TILE, Math.min((ROWS - 2) * TILE, cgCave.tileY * TILE));
-    }
+    // The Donks used to be sent fleeing for their caves here, and the catapult
+    // crew told to pack up. Both are gone: triggerLevelComplete runs on the
+    // very next line and clears the room outright, so nothing ever got a frame
+    // to flee in. That code only made sense while the level continued after the
+    // pattern landed, and it does not any more.
 }
 
 function playLevelFanfare() {
@@ -4312,9 +4292,7 @@ function advanceLevel() {
         }
     }
 
-    // Enter the new room through the left-side archway (we exited the
-    // previous room through the right door)
-    doorOpen = false;
+    // Enter the new room through the left-hand doorway
     player.x = TILE * 2;
     player.y = DOOR_TILE_Y * TILE;
     player.destX = player.x;
@@ -4377,8 +4355,6 @@ function advanceLevel() {
     // then bolts through the right door and slams it behind itself)
     sabotageAnimTimer = 0;
     sabotageFlipIndex = 0;
-    doorBarsDown = false; // door hangs open until the thief slams it
-    doorSlamFx = 0;
     thiefCarriedPiece = (MINIGAME_LEVELS.includes(currentLevel) && djSetupEarned.length < DJ_SETUP_PIECES.length)
         ? DJ_SETUP_PIECES[djSetupEarned.length] : null;
     gameState = "sabotage-anim";
@@ -4737,7 +4713,16 @@ function renderHUD() {
     const margin = TILE;
     const numSize = 9;                  // display face — the numbers
     const labSize = 4;                  // body face — the words
-    const baseY = HUD_H / 2 + numSize * 0.42;
+    // The band the type sits on is no longer always the game's own. In a drawn
+    // room the wall the HUD prints on is part of the picture, and in the first
+    // one it starts 7.4 units down the 16-unit lane rather than at the top of
+    // it — so type centred in the lane straddled the floor/wall join and half
+    // of every numeral landed on dark boards. 14.5 puts the whole run, offset
+    // shadow included, inside the drawn band: measured 8.38:1 across all three
+    // readouts, against 4.9 / 1.4 / 5.0 before.
+    const baseY = (currentBiome && currentBiome.art)
+        ? 14.5
+        : HUD_H / 2 + numSize * 0.42;
 
     const label = (text, x, align) => {
         hudCtx.font = fbody(labSize * SCALE);
@@ -4882,38 +4867,30 @@ function render() {
     // (Room variety now comes from the biome system — each level regenerates
     // its textures with a unique seed and the zone's palette.)
 
-    // Spawn openings. The player has to be able to see where the Donks come
-    // from, so these are drawn whatever the room is — but the rocky lintel,
-    // sill, jambs and the four stalactite teeth are cave. In a drawn room the
-    // same opening is just a doorway: the hole, an inked edge, and the glow.
+    // Spawn openings. A drawn room draws its own doorways, so the game draws
+    // none of its own — the Donks walk in through the ones in the picture,
+    // which is the whole point of having drawn them. The cave rooms still get
+    // a mouth, because nothing else in a plain wall band says where anything
+    // comes from.
+    //
+    // The EYE GLEAM below is outside this gate on purpose: it is not scenery,
+    // it is the tell that a Donk is about to respawn, and the player needs it
+    // in either kind of room.
     const roomArt = currentBiome && currentBiome.art ? ROOM_ART[currentBiome.art] : null;
     for (let ci = 0; ci < CAVES.length; ci++) {
         const cave = CAVES[ci];
         const cx = cave.tileX * TILE;
         const cy = cave.tileY * TILE;
 
-        {
+        if (!roomArt) {
             {
                 // Deep black cave hole
                 ctx.fillStyle = "#2C2C2A";
                 ctx.beginPath();
                 ctx.roundRect(cx * SCALE, (cy - 2) * SCALE, TILE * SCALE, (TILE + 4) * SCALE, [6, 6, 2, 2]);
                 ctx.fill();
-                if (roomArt) {
-                    // Charcoal on charcoal is not an opening, it is nothing:
-                    // the drawn room's floor measures 51 and this fill 44, so
-                    // the first pass at this was invisible and the player had
-                    // no idea where the Donks came from. Go genuinely dark for
-                    // the depth, then jamb it in the wall's own colour so it
-                    // reads as a door cut into that wall rather than a stain.
-                    ctx.fillStyle = darker(INK.charcoal, 0.55);
-                    ctx.fill();
-                    ctx.strokeStyle = biomeWallColor();
-                    ctx.lineWidth = 2.5;
-                    ctx.stroke();
-                }
             }
-            if (!roomArt) {
+            {
                 ctx.fillStyle = "#4a4a45";
                 ctx.beginPath();
                 ctx.roundRect((cx - 2) * SCALE, (cy - 5) * SCALE, (TILE + 4) * SCALE, 4 * SCALE, [4, 4, 0, 0]);
@@ -4975,77 +4952,12 @@ function render() {
         }
     }
 
-    // ---- Level-exit door (right wall) — barred until the beat is restored ----
-    {
-        // The door is cut through the wall, so it is as thick as the wall is:
-        // it spans the whole half-tile band and runs out to the room's edge,
-        // which is why its right corners are square and its left ones round.
-        const dW = WALL_SIDE;
-        const dX = COLS * TILE - dW;
-        const dY = (DOOR_TILE_Y - 1) * TILE + 6;
-        const dH = TILE * 2 - 8;
-        // Doorway recess
-        ctx.fillStyle = doorOpen ? "#dcedd2" : "#3a3a37";
-        ctx.beginPath();
-        ctx.roundRect(dX * SCALE, dY * SCALE, dW * SCALE, dH * SCALE, [8 , 0, 0, 8]);
-        ctx.fill();
-        // Hand-inked boiling outline around the doorway
-        {
-            const x0 = dX * SCALE, y0 = dY * SCALE, ww = dW * SCALE, hh = dH * SCALE;
-            const pts = [];
-            for (let xx = x0 + ww; xx >= x0; xx -= 10) pts.push([xx, y0]);
-            for (let yy = y0; yy <= y0 + hh; yy += 10) pts.push([x0, yy]);
-            for (let xx = x0; xx <= x0 + ww; xx += 10) pts.push([xx, y0 + hh]);
-            boilStroke(ctx, pts, 91.7, 2, INK.charcoal, 2.5);
-        }
-        if (doorOpen) {
-            // Glowing green interior
-            const doorPulse = 0.4 + Math.sin(performance.now() * 0.006) * 0.25;
-            ctx.globalAlpha = doorPulse;
-            ctx.fillStyle = "#50ad33";
-            ctx.beginPath();
-            ctx.roundRect((dX + 1.5) * SCALE, (dY + 3) * SCALE, (dW - 1.5) * SCALE, (dH - 6) * SCALE, [4, 0, 0, 4]);
-            ctx.fill();
-            ctx.globalAlpha = 1.0;
-            // Pulsing arrow pointing the way out
-            ctx.font = gfont(7 * SCALE);
-            ctx.textAlign = "center";
-            ctx.globalAlpha = 0.6 + Math.sin(performance.now() * 0.008) * 0.4;
-            ctx.fillStyle = "#50ad33";
-            ctx.fillText("→", (dX - 7) * SCALE, (DOOR_TILE_Y * TILE + 6) * SCALE);
-            ctx.globalAlpha = 1.0;
-            ctx.textAlign = "left";
-        } else if (doorBarsDown) {
-            // Wooden bars + padlock — bars slide down for a few frames after
-            // the thief slams the door at level start
-            const drop = doorSlamFx > 8 ? (doorSlamFx - 8) / 6 : 0;
-            ctx.fillStyle = "#5C3A1E";
-            for (let bi = 0; bi < 3; bi++) {
-                ctx.fillRect((dX + 1) * SCALE, (dY + 4 + bi * 8 - drop * dH) * SCALE, (dW - 2) * SCALE, 2.5 * SCALE);
-            }
-            if (doorSlamFx <= 8) {
-                ctx.fillStyle = "#F6CC60";
-                ctx.fillRect((dX + dW / 2 - 2) * SCALE, (dY + dH / 2 - 1) * SCALE, 4 * SCALE, 5 * SCALE);
-            }
-        }
-        // Dust puff from the slam
-        if (doorSlamFx > 0) {
-            const df = 14 - doorSlamFx;
-            ctx.fillStyle = "#b8a888";
-            for (let i = 0; i < 5; i++) {
-                const ang = Math.PI * 0.6 + i * 0.45;
-                const dist = 2 + df * (0.8 + i * 0.15);
-                const puffX = dX + dW / 2 + Math.cos(ang) * dist;
-                const puffY = DOOR_TILE_Y * TILE + 4 + Math.sin(ang) * dist * 0.6;
-                ctx.globalAlpha = (doorSlamFx / 14) * 0.5;
-                ctx.beginPath();
-                ctx.arc(puffX * SCALE, puffY * SCALE, (1.5 + df * 0.15) * SCALE, 0, Math.PI * 2);
-                ctx.fill();
-            }
-            ctx.globalAlpha = 1.0;
-            doorSlamFx--;
-        }
-    }
+    // The level-exit door is gone. It used to sit in the right wall, barred
+    // until the pattern was restored, and the level ended when BUZZ walked
+    // through it. The pattern landing IS the win now, so the door was a chore
+    // between the achievement and the reward — and the thief's slam, the bars,
+    // the padlock and the dust that went with it were all furniture for a
+    // mechanic that no longer exists.
 
     // Bioluminescent mushroom & crystal lights along cave ceiling — drum-synced
     // Skip when cave bg sprite is loaded (lights are painted into the background)
@@ -5501,19 +5413,8 @@ function render() {
         }
     }
 
-    // Door prompt when the beat is restored
-    if (doorOpen && !levelComplete) {
-        const blink = Math.floor(performance.now() / 400) % 2 === 0;
-        if (blink) {
-            ctx.font = gfont(6 * SCALE);
-            ctx.textAlign = "center";
-            ctx.fillStyle = "#000000";
-            ctx.fillText("THE DOOR IS OPEN! →", (COLS * TILE * SCALE) / 2 + SCALE, 14 * SCALE + SCALE);
-            ctx.fillStyle = "#50ad33";
-            ctx.fillText("THE DOOR IS OPEN! →", (COLS * TILE * SCALE) / 2, 14 * SCALE);
-            ctx.textAlign = "start";
-        }
-    }
+    // (The blinking "THE DOOR IS OPEN" prompt lived here. The beat landing ends
+    // the level, so there is nothing to prompt for.)
 
     // Ambient cave vignette — dark green-tinted edges (gradient cached)
     {
@@ -8591,24 +8492,36 @@ function renderLevelComplete() {
         currentStep = (currentStep + 1) % GRID_COLS;
     }
 
-    // Render the game map underneath, then fade to black over time
+    // Render the game map underneath, then fade to black over time.
+    //
+    // HOLD FIRST. The level now ends on the beat the pattern lands rather than
+    // when BUZZ reaches a door, so this is the moment the player just earned
+    // and it used to start dissolving on the very next frame. Three quarters of
+    // a second of the finished room, sitting there with the fanfare and the
+    // flash, before anything moves.
     render();
-    const fadeAlpha = Math.min(1, levelCelebrateTimer / 90);
+    // Everything after the hold runs on `ct`, not on the raw timer. Get that
+    // wrong and the panel's type starts fading up at frame 30 while the room is
+    // still fully lit behind it, which reads as a caption on the game rather
+    // than as the next screen arriving.
+    const HOLD = 45;
+    const ct = Math.max(0, levelCelebrateTimer - HOLD);
+    const fadeAlpha = Math.min(1, ct / 90);
     ctx.globalAlpha = fadeAlpha;
     drawRect(0, 0, COLS * TILE, ROWS * TILE, "#2C2C2A");
     ctx.globalAlpha = 1.0;
 
 
     // "LEVEL X COMPLETE!" text
-    if (levelCelebrateTimer > 30) {
-        const textAlpha = Math.min(1, (levelCelebrateTimer - 30) / 30);
+    if (ct > 30) {
+        const textAlpha = Math.min(1, (ct - 30) / 30);
         ctx.globalAlpha = textAlpha;
 
         const levelText = "LEVEL " + (currentLevel + 1);
         const completeText = "COMPLETE!";
         const textScale = 14;
         const ty = H / 2 - 30;
-        const bounce = Math.sin(levelCelebrateTimer * 0.05) * 2;
+        const bounce = Math.sin(ct * 0.05) * 2;
 
         // Draw centered using textAlign
         ctx.textAlign = "center";
@@ -8651,9 +8564,9 @@ function renderLevelComplete() {
         ctx.fillText(scoreText, (W * SCALE) / 2, sy * SCALE);
 
         // Piece recovery announcement at milestone levels
-        if (pieceRecoveredThisLevel && levelCelebrateTimer > 60) {
-            const pcAlpha = Math.min(1, (levelCelebrateTimer - 60) / 30);
-            const pcPulse = 1 + Math.sin(levelCelebrateTimer * 0.1) * 0.06;
+        if (pieceRecoveredThisLevel && ct > 60) {
+            const pcAlpha = Math.min(1, (ct - 60) / 30);
+            const pcPulse = 1 + Math.sin(ct * 0.1) * 0.06;
             ctx.globalAlpha = pcAlpha;
             ctx.font = gfont(Math.round(6 * SCALE * pcPulse));
             const pcText = "RECOVERED: THE " + pieceRecoveredThisLevel.toUpperCase() + "!";
@@ -8666,8 +8579,8 @@ function renderLevelComplete() {
         }
 
         // Narrative breadcrumb — brief one-liner about progress
-        if (levelCelebrateTimer > 90) {
-            const narrativeAlpha = Math.min(1, (levelCelebrateTimer - 90) / 40);
+        if (ct > 90) {
+            const narrativeAlpha = Math.min(1, (ct - 90) / 40);
             ctx.globalAlpha = narrativeAlpha;
             ctx.font = gfont(4 * SCALE);
             let narrative = "";
@@ -8700,7 +8613,7 @@ function renderLevelComplete() {
     // Firework bursts + confetti
     const fwColors = [INK.mustard, INK.teal, INK.rust, INK.green, INK.red, INK.mint, INK.silverL];
     // Launch new fireworks periodically — more frequent
-    if (levelCelebrateTimer % 18 === 0 && levelCelebrateTimer < 240) {
+    if (ct % 18 === 0 && ct < 240) {
         fireworks.push({
             x: W * 0.2 + Math.random() * W * 0.6,
             y: H + 5,
@@ -8759,7 +8672,7 @@ function renderLevelComplete() {
                 if (ep.life > 0) {
                     allDead = false;
                     ctx.globalAlpha = Math.min(1, ep.life / ep.maxLife);
-                    const twinkle = Math.sin(levelCelebrateTimer * 0.3 + ep.x) > 0.3;
+                    const twinkle = Math.sin(ct * 0.3 + ep.x) > 0.3;
                     const sz = twinkle ? ep.size * 1.5 : ep.size;
                     drawRect(ep.x, ep.y, sz, sz, ep.color);
                 }
@@ -8770,7 +8683,7 @@ function renderLevelComplete() {
     }
 
     // Confetti — varied shapes (rectangles, triangles, pennants)
-    if (levelCelebrateTimer % 5 === 0 && levelCelebrateTimer < 240) {
+    if (ct % 5 === 0 && ct < 240) {
         const confColors = [INK.mustard, INK.teal, INK.rust, INK.green, INK.red, INK.mint, INK.silverL];
         for (let ci = 0; ci < 4; ci++) {
             deathParticles.push({
@@ -8796,7 +8709,7 @@ function renderLevelComplete() {
         p.life--;
         if (p.life <= 0) { deathParticles.splice(ci, 1); continue; }
         ctx.globalAlpha = Math.min(1, p.life / 20);
-        const sz = p.sparkle && Math.sin(levelCelebrateTimer * 0.2 + ci) > 0 ? p.size * 1.5 : p.size;
+        const sz = p.sparkle && Math.sin(ct * 0.2 + ci) > 0 ? p.size * 1.5 : p.size;
         ctx.fillStyle = p.color;
         if (p.confShape === 1) {
             // Triangle
@@ -8822,13 +8735,13 @@ function renderLevelComplete() {
     ctx.globalAlpha = 1.0;
 
     // Start marching snare after fanfare finishes (~2s = 180 frames at 90fps)
-    if (levelCelebrateTimer === 180) {
+    if (ct === 180) {
         startStoryDrums();
     }
 
     // "PRESS ENTER" to continue
-    if (levelCelebrateTimer > 120) {
-        const blink = levelCelebrateTimer % 60 < 40;
+    if (ct > 120) {
+        const blink = ct % 60 < 40;
         if (blink) {
             const pressText = "PRESS ENTER TO CONTINUE";
             ctx.textAlign = "center";
@@ -9360,7 +9273,6 @@ function renderSabotageAnim() {
         if (sabotageCells.length === 0) {
             // Nothing to scramble (shouldn't happen) — just close the door and go
             if (t > 20) {
-                doorBarsDown = true;
                 if (biomeBannerPending) {
                     biomeBannerTimer = 300;
                     biomeBannerPending = false;
@@ -9377,8 +9289,11 @@ function renderSabotageAnim() {
         const last = sabotageCells[sabotageCells.length - 1];
         const startX = (GRID_X + last.c) * TILE;
         const startY = rowPixelY(last.r);
+        // The thief bolts out through the right-hand doorway — the same one
+        // the Donks come in by, because it is the one the room actually has.
+        const exitDoor = CAVES[CAVES.length - 1];
         const exitX = (COLS - 2) * TILE;
-        const exitY = DOOR_TILE_Y * TILE;
+        const exitY = exitDoor.tileY * TILE;
 
         if (tt >= 0 && tt <= THIEF_RUN) {
             // Sprint from the last scrambled cell to the door (smoothstep ease)
@@ -9413,8 +9328,6 @@ function renderSabotageAnim() {
 
             if (tt === THIEF_RUN) {
                 // SLAM! — bars drop, dust flies, the room shakes
-                doorBarsDown = true;
-                doorSlamFx = 14;
                 screenShake = 8;
                 shakeAt = null;
                 shakeIntensity = 4;
