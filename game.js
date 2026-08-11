@@ -4861,6 +4861,14 @@ const SHAKE_DECAY_P = 0.5;
 // intensity. Raise it for more punch, lower it for less; nothing else in the
 // shake needs touching to change how strong it feels.
 const SHAKE_GAIN = 1.6;
+// ...and one for how LONG it lasts. A punch was 5 frames, which is 83ms — over
+// before the eye has finished registering that it started, so it read as a
+// flinch rather than a hit however hard it was. Stretching it does not make it
+// stronger: the decay envelope is normalised to the shake's own length, so a
+// longer shake has the same peak and the same average, just more time to
+// travel through. Applied to LOCAL shakes only, the ones a punch makes; the
+// whole-screen ones (dying, a boulder landing) are already long.
+const SHAKE_STRETCH = 2.0;
 function applyLocalShake(sx, sy) {
     const R = Math.round(SHAKE_RADIUS * SCALE), d = R * 2;
     const cx = Math.round(shakeAt.x * SCALE), cy = Math.round(shakeAt.y * SCALE);
@@ -4943,7 +4951,14 @@ function render() {
         // stop dead, which is white noise with a hard cut — the harshest shape
         // a shake can have, and most of why it was uncomfortable rather than
         // punchy. Decaying it across its own lifetime makes it land and settle.
-        if (screenShake > shakeDur) shakeDur = screenShake;
+        // A shake that has just been triggered is the one frame where
+        // screenShake exceeds the length we were tracking, so this is where a
+        // new one gets stretched — once, centrally, rather than at the eleven
+        // places that set a duration.
+        if (screenShake > shakeDur) {
+            if (shakeAt) screenShake = Math.round(screenShake * SHAKE_STRETCH);
+            shakeDur = screenShake;
+        }
         const decay = shakeDur ? Math.pow(screenShake / shakeDur, SHAKE_DECAY_P) : 1;
         const amp = shakeIntensity * SCALE * decay * SHAKE_GAIN;
         shakeSX = (Math.random() - 0.5) * 2 * amp;
