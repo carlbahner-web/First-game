@@ -4845,6 +4845,22 @@ let shakeBuf = null, shakeOut = null, shakeSoft = null;
 // put 6.6px of blur through BUZZ, which reads as a smear rather than a hit.
 const SHAKE_RINGS = 12;
 const SHAKE_BLUR = 0.30;   // blur px per px of that ring's displacement
+// The inner 55% of the radius moves as a body at FULL strength, and only the
+// outside rolls off. A cosine falling from the centre pin looks right on paper
+// and was wrong in the hand: area-weighted, only 0.30 of the disc was really
+// moving, and multiplied by the decay envelope's 0.56 the whole effect landed
+// at 0.167 of what it replaced — six times weaker, which is why it went from
+// painful to invisible in one step. Nothing about the plateau brings back the
+// visible circle: the rim still reaches exactly zero, with zero slope.
+const SHAKE_PLATEAU = 0.55;
+// Decay exponent. 1.0 is a straight line, which spends most of the shake near
+// nothing; below 1 it holds high early and falls away late, so the hit lands
+// and then settles instead of fading from the first frame.
+const SHAKE_DECAY_P = 0.5;
+// One dial for how hard everything hits, on top of each trigger's own
+// intensity. Raise it for more punch, lower it for less; nothing else in the
+// shake needs touching to change how strong it feels.
+const SHAKE_GAIN = 1.6;
 function applyLocalShake(sx, sy) {
     const R = Math.round(SHAKE_RADIUS * SCALE), d = R * 2;
     const cx = Math.round(shakeAt.x * SCALE), cy = Math.round(shakeAt.y * SCALE);
@@ -4886,7 +4902,9 @@ function applyLocalShake(sx, sy) {
         for (let i = SHAKE_RINGS - 1; i >= 0; i--) {
             const r0 = R * i / SHAKE_RINGS, r1 = R * (i + 1) / SHAKE_RINGS;
             const t = (i + 0.5) / SHAKE_RINGS;
-            const f = 0.5 * (1 + Math.cos(Math.PI * t));   // 1 at the centre, 0 at the rim
+            // Flat at 1 across the plateau, then a raised cosine to 0 at the rim
+            const u = t <= SHAKE_PLATEAU ? 0 : (t - SHAKE_PLATEAU) / (1 - SHAKE_PLATEAU);
+            const f = 0.5 * (1 + Math.cos(Math.PI * u));
             // A ring that would move less than a third of a pixel is left
             // alone entirely. Drawing it anyway resamples the frame for no
             // visible motion, which only softens it — and doing that in the
@@ -4926,8 +4944,8 @@ function render() {
         // a shake can have, and most of why it was uncomfortable rather than
         // punchy. Decaying it across its own lifetime makes it land and settle.
         if (screenShake > shakeDur) shakeDur = screenShake;
-        const decay = shakeDur ? screenShake / shakeDur : 1;
-        const amp = shakeIntensity * SCALE * decay;
+        const decay = shakeDur ? Math.pow(screenShake / shakeDur, SHAKE_DECAY_P) : 1;
+        const amp = shakeIntensity * SCALE * decay * SHAKE_GAIN;
         shakeSX = (Math.random() - 0.5) * 2 * amp;
         shakeSY = (Math.random() - 0.5) * 2 * amp;
         if (!shakeAt) {
