@@ -9829,7 +9829,7 @@ function renderNewInstrument() {
 //
 // THE HARD RULE: never scale the pattern at fill time. A squeezed pattern
 // samples badly, reads as pixelation, and measured 2.5x slower. So the grain
-// does NOT live on the game canvas — that's a 1920x800 buffer the browser then
+// does NOT live on the game canvas — that's a 1600x800 buffer the browser then
 // shrinks to fit the window, which would drag the grain down with it and turn
 // 1px marks into mush. It gets its own canvas sized to the CSS pixel box it
 // actually occupies, filled 1:1, and repainted only when that box changes.

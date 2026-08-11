@@ -16,7 +16,7 @@
             font-family: monospace;
         }
         /* The HUD overlays the room's bottom wall band instead of sitting in
-           its own strip, so the page only has to fit the 1920x800 room. */
+           its own strip, so the page only has to fit the 1600x800 room. */
         #game-container {
             position: relative;
             line-height: 0;
@@ -27,11 +27,11 @@
         canvas {
             /* NOT `pixelated`: that forces nearest-neighbour at the final
                scale, and the canvas is almost never displayed at an integer
-               multiple of 1920 — so it was dropping or doubling pixel columns
+               multiple of 1600 — so it was dropping or doubling pixel columns
                at random across BUZZ's ink lines. He's hand-drawn art now, not
                a pixel-art sprite; he wants a real filter. */
             image-rendering: auto;
-            /* Scale to fit the window while preserving the room's 1920x800
+            /* Scale to fit the window while preserving the room's 1600x800
                aspect ratio. The internal resolution is unchanged — this is
                display scaling only. */
             width: min(calc(100vw - 16px), calc((100vh - 18px) * 2.0));
