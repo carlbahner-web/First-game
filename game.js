@@ -1133,6 +1133,13 @@ function biomeForLevel(levelIdx) {
 }
 let currentBiome = BIOMES[0];
 
+// The colour of the biome's wall, which is also the colour of anything cut
+// into that wall.
+function biomeWallColor() {
+    return (currentBiome && currentBiome.walls && currentBiome.walls[0].base) || INK.mint;
+}
+
+
 // ---- Texture atlas (rebuilt per level — every room gets its own layout & biome) ----
 let TEX_FLOOR = [];
 let TEX_WALL_TOP = [], TEX_WALL_BOT = [], TEX_WALL_LEFT = [], TEX_WALL_RIGHT = [];
@@ -1913,9 +1920,14 @@ const player = {
 };
 
 // ---- Caves (goblin spawn points) ----
+// One opening in each side wall. Row 2, not row 1, because the drawn room has
+// doorways cut into its side walls spanning tile rows 1.7 to 4.0 — a spawn a
+// row higher sat above them, so the Donks came through solid plaster while an
+// obvious door stood empty next to it. The cave biomes do not care which row
+// it is, so both use the drawing's.
 const CAVES = [
-    { tileX: 0, tileY: 1 },          // upper-left corner cave
-    { tileX: COLS - 1, tileY: 1 },   // upper-right corner cave
+    { tileX: 0, tileY: 2 },          // left doorway
+    { tileX: COLS - 1, tileY: 2 },   // right doorway
 ];
 
 // ---- Multiple Goblin System ----
@@ -4888,7 +4900,15 @@ function render() {
                 ctx.roundRect(cx * SCALE, (cy - 2) * SCALE, TILE * SCALE, (TILE + 4) * SCALE, [6, 6, 2, 2]);
                 ctx.fill();
                 if (roomArt) {
-                    ctx.strokeStyle = INK.charcoal;
+                    // Charcoal on charcoal is not an opening, it is nothing:
+                    // the drawn room's floor measures 51 and this fill 44, so
+                    // the first pass at this was invisible and the player had
+                    // no idea where the Donks came from. Go genuinely dark for
+                    // the depth, then jamb it in the wall's own colour so it
+                    // reads as a door cut into that wall rather than a stain.
+                    ctx.fillStyle = darker(INK.charcoal, 0.55);
+                    ctx.fill();
+                    ctx.strokeStyle = biomeWallColor();
                     ctx.lineWidth = 2.5;
                     ctx.stroke();
                 }
@@ -8091,34 +8111,24 @@ for (const [key, file] of [["face", "marquee-face.png"], ["logo", "marquee-logo.
 const REDUCED_MOTION = typeof window !== "undefined" && window.matchMedia
     ? window.matchMedia("(prefers-reduced-motion: reduce)").matches : false;
 
-// Marquee geometry, in logical units. Everything else derives from these.
+// Title card geometry, in logical units. Everything else derives from these.
 const MQ = {
-    // THE BOARD is w x h. The ART is inset by `pad` — the coaster's .bbSign is a
-    // teal board with 20px of padding and the cover image clipped inside it, so
-    // the card reads as a printed sheet MOUNTED IN A FRAME rather than as the
-    // sign itself. That frame is what was missing.
+    // It is a CARD now, not a billboard: no legs, no teal frame, no gooseneck
+    // lamps, no maintenance catwalk. All of that was structure whose job was to
+    // make a sign read as a physical object standing in the room, and the art
+    // does not need the help — it is a printed card laid over the room, and the
+    // only thing left holding it there is its own offset shadow.
     //
-    // As big as the room allows. HEIGHT is the binding constraint, not width:
-    // the lamp hoods have to clear the ceiling band at y=8, and the feet now
-    // reach the BOTTOM OF THE SCREEN rather than stopping at the HUD — the legs
-    // are drawn onto the HUD canvas as well, so they pass in front of it. That
-    // bought 16 units, all of which went into the board.
+    // 192x108 is exactly the art's 16:9 to four decimals, and exactly the size
+    // the card was drawn at inside the old frame — so losing the frame changed
+    // what is around the picture, not the picture. `top` moved 17 -> 25 for the
+    // same reason: 25 is where the card's own top edge already sat.
     //
-    // Art 192x108 = 1.7778, the card's aspect to four decimals, frame 8 a side.
-    //
-    // It covers BUZZ, and that is correct — the billboard is drawn over the
-    // room, so he is standing BEHIND it.
-    w: 208, h: 124,
-    pad: 8,                // teal frame around the art
-    top: 17,
-    radius: 5,             // the board's rounded corners
-    legSpread: 66,         // half-distance between the leg tops
-    legSplay: 7,           // how far each foot kicks out — dead-vertical posts
-                           // read as a diagram (billboard doc, section 8)
-    floorY: 157,           // the feet land at the very bottom of the screen,
-                           // in front of the HUD
-    overhang: 7,           // how far the truss projects past the board each side
-    lamps: 6,              // gooseneck floodlights along the top
+    // It covers BUZZ, and that is correct — the card is over the room, so he is
+    // standing behind it.
+    w: 192, h: 108,
+    top: 25,
+    radius: 4,             // the card's rounded corners
 };
 
 // Path a rounded rect in LOGICAL units (roundRect itself takes device px, and
@@ -8141,76 +8151,37 @@ function drawTitleMarquee(sinkY) {
     const x1 = x0 + MQ.w, y1 = y0 + MQ.h;
     const S = SCALE;
     ctx.save();
-    // No sway. The assembly used to swing about a hanging point a few degrees,
-    // which is what a suspended sign does; a billboard bolted to two legs in the
-    // ground does not move at all until it is struck.
+    // No sway, and now nothing to sway from. A card lying over the room has no
+    // pivot and no structure; the only thing that tells you it is a separate
+    // sheet is its offset shadow.
 
-    // ---- z0: STRUCTURE — drawn in full, about to be occluded ----------------
-    // It STANDS. This used to be two hanger rods from the ceiling, which is a
-    // marquee's anatomy, not a billboard's.
-    //
-    // The legs are drawn TWICE: once on the game canvas, and again on the HUD
-    // canvas with the origin shifted, because the HUD is a separate canvas
-    // stacked on top and anything on the game canvas is behind it. Drawing them
-    // again up there lets the legs pass IN FRONT of the HUD and reach the floor
-    // of the screen — which is what let the board grow.
-    const footY = MQ.floorY + sinkY;
-    const hudTop = ROWS * TILE - HUD_H;
-    const legPass = (g, yOff) => {
-        g.save();
-        g.strokeStyle = INK.charcoal;
-        g.lineCap = "round";
-        for (const side of [-1, 1]) {
-            const lx = cx + side * MQ.legSpread;
-            const fx = lx + side * MQ.legSplay;   // splayed: vertical posts read as a diagram
-            g.lineWidth = 2.4 * S;
-            g.beginPath();
-            g.moveTo((lx + jit(lx, 5, 0.3)) * S, (y1 - 14 - yOff) * S);
-            g.lineTo((fx + jit(fx + 40, 5, 0.3)) * S, (footY - yOff) * S);
-            g.stroke();
-            g.fillStyle = INK.charcoal;
-            g.fillRect((fx - 5) * S, (footY - 1.5 - yOff) * S, 10 * S, 2.5 * S);
-        }
-        // cross-brace between the legs, below the board
-        g.lineWidth = 1.2 * S;
-        g.beginPath();
-        const braceY = (y1 + footY) / 2 - yOff;
-        g.moveTo((cx - MQ.legSpread - 2) * S, (braceY + jit(cx, 7, 0.4)) * S);
-        g.lineTo((cx + MQ.legSpread + 2) * S, (braceY + jit(cx + 30, 7, 0.4)) * S);
-        g.stroke();
-        g.restore();
-    };
-    legPass(ctx, 0);
-
-    // ---- z1: THE FACE — opaque, occludes everything above -------------------
+    // ---- THE CARD ----------------------------------------------------------
     if (TITLE_ART.face) {
-        // Hard offset shadow first — the house style is a second printing pass
-        // slightly out of register, never a blur.
+        // Hard offset shadow — the house style is a second printing pass
+        // slightly out of register, never a blur. This is what is left of the
+        // billboard: it is the whole reason the card reads as sitting ON the
+        // room rather than being part of it.
         ctx.fillStyle = "rgba(20,20,19,0.55)";
         roundRectPath(x0 + 3, y0 + 4, MQ.w, MQ.h, MQ.radius);
         ctx.fill();
-        // the teal board
-        ctx.fillStyle = INK.teal;
-        roundRectPath(x0, y0, MQ.w, MQ.h, MQ.radius);
-        ctx.fill();
-        ctx.strokeStyle = INK.charcoal;
-        ctx.lineWidth = 1.2 * S;
-        ctx.stroke();
-        // the card, clipped into the frame's opening
-        const p = MQ.pad;
+        // the card itself, filling the whole footprint now that there is no
+        // frame to inset it from
         ctx.save();
-        roundRectPath(x0 + p, y0 + p, MQ.w - p * 2, MQ.h - p * 2, MQ.radius * 0.6);
+        roundRectPath(x0, y0, MQ.w, MQ.h, MQ.radius);
         ctx.clip();
-        ctx.drawImage(TITLE_ART.face, (x0 + p) * S, (y0 + p) * S,
-                      (MQ.w - p * 2) * S, (MQ.h - p * 2) * S);
+        ctx.drawImage(TITLE_ART.face, x0 * S, y0 * S, MQ.w * S, MQ.h * S);
         ctx.restore();
         ctx.strokeStyle = INK.charcoal;
-        ctx.lineWidth = 0.6 * S;
-        roundRectPath(x0 + p, y0 + p, MQ.w - p * 2, MQ.h - p * 2, MQ.radius * 0.6);
+        ctx.lineWidth = 0.8 * S;
+        roundRectPath(x0, y0, MQ.w, MQ.h, MQ.radius);
         ctx.stroke();
     } else {
-        // teal casing with a boiled charcoal keyline
-        ctx.fillStyle = INK.teal;
+        // No art: a plain cream card with a boiled charcoal keyline. The teal
+        // casing this used to sit in went with the frame.
+        ctx.fillStyle = "rgba(20,20,19,0.55)";
+        roundRectPath(x0 + 3, y0 + 4, MQ.w, MQ.h, MQ.radius);
+        ctx.fill();
+        ctx.fillStyle = INK.paper;
         ctx.beginPath();
         for (let i = 0; i <= 48; i++) {
             const t = i / 48, per = t * 4;
@@ -8227,13 +8198,6 @@ function drawTitleMarquee(sinkY) {
         ctx.strokeStyle = INK.charcoal;
         ctx.lineWidth = 2 * S;
         ctx.stroke();
-
-        // the cream sign face, inset in the casing
-        const px0 = x0 + 5, py0 = y0 + 5, pw = MQ.w - 10, ph = MQ.h - 10;
-        drawRect(px0, py0, pw, ph, INK.paper);
-        ctx.strokeStyle = INK.charcoal;
-        ctx.lineWidth = 1 * S;
-        ctx.strokeRect(px0 * S, py0 * S, pw * S, ph * S);
     }
 
     // ---- the lettering, on the face ----------------------------------------
@@ -8285,7 +8249,10 @@ function drawTitleMarquee(sinkY) {
         ctx.font = gfont(fs * S);
         const tw = ctx.measureText(label).width / S;
         const pw = tw + 11, ph = fs + 5.5;
-        const px = cx - pw / 2, py = y0 + MQ.h - MQ.pad - ph - 1.5;
+        // 1.5 units up from the card's bottom edge. That used to be measured
+        // from the frame's inner opening; with the frame gone the card IS the
+        // footprint, so the button lands in exactly the same place on the art.
+        const px = cx - pw / 2, py = y0 + MQ.h - ph - 1.5;
         ctx.fillStyle = "rgba(20,20,19,0.5)";
         roundRectPath(px + 1.6, py + 2, pw, ph, 2.5);
         ctx.fill();
@@ -8309,75 +8276,15 @@ function drawTitleMarquee(sinkY) {
                 (titleStep % 4 === 0) ? INK.mustard : INK.silverL, 5);
     }
 
-    // ---- z2: THE LIGHT — gooseneck floodlights, IN FRONT of the face --------
-    // Individual fixtures on stalks that rise from behind the board and bend
-    // over it, each throwing a soft cone DOWN the face. This was a marquee's
-    // bulb bar before, which is the wrong fixture for a billboard: the doc's
-    // lamp heads point down and carry a mustard lens on the underside, so the
-    // fitting reads as a fitting even before the beam is drawn.
-    for (let i = 0; i < MQ.lamps; i++) {
-        const lx = x0 + MQ.w * ((i + 0.5) / MQ.lamps);
-        const headY = y0 - 7;
-        // stalk: up from behind the board, then a gooseneck bend over the top
-        ctx.strokeStyle = INK.charcoal;
-        ctx.lineWidth = 0.7 * S;
-        ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo(lx * S, (y0 + 3) * S);
-        ctx.quadraticCurveTo(lx * S, (headY - 1) * S, (lx + 3) * S, headY * S);
-        ctx.stroke();
-        // hood, pointing down
-        ctx.fillStyle = INK.charcoal;
-        ctx.beginPath();
-        ctx.moveTo((lx - 1) * S, headY * S);
-        ctx.lineTo((lx + 7) * S, headY * S);
-        ctx.lineTo((lx + 5.5) * S, (headY + 3) * S);
-        ctx.lineTo((lx + 0.5) * S, (headY + 3) * S);
-        ctx.closePath();
-        ctx.fill();
-        // the mustard lens on the underside
-        drawRect(lx + 0.6, headY + 2.6, 4.8, 0.9, INK.mustard);
-        if (REDUCED_MOTION && i % 2) continue;
-        // and the beam it throws down the face — soft-edged, because a beam
-        // with a clean edge reads as a shape rather than as light
-        const bx = lx + 3, by = headY + 3.4;
-        const reach = MQ.h * 0.72;
-        const g = ctx.createLinearGradient(0, by * S, 0, (by + reach) * S);
-        g.addColorStop(0, "rgba(246,204,96,0.30)");
-        g.addColorStop(1, "rgba(246,204,96,0)");
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.moveTo((bx - 2.5) * S, by * S);
-        ctx.lineTo((bx + 2.5) * S, by * S);
-        ctx.lineTo((bx + 13) * S, (by + reach) * S);
-        ctx.lineTo((bx - 13) * S, (by + reach) * S);
-        ctx.closePath();
-        ctx.fill();
-    }
+    // The gooseneck floodlights and the maintenance catwalk that used to cross
+    // in front of the bottom edge are gone with the rest of the structure. Both
+    // existed to sell the sign as a lit, serviceable object in the room; a card
+    // is neither.
 
-    // The maintenance catwalk, straddling the bottom edge IN FRONT of the board
-    // — the doc's z2 walkway. It is what stops the board reading as a decal:
-    // something crosses in front of it.
-    const tw0 = x0 - MQ.overhang, tww = MQ.w + MQ.overhang * 2, tY = y1 - 2;
-    drawRect(tw0, tY, tww, 2.4, INK.charcoal);
-    drawRect(tw0, tY + 2.4, tww, 0.8, INK.silverD);
-    ctx.strokeStyle = INK.charcoal;
-    ctx.lineWidth = 0.5 * S;
-    ctx.beginPath();
-    for (let i = 0; i <= 14; i++) {          // railing posts along the deck
-        const px = tw0 + tww * (i / 14);
-        ctx.moveTo(px * S, tY * S);
-        ctx.lineTo(px * S, (tY - 3) * S);
-    }
-    ctx.moveTo(tw0 * S, (tY - 3) * S);
-    ctx.lineTo((tw0 + tww) * S, (tY - 3) * S);
-    ctx.stroke();
     ctx.restore();
-
-    // The second leg pass, onto the HUD canvas. It runs last so it is over the
-    // HUD's own drawing, and the canvas is only the bottom band, so the part of
-    // the leg above it is simply clipped away.
-    if (hudCtx) legPass(hudCtx, hudTop);
+    // The second leg pass onto the HUD canvas goes too. Its whole purpose was
+    // to let the legs cross IN FRONT of the readout on their way to the floor,
+    // and there are no legs.
 }
 
 function renderTitleScreen() {
@@ -8434,22 +8341,17 @@ function renderTitleScreen() {
         }
     }
 
-    // It flies, it does not fade. A hung sign leaves the way a theatre flat
-    // leaves — straight up into the grid. The distance is measured from the
-    // LOWEST part (the soffit and its bulbs), not the board, so nothing is left
-    // poking into frame for the last few frames.
+    // IT SINKS, IT DOES NOT FADE, and it only moves on the way OUT. It used to
+    // slide down into place over the first 34 frames, which is precisely what
+    // the coaster's billboard doc warns against: it puts the transition on the
+    // panel rather than on the exit, so the screen visibly assembles itself on
+    // first paint. Whatever is in the room was already there when you walked in.
     //
-    // AND IT ONLY MOVES ON THE WAY OUT. It used to slide down into place over
-    // the first 34 frames, which is precisely the thing the coaster's billboard
-    // doc warns against: it puts the transition on the panel rather than on the
-    // exit, so "the screen visibly slides into place on first paint". A sign
-    // that is hanging in the room was already hanging there when you walked in.
-    // IT SINKS, IT DOES NOT FADE — and a thing standing on legs sinks DOWNWARD,
-    // where a hung sign would fly up. The distance is measured from the topmost
-    // part (the lamp bar, not the board) so nothing is left poking above the
-    // frame for the last few frames.
+    // The travel is measured from the card's top edge, which is now the topmost
+    // thing there is — it used to allow 7 extra units for the lamp bar standing
+    // proud of the board, and there is no lamp bar.
     const flyEase = t => t * t * (3 - 2 * t);
-    const highest = MQ.top - 7;
+    const highest = MQ.top;
     const sinkY = titleFadingOut
         ? flyEase(Math.min(1, titleFadeTimer / TITLE_FADE_DURATION)) * (ROWS * TILE - highest + 10)
         : 0;
