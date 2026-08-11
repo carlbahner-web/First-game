@@ -1909,14 +1909,13 @@ const player = {
 };
 
 // ---- Caves (goblin spawn points) ----
-// One opening in each side wall. Row 2, not row 1, because the drawn room has
-// doorways cut into its side walls spanning tile rows 1.7 to 4.0 — a spawn a
-// row higher sat above them, so the Donks came through solid plaster while an
-// obvious door stood empty next to it. The cave biomes do not care which row
-// it is, so both use the drawing's.
+// One opening in each side wall. The drawn room cuts doorways into its side
+// walls spanning tile rows 1.7 to 4.0, so row 3 puts the Donks in the lower
+// half of the opening rather than clipping its top edge. The cave biomes do
+// not care which row it is, so both use the drawing's.
 const CAVES = [
-    { tileX: 0, tileY: 2 },          // left doorway
-    { tileX: COLS - 1, tileY: 2 },   // right doorway
+    { tileX: 0, tileY: 3 },          // left doorway
+    { tileX: COLS - 1, tileY: 3 },   // right doorway
 ];
 
 // ---- Multiple Goblin System ----
@@ -1995,6 +1994,10 @@ let shakeIntensity = 0;   // pixel magnitude of shake offset
 // the room — so punches set this and everything else (taking a hit, dying, a
 // boulder landing, the door slamming) leaves it null and shakes the lot.
 let shakeAt = null;
+// The longest this shake was going to run, so the offset can decay across it.
+// Tracked here rather than passed in, because every trigger site just writes
+// screenShake directly and only ever writes it UP.
+let shakeDur = 0;
 const SHAKE_RADIUS = 2 * TILE;   // two grid blocks, per Carl
 const playerCentre = () => ({ x: player.x + player.w / 2, y: player.y + player.h / 2 });
 let pendingShake = false;  // triggers shake after freeze ends
@@ -2903,7 +2906,7 @@ function update(dt) {
     }
 
     // Decrement screen shake
-    if (screenShake > 0) screenShake--;
+    if (screenShake > 0) { screenShake--; if (screenShake === 0) shakeDur = 0; }
 
     const p = player;
 
@@ -3999,6 +4002,7 @@ function resetGame() {
     deathText = null;
     screenFlash = 0;
     screenShake = 0;
+    shakeDur = 0;
     hitFreeze = 0;
     fireworks = [];
     playerDeathAnim.active = false;
@@ -4316,6 +4320,7 @@ function advanceLevel() {
     deathText = null;
     screenFlash = 0;
     screenShake = 0;
+    shakeDur = 0;
     hitFreeze = 0;
     levelComplete = false;
     patternMatched = false;
@@ -4807,34 +4812,107 @@ function renderHUD() {
 
 
 // ---- Render ----
-let shakeBuf = null;
-// Displace a feathered disc of the FINISHED frame instead of translating the
-// whole canvas. A hard-edged disc would announce itself as a circle; the
-// gradient mask lets the shifted copy fade back into the still frame at the rim,
-// so what you see is a jolt that dies off a couple of blocks out.
+let shakeBuf = null, shakeOut = null, shakeSoft = null;
+// Displace part of the FINISHED frame instead of translating the whole canvas,
+// so a hit rocks the room around the point of contact rather than throwing the
+// entire screen about.
+//
+// The impact ripples OUT from the point of contact instead of the whole disc
+// sliding sideways as one piece.
+//
+// The old version took a disc, shifted all of it by the same amount, and
+// feathered only the outer quarter of its ALPHA. Everything inside 72% of the
+// radius therefore moved in lockstep, which is what made a circular edge you
+// could see: a rigid puck of the room skidding over a still room. Feathering
+// the alpha does not help, because the thing that gives the edge away is the
+// discontinuity in MOTION, not in opacity.
+//
+// So the falloff moved from the alpha to the displacement itself. The disc is
+// redrawn as concentric rings, each shifted by a raised cosine of its own
+// radius: the centre takes the full jolt, the rim takes none at all and so
+// lands exactly on top of the frame already there — no seam to see, because
+// nothing at the boundary has moved.
+//
+// The blur is scaled by each ring's OWN displacement for the same reason. A
+// blur applied to the whole disc would soften the rim too, and a soft copy over
+// a sharp original is a halo — the circle back again by another route.
+// 12 rings, not 7. The ring count sets how big the displacement step is at the
+// outermost ring that still draws, and THAT step is the visible arc — at 7 the
+// last drawn ring still jumped 1.3px against the untouched frame beside it and
+// printed a clean circle at 0.86R. At 12 the step is under a fifth of a pixel.
+//
+// The blur is per px of displacement, and 0.55 was too much: at a 12px jolt it
+// put 6.6px of blur through BUZZ, which reads as a smear rather than a hit.
+const SHAKE_RINGS = 12;
+const SHAKE_BLUR = 0.30;   // blur px per px of that ring's displacement
 function applyLocalShake(sx, sy) {
     const R = Math.round(SHAKE_RADIUS * SCALE), d = R * 2;
     const cx = Math.round(shakeAt.x * SCALE), cy = Math.round(shakeAt.y * SCALE);
     if (!shakeBuf) shakeBuf = document.createElement("canvas");
     if (shakeBuf.width !== d) { shakeBuf.width = d; shakeBuf.height = d; }
+    if (!shakeOut) shakeOut = document.createElement("canvas");
+    if (shakeOut.width !== d) { shakeOut.width = d; shakeOut.height = d; }
+    if (!shakeSoft) shakeSoft = document.createElement("canvas");
+    if (shakeSoft.width !== d) { shakeSoft.width = d; shakeSoft.height = d; }
     const g = shakeBuf.getContext("2d");
+    const o = shakeOut.getContext("2d");
+    const b = shakeSoft.getContext("2d");
+    const mag = Math.hypot(sx, sy);
     mipping = true;   // these are raw blits; the mip/warp patch must not touch them
     try {
         g.setTransform(1, 0, 0, 1, 0, 0);
         g.clearRect(0, 0, d, d);
         g.drawImage(canvas, cx - R, cy - R, d, d, 0, 0, d, d);
-        // The opaque core is most of the disc, with only the outer quarter
-        // feathering out. At 0.4 the crossfade band was wide enough that the
-        // shifted copy and the still frame were both visible across it — it read
-        // as a ghost rather than as a jolt.
-        const grad = g.createRadialGradient(R, R, R * 0.72, R, R, R);
-        grad.addColorStop(0, "rgba(0,0,0,1)");
-        grad.addColorStop(1, "rgba(0,0,0,0)");
-        g.globalCompositeOperation = "destination-in";
-        g.fillStyle = grad;
-        g.fillRect(0, 0, d, d);
-        g.globalCompositeOperation = "source-over";
-        ctx.drawImage(shakeBuf, cx - R + sx, cy - R + sy);
+
+        // ONE blur, at the centre's strength, then each ring mixes towards it by
+        // its own displacement. Blurring per ring was the honest way to do it and
+        // it cost 31 fps — measured 25.4 with a shake held on against 56.7 with
+        // the filter taken out and everything else identical, so the twelve
+        // clipped blits are free and canvas filters are not. Mixing a sharp and a
+        // soft copy is not a true variable blur, but at these radii nothing in
+        // the picture can tell, and it is one filter call a frame instead of one
+        // per ring.
+        // Full resolution, and that IS the cheaper option: blurring at half size
+        // and scaling back up per ring measured 37.8 fps against 47.2 for this,
+        // because twelve smoothed upscales cost more than the blur they save.
+        b.setTransform(1, 0, 0, 1, 0, 0);
+        b.clearRect(0, 0, d, d);
+        b.filter = `blur(${(mag * SHAKE_BLUR).toFixed(2)}px)`;
+        b.drawImage(shakeBuf, 0, 0);
+        b.filter = "none";
+
+        o.setTransform(1, 0, 0, 1, 0, 0);
+        o.clearRect(0, 0, d, d);
+        for (let i = SHAKE_RINGS - 1; i >= 0; i--) {
+            const r0 = R * i / SHAKE_RINGS, r1 = R * (i + 1) / SHAKE_RINGS;
+            const t = (i + 0.5) / SHAKE_RINGS;
+            const f = 0.5 * (1 + Math.cos(Math.PI * t));   // 1 at the centre, 0 at the rim
+            // A ring that would move less than a third of a pixel is left
+            // alone entirely. Drawing it anyway resamples the frame for no
+            // visible motion, which only softens it — and doing that in the
+            // OUTERMOST ring is how a rim that should be invisible starts to
+            // show. Measured: disturbance outside the disc was ten times the
+            // old version's until this and the clamp below went in.
+            if (mag * f < 0.15) continue;
+            o.save();
+            o.beginPath();
+            // Rings overlap by a hair so they do not tile-gap, except the last,
+            // which stops dead on the radius. Nothing may be painted past it.
+            o.arc(R, R, i === SHAKE_RINGS - 1 ? r1 : r1 + 0.75, 0, Math.PI * 2);
+            if (r0 > 0) o.arc(R, R, r0, 0, Math.PI * 2, true);
+            o.clip();
+            // Sharp copy for the opaque base, then the soft one over it at the
+            // ring's own weight: the centre ends up fully soft, the rim fully
+            // sharp. An unsupported filter string is ignored rather than
+            // throwing, so a browser without canvas filters simply gets two
+            // copies of the sharp disc and the ripple runs unblurred.
+            o.drawImage(shakeBuf, sx * f, sy * f);
+            o.globalAlpha = f;
+            o.drawImage(shakeSoft, sx * f, sy * f);
+            o.globalAlpha = 1;
+            o.restore();
+        }
+        ctx.drawImage(shakeOut, cx - R, cy - R);
     } finally { mipping = false; }
 }
 
@@ -4843,8 +4921,15 @@ function render() {
     // with an origin is applied at the END of the frame instead — see below.
     let shakeSX = 0, shakeSY = 0;
     if (screenShake > 0) {
-        shakeSX = (Math.random() - 0.5) * 2 * shakeIntensity * SCALE;
-        shakeSY = (Math.random() - 0.5) * 2 * shakeIntensity * SCALE;
+        // The offset used to be re-rolled at FULL strength every frame and then
+        // stop dead, which is white noise with a hard cut — the harshest shape
+        // a shake can have, and most of why it was uncomfortable rather than
+        // punchy. Decaying it across its own lifetime makes it land and settle.
+        if (screenShake > shakeDur) shakeDur = screenShake;
+        const decay = shakeDur ? screenShake / shakeDur : 1;
+        const amp = shakeIntensity * SCALE * decay;
+        shakeSX = (Math.random() - 0.5) * 2 * amp;
+        shakeSY = (Math.random() - 0.5) * 2 * amp;
         if (!shakeAt) {
             ctx.save();
             ctx.translate(shakeSX, shakeSY);
@@ -8753,7 +8838,7 @@ function renderGameOverScreen() {
         // During freeze, just render the frozen game world + shake
         render();
 
-        if (screenShake > 0) screenShake--;
+        if (screenShake > 0) { screenShake--; if (screenShake === 0) shakeDur = 0; }
         return;
     }
 
@@ -9183,7 +9268,7 @@ function renderSabotageAnim() {
 
     sabotageAnimTimer++;
     const t = sabotageAnimTimer;
-    if (screenShake > 0) screenShake--; // update() isn't running in this state
+    if (screenShake > 0) { screenShake--; if (screenShake === 0) shakeDur = 0; } // update() isn't running in this state
 
     // Determine which cell the goblin is "at"
     const cellIndex = Math.floor(t / SABOTAGE_FRAMES_PER_CELL);
