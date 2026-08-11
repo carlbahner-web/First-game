@@ -127,26 +127,17 @@ const lighter = (c, t) => mixC(c, INK.paper, t);
 // coaster uses when it re-seeds its filters only on a phase flip, and it is why
 // turning the whole game's linework on costs nothing per frame.
 //
-// Sources are switchable independently because they are not equally good ideas:
-// dense repeating marks (the 96 grid cells) can read as strobe rather than as a
-// drawn line, which is why they were frozen in the first place. The debug menu
-// (backtick) is there to judge that rather than assume it.
-// Carl's settings off the switchboard, promoted from his localStorage to the
-// defaults so a fresh load — or anyone else opening the link — gets the same
-// game. The room, the HUD and the text are deliberately still: with grain on and
-// the linework boiling, everything moving at once was too much.
+// Sources are set independently because they are not equally good ideas: dense
+// repeating marks (the 96 grid cells) can read as strobe rather than as a drawn
+// line, which is why they were frozen to begin with. These are Carl's settings,
+// arrived at on a switchboard that has since been retired now that the judgement
+// is made. The room, the HUD and the text are deliberately still: with grain on
+// and the linework boiling, everything moving at once was too much.
 const BOIL = {
     on: true, rate: 130, amp: 0.7, freeze: false, frozenPhase: 0,
     room: false, grid: true, chars: true, hud: false, text: false,
     grain: true, grainAlpha: 0.56,
 };
-try {
-    const saved = localStorage.getItem("boilCfg");
-    if (saved) Object.assign(BOIL, JSON.parse(saved));
-} catch (e) { /* no storage, keep defaults */ }
-function saveBoilCfg() {
-    try { localStorage.setItem("boilCfg", JSON.stringify(BOIL)); } catch (e) {}
-}
 let perfNow = 0; // advanced once per frame in gameLoop
 // Three drawings, stepped 0,1,2,1 — a PING-PONG, not a cycle. Counting
 // 0,1,2,0,1,2 makes the wobble crawl in one direction, which is the giveaway
@@ -1520,7 +1511,7 @@ function ensureAudio() {
     if (audioCtx.state === "suspended") audioCtx.resume();
 }
 
-// Heavy CLANG for the thief slamming the level-exit door
+// Heavy CLANG as the thief hits the doorway on his way out
 function playDoorSlam() {
     if (!audioCtx || audioCtx.state !== "running") return;
     const now = audioCtx.currentTime;
@@ -2515,7 +2506,6 @@ window.addEventListener("keydown", (e) => {
     ensureAudio();
 
     // Feed single-char keys into cheat code buffer
-    if (e.key.length === 1 && handleBoilKey(e.key)) { e.preventDefault(); return; }
     if (e.key.length === 1) handleCheatCode(e.key);
 
     if (e.code === "Space") {
@@ -9327,7 +9317,10 @@ function renderSabotageAnim() {
             }
 
             if (tt === THIEF_RUN) {
-                // SLAM! — bars drop, dust flies, the room shakes
+                // The thief hits the doorway and is gone. No door to slam any
+                // more, but the impact is the punctuation on the scramble and
+                // the cue that the level has started, so the shake and the
+                // clang stay.
                 screenShake = 8;
                 shakeAt = null;
                 shakeIntensity = 4;
@@ -9773,165 +9766,14 @@ function paintGrain() {
     if (window.visualViewport) window.visualViewport.addEventListener("resize", paintGrain);
 })();
 
-// ---- Boil switchboard (backtick, or the corner button on touch) ----------
-// Not every source is equally good: the grid cells are 96 dense repeating marks
-// and boiling those can read as strobe rather than as a drawn line, which is
-// why they were frozen to begin with. Rather than decide that in the abstract,
-// every source is switchable and freeze pins the phase so you can see exactly
-// what each one contributes.
-let boilMenuOpen = false;
-const BOIL_ROWS = [
-    ["0", "master",  "on"],
-    ["1", "room",    "room"],
-    ["2", "lit cells", "grid"],
-    ["3", "buzz+donks", "chars"],
-    ["4", "hud",     "hud"],
-    ["5", "text",    "text"],
-    ["6", "grain",   "grain"],
-];
-// Amplitude is baked into every cached surface, so changing it has to throw
-// them all away — this is the one thing here that can silently go stale.
-function rebakeBoil() {
-    bakeGridOnTiles();
-    rebuildCaveTextures(currentLevel);
-    WARPS = new WeakMap();
-    TEXT_WARPS.clear();
-}
-function handleBoilKey(k) {
-    if (k === "`") { boilMenuOpen = !boilMenuOpen; return true; }
-    if (!boilMenuOpen) return false;
-    const row = BOIL_ROWS.find(r => r[0] === k);
-    if (row) {
-        BOIL[row[2]] = !BOIL[row[2]];
-        // The grain lives on its own canvas and is only painted on change, so
-        // its switch has to ask for a repaint — every other row is read live.
-        if (row[2] === "grain") paintGrain();
-        saveBoilCfg(); return true;
-    }
-    if (k === "f") { BOIL.freeze = !BOIL.freeze; saveBoilCfg(); return true; }
-    if (k === "p") { BOIL.frozenPhase = (BOIL.frozenPhase + 1) % 3; saveBoilCfg(); return true; }
-    if (k === "[" || k === "]") {
-        BOIL.rate = Math.max(40, Math.min(600, BOIL.rate + (k === "]" ? 10 : -10)));
-        saveBoilCfg(); return true;
-    }
-    if (k === "-" || k === "=") {
-        BOIL.amp = Math.max(0, Math.min(4, +(BOIL.amp + (k === "=" ? 0.1 : -0.1)).toFixed(2)));
-        saveBoilCfg(); rebakeBoil(); return true;
-    }
-    if (k === "," || k === ".") {
-        BOIL.grainAlpha = Math.max(0, Math.min(1, +(BOIL.grainAlpha + (k === "." ? 0.02 : -0.02)).toFixed(2)));
-        saveBoilCfg(); paintGrain(); return true;
-    }
-    return false;
-}
-
-// ---- The switchboard's geometry, in logical room units --------------------
-// Kept as data rather than baked into the draw code so the pointer path and the
-// renderer can never disagree about where a row is.
-const BOIL_UI = { x: 6, y: 6, w: 92, lh: 7, tabW: 26, tabH: 8, tabPad: 3 };
-const boilTabRect = () => [COLS * TILE - BOIL_UI.tabW - BOIL_UI.tabPad, BOIL_UI.tabPad,
-                           BOIL_UI.tabW, BOIL_UI.tabH];
-// Row i (0-based) of the panel body, counting the toggles then rate/amp/grain/freeze.
-const BOIL_EXTRA = ["rate", "amp", "grain", "freeze"];
-const boilPanelH = () => BOIL_UI.lh * (BOIL_ROWS.length + BOIL_EXTRA.length + 1) + 12;
-function boilRowY(i) { return BOIL_UI.y + 8 + BOIL_UI.lh + 2 + i * BOIL_UI.lh; }
-
-// Which control, if any, is under a point given in logical room units. Returns a
-// KEY, not an action — the pointer path then feeds it to handleBoilKey so there
-// is exactly one implementation of what every control does.
-function boilHitTest(px, py) {
-    const [tx, ty, tw, th] = boilTabRect();
-    if (px >= tx && px <= tx + tw && py >= ty && py <= ty + th) return "`";
-    if (!boilMenuOpen) return null;
-    const { x, y, w, lh } = BOIL_UI;
-    const h = boilPanelH();
-    if (px < x || px > x + w || py < y || py > y + h) return null;
-    const idx = Math.floor((py - (boilRowY(0) - lh + 2)) / lh);
-    const rows = BOIL_ROWS.length;
-    if (idx >= 0 && idx < rows) return BOIL_ROWS[idx][0];
-    const extra = BOIL_EXTRA[idx - rows];
-    if (!extra) return "`";                   // inside the panel, not on a row: close
-    // The value column doubles as a -/+ pair, split down its middle.
-    const minus = px < x + w - 15;
-    if (extra === "rate")   return minus ? "[" : "]";
-    if (extra === "amp")    return minus ? "-" : "=";
-    if (extra === "grain")  return minus ? "," : ".";
-    return minus ? "f" : "p";
-}
-
-function renderBoilUI() {
-    const S = SCALE;
-    ctx.save();
-    // If a render threw between a save() and its restore(), the context is still
-    // carrying that frame's transform or clip — and the switchboard would be
-    // drawn off-screen or clipped away exactly when something has gone wrong and
-    // you most want to reach it. Start from a known state.
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.globalCompositeOperation = "source-over";
-    ctx.textAlign = "start";
-    // The panel is an instrument, not part of the room — it stays monospace on
-    // purpose while everything else moves to the StudioLand faces.
-    ctx.font = `${4 * S}px monospace`;
-
-    // ---- the tab: the only thing on screen that says the menu exists --------
-    const [tx, ty, tw, th] = boilTabRect();
-    ctx.globalAlpha = boilMenuOpen ? 0.95 : 0.55;
-    ctx.fillStyle = INK.charcoal;
-    ctx.fillRect(tx * S, ty * S, tw * S, th * S);
-    ctx.strokeStyle = INK.mustard;
-    ctx.lineWidth = 0.6 * S;
-    ctx.strokeRect(tx * S, ty * S, tw * S, th * S);
-    ctx.fillStyle = INK.mustard;
-    ctx.fillText("≡ BOIL", (tx + 3) * S, (ty + 5.6) * S);
-    ctx.globalAlpha = 1;
-
-    if (!boilMenuOpen) { ctx.restore(); return; }
-
-    const { x, y, w, lh } = BOIL_UI;
-    const h = boilPanelH();
-    ctx.globalAlpha = 0.92;
-    ctx.fillStyle = INK.charcoal;
-    ctx.fillRect(x * S, y * S, w * S, h * S);
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = INK.mustard;
-    ctx.lineWidth = 1 * S;
-    ctx.strokeRect(x * S, y * S, w * S, h * S);
-
-    let i = 0;
-    const line = (label, val, col) => {
-        const ty2 = boilRowY(i++);
-        ctx.fillStyle = INK.silverL;
-        ctx.fillText(label, (x + 4) * S, ty2 * S);
-        ctx.fillStyle = col;
-        ctx.fillText(val, (x + w - 30) * S, ty2 * S);
-    };
-    ctx.fillStyle = INK.mustard;
-    ctx.fillText("BOIL  ≡ or ` to close", (x + 4) * S, (y + 8) * S);
-    for (const [key, label, flag] of BOIL_ROWS) {
-        line(key + "  " + label, BOIL[flag] ? "ON" : "off",
-             BOIL[flag] ? INK.green : INK.silverD);
-    }
-    line("[ ]  rate", BOIL.rate + "ms", INK.paper);
-    line("- =  amp", BOIL.amp.toFixed(2), INK.paper);
-    line(",.   grain amt", BOIL.grainAlpha.toFixed(2), INK.paper);
-    line("f    freeze", BOIL.freeze ? "P" + BOIL.frozenPhase + "  (p)" : "off",
-         BOIL.freeze ? INK.mustard : INK.silverD);
-    ctx.restore();
-}
-
-// One pointer listener for the whole game — the tab and every row route through
-// handleBoilKey, so mouse, touch and keyboard cannot drift apart.
-if (canvas.addEventListener) canvas.addEventListener("pointerdown", (e) => {
-    const r = canvas.getBoundingClientRect();
-    if (!r.width || !r.height) return;
-    const px = (e.clientX - r.left) / r.width * COLS * TILE;
-    const py = (e.clientY - r.top) / r.height * ROWS * TILE;
-    const k = boilHitTest(px, py);
-    if (!k) return;
-    e.preventDefault();
-    e.stopPropagation();
-    handleBoilKey(k);
-});
+// The boil switchboard is gone: the corner tab, the panel behind it, the
+// keyboard shortcuts and the localStorage that remembered them. It existed to
+// judge which sources were worth boiling rather than assume it, that judgement
+// has been made, and the answers are the defaults at the top of this file.
+//
+// Its persistence goes with it deliberately. A saved config would have kept
+// overriding those defaults with whatever was last toggled, on a machine with
+// no way left to see or change it.
 
 function gameLoop(timestamp) {
     perfNow = timestamp || 0; // drives the boil clock — one hand inks everything
@@ -10036,7 +9878,6 @@ function gameLoop(timestamp) {
             console.error("Game loop error:", e);
         }
     }
-    try { renderBoilUI(); } catch (e) { /* never let the debug UI kill a frame */ }
     requestAnimationFrame(gameLoop);
 }
 
@@ -10141,16 +9982,8 @@ function initTouchControls() {
         // During gameplay Enter is a no-op, so stray taps cost nothing.
         const tapEnter = (e) => {
             if (e.target.closest && e.target.closest(".tc-btn")) return;
-            // A tap the boil switchboard claimed must not ALSO advance the game.
-            // pointerdown and touchstart are separate events, so stopPropagation
-            // over there can't do this for us — it has to be asked explicitly.
-            const t = e.touches && e.touches[0];
-            if (t) {
-                const r = canvas.getBoundingClientRect();
-                if (r.width && r.height && boilHitTest(
-                        (t.clientX - r.left) / r.width * COLS * TILE,
-                        (t.clientY - r.top) / r.height * ROWS * TILE)) return;
-            }
+            // (A guard here used to let the boil switchboard claim a tap before
+            //  the game did. There is no switchboard, so every tap is the game's.)
             sendKey("keydown", "Enter");
             sendKey("keyup", "Enter");
         };
