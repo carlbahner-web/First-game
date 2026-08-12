@@ -129,18 +129,33 @@ window.__ASSETS = {
       d.set.call(this, v);
     }
   });
-  // The drum kit IS bundled now, so these requests hit the inlined table and
-  // are served from it. What is left of the old behaviour is the rejection
-  // below, which still catches anything genuinely missing — the crowd samples,
-  // for instance — and fails it here rather than firing it at a host that would
-  // block it anyway. The game falls back to its synthesised voice for those.
+  // The drum kit is bundled, and it is served WITHOUT going near the network.
+  //
+  // The obvious version of this returned f(dataUri) — hand the data URI back to
+  // real fetch and let it resolve. That works everywhere except the one place
+  // this file actually ships: the artifact host sets a Content-Security-Policy,
+  // and while `img.src = "data:..."` is governed by img-src (which allows data:),
+  // `fetch("data:...")` is governed by CONNECT-SRC, which does not. So every
+  // image loaded fine and every drum sample was blocked, silently, and the game
+  // fell back to its synthesised kit exactly as if the samples were missing.
+  // Nothing threw; a rejected fetch is indistinguishable from a 404 to the
+  // loader. It only reproduces under a CSP, which a plain local server has not
+  // got — which is why it passed every test until one was served with one.
+  //
+  // Decoding the base64 here sidesteps the question entirely: no request is
+  // made, so no policy applies.
   var f = window.fetch;
   window.fetch = function (u) {
     var s = typeof u === "string" ? u : (u && u.url) || "";
     var i = s.indexOf("assets/");
     if (i >= 0) {
-      var hit = window.__ASSETS[s.slice(i)];
-      if (hit) return f(hit);
+      var hit = window.__ASSETS[s.slice(i)] || window.__ASSETS[s.slice(i).toLowerCase()];
+      if (hit) {
+        var bin = atob(hit.slice(hit.indexOf(",") + 1));
+        var bytes = new Uint8Array(bin.length);
+        for (var j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j);
+        return Promise.resolve(new Response(bytes.buffer, { status: 200 }));
+      }
       return Promise.reject(new Error("not bundled: " + s.slice(i)));
     }
     return f.apply(this, arguments);
