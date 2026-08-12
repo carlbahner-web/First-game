@@ -707,18 +707,24 @@ const AUDIO_BUFFERS = {};
 //
 // The S row plays the BLOCKS, per Carl. The B row picks up the snare he sent,
 // so six rows still make six different sounds.
+// [folder, takes, trim]. Trim is a linear gain applied at playback, NOT baked
+// into the files — a fader on the mixer rather than a re-render, so it stays a
+// number you can move and the samples keep every bit of the level Carl mixed
+// them at. 0.5 is half amplitude, which is -6 dB.
 const AUDIO_KIT = {
-    openhat: ["openhat", 4],
-    hihat:   ["hihat",   4],
-    snare:   ["block",   3],
-    kick:    ["kick",    4],
-    cowbell: ["snare",   1],
-    tom:     ["tom",     3],
+    openhat: ["openhat", 4, 0.5],   // -6 dB: it sat on top of everything else
+    hihat:   ["hihat",   4, 1.0],
+    snare:   ["block",   3, 1.0],
+    kick:    ["kick",    4, 1.0],
+    cowbell: ["snare",   1, 1.0],
+    tom:     ["tom",     3, 1.0],
 };
 const AUDIO_TAKES = {};
+const AUDIO_TRIM = {};
 const AUDIO_SAMPLES = [];
-for (const [voice, [folder, n]] of Object.entries(AUDIO_KIT)) {
+for (const [voice, [folder, n, trim]] of Object.entries(AUDIO_KIT)) {
     AUDIO_TAKES[voice] = n;
+    AUDIO_TRIM[voice] = trim === undefined ? 1 : trim;
     for (let i = 1; i <= n; i++) {
         AUDIO_SAMPLES.push([`${voice}#${i}`,
             `assets/audio/${folder}/${String(i).padStart(2, "0")}.wav`]);
@@ -785,18 +791,21 @@ function decodeAudioSamples() {
 
 // Play a loaded audio sample at a specific time
 function playSample(key, time, volume) {
-    // A voice with takes resolves to one of them here, at trigger time. Keys
-    // without takes (the crowd samples) pass straight through.
+    // A voice with takes resolves to one of them here, at trigger time, and
+    // picks up its mixer trim on the way. Keys without takes (the crowd
+    // samples) pass straight through at whatever the caller asked for.
+    let trim = 1;
     if (AUDIO_TAKES[key]) {
         const i = pickTake(key);
         if (i < 0) return false;
+        trim = AUDIO_TRIM[key];
         key = `${key}#${i + 1}`;
     }
     if (!AUDIO_BUFFERS[key] || !(AUDIO_BUFFERS[key] instanceof AudioBuffer)) return false;
     const source = audioCtx.createBufferSource();
     const gain = audioCtx.createGain();
     source.buffer = AUDIO_BUFFERS[key];
-    gain.gain.setValueAtTime(volume || 1.0, time);
+    gain.gain.setValueAtTime((volume === undefined ? 1 : volume) * trim, time);
     source.connect(gain);
     gain.connect(audioCtx.destination);
     source.start(time);
