@@ -2297,6 +2297,9 @@ let levelTimer = LEVELS[0].timerSeconds * 60; // countdown in frames (seconds * 
 let levelComplete = false;
 let patternMatched = false; // pattern correct but goblins may still be alive
 let levelCelebrateTimer = 0;
+// Last whole second the countdown tick sounded on, so it fires on the CHANGE
+// of second rather than on a modulo tested every frame. -1 = nothing yet.
+let lastTickSecond = -1;
 let levelCelebrateDisplayScore = 0; // for count-up animation
 let titleBlink = 0; // blink timer for "PRESS ENTER"
 
@@ -2562,6 +2565,8 @@ function handleCheatCode(key) {
                         grid[r][c] = startPat[r][c];
             }
             levelTimer = LEVELS[currentLevel].timerSeconds * 60;
+    lastTickSecond = -1;
+            lastTickSecond = -1;
             player.y = (gridBottomTileY() + 1) * TILE + GRID_Y_OFFSET;
             player.destY = player.y;
             setLevelTempo(currentLevel);
@@ -4057,6 +4062,7 @@ function resetGame() {
     enemyWarningShown = { normal: false, elite: false, catapult: false };
     newInstrumentShown = { cowbell: false, tom: false };
     levelTimer = LEVELS[0].timerSeconds * 60;
+    lastTickSecond = -1;
 
     // Clear dancers and effects
     deathParticles = [];
@@ -4830,8 +4836,19 @@ function renderHUD() {
     const tlw = hudCtx.measureText("TIME").width / SCALE;
     label("TIME", W - margin - hudDigitWidth(2) * 2 - 4 - tlw);
 
-    // Tick sound during last 10 seconds (once per second)
-    if (isCritical && timerSec > 0 && levelTimer % 60 === 0 && audioCtx) {
+    // Tick sound during the last 10 seconds, once per second.
+    //
+    // This used to fire on `levelTimer % 60 === 0`, tested here — in a RENDER
+    // function, which runs every frame whether the clock is moving or not. That
+    // is once a second only while the timer is counting. Park it on a multiple
+    // of 60 and the condition stays true every frame: pausing with ten seconds
+    // or less left, on an exact second, machine-gunned 60 beeps a second, and
+    // so did the level-complete hold, which stops the clock by design.
+    //
+    // Firing on the CHANGE of second cannot do that, however long the clock sits
+    // still.
+    if (isCritical && timerSec > 0 && timerSec !== lastTickSecond && audioCtx) {
+        lastTickSecond = timerSec;
         const now = audioCtx.currentTime;
         const tick = audioCtx.createOscillator();
         const tg = audioCtx.createGain();
