@@ -698,14 +698,30 @@ hudCtx.imageSmoothingEnabled = true;
 // read a directory — and neither can the published bundle, which has no
 // filesystem at all, only the inlined table.
 const AUDIO_BUFFERS = {};
-const AUDIO_TAKES = {
-    openhat: 4, hihat: 4, snare: 1, kick: 4, cowbell: 3, tom: 3,
+// VOICE -> the folder it plays out of, and how many takes are in there.
+//
+// The two are kept apart on purpose. A voice is a ROW of the sequencer and its
+// name is fixed by the code that triggers it; a folder is named for the sound
+// actually in it. Pointing one at the other is then a one-line decision rather
+// than a rename that leaves a directory called "snare" full of woodblocks.
+//
+// The S row plays the BLOCKS, per Carl. The B row picks up the snare he sent,
+// so six rows still make six different sounds.
+const AUDIO_KIT = {
+    openhat: ["openhat", 4],
+    hihat:   ["hihat",   4],
+    snare:   ["block",   3],
+    kick:    ["kick",    4],
+    cowbell: ["snare",   1],
+    tom:     ["tom",     3],
 };
+const AUDIO_TAKES = {};
 const AUDIO_SAMPLES = [];
-for (const [voice, n] of Object.entries(AUDIO_TAKES)) {
+for (const [voice, [folder, n]] of Object.entries(AUDIO_KIT)) {
+    AUDIO_TAKES[voice] = n;
     for (let i = 1; i <= n; i++) {
         AUDIO_SAMPLES.push([`${voice}#${i}`,
-            `assets/audio/${voice}/${String(i).padStart(2, "0")}.wav`]);
+            `assets/audio/${folder}/${String(i).padStart(2, "0")}.wav`]);
     }
 }
 // Optional crowd call-and-response samples (synth fallback if missing)
