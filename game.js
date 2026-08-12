@@ -155,30 +155,10 @@ function vnoise(x, seed) {
     return a + (b - a) * u;
 }
 function jit(x, seed, amp) { return (vnoise(x, seed + boil() * 7.31) - 0.5) * 2 * amp * BOIL.amp; }
-// Static wonk — same irregularity, frozen. For dense repeating marks
-// (grid tiles), where boiling at density reads as strobe.
-function sjit(x, seed, amp) { return (vnoise(x, seed) - 0.5) * 2 * amp * BOIL.amp; }
 // Phase-explicit jitter for pre-rendered boil variants (textures are baked
 // once per level in 3 phases, so they can't read the live clock)
 function pjit(x, seed, phase, amp) { return (vnoise(x, seed + phase * 7.31) - 0.5) * 2 * amp * BOIL.amp; }
 
-// Stroke a wobbly hand-inked polyline through the given points (device px),
-// displacing each interior point by the live boil. Used for per-frame ink
-// (the door); baked ink uses pjit with an explicit phase instead.
-function boilStroke(g, pts, seed, amp, color, lw) {
-    g.strokeStyle = color;
-    g.lineWidth = lw;
-    g.lineJoin = "round";
-    g.lineCap = "round";
-    g.beginPath();
-    for (let i = 0; i < pts.length; i++) {
-        const p = pts[i];
-        const x = p[0] + jit(p[0] + p[1] * 0.37, seed, amp);
-        const y = p[1] + jit(p[1] + p[0] * 0.61, seed + 5.7, amp);
-        if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
-    }
-    g.stroke();
-}
 
 // Tempo is set per level using frames-per-16th-note at 60fps
 // Gradual curve across 30 levels:
@@ -849,11 +829,6 @@ function texRNG(seed) {
 // The cutscenes went with the lore and the carvings have now gone too, so it
 // had no callers left.
 
-// Helper: parse hex color to [r,g,b]
-function hexToRGB(hex) {
-    const v = parseInt(hex.slice(1), 16);
-    return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
-}
 
 
 // Generate a single stone tile texture (TILE*SCALE x TILE*SCALE pixels)
@@ -1739,33 +1714,6 @@ function playTom(time) {
     osc.stop(time + 0.25);
 }
 
-function playDonk(time) {
-    const ctx = audioCtx;
-    // Low thud — like bonking a coconut
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(180, time);
-    osc.frequency.exponentialRampToValueAtTime(60, time + 0.15);
-    gain.gain.setValueAtTime(0.5, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(time);
-    osc.stop(time + 0.2);
-    // High click on top for the "donk" attack
-    const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
-    osc2.type = "square";
-    osc2.frequency.setValueAtTime(800, time);
-    osc2.frequency.exponentialRampToValueAtTime(300, time + 0.05);
-    gain2.gain.setValueAtTime(0.15, time);
-    gain2.gain.exponentialRampToValueAtTime(0.001, time + 0.08);
-    osc2.connect(gain2);
-    gain2.connect(ctx.destination);
-    osc2.start(time);
-    osc2.stop(time + 0.08);
-}
 
 function playWarningDonk(time) {
     const ctx = audioCtx;
@@ -2270,7 +2218,6 @@ let catapultSpawnedThisCycle = false; // prevents re-spawning catapult after it 
 // Tomato projectiles (dancers throw at goblins — purely cosmetic)
 
 let gameState = "title";
-let gameMode = "thrill"; // "thrill" = full game with goblins, "chill" = no goblins during gameplay
 let pausedFromState = "playing";   // gameState to restore on unpause
 
 // --- Visual Improvement State ---
@@ -2496,8 +2443,7 @@ function checkPendingFeatureScreens() {
         return true;
     }
 
-    // Enemy warning screens (skip in chill mode — no goblins)
-    if (gameMode === "chill") return false; // new instruments already handled above
+    // Enemy warning screens
     if (nextLevel === 2 && !enemyWarningShown.normal) {
         enemyWarningType = "normal";
         enemyWarningShown.normal = true;
@@ -2661,14 +2607,6 @@ window.addEventListener("keydown", (e) => {
         if (gameState === "title") {
             if (titleFadingOut) return; // already transitioning
             ensureAudio();
-            if (gameMode === "chill") {
-                // Chill mode skips the title's fade and drops straight in.
-                stopTitleDrums();
-                resetGame();
-                gameState = "playing";
-                sceneTransition = { active: true, from: "title", to: "playing", progress: 0, duration: 20 };
-                return;
-            }
             // Start fading title text — state change happens when fade completes
             titleFadingOut = true;
             titleFadeTimer = 0;
@@ -3422,8 +3360,8 @@ function update(dt) {
         }
 
     if (gob.dead) {
-        // No goblins in chill mode or on practice levels (1-2)
-        if (gameMode === "chill" || currentLevel < 2) {
+        // No goblins on the practice levels (1-2)
+        if (currentLevel < 2) {
             gob.respawnTimer = 300;
             continue;
         }
@@ -4194,32 +4132,6 @@ function playPieceRevealChime() {
 }
 
 
-function playBoothExplosion() {
-    if (!audioCtx) return;
-    const now = audioCtx.currentTime;
-    // Deep rumble
-    const osc = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(50, now);
-    osc.frequency.exponentialRampToValueAtTime(20, now + 0.8);
-    g.gain.setValueAtTime(0.3, now);
-    g.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
-    osc.connect(g); g.connect(audioCtx.destination);
-    osc.start(now); osc.stop(now + 0.8);
-    // Crash (white noise burst)
-    const bufSize = audioCtx.sampleRate * 0.4;
-    const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufSize);
-    const noise = audioCtx.createBufferSource();
-    const ng = audioCtx.createGain();
-    noise.buffer = buf;
-    ng.gain.setValueAtTime(0.2, now);
-    ng.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-    noise.connect(ng); ng.connect(audioCtx.destination);
-    noise.start(now); noise.stop(now + 0.4);
-}
 
 function triggerLevelComplete() {
     levelComplete = true;
@@ -4274,34 +4186,6 @@ function triggerLevelComplete() {
 
 
 
-function drawCaveTorch(x, y) {
-    // Torch handle
-    drawRect(x + 6, y + 4, 3, 10, "#8B4513");
-    drawRect(x + 7, y + 4, 1, 10, "#A0522D");
-    // Flame (animated)
-    const flicker = Math.sin(performance.now() * 0.01 + x) * 2;
-    const flicker2 = Math.cos(performance.now() * 0.013 + y) * 1.5;
-    // Outer flame (orange)
-    drawRect(x + 5 + flicker2, y - 1, 5, 6, "#FF6600");
-    // Inner flame (yellow)
-    drawRect(x + 6 + flicker, y, 3, 4, INK.mustard);
-    // Core (white-hot)
-    drawRect(x + 7, y + 1, 1, 2, "#FFFACD");
-    // Glow effect
-    ctx.globalAlpha = 0.08 + Math.sin(performance.now() * 0.008 + x) * 0.03;
-    const glowR = 20 + flicker * 2;
-    for (let r = glowR; r > 0; r -= 4) {
-        drawRect(x + 7 - r, y + 2 - r, r * 2, r * 2, "#FF8C00");
-    }
-    ctx.globalAlpha = 1;
-    // Warm floor light pool below torch
-    const floorPulse = 0.04 + Math.sin(performance.now() * 0.006 + x * 0.7) * 0.02;
-    ctx.globalAlpha = floorPulse;
-    drawRect(x - 4, y + 14, 24, 10, "#FF8C00");
-    ctx.globalAlpha = floorPulse * 0.6;
-    drawRect(x - 8, y + 16, 32, 6, "#FF6600");
-    ctx.globalAlpha = 1;
-}
 
 
 
@@ -4662,30 +4546,6 @@ function drawHudRect(x, y, w, h, color) {
     hudCtx.fillRect(x * SCALE, y * SCALE, w * SCALE, h * SCALE);
 }
 
-// The readout's numbers. These were 3x5 pixel bitmaps stamped out of rects —
-// the last of the 8-bit look left in the game, still sitting there after the
-// palette, the fonts, the grid and the title all moved on.
-//
-// Now it is real type in the display face with a hard mustard offset shadow.
-// That shadow is the house grammar — a second printing pass slightly out of
-// register, never a blur — and it does real work here: it keeps a charcoal-dark
-// number legible over a HUD band whose backdrop changes with the biome.
-//
-// Signature is unchanged (centred on cx, top at cy) so every caller's layout
-// maths still holds.
-function drawHudPixelDigits(num, cx, cy, color, pixelSize) {
-    const str = String(num);
-    const size = pixelSize * 5;                 // the bitmaps were 5 rows tall
-    hudCtx.font = gfont(size * SCALE);
-    hudCtx.textAlign = "center";
-    hudCtx.textBaseline = "alphabetic";
-    const baseY = (cy + size * 0.94) * SCALE;
-    hudCtx.fillStyle = INK.mustard;
-    hudCtx.fillText(str, (cx + 0.7) * SCALE, baseY + 0.7 * SCALE);
-    hudCtx.fillStyle = color;
-    hudCtx.fillText(str, cx * SCALE, baseY);
-    hudCtx.textAlign = "start";
-}
 
 // How wide one digit is in that face, so the panels size themselves off the
 // type rather than off a bitmap grid that no longer exists.
@@ -4861,17 +4721,8 @@ function renderHUD() {
         tick.start(now); tick.stop(now + 0.08);
     }
 
-    // Chill mode indicator
-    if (gameMode === "chill") {
-        hudCtx.font = fbody(3 * SCALE);
-        hudCtx.fillStyle = INK.teal;
-        hudCtx.textAlign = "right";
-        hudCtx.fillText("CHILL", (W / 2 - 30) * SCALE, (baseY - 0.5) * SCALE);
-        hudCtx.textAlign = "start";
-    }
-
     // Equipment recovery tracker — the stage gear recovered so far
-    if (gameMode === "thrill") {
+    {
         const earned = djSetupEarned.length;
         const total = DJ_SETUP_PIECES.length;
         if (earned > 0 || currentLevel >= 4) {
@@ -5688,19 +5539,6 @@ function spriteGlowOff() {
     ctx.shadowBlur = 0;
 }
 
-// Convert a color to a ghostly blue-white tint for soul/ghost effect
-function ghostTint(color) {
-    // Parse hex color
-    const r = parseInt(color.slice(1, 3), 16);
-    const g = parseInt(color.slice(3, 5), 16);
-    const b = parseInt(color.slice(5, 7), 16);
-    // Blend toward light blue-white (#ccddff)
-    const t = 0.7; // tint strength
-    const tr = Math.round(r + (0xcc - r) * t);
-    const tg = Math.round(g + (0xdd - g) * t);
-    const tb = Math.round(b + (0xff - b) * t);
-    return `#${tr.toString(16).padStart(2, '0')}${tg.toString(16).padStart(2, '0')}${tb.toString(16).padStart(2, '0')}`;
-}
 
 // Reusable 48x48 player sprite for all screens — block-print / screen-print style
 // gx, gy: top-left position (game coords)
@@ -8245,11 +8083,6 @@ function roundRectPath(x, y, w, h, r) {
     ctx.roundRect(x * SCALE, y * SCALE, w * SCALE, h * SCALE, r * SCALE);
 }
 
-// The bulb chase runs on the SEQUENCER's step, not a free-running timer — the
-// marquee blinks on the beat playing behind it.
-function marqueeBulbLit(i, step) {
-    return ((i + step) % 4) === 0;
-}
 
 function drawTitleMarquee(sinkY) {
     const W = COLS * TILE;
@@ -8568,18 +8401,6 @@ function stopStoryDrums() {
     }
 }
 
-// Shared scene background: the same textured cave the gameplay renders,
-// optionally darkened — keeps the title/story scenes visually consistent
-// with the actual levels instead of the old flat-color tiles.
-function drawSceneBackground(darken) {
-    ctx.drawImage(TEX_CAVE_BG[boilPhase("room")], 0, 0);
-    if (darken > 0) {
-        ctx.fillStyle = "#000000";
-        ctx.globalAlpha = Math.min(1, darken);
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.globalAlpha = 1;
-    }
-}
 
 
 
