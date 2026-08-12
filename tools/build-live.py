@@ -16,18 +16,30 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "/tmp/live/groove-goblins.html"
 # Files that are already in their final form. Re-encoding a .woff2 as WebP would
 # be nonsense, and the grain tile is a hand-tuned WebP whose mark size is the
 # whole point — a second lossy pass is exactly what it must not get.
-VERBATIM = {".woff2": "font/woff2", ".webp": "image/webp"}
+#
+# .wav joins them for the drum kit. It is NOT re-encoded: MP3 carries an
+# encoder delay of ~576 samples, which is 13ms of silence welded to the front
+# of every hit — inaudible in a music player and completely unacceptable in a
+# game where the whole point is that the drum lands on the beat. Opus solves
+# the delay but is not safe across every browser this has to run in. Lossless
+# it is; the kit is 345KB, which is affordable.
+VERBATIM = {".woff2": "font/woff2", ".webp": "image/webp", ".wav": "audio/wav"}
 
+# Counted per kind, because one "images" total that silently includes the drum
+# kit is how you stop noticing that audio is now most of the growth.
 table, raw, enc = {}, 0, 0
+tally = {"image": [0, 0, 0], "audio": [0, 0, 0], "font": [0, 0, 0]}   # n, raw, encoded
 for dirpath, _, files in os.walk(os.path.join(ROOT, "assets")):
     for fn in sorted(files):
         ext = os.path.splitext(fn)[1].lower()
         path = os.path.join(dirpath, fn)
         key = os.path.relpath(path, ROOT).replace(os.sep, "/")
+        kind = ("audio" if ext == ".wav" else "font" if ext == ".woff2" else "image")
         if ext in VERBATIM:
             data = open(path, "rb").read()
             raw += len(data)
             enc += len(data)
+            tally[kind][0] += 1; tally[kind][1] += len(data); tally[kind][2] += len(data)
             uri = "data:%s;base64,%s" % (VERBATIM[ext], base64.b64encode(data).decode())
         elif ext in (".png", ".jpg", ".jpeg"):
             im = Image.open(path)
@@ -35,6 +47,7 @@ for dirpath, _, files in os.walk(os.path.join(ROOT, "assets")):
             im.save(buf, "WEBP", quality=90, method=6)
             raw += os.path.getsize(path)
             enc += buf.tell()
+            tally[kind][0] += 1; tally[kind][1] += os.path.getsize(path); tally[kind][2] += buf.tell()
             uri = "data:image/webp;base64," + base64.b64encode(buf.getvalue()).decode()
         else:
             continue
@@ -116,10 +129,11 @@ window.__ASSETS = {
       d.set.call(this, v);
     }
   });
-  // Sample .wav files aren't in the repo, so every one of these requests is a
-  // guaranteed miss. Fail them here instead of firing them at a host that will
-  // block them anyway — the game already falls back to its synthesised kit.
-  // (When the samples land, inline them into __ASSETS and this serves them.)
+  // The drum kit IS bundled now, so these requests hit the inlined table and
+  // are served from it. What is left of the old behaviour is the rejection
+  // below, which still catches anything genuinely missing — the crowd samples,
+  // for instance — and fails it here rather than firing it at a host that would
+  // block it anyway. The game falls back to its synthesised voice for those.
   var f = window.fetch;
   window.fetch = function (u) {
     var s = typeof u === "string" ? u : (u && u.url) || "";
@@ -140,5 +154,7 @@ window.__ASSETS = {
 
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 open(OUT, "w", encoding="utf-8").write(html)
-print("images %d  png %.1fMB -> webp %.1fMB" % (len(table), raw / 1e6, enc / 1e6))
+for kind, (n, r, e) in tally.items():
+    if n:
+        print("%-6s %3d files  %6.0f KB -> %6.0f KB inlined" % (kind, n, r / 1e3, e / 1e3))
 print("bundle %s  %.1fMB" % (OUT, os.path.getsize(OUT) / 1e6))

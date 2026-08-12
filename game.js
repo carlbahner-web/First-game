@@ -690,18 +690,53 @@ hudCanvas.width = COLS * TILE * SCALE;
 hudCanvas.height = HUD_H * SCALE;
 hudCtx.imageSmoothingEnabled = true;
 
+// Each voice holds a LIST of takes, and a hit picks one. Real drums never
+// repeat a hit exactly; one buffer fired sixteen times a bar is the sound of a
+// machine, which is the one thing a kit sampled from a room should not be.
+//
+// The list is written out here rather than discovered, because a browser cannot
+// read a directory — and neither can the published bundle, which has no
+// filesystem at all, only the inlined table.
 const AUDIO_BUFFERS = {};
-const AUDIO_SAMPLES = [
-    ["openhat",  "assets/audio/openhat.wav"],
-    ["hihat",    "assets/audio/closedhat.wav"],
-    ["snare",    "assets/audio/snare.wav"],
-    ["kick",     "assets/audio/kick.wav"],
-    ["cowbell",  "assets/audio/cowbell.wav"],
-    ["tom",      "assets/audio/tom.wav"],
-    // Optional crowd call-and-response samples (synth fallback if missing)
-    ["yeah",     "assets/audio/yeah.wav"],
-    ["crowd",    "assets/audio/crowd.wav"],
-];
+const AUDIO_TAKES = {
+    openhat: 4, hihat: 4, snare: 1, kick: 4, cowbell: 3, tom: 3,
+};
+const AUDIO_SAMPLES = [];
+for (const [voice, n] of Object.entries(AUDIO_TAKES)) {
+    for (let i = 1; i <= n; i++) {
+        AUDIO_SAMPLES.push([`${voice}#${i}`,
+            `assets/audio/${voice}/${String(i).padStart(2, "0")}.wav`]);
+    }
+}
+// Optional crowd call-and-response samples (synth fallback if missing)
+AUDIO_SAMPLES.push(["yeah", "assets/audio/yeah.wav"], ["crowd", "assets/audio/crowd.wav"]);
+
+// Which take each voice played last, so the picker never repeats one twice in
+// a row. NOT a round-robin: the patterns here loop on 16 steps, so cycling a
+// fixed order of N takes against a hit every M steps beats out a super-pattern
+// of its own — three kicks against a four-on-the-floor gives you an audible
+// twelve-step cycle. It is the same reason the line boil ping-pongs 0,1,2,1
+// instead of counting 0,1,2. Random-without-immediate-repeat gives the variety
+// with no order to hear.
+const lastTake = {};
+function pickTake(voice) {
+    const n = AUDIO_TAKES[voice] || 0;
+    if (n <= 1) return n ? 0 : -1;
+    let i;
+    if (lastTake[voice] === undefined) {
+        // First hit of the session has nothing to avoid, so it draws from all
+        // n. Falling through to the branch below would have compared against
+        // undefined, quietly never picking the last take.
+        i = Math.floor(Math.random() * n);
+    } else {
+        // Draw from the n-1 takes that are not the one just played, and map
+        // that onto the real index. No re-rolling, so it cannot stall.
+        i = Math.floor(Math.random() * (n - 1));
+        if (i >= lastTake[voice]) i++;
+    }
+    lastTake[voice] = i;
+    return i;
+}
 
 function loadAudioSample(key, src) {
     return fetch(src)
@@ -734,6 +769,13 @@ function decodeAudioSamples() {
 
 // Play a loaded audio sample at a specific time
 function playSample(key, time, volume) {
+    // A voice with takes resolves to one of them here, at trigger time. Keys
+    // without takes (the crowd samples) pass straight through.
+    if (AUDIO_TAKES[key]) {
+        const i = pickTake(key);
+        if (i < 0) return false;
+        key = `${key}#${i + 1}`;
+    }
     if (!AUDIO_BUFFERS[key] || !(AUDIO_BUFFERS[key] instanceof AudioBuffer)) return false;
     const source = audioCtx.createBufferSource();
     const gain = audioCtx.createGain();
