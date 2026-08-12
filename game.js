@@ -1913,6 +1913,9 @@ const drumFns = [
     (t) => playCowbell(t),       // 4: Cowbell (Bell)
     (t) => playTom(t),           // 5: Tom
 ];
+// The same six rows as sample voices, for anything that needs to play a row's
+// drum at a chosen volume — drumFns take a time and nothing else.
+const ROW_VOICE = ["openhat", "hihat", "snare", "kick", "cowbell", "tom"];
 
 // ---- Sequencer State ----
 const grid = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).fill(false));
@@ -3007,32 +3010,13 @@ function update(dt) {
         p.punchHit = false;
         p.punchHitCol = null;
         ensureAudio();
-        // play a punchy impact sound
-        if (audioCtx) {
-            const now = audioCtx.currentTime;
-            // Low thump
-            const osc = audioCtx.createOscillator();
-            const g = audioCtx.createGain();
-            osc.type = "sine";
-            osc.frequency.setValueAtTime(150, now);
-            osc.frequency.exponentialRampToValueAtTime(60, now + 0.1);
-            g.gain.setValueAtTime(0.15, now);
-            g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-            osc.connect(g); g.connect(audioCtx.destination);
-            osc.start(now); osc.stop(now + 0.1);
-            // Noise burst for impact texture
-            const bufLen = audioCtx.sampleRate * 0.04;
-            const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
-            const data = buf.getChannelData(0);
-            for (let i = 0; i < bufLen; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufLen);
-            const noise = audioCtx.createBufferSource();
-            noise.buffer = buf;
-            const ng = audioCtx.createGain();
-            ng.gain.setValueAtTime(0.06, now);
-            ng.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
-            noise.connect(ng); ng.connect(audioCtx.destination);
-            noise.start(now); noise.stop(now + 0.04);
-        }
+        // No sound on the SWING. There used to be a sine thump plus a noise
+        // burst here, fired on every punch before anything was known about what
+        // it would hit — so punching a pad played that AND the pad's drum, two
+        // impacts a few milliseconds apart for one action. What a punch sounds
+        // like is now decided by what it lands on: a pad plays its own drum, a
+        // Donk keeps its clang, and hitting nothing makes no noise, which is
+        // what hitting nothing sounds like.
 
         // Determine target tile directly in front of player
         const playerTileX = Math.round(p.x / TILE);
@@ -3265,17 +3249,27 @@ function update(dt) {
             screenShake = Math.max(screenShake, 3);
             shakeIntensity = Math.max(shakeIntensity, 1);
             shakeAt = playerCentre();
-            // play a toggle blip
+            // Punching a pad plays THAT PAD'S DRUM. It used to be a square-wave
+            // blip, 880Hz on and 440Hz off, which was the last synth voice left
+            // in a game that now has a sampled kit — and it told you nothing
+            // about what you had just edited.
+            //
+            // This does two jobs at once. It is the right feedback for the
+            // action, the way tapping a pad on a drum machine is; and it is the
+            // only thing in the game that says which row is which instrument.
+            // The six rows are told apart by colour alone otherwise, which is
+            // no help at all if you cannot separate those colours.
+            //
+            // Turning a pad OFF plays the same drum well down, so the two
+            // actions stay distinguishable — the blip did that with pitch.
             if (audioCtx) {
                 const now = audioCtx.currentTime;
-                const osc = audioCtx.createOscillator();
-                const g = audioCtx.createGain();
-                osc.type = "square";
-                osc.frequency.value = grid[row][col] ? 880 : 440;
-                g.gain.setValueAtTime(0.1, now);
-                g.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
-                osc.connect(g); g.connect(audioCtx.destination);
-                osc.start(now); osc.stop(now + 0.06);
+                const on = grid[row][col];
+                if (!playSample(ROW_VOICE[row], now, on ? 1.0 : 0.3)) {
+                    // No sample for that row: fall back to the synthesised
+                    // voice, which carries its own level.
+                    if (on && drumFns[row]) drumFns[row](now);
+                }
             }
 
             // ---- Groove timing bonuses ----
@@ -4911,7 +4905,7 @@ let shakeBuf = null, shakeOut = null, shakeSoft = null;
 // The blur is per px of displacement, and 0.55 was too much: at a 12px jolt it
 // put 6.6px of blur through BUZZ, which reads as a smear rather than a hit.
 const SHAKE_RINGS = 12;
-const SHAKE_BLUR = 0.30;   // blur px per px of that ring's displacement
+const SHAKE_BLUR = 0.62;   // blur px per px of that ring's displacement
 // The inner 55% of the radius moves as a body at FULL strength, and only the
 // outside rolls off. A cosine falling from the centre pin looks right on paper
 // and was wrong in the hand: area-weighted, only 0.30 of the disc was really
@@ -4927,7 +4921,13 @@ const SHAKE_DECAY_P = 0.5;
 // One dial for how hard everything hits, on top of each trigger's own
 // intensity. Raise it for more punch, lower it for less; nothing else in the
 // shake needs touching to change how strong it feels.
-const SHAKE_GAIN = 1.6;
+//
+// 1.6 read as wild. The trade is displacement for SMEAR: this comes down and
+// SHAKE_BLUR goes up, so the same impact is carried by softening rather than by
+// throwing the room around. Blur falls off with each ring's own displacement,
+// so it is already a gradient — heaviest at the point of contact, nothing at
+// the rim — and lifting it deepens that gradient rather than fogging the lot.
+const SHAKE_GAIN = 0.95;
 // ...and one for how LONG it lasts. A punch was 5 frames, which is 83ms — over
 // before the eye has finished registering that it started, so it read as a
 // flinch rather than a hit however hard it was. Stretching it does not make it
