@@ -2196,6 +2196,25 @@ function protoMult() {
     return m;
 }
 
+// Jumping straight to a level with the `$levelNN` cheat skips advanceLevel,
+// which is where the prototype is normally armed. Same setup, minus the thief's
+// run — the padding is applied to the board directly rather than performed.
+function protoPrepareJump() {
+    if (!isProto()) { player.attackDuration = 12; return; }
+    const lv = LEVELS[currentLevel];
+    const ar = lv.activeRows;
+    const spare = [];
+    for (let r = 0; r < ar; r++)
+        for (let c = 0; c < GRID_COLS; c++)
+            if (!!grid[r][c] === !!lv.pattern[r][c]) spare.push({ r, c });
+    for (let n = Math.min(PROTO.extraWrong, spare.length); n > 0; n--) {
+        const pick = spare.splice(Math.floor(Math.random() * spare.length), 1)[0];
+        grid[pick.r][pick.c] = !grid[pick.r][pick.c];
+    }
+    protoReset();
+    player.attackDuration = PROTO.attackFrames;
+}
+
 // A punch is judged against its own column's onset, in audio time.
 // Returns "perfect", "hit" or "miss".
 function protoJudge(col) {
@@ -2709,8 +2728,11 @@ function handleCheatCode(key) {
                         grid[r][c] = startPat[r][c];
             }
             levelTimer = LEVELS[currentLevel].timerSeconds * 60;
-    lastTickSecond = -1;
             lastTickSecond = -1;
+            // The jump skips advanceLevel, so the prototype's own setup has to
+            // happen here too or `$level05` lands you on the gate with a
+            // twelve-frame swing and an unpadded board.
+            protoPrepareJump();
             player.y = (gridBottomTileY() + 1) * TILE + GRID_Y_OFFSET;
             player.destY = player.y;
             setLevelTempo(currentLevel);
