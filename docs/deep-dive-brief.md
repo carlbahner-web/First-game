@@ -1,15 +1,52 @@
-# Audit brief — BUZZ's Rhythm Rampage
+# Deep-dive brief — BUZZ's Rhythm Rampage
 
-For a fresh reviewer. You are being asked to **audit the design and help make
-the game better**, not to implement anything yet.
+**Treat this game as a rough draft.** It is finished enough to play and polished
+enough to look finished, which makes it easy to mistake for done. It is not
+done. The visual language is settled and the engineering is sound; the *design*
+has never been examined by anyone.
+
+You are being asked to work out what this should become — gameplay, structure,
+depth — and to be opinionated about it. Propose changes at any scale, up to and
+including changing what the player does.
 
 Written by an agent that just spent a long session in this codebase. Everything
-numeric here was measured, not remembered; where something is opinion it says
-so.
+numeric here was measured, not remembered; where something is opinion it says so.
 
-Companion docs: `design.md` (the shared StudioLand rules, and what may be
-departed from), `rhythm-rampage.md` (how the thing is built),
-`reference/` (the sibling game's design write-ups this look came from).
+---
+
+## 0. The mandate, and its limits
+
+**Nothing in the design is sacred.** §5 lists decisions that were made
+deliberately and explains why — that is there so you argue with the *reasoning*
+rather than rediscovering it, not to fence anything off. Overturn any of it if
+you have something better. Say what you are trading away.
+
+**These are the actual constraints:**
+
+- **Single-file vanilla JS on HTML5 canvas.** No framework, no build step beyond
+  a Python script that inlines assets. Carl is a music producer who reads code
+  well and writes it rarely; a stack he cannot reason about is a stack he cannot
+  own. Changing this is possible but it is a real cost, not a free upgrade.
+- **It must publish as one self-contained HTML file.** That is how he shares it.
+- **The look is settled and he is happy with it.** Charcoal ink on cream, the
+  line boil, the 1950s StudioLand world. See `design.md`. Visual suggestions are
+  welcome but this is not where the problem is.
+- **BUZZ is the character**, shared with two sibling games.
+- **The drum kit is his own**, sampled and mixed by him. Design around it.
+
+Everything else is open: the core verb, the enemies, the level count and
+structure, whether there is a timer, how movement works, what the audio is for,
+how scoring works.
+
+**What "better" means here.** This is a portfolio piece for a music-production
+brand, not a commercial release. It should be worth playing for twenty minutes,
+worth showing someone, and it should feel like it was made by someone who thinks
+about rhythm for a living. Depth beats breadth. One mechanic that rewards
+mastery beats five that do not.
+
+**Before you propose anything, read §3 and §4.** They are the two places where
+measurement already contradicts the design's intent, and any serious proposal
+should have an answer for both.
 
 ---
 
@@ -66,7 +103,7 @@ Two things I would push on:
   disturbance, and "restore the pattern" becomes "rebuild the board" — which may
   be a different, less interesting verb.
 
-## 4. The thing I would most like a second opinion on
+## 4. The central contradiction
 
 **You can play this game with the sound off and lose nothing.**
 
@@ -79,16 +116,21 @@ There is one seed of the other thing: punching a pad **on the beat** triggers a
 groove bonus ("in the pocket", or a crowd "yeah" on a quarter-note). That is the
 only mechanic where the ear does anything, and it only affects score.
 
-For a game called Rhythm Rampage, with a sampled kit and a sequencer, that seems
-like the biggest unexploited asset in the design. But removing the visual hints
-outright would probably just make it frustrating. **What is the version where
-listening matters and the game is still playable?** That is the question I most
-want answered by someone who has not been staring at this.
+For a game called Rhythm Rampage, built around a sequencer and a kit Carl
+sampled himself, this is the biggest unexploited asset in the design — and
+arguably the reason it currently reads as a competent puzzle game rather than a
+music game.
 
-## 5. What is deliberate — please do not "fix" these
+Removing the visual hints outright would just make it frustrating; the pattern
+has to be knowable somehow. **What is the version where listening does real
+work and the game is still playable?** Solve that and most of §6 stops
+mattering.
 
-Each of these was decided on purpose. Argue with them if you disagree, but know
-they are choices, not oversights.
+## 5. Decisions already made, and their reasoning
+
+Not a fence. These were deliberate, and the reasoning is here so you can argue
+with the reasoning instead of rediscovering the problem. Overturn any of them
+with a better answer.
 
 - **The level ends the instant the pattern lands.** There used to be an exit
   door to walk to. Getting it right was the achievement; walking afterwards was
@@ -126,19 +168,43 @@ Opinion, ordered by how much I would want it looked at.
 7. **The groove bonus is invisible if you are not looking for it.** It is the
    most interesting mechanic in the game and it is nearly unadvertised.
 
-## 7. Questions I would like answered
+## 7. The questions worth answering
 
-1. What is the version of this where the ear matters? (§4)
-2. Should the scramble be authored rather than rolled? Hand-built scrambles
-   could teach patterns — a level whose wrong cells form a recognisable shape,
-   or that turns one groove into another.
-3. Is "restore the pattern" the right verb for thirty levels, or should the
-   later game ask something else — build a pattern to a spec, match a pattern
-   you only heard, keep a pattern alive against faster sabotage?
-4. Does the timer earn its place, given the Donks already supply pressure?
-5. What would make walking interesting, or should it be reduced?
+Ranked. The first two are the ones that would change the game rather than
+improve it.
 
-## 8. Running it
+1. **What is the version of this where the ear matters?** (§4) A rhythm game you
+   can play deaf is the central contradiction here.
+2. **Is "restore the pattern" the right verb for thirty levels?** If not, what
+   does the later game ask instead — build to a spec, reproduce something you
+   only heard, keep a pattern alive against escalating sabotage, perform rather
+   than assemble?
+3. **Should the scramble be authored rather than rolled?** Hand-built scrambles
+   could teach: a level whose wrong cells form a shape, or that turns one groove
+   into another so fixing it is a musical journey rather than a checklist.
+4. **What would make movement interesting**, or should it be reduced? Right now
+   it is pure overhead and it is most of the late-game difficulty.
+5. **Does the timer earn its place**, given the Donks already supply pressure?
+6. **What should the Donks actually be?** They are an interruption with no read
+   and no counter-play. Should they be an opponent, an instrument, or gone?
+
+## 8. How to make this deep dive worth doing
+
+The failure mode is twenty generic suggestions that would apply to any game.
+Guard against it:
+
+- **Be opinionated and pick.** A ranked shortlist with reasoning beats an
+  enumeration. Say what you would cut, not only what you would add.
+- **Engage with the numbers in §3.** Any proposal for the late game has to
+  survive "59 cells to fix, 1.9 seconds each, while being re-scrambled".
+- **Prototype the smallest version.** A mechanic argued in prose is a guess. One
+  level rewired to test a hypothesis is evidence.
+- **Say what a change costs.** Which of §5 it overturns, what it breaks, and
+  what Carl would need to author or record.
+- **Cutting counts as improvement.** Thirty shallow levels may want to be twelve
+  good ones.
+
+## 9. Running it
 
 ```
 python3 -m http.server 8123      # then open index.html
@@ -153,7 +219,7 @@ blocked the entire drum kit once, with nothing thrown and nothing logged.
 Useful hooks from the console: `advanceLevel()`, `currentLevel`, `grid`,
 `LEVELS[n].pattern`, `getActiveRows()`, `levelTimer`, `BOIL`, `AUDIO_KIT`.
 
-## 9. Map of the code
+## 10. Map of the code
 
 `game.js` is ~10,000 lines, one file, no modules. Rough order:
 
@@ -175,7 +241,7 @@ Useful hooks from the console: `advanceLevel()`, `currentLevel`, `grid`,
 | 8400–9500 | level complete, ending, high scores, sabotage animation |
 | 9600–10000 | grain, touch controls, game loop |
 
-## 10. What you cannot see from here
+## 11. What you cannot see from here
 
 - **The commit messages are the real design record.** 222 of them, most
   carrying the reasoning and the measurement behind a change. `git log` is worth
