@@ -1262,6 +1262,21 @@ function drawSideWalls() {
                 ctx.fillStyle = mixC(INK.charcoal, INK.paper, 0.10);
                 ctx.fillRect(Math.min(xA, xB), Math.min(yA, yB) - hA,
                              Math.abs(xB - xA) + 1, hA + Math.abs(yB - yA));
+                // A pair of eyes in the dark of the opening when a Donk is
+                // about to come through it — the same tell, in the place it now
+                // makes sense.
+                if (Math.abs(vm - (DOOR_V0 + DOOR_V1) / 2) < 0.5 / N) {
+                    const cave = CAVES[side < 0 ? 0 : 1];
+                    for (const g of goblins) {
+                        if (!g.dead || g.respawnTimer >= 60 || CAVES[g.spawnCave] !== cave) continue;
+                        ctx.fillStyle = g.elite ? INK.mint : "#50ad33";
+                        const ey = Math.min(yA, yB) - hA * 0.55, ex = (xA + xB) / 2;
+                        const er = 2 * SCALE * sA;
+                        ctx.beginPath(); ctx.arc(ex - er * 1.2, ey, er, 0, Math.PI * 2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(ex + er * 1.2, ey, er, 0, Math.PI * 2); ctx.fill();
+                        break;
+                    }
+                }
                 continue;
             }
             const s0 = projScale(v0), s1 = projScale(v1);
@@ -5632,6 +5647,16 @@ function render() {
         // Eye gleam inside cave — always draw (gameplay indicator for goblin respawn)
         for (const g of goblins) {
             if (g.dead && g.respawnTimer < 60 && ci === g.spawnCave) {
+                // The eyes belong IN the doorway. They used to sit in a cave
+                // mouth painted on the floor; that mouth is gone, so without
+                // this they were two green dots blinking on bare floorboards at
+                // the edge of the room — which is what Carl saw as a blinking
+                // overlay at the screen border.
+                //
+                // Only drawn where there is still a mouth to look out of. Once
+                // the walls carry the opening, the tell goes on the wall with
+                // it, and that is drawn with the walls rather than here.
+                if (wallsCarryTheDoor) break;
                 const caveEyeCol = g.elite ? INK.mint : "#50ad33";
                 ctx.fillStyle = caveEyeCol;
                 ctx.beginPath();
