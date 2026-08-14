@@ -5995,8 +5995,13 @@ function render() {
         const q = PROJ.on ? projPoint(cx, cy) : { x: cx, y: cy, s: 1 };
         const near = PROJ.on ? projPoint(cx, cy + TILE * SCALE / 2) : { y: cy + TILE * SCALE / 2 };
         const far  = PROJ.on ? projPoint(cx, cy - TILE * SCALE / 2) : { y: cy - TILE * SCALE / 2 };
-        const halfW = TILE * SCALE * q.s / 2;
-        const halfH = Math.max(3, (near.y - far.y) / 2);   // the tile's depth on screen
+        // Bigger when he is facing AWAY from the camera. The tile he aims at is
+        // then directly behind him, and a billboard at full height on a raked
+        // floor covers most of it — so the reticle has to reach out past his
+        // shoulders. Facing any other way it is in clear floor and does not.
+        const grow = player.dir === 1 ? 1.45 : 1;
+        const halfW = TILE * SCALE * q.s / 2 * grow;
+        const halfH = Math.max(3, (near.y - far.y) / 2) * grow;   // the tile's depth on screen
         const pulse = 0.35 + Math.sin(performance.now() * 0.004) * 0.2;
         const c = PAL.punch;   // INK.green — mustard is the sequencer's colour
         const armX = halfW * 0.42, armY = halfH * 0.42, t = Math.max(2, 2 * SCALE * q.s * 0.4);
