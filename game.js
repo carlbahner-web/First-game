@@ -7026,8 +7026,23 @@ function sliceWarp(src, phase) {
     } finally { mipping = false; }
     return c;
 }
-function warpFor(src) {
-    if (!BOIL.on || !BOIL.chars || !src || !src.width) return src;
+// WHICH art boils, and it is not "all of it".
+//
+// This is the bug behind four rounds of "there are weird blinking overlays and
+// screen borders". The warp is applied by a patch on drawImage, so it caught
+// every bitmap the game draws — the back wall, its props, the pad tiles, the
+// side walls, and the whole floor, which goes down as 160 slices of one canvas
+// and therefore boiled as 160 independently wobbling horizontal bands. That is
+// exactly the shimmer along the room's edges, and it directly contradicts
+// BOIL.room, which is false and always was: the room is meant to be still.
+//
+// The warp exists for the character art in DONK_IMG and nothing else, so
+// membership is now explicit rather than inherited from "was drawn as an image".
+const BOILING_ART = new WeakSet();
+function charArt(im) { BOILING_ART.add(im); return im; }
+
+function warpFor(src, boils) {
+    if (!boils || !BOIL.on || !BOIL.chars || !src || !src.width) return src;
     let w = WARPS.get(src);
     if (!w) { w = []; WARPS.set(src, w); }
     const ph = boil();
@@ -7041,11 +7056,14 @@ function warpFor(src) {
     const orig = P.drawImage;
     P.drawImage = function (img, ...a) {
         if (mipping) return orig.call(this, img, ...a);
+        // Asked of the ORIGINAL, because the mip is a fresh canvas and would
+        // never be in the set.
+        const boils = BOILING_ART.has(img);
         if (a.length === 4) {                       // dx, dy, dw, dh
-            const m = warpFor(mipFor(img, a[2]));
+            const m = warpFor(mipFor(img, a[2]), boils);
             if (m !== img) return orig.call(this, m, a[0], a[1], a[2], a[3]);
         } else if (a.length === 8) {                // sx..sh, dx..dh
-            const m = warpFor(mipFor(img, a[6]));
+            const m = warpFor(mipFor(img, a[6]), boils);
             if (m !== img) {
                 // the warp preserves the mip's size, so this factor is the
                 // mip's alone
@@ -7069,7 +7087,8 @@ function bakeTint(img, color, amt) {
     g.globalAlpha = amt;
     g.fillStyle = color;
     g.fillRect(0, 0, c.width, c.height);
-    return c;
+    // A tinted Donk is still a Donk, so it keeps its place in the boiling set.
+    return BOILING_ART.has(img) ? charArt(c) : c;
 }
 
 function donkFinishLoad() {
@@ -7090,13 +7109,13 @@ function loadDonkImages() {
     let pending = 4;
     for (const key of ["body", "button", "arm", "leg"]) {
         const img = new Image();
-        img.onload = () => { DONK_IMG[key] = img; if (--pending === 0) donkFinishLoad(); };
+        img.onload = () => { DONK_IMG[key] = charArt(img); if (--pending === 0) donkFinishLoad(); };
         img.onerror = () => { if (--pending === 0) donkFinishLoad(); };
         img.src = srcs[key];
     }
     // Hero head/body (optional, loads independently of the core four)
     const heroImg = new Image();
-    heroImg.onload = () => { DONK_IMG.hero = heroImg; };
+    heroImg.onload = () => { DONK_IMG.hero = charArt(heroImg); };
     heroImg.onerror = () => {};
     heroImg.src = srcs.hero || DONK_FILES.hero;
     // BUZZ's straight-hose limb pieces (optional; rig falls back to Donk limbs)
@@ -7106,7 +7125,7 @@ function loadDonkImages() {
         ["buzzUpBody", "buzz-up-body.png"], ["buzzUpArm", "buzz-up-arm.png"],
         ["buzzDownBody", "buzz-down-body.png"], ["buzzDownArm", "buzz-down-arm.png"]]) {
         const im = new Image();
-        im.onload = () => { DONK_IMG[key] = im; };
+        im.onload = () => { DONK_IMG[key] = charArt(im); };
         im.onerror = () => {};
         im.src = srcs[key] || ("assets/donk/" + file);
     }
