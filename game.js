@@ -1187,7 +1187,27 @@ function drawBackWall() {
     // panel width bends to the room rather than the room being left with a
     // remainder. Measured on Carl's panel, the left and right edges differ by
     // 3.2 of a possible 765, so the joins do not need hiding.
+    // ONE DRAW, from a wall that was already stitched in the file.
+    //
+    // Carl's idea, and it removes the whole class of bug rather than another
+    // instance of it: every seam so far came from the game joining panels at
+    // run time. Panels joined in the image have no joins left for the renderer
+    // to get wrong — no per-panel rounding, no interpolation at the butt, and
+    // for the side walls no slice can straddle a panel edge because there are
+    // no edges inside the strip.
+    const strip = b.wallStrip ? ROOM_ART[b.wallStrip] : null;
     const tile = b.wallTile ? ROOM_ART[b.wallTile] : null;
+    if (strip && tile) {
+        const want = y;
+        const ideal = tile.width * (want / tile.height);
+        const n = Math.max(1, Math.min(b.stripPanels, Math.round(hw / ideal)));
+        const th = strip.height * ((hw / n) / tile.width);
+        // take the first n panels of the strip, and lay them across in one go
+        MAIN_CTX.drawImage(strip, 0, 0, tile.width * n, strip.height,
+                           x0, y - th, hw, th);
+        drawWallProps(x0, y - th, hw, th);
+        return;
+    }
     if (tile) {
         const want = y;                                   // fill the headroom
         const ideal = tile.width * (want / tile.height);
@@ -1236,6 +1256,7 @@ const DOOR_V0 = 1.7 / ROWS, DOOR_V1 = 4.0 / ROWS;
 function drawSideWalls() {
     const b = currentBiome;
     const tile = b && b.wallTile ? ROOM_ART[b.wallTile] : null;
+    const strip = b && b.wallStrip ? ROOM_ART[b.wallStrip] : null;
     if (!tile || !PROJ.on || PROJ.mode !== "rake") return;
     const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
 
@@ -1292,14 +1313,18 @@ function drawSideWalls() {
             const v0 = u0 / nSide, v1 = u1 / nSide;      // depth
             if (inDoor((v0 + v1) / 2)) continue;
             const A = at(v0, side), B = at(v1, side);
-            const sx = (u0 % 1) * tile.width, sw = tile.width / K;
+            // Sample the CONTINUOUS strip, not the panel. u runs across the
+            // whole wall, so a slice is always inside one image with no wrap to
+            // land on — which is what tore the wall before.
+            const src = strip || tile;
+            const sx = (strip ? u0 : (u0 % 1)) * tile.width, sw = tile.width / K;
 
             ctx.save();
             // Map the slice's rectangle onto its trapezoid: x across, y scaled
             // to this end's height, sheared by how much the top edge climbs.
             ctx.transform((B.x - A.x) / sw,
                           ((B.y - B.h) - (A.y - A.h)) / sw,
-                          0, A.h / tile.height,
+                          0, A.h / src.height,
                           A.x, A.y - A.h);
             // +1 on the source width closes the hairline between slices without
             // ever reaching across a panel edge, because a slice is a whole
@@ -1308,8 +1333,8 @@ function drawSideWalls() {
             // slices meet with no antialiased hairline between them. Clamped to
             // the panel so it can never reach across a panel edge.
             const bleed = sw * 0.06;
-            ctx.drawImage(tile, sx, 0, Math.min(sw + bleed, tile.width - sx), tile.height,
-                          0, 0, sw + bleed, tile.height);
+            ctx.drawImage(src, sx, 0, Math.min(sw + bleed, src.width - sx), src.height,
+                          0, 0, sw + bleed, src.height);
             ctx.restore();
         }
 
@@ -1708,7 +1733,9 @@ const BIOMES = [
         tagline: "WHERE THE GROOVE BEGINS",
         art: "warm-up-floor",  // assets/room/warm-up-floor.png — see ROOM_ART
         floorArt: true,        // the plate is the FLOOR only; no walls in it
-        wallTile: "wall-panel", // one panel, repeated along the horizon
+        wallTile: "wall-panel",  // the single panel — still the source of truth
+        wallStrip: "wall-strip",  // eight of it, pre-composed: see drawBackWall
+        stripPanels: 8,
         // Props hang ON the wall, in WALL SPACE: x and y are the prop's centre
         // as a fraction of the wall's width and height, h is its height as a
         // fraction of the wall's. Nothing here is in pixels, so the whole
@@ -2172,7 +2199,7 @@ for (const b of BIOMES) {
     // Both plates load the same way. The floor goes into the baked room texture
     // and so needs a rebuild when it lands; the wall is blitted live every frame
     // and needs nothing but to exist.
-    for (const slug of [b.art, b.wallArt, b.wallTile,
+    for (const slug of [b.art, b.wallArt, b.wallTile, b.wallStrip,
                         ...(b.wallProps || []).map(w => "props/" + w.art)]) {
         if (!slug || ROOM_ART[slug]) continue;
         const im = new Image();
