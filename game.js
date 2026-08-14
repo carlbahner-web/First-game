@@ -1262,6 +1262,30 @@ function drawSideWalls() {
                 ctx.fillStyle = mixC(INK.charcoal, INK.paper, 0.10);
                 ctx.fillRect(Math.min(xA, xB), Math.min(yA, yB) - hA,
                              Math.abs(xB - xA) + 1, hA + Math.abs(yB - yA));
+                // DOORWAY ART, drawn flat and sheared in here.
+                //
+                // A side wall runs away from the camera, so anything on it has
+                // to lie in that wall's plane — a flat sprite pasted on reads as
+                // a sticker. The wall is already being built as depth slices, so
+                // the shear is free: take the matching vertical slice of the
+                // art and stand it in the same strip the wall would have used.
+                // That means the art is authored straight-on, which is the
+                // easier thing to draw and the thing that can be reused.
+                const dArt = ROOM_ART[b.doorArt || "props/door"];
+                if (dArt) {
+                    const du = (vm - DOOR_V0) / (DOOR_V1 - DOOR_V0);
+                    // One strip takes one strip's worth of the art: the door
+                    // spans (DOOR_V1-DOOR_V0)*N strips, so each gets that
+                    // fraction of its width. Sampling the whole door per strip
+                    // smears it into a pale stripe.
+                    const sw = dArt.width / ((DOOR_V1 - DOOR_V0) * N);
+                    const dh = hA * 0.92;
+                    ctx.drawImage(dArt,
+                        Math.min(dArt.width - 1, du * dArt.width), 0,
+                        Math.max(1, sw), dArt.height,
+                        Math.min(xA, xB), Math.min(yA, yB) - dh,
+                        Math.abs(xB - xA) + 1, dh);
+                }
                 // A pair of eyes in the dark of the opening when a Donk is
                 // about to come through it — the same tell, in the place it now
                 // makes sense.
