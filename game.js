@@ -1270,7 +1270,7 @@ const DOOR_V0 = 1.7 / ROWS, DOOR_V1 = 4.0 / ROWS;
 // position every frame cannot differ between frames, whatever the slicing did
 // while it was being built — and it can afford far finer slices than a
 // per-frame version could, because it pays for them once.
-const SIDE_WALLS = { canvas: null, key: "" };
+const SIDE_WALLS = { parts: [], key: "" };
 
 function sideWallKey() {
     const b = currentBiome;
@@ -1283,11 +1283,21 @@ function buildSideWalls() {
     const tile = b && b.wallTile ? ROOM_ART[b.wallTile] : null;
     const strip = b && b.wallStrip ? ROOM_ART[b.wallStrip] : null;
     const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
-    const cv = document.createElement("canvas");
-    cv.width = W; cv.height = H;
-    const g = cv.getContext("2d");
-    if (!tile) return cv;
-    const src = strip || tile;
+
+    // SUPERSAMPLED, because this is baked once and resolution is free here.
+    //
+    // Everything on this wall is a thin line meeting the screen at a shallow
+    // angle — the panel's own outline, the dado rail, the skirting, the edges
+    // of the doorway — and every one of them lands on a fraction of a pixel.
+    // At 1:1 that is a dotted line and no amount of slicing fixes it, because
+    // the information is smaller than the pixel it has to live in. Drawn at
+    // double and boxed down, each of those fractions becomes a grey, which is
+    // what a drawn line looks like at this size.
+    // Each wall gets its own canvas, sized to the wall — supersampling the whole
+    // 1600x800 frame spent 63ms of the bake boxing down empty space, and the two
+    // walls between them occupy about a ninth of it.
+    const SS = 2;
+    if (!tile) return [];
 
     const hw = W * projScale(0);
     const ideal = tile.width * (projY(0) / tile.height);
@@ -1299,21 +1309,101 @@ function buildSideWalls() {
         return { x: W / 2 + side * (W / 2) * sc, y: projY(v), h: wallH * sc };
     };
 
-    // Baked once, so the slices can be as fine as the arithmetic deserves.
-    const K = 160;
+    // MINIFY THE SHEET FIRST, HORIZONTALLY ONLY.
+    //
+    // The side wall shows nSide panels — around 2100 pixels of drawing — inside
+    // about 130 pixels of screen, because it is seen at a glancing angle. That
+    // is a 16:1 reduction across, and a reduction that severe cannot be left to
+    // the draw: bilinear sampling takes two texels out of every sixteen and the
+    // wall arrives as a picket fence. It has to be a box filter, and it has to
+    // be horizontal only — vertically the wall is barely reduced at all, so a
+    // proportional mip would throw away the linework it is trying to protect.
+    const span = Math.abs(at(1, -1).x - at(0, -1).x);   // the wall's screen run
+
+    // Without a pre-composed strip, compose one — nSide copies of the panel side
+    // by side. One code path, and no slice can straddle a join.
+    let sheet = strip;
+    if (!sheet) {
+        const c = document.createElement("canvas");
+        c.width = tile.width * nSide; c.height = tile.height;
+        const gg = c.getContext("2d");
+        mipping = true;
+        try { for (let i = 0; i < nSide; i++) gg.drawImage(tile, i * tile.width, 0); }
+        finally { mipping = false; }
+        sheet = c;
+    }
+    const usedFrac = (tile.width * nSide) / sheet.width; // how much of it the wall uses
+    // Halve until one panel is about twice its screen width, so the slices
+    // resample DOWN by a hair rather than up.
+    const wantPanel = Math.max(24, (span / nSide) * 2 * SS);
+    let panelW = tile.width;
+    while (panelW / 2 >= wantPanel && sheet.width > 16) {
+        sheet = mipStep(sheet, Math.max(1, Math.round(sheet.width / 2)), sheet.height);
+        panelW /= 2;
+    }
+    const usedW = sheet.width * usedFrac;               // sheet px the wall spans
+
+    // ONE SLICE PER SCREEN COLUMN, not one per fixed fraction of the wall.
+    //
+    // A slice narrower than a pixel has two soft edges and covers neither of
+    // them fully, so where two of them meet the wall is drawn twice at partial
+    // strength and never reaches full. Hundreds of those in a row is why every
+    // line on the wall came out dotted. A slice that lands on whole pixel
+    // columns has no horizontal seam to soften at all — the only antialiasing
+    // left is at its top and bottom, which is where it belongs.
+    //
+    // The whole-pixel columns a span covers, in the order they are to be drawn.
+    // One per FINAL pixel, not per supersampled one: the supersampling is what
+    // softens the edges, and doubling the slice count doubles a bake that is
+    // already the most expensive thing in the frame it lands on.
+    const STEP = 1;
+    const columns = (lo, hi, backwards) => {
+        const out = [];
+        for (let c = Math.floor(lo / STEP) * STEP; c < hi; c += STEP) out.push(c);
+        return backwards ? out.reverse() : out;
+    };
+
+    // x(v) is monotonic, so the v at a column edge comes back by bisection.
+    const vOfX = (x, side) => {
+        let lo = 0, hi = 1;
+        for (let k = 0; k < 30; k++) {
+            const mid = (lo + hi) / 2;
+            if ((W / 2 + side * (W / 2) * projScale(mid) < x) === (side < 0)) hi = mid;
+            else lo = mid;
+        }
+        return (lo + hi) / 2;
+    };
+    const parts = [];
     for (const side of [-1, 1]) {
-        for (let i = 0; i < nSide * K; i++) {
-            const u0 = i / K, u1 = (i + 1) / K;
-            const v0 = u0 / nSide, v1 = u1 / nSide;
-            const A = at(v0, side), B = at(v1, side);
-            const sw = tile.width / K;
-            const sx = (strip ? u0 : (u0 % 1)) * tile.width;
+        const F = at(0, side), N = at(1, side);
+        const lo = Math.min(F.x, N.x), hi = Math.max(F.x, N.x);
+        // whole-pixel bounds with a pixel of margin, so the blit lands 1:1 and
+        // the column grid still falls on device pixels after the translate
+        const bx = Math.floor(lo) - 1, by = Math.floor(Math.min(F.y - F.h, N.y - N.h)) - 1;
+        const bw = Math.ceil(hi) + 1 - bx, bh = Math.ceil(Math.max(F.y, N.y)) + 1 - by;
+        const big = document.createElement("canvas");
+        big.width = bw * SS; big.height = bh * SS;
+        const g = big.getContext("2d");
+        g.scale(SS, SS); g.translate(-bx, -by);
+        // ...and drawn in the direction the slice runs. Each one overhangs its
+        // neighbour by half its width, and that overhang carries the wrong
+        // depth's art — so it has to land on ground not painted yet. Marching
+        // the other way, every column was half overwritten by the next one's
+        // overhang, which is what was dotting the lines on the wall.
+        for (const c of columns(lo, hi, side < 0)) {
+            const xL = Math.max(lo, c), xR = Math.min(hi, c + STEP);
+            if (xR <= xL) continue;
+            // the far end of the column first, so the slice runs far -> near
+            const vL = vOfX(side < 0 ? xR : xL, side), vR = vOfX(side < 0 ? xL : xR, side);
+            const A = at(vL, side), B = at(vR, side);
+            const sw = Math.max(1e-6, (vR - vL) * usedW);
+            const sx = vL * usedW;
             const bleed = sw * 0.5;      // generous: it is baked, not composited
             g.save();
             g.transform((B.x - A.x) / sw, ((B.y - B.h) - (A.y - A.h)) / sw,
-                        0, A.h / src.height, A.x, A.y - A.h);
-            g.drawImage(src, sx, 0, Math.min(sw + bleed, src.width - sx), src.height,
-                        0, 0, sw + bleed, src.height);
+                        0, A.h / sheet.height, A.x, A.y - A.h);
+            g.drawImage(sheet, sx, 0, Math.min(sw + bleed, sheet.width - sx), sheet.height,
+                        0, 0, sw + bleed, sheet.height);
             g.restore();
         }
         // The opening, cut INTO a wall that was drawn all the way across.
@@ -1338,32 +1428,54 @@ function buildSideWalls() {
         // top of the wall. Sliced, it fills the trapezoid it is standing in.
         const dArt = ROOM_ART[b.doorArt || "props/door"];
         if (dArt) {
-            const DK = 240;
-            for (let i = 0; i < DK; i++) {
-                const t0 = i / DK, t1 = (i + 1) / DK;
-                const A = at(DOOR_V0 + (DOOR_V1 - DOOR_V0) * t0, side);
-                const B = at(DOOR_V0 + (DOOR_V1 - DOOR_V0) * t1, side);
-                const sw = dArt.width / DK, sx = t0 * dArt.width;
+            // Same two rules as the wall: squeeze the sheet horizontally first,
+            // then slice it on whole screen columns. A door is 350 pixels of
+            // drawing landing in about 28, so it needs both at least as much.
+            const dLo = Math.min(D0.x, D1.x), dHi = Math.max(D0.x, D1.x);
+            let dSheet = dArt;
+            while (dSheet.width / 2 >= Math.max(16, (dHi - dLo) * 2 * SS) && dSheet.width > 16) {
+                dSheet = mipStep(dSheet, Math.max(1, Math.round(dSheet.width / 2)), dSheet.height);
+            }
+            const dv = DOOR_V1 - DOOR_V0;
+            for (const c of columns(dLo, dHi, side < 0)) {
+                const xL = Math.max(dLo, c), xR = Math.min(dHi, c + STEP);
+                if (xR <= xL) continue;
+                const vL = vOfX(side < 0 ? xR : xL, side), vR = vOfX(side < 0 ? xL : xR, side);
+                const A = at(vL, side), B = at(vR, side);
+                const sw = Math.max(1e-6, ((vR - vL) / dv) * dSheet.width);
+                const sx = ((vL - DOOR_V0) / dv) * dSheet.width;
                 const bleed = sw * 0.5;
                 g.save();
                 g.transform((B.x - A.x) / sw,
                             ((B.y - B.h * top) - (A.y - A.h * top)) / sw,
-                            0, (A.h * top) / dArt.height, A.x, A.y - A.h * top);
-                g.drawImage(dArt, sx, 0, Math.min(sw + bleed, dArt.width - sx), dArt.height,
-                            0, 0, sw + bleed, dArt.height);
+                            0, (A.h * top) / dSheet.height, A.x, A.y - A.h * top);
+                g.drawImage(dSheet, sx, 0, Math.min(sw + bleed, dSheet.width - sx), dSheet.height,
+                            0, 0, sw + bleed, dSheet.height);
                 g.restore();
             }
         }
+        parts.push({ canvas: SS === 1 ? big : mipStep(big, bw, bh), x: bx, y: by });
     }
-    return cv;
+    return parts;
+}
+
+// Bake as soon as the art lands rather than on the first frame that draws it.
+// The bake is ~60ms, and on the first frame of a level that lands inside the
+// audio scheduler's 100ms lookahead — a stall there is a dropped drum, not just
+// a dropped frame. Called from the room-art loader, which runs on the title
+// screen where there is nothing to drop.
+function warmSideWalls() {
+    const b = currentBiome;
+    if (!b || !b.wallTile || !ROOM_ART[b.wallTile] || !PROJ.on || PROJ.mode !== "rake") return false;
+    const key = sideWallKey();
+    if (SIDE_WALLS.key !== key) { SIDE_WALLS.parts = buildSideWalls(); SIDE_WALLS.key = key; }
+    return true;
 }
 
 function drawSideWalls() {
     const b = currentBiome;
-    if (!b || !b.wallTile || !ROOM_ART[b.wallTile] || !PROJ.on || PROJ.mode !== "rake") return;
-    const key = sideWallKey();
-    if (SIDE_WALLS.key !== key) { SIDE_WALLS.canvas = buildSideWalls(); SIDE_WALLS.key = key; }
-    ctx.drawImage(SIDE_WALLS.canvas, 0, 0);
+    if (!warmSideWalls()) return;
+    for (const p of SIDE_WALLS.parts) ctx.drawImage(p.canvas, p.x, p.y);
 
     // The spawn tell is the one live part, so it stays out of the bake.
     const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
@@ -2230,6 +2342,7 @@ for (const b of BIOMES) {
             if (currentBiome && currentBiome.art === slug) {
                 rebuildCaveTextures(Math.max(0, texturesBuiltForLevel));
             }
+            warmSideWalls();
         };
         im.onerror = () => {};
         im.src = "assets/room/" + slug + ".png";
