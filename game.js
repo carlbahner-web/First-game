@@ -5901,11 +5901,15 @@ function render() {
     renderFriendNPC();
 
     // Death particles
-    for (const p of deathParticles) {
-        if (p.sparkle && Math.random() > 0.6) continue; // twinkle effect
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = p.life / 60;
-        ctx.fillRect(p.x * SCALE, p.y * SCALE, p.size * SCALE, p.size * SCALE);
+    // Particles are in the room, so they take the camera like everything else.
+    // Particles are in the room, so they take the camera like everything else.
+    for (const pt of deathParticles) {
+        if (pt.sparkle && Math.random() > 0.6) continue; // twinkle effect
+        billboard(pt.x, pt.y, () => {
+            ctx.fillStyle = pt.color;
+            ctx.globalAlpha = pt.life / 60;
+            ctx.fillRect(pt.x * SCALE, pt.y * SCALE, pt.size * SCALE, pt.size * SCALE);
+        });
     }
     ctx.globalAlpha = 1.0;
 
@@ -5914,8 +5918,12 @@ function render() {
 
     // Death text
     if (deathText) {
+        // Anchored to the spot in the room it was thrown from. It was drawing
+        // flat, which put "OW MY FACE!" up by the back wall while the Donk it
+        // came out of was down on the grid.
         ctx.globalAlpha = Math.min(1, deathText.timer / 20);
-        drawText(deathText.text, deathText.x, deathText.y, deathText.color || INK.red, deathText.scale || 5);
+        billboard(deathText.x, deathText.y, () =>
+        drawText(deathText.text, deathText.x, deathText.y, deathText.color || INK.red, deathText.scale || 5));
         ctx.globalAlpha = 1.0;
     }
 
@@ -5923,19 +5931,26 @@ function render() {
     if (pocketRing) {
         pocketRing.timer--;
         const prT = 1 - pocketRing.timer / 30; // 0→1
-        const prX = pocketRing.x * SCALE;
-        const prY = pocketRing.y * SCALE;
+        // Paint on the floor, so it lies down with the floor rather than
+        // hanging in the air at its flat position.
+        const prP = PROJ.on ? projPoint(pocketRing.x * SCALE, pocketRing.y * SCALE) : null;
+        const prX = prP ? prP.x : pocketRing.x * SCALE;
+        const prY = prP ? prP.y : pocketRing.y * SCALE;
+        const prS = prP ? prP.s : 1;
+        ctx.save();
+        if (prP) { ctx.translate(prX, prY); ctx.scale(1, projScale(1) > 0 ? 0.42 : 1); ctx.translate(-prX, -prY); }
         ctx.strokeStyle = INK.mustard;
         ctx.lineWidth = 3 * SCALE;
         ctx.globalAlpha = (1 - prT) * 0.8;
         ctx.beginPath();
-        ctx.arc(prX, prY, (4 + prT * 180) * SCALE, 0, Math.PI * 2);
+        ctx.arc(prX, prY, (4 + prT * 180) * SCALE * prS, 0, Math.PI * 2);
         ctx.stroke();
         // Trailing inner ring
         ctx.globalAlpha = (1 - prT) * 0.4;
         ctx.beginPath();
-        ctx.arc(prX, prY, (4 + prT * 130) * SCALE, 0, Math.PI * 2);
+        ctx.arc(prX, prY, (4 + prT * 130) * SCALE * prS, 0, Math.PI * 2);
         ctx.stroke();
+        ctx.restore();
         ctx.globalAlpha = 1.0;
         if (pocketRing.timer <= 0) pocketRing = null;
     }
@@ -5976,8 +5991,11 @@ function render() {
             g.addColorStop(1, "rgba(239,172,40,0)");
             gradCache.carlGlow = g;
         }
-        const glowCX = (player.x + player.w / 2) * SCALE;
-        const glowCY = (player.y + player.h) * SCALE;
+        // At his feet, on the floor — so it follows him through the camera
+        // instead of sitting at his flat position.
+        const gp = PROJ.on ? projPoint((player.x + player.w / 2) * SCALE, (player.y + player.h) * SCALE) : null;
+        const glowCX = gp ? gp.x : (player.x + player.w / 2) * SCALE;
+        const glowCY = gp ? gp.y : (player.y + player.h) * SCALE;
         const glowPulse = 0.25 + Math.sin(performance.now() * 0.002) * 0.08 + boost;
         ctx.save();
         ctx.translate(glowCX, glowCY);
