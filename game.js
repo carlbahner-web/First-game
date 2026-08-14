@@ -1573,6 +1573,103 @@ function drawWallProps(wx, wy, ww, wh) {
         const cy = pr.foot ? wh - h / 2 : wh * pr.y;
         MAIN_CTX.drawImage(art, wx + ww * pr.x - w / 2, wy + cy - h / 2, w, h);
     }
+    drawWallScoreboard(wx, wy, ww, wh);
+}
+
+// Is the wall carrying the readouts this level? Five of the six biomes have no
+// wall art yet, and a room with no wall to hang a board on still needs its
+// numbers — so the bottom band stays the fallback rather than being deleted.
+function hudOnWall(biome) {
+    const b = biome || currentBiome;
+    return !!(b && b.scoreboard && b.wallTile && ROOM_ART[b.wallTile]
+              && PROJ.on && PROJ.mode === "rake");
+}
+
+// THE READOUTS, HUNG ON THE WALL.
+//
+// Carl's call, and it solves a problem rather than moving one. The pale band
+// along the bottom of the room was not scenery: the numbers printed straight
+// onto it, and they measure 1.4:1 against the floor planks versus 8.38:1 against
+// that band, so the band existed to be something for type to sit on. Put the
+// numbers on the wall and it has no job left.
+//
+// It is drawn, not blitted, for the same reason the pads are: the numbers change
+// every frame and a baked board would have to be rebaked every frame. The PLATE
+// is what makes it read as an object — a cream board screwed to the wall, in the
+// room's own ink — and the plate is cheap.
+//
+// Placement is in WALL SPACE, like the props: fractions of the wall's width and
+// height, so it survives a change of tilt, of horizon, or of panel count.
+function drawWallScoreboard(wx, wy, ww, wh) {
+    // Nothing to report before the shift starts. A board reading SCORE 00000 on
+    // the attract screen is not wrong, but an empty one would look broken and a
+    // filled one is a claim about a run that has not happened.
+    if (!hudOnWall() || gameState === "title") return;
+    const sb = currentBiome.scoreboard;
+    const w = ww * sb.w, h = wh * sb.h;
+    const x = wx + ww * sb.x - w / 2, y = wy + wh * sb.y - h / 2;
+    const g = MAIN_CTX;
+    const r = Math.max(2, h * 0.06);
+
+    g.save();
+    // the board itself: cream plate, charcoal outline, a screw in each top corner
+    g.fillStyle = INK.paper;
+    g.strokeStyle = INK.charcoal;
+    g.lineWidth = Math.max(1.5, h * 0.022);
+    g.beginPath(); g.roundRect(x, y, w, h, r); g.fill(); g.stroke();
+    g.fillStyle = mixC(INK.charcoal, INK.paper, 0.45);
+    for (const sx of [x + w * 0.035, x + w * 0.965]) {
+        g.beginPath(); g.arc(sx, y + h * 0.12, Math.max(1.2, h * 0.028), 0, Math.PI * 2); g.fill();
+    }
+
+    // SCORE, the hero — same hierarchy as the band it replaces: size and face do
+    // the work, and the mustard offset stands the numerals off the plate.
+    const numPx = h * 0.40, labPx = h * 0.115;
+    const cx = x + w / 2, scoreY = y + h * 0.53;
+    g.textAlign = "center"; g.textBaseline = "alphabetic";
+    g.font = fbody(labPx);
+    g.fillStyle = mixC(INK.charcoal, INK.paper, 0.38);
+    g.fillText("SCORE", cx, y + h * 0.19);
+    g.font = fdisp(numPx);
+    const scoreStr = String(score).padStart(5, "0");
+    g.fillStyle = INK.mustard; g.fillText(scoreStr, cx + numPx * 0.06, scoreY + numPx * 0.06);
+    g.fillStyle = INK.charcoal; g.fillText(scoreStr, cx, scoreY);
+
+    // LEVEL and TIME along the foot, small, flanking the equipment tracker
+    const footY = y + h * 0.85, smallPx = h * 0.17;
+    g.font = fbody(labPx);
+    g.fillStyle = mixC(INK.charcoal, INK.paper, 0.38);
+    g.textAlign = "left";  g.fillText("LEVEL", x + w * 0.05, footY - smallPx * 0.92);
+    g.textAlign = "right"; g.fillText("TIME", x + w * 0.95, footY - smallPx * 0.92);
+    g.font = fdisp(smallPx);
+    g.fillStyle = INK.charcoal;
+    g.textAlign = "left";
+    g.fillText(String(currentLevel + 1).padStart(2, "0"), x + w * 0.05, footY);
+
+    // The clock is the only way to lose, so it keeps the warning states it had:
+    // rust from 30 seconds, and alert red only at 10 — which is the reserved
+    // colour used for the one thing in this game that can actually end a run.
+    const timerSec = Math.max(0, Math.ceil(levelTimer / 60));
+    const isUrgent = timerSec <= 30, isCritical = timerSec <= 10;
+    const blinkOn = !isUrgent || Math.floor(levelTimer / (isCritical ? 15 : 30)) % 2 === 0;
+    g.textAlign = "right";
+    if (blinkOn) {
+        g.fillStyle = isCritical ? INK.alert : isUrgent ? INK.rust : INK.charcoal;
+        g.fillText(timerSec < 10 ? "0" + timerSec : String(timerSec), x + w * 0.95, footY);
+    }
+
+    // Equipment recovered, as pips between them
+    const earned = djSetupEarned.length, total = DJ_SETUP_PIECES.length;
+    if (earned > 0 || currentLevel >= 4) {
+        const pip = Math.max(2, h * 0.055), gap = pip * 1.7;
+        const px0 = cx - (total - 1) * gap / 2;
+        for (let i = 0; i < total; i++) {
+            g.fillStyle = i < earned ? INK.mustard : mixC(INK.charcoal, INK.paper, 0.62);
+            g.fillRect(px0 + i * gap - pip / 2, footY - pip * 1.4, pip, pip);
+        }
+    }
+    g.textAlign = "start"; g.textBaseline = "alphabetic";
+    g.restore();
 }
 
 // Lay the finished floor canvas down onto the plane.
@@ -1912,6 +2009,11 @@ const BIOMES = [
             { art: "clipboard", x: 0.825, y: 0.381, h: 0.234 },
             { art: "phone",     x: 0.930, y: 0.395, h: 0.284 },
         ],
+        // The readouts hang here, in the same wall space as the props. The gap
+        // between the poster's right edge (0.351) and the clock's left (0.664)
+        // is the only unbroken stretch of upper wall, so the board takes the
+        // middle of it and clears both by a comfortable margin.
+        scoreboard: { x: 0.505, y: 0.26, w: 0.275, h: 0.36 },
         floor: { base: mixC(INK.charcoal, INK.mint, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.mint, 0.17) },
         walls: [
             { base: "#BFCDC0", dark: "#93a89a", hi: "#e9eee9" },
@@ -2225,13 +2327,22 @@ function buildCaveBgTexture(biome, LS) {
         }
     }
 
-    // Bottom wall tiles — only where there is no drawing. A full drawn room
-    // paints its own band and the HUD prints straight onto it; a floor plate
-    // does not, and the HUD measured 1.30:1 printed on these planks against
-    // 7.66:1 on a pale band, so the band goes back.
+    // Bottom band — only where there is no drawing. A full drawn room paints its
+    // own and the HUD prints straight onto it; a floor plate does not, and the
+    // HUD measured 1.30:1 printed on these planks against 7.66:1 on a pale band.
+    //
+    // Its height depends on what it is FOR. Where the readouts are on the wall
+    // it has nothing to carry, and a full tile of masonry across the bottom of a
+    // drawn room is the last of the procedural border: it becomes a slim plinth,
+    // there only to stop the floor bleeding into the frame's edge. Where the
+    // readouts are still at the bottom — the five biomes with no wall art yet —
+    // it keeps its full height, because it is the ground their type stands on.
     if (!art || floorOnly) {
+        const band = hudOnWall(biome) ? TILE * 0.28 : TILE;
+        const bandY = (ROWS * TILE - band) * SCALE;
         for (let col = 0; col < COLS; col++) {
-            g.drawImage(TEX_WALL_BOT[col], col * TILE * SCALE, (ROWS - 1) * TILE * SCALE);
+            g.drawImage(TEX_WALL_BOT[col], col * TILE * SCALE, bandY,
+                TILE * SCALE, band * SCALE);
         }
     }
 
@@ -5515,6 +5626,11 @@ function fillRoundRect(context, x, y, w, h, r, color) {
 // ---- HUD Render (separate canvas below game) ----
 function renderHUD() {
     hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
+    // The readouts print on the wall where there is a wall to print them on.
+    // This function still runs either way: the last-ten-seconds tick lives at
+    // the bottom of it, and that is audio, which does not care where the
+    // numbers are drawn.
+    const onWall = hudOnWall();
 
     // NO PANELS. Every readout used to sit in a charcoal plate with a border, a
     // top highlight and a bottom shadow — four rects of furniture around each
@@ -5560,7 +5676,16 @@ function renderHUD() {
         return hudCtx.measureText(text).width / SCALE;
     };
 
+    // The clock's state is read by the tick below, which fires wherever the
+    // numbers are printed — so it is worked out before anything is drawn rather
+    // than inside the branch that draws the band.
+    const timerSec = Math.max(0, Math.ceil(levelTimer / 60));
+    const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
+    const isUrgent = timerSec <= 30;
+    const isCritical = timerSec <= 10;
+
     // --- LEVEL, left ---------------------------------------------------------
+    if (!onWall) {
     const lw = label("LEVEL", margin);
     number(String(currentLevel + 1).padStart(2, "0"), margin + lw + 3, INK.charcoal);
 
@@ -5576,10 +5701,6 @@ function renderHUD() {
     number(scoreStr, W / 2, INK.charcoal, "center");
 
     // --- TIME, right ---------------------------------------------------------
-    const timerSec = Math.max(0, Math.ceil(levelTimer / 60));
-    const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
-    const isUrgent = timerSec <= 30;
-    const isCritical = timerSec <= 10;
     const blinkRate = isCritical ? 15 : 30;
     const blinkOn = !isUrgent || Math.floor(levelTimer / blinkRate) % 2 === 0;
     // On a pale band mustard is 1.43:1 and vanishes, so the warning state is
@@ -5590,6 +5711,7 @@ function renderHUD() {
     hudCtx.font = fbody(labSize * SCALE);
     const tlw = hudCtx.measureText("TIME").width / SCALE;
     label("TIME", W - margin - hudDigitWidth(2) * 2 - 4 - tlw);
+    }
 
     // Tick sound during the last 10 seconds, once per second.
     //
@@ -5620,7 +5742,7 @@ function renderHUD() {
     {
         const earned = djSetupEarned.length;
         const total = DJ_SETUP_PIECES.length;
-        if (earned > 0 || currentLevel >= 4) {
+        if (!onWall && (earned > 0 || currentLevel >= 4)) {
             const trackerY = HUD_H / 2 - 2;
             const trackerX = W / 2 + 34;
             for (let i = 0; i < total; i++) {
