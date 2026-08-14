@@ -3,7 +3,12 @@
 // ============================================================
 
 const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+// `let`, not `const`: the ground-plane projection redirects every floor draw to
+// an offscreen canvas and then maps that canvas onto the tilted plane. Every
+// draw helper in this file reads the global at call time, so the swap is
+// invisible to all of them. See PROJ.
+let ctx = canvas.getContext("2d");
+const MAIN_CTX = ctx;
 
 // The single-file bundle inlines every asset as a data URI into window.__ASSETS
 // and shims Image.src to look them up. Fonts and patterns don't go through
@@ -964,6 +969,92 @@ function finishStoneTile(g, c, size, rng) {
 // Generate stone tile for the grid — paper stone with a hand-inked
 // charcoal border. Static wonk, not boil: 96 repeating tiles boiling in
 // lockstep reads as strobe (coaster bible, the rail-ties lesson).
+// ============================================================
+// GROUND PLANE — 2D sprites standing in a 3D room
+// ============================================================
+// The room is drawn exactly as it always was, flat and square, into an
+// offscreen canvas — then that whole canvas is laid down onto a tilted plane
+// and the characters are stood back up on it as billboards.
+//
+// Doing it as a post-process rather than a rewrite is what makes it affordable.
+// Every draw helper in this file positions in logical units and multiplies by
+// SCALE at draw time, so the entire floor pipeline — room art, procedural cave,
+// grid pads, lattice, playhead — needs no changes at all. Movement, collision
+// and punch targeting never leave logical space either, so the GAME is
+// completely untouched: this is a camera, not a rule.
+//
+// The plane is mapped in horizontal strips. A strip's distance decides how wide
+// it is and how much screen height it gets, which is a receding floor and costs
+// ~160 blits a frame.
+const PROJ = {
+    on: true,
+    tilt: 0.45,      // 0 = flat top-down (what it was), 1 = extreme rake
+    strips: 160,     // horizontal slices of the plane
+    lift: 0.10,      // fraction of the canvas the horizon sits down from the top
+};
+
+const PLANE = document.createElement("canvas");
+let PLANE_CTX = null;
+function planeCtx() {
+    const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
+    if (PLANE.width !== W || PLANE.height !== H) { PLANE.width = W; PLANE.height = H; PLANE_CTX = null; }
+    if (!PLANE_CTX) PLANE_CTX = PLANE.getContext("2d");
+    return PLANE_CTX;
+}
+
+// How wide a strip at depth v is, v = 0 at the back of the room, 1 at the front.
+const projScale = (v) => (1 - PROJ.tilt) + PROJ.tilt * v;
+
+// Where a strip at depth v lands vertically. Screen height accrues in
+// proportion to width, which is what makes it read as distance rather than as a
+// squash — so the far half of the room is both narrower AND shallower.
+function projY(v, H) {
+    const a = 1 - PROJ.tilt;
+    const area = (t) => a * t + PROJ.tilt * t * t / 2;   // integral of projScale
+    const top = H * PROJ.lift;
+    return top + (H - top) * (area(v) / area(1));
+}
+
+// A point on the floor, in device px, to where it lands on screen.
+function projPoint(dx, dy) {
+    const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
+    const v = Math.max(0, Math.min(1, dy / H));
+    const s = projScale(v);
+    return { x: W / 2 + (dx - W / 2) * s, y: projY(v, H), s };
+}
+
+// Lay the finished floor canvas down onto the plane.
+function blitPlane() {
+    const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
+    const n = PROJ.strips, sh = H / n;
+    MAIN_CTX.clearRect(0, 0, W, H);
+    for (let i = 0; i < n; i++) {
+        const v0 = i / n, v1 = (i + 1) / n;
+        const s = projScale(v0);
+        const y0 = projY(v0, H), y1 = projY(v1, H);
+        const w = W * s;
+        // +1 on the height closes the hairline seams between strips that
+        // rounding would otherwise leave as scan lines across the floor.
+        MAIN_CTX.drawImage(PLANE, 0, i * sh, W, sh,
+                           W / 2 - w / 2, y0, w, (y1 - y0) + 1);
+    }
+}
+
+// Stand a sprite up at its own ground point. It keeps its full height and its
+// upright pose — only its position and its size follow the floor — which is the
+// whole idea: 2D characters in a 3D room, not characters lying on the floor.
+function billboard(groundX, groundY, draw) {
+    if (!PROJ.on) { draw(); return; }
+    const gx = groundX * SCALE, gy = groundY * SCALE;
+    const p = projPoint(gx, gy);
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(p.s, p.s);
+    ctx.translate(-gx, -gy);
+    draw();
+    ctx.restore();
+}
+
 // ---- Pad extrusion -------------------------------------------------------
 // A sequencer cell is a BLOCK standing on the floor, not a coloured square
 // painted on it. Cabinet projection, the cheap half: a top face and a front
@@ -5026,6 +5117,14 @@ function render() {
         }
     }
 
+    // Everything from here to the goblins is FLOOR — room, grid, lattice,
+    // playhead — and under the projection it is drawn flat into the plane
+    // canvas first, exactly as it always was, then laid down in one piece.
+    if (PROJ.on) {
+        ctx = planeCtx();
+        ctx.clearRect(0, 0, COLS * TILE * SCALE, ROWS * TILE * SCALE);
+    }
+
     // Clear & draw cave background (sprite scaled to canvas, or pre-rendered fallback)
     ctx.drawImage(TEX_CAVE_BG[boilPhase("room")], 0, 0);
 
@@ -5391,10 +5490,17 @@ function render() {
     // The crowd still exists where it means something: the intro, the title
     // screen and the cave-return cutscene.)
 
+    // The floor is finished. Lay it down, come back to the real canvas, and
+    // everything after this stands up on it.
+    if (PROJ.on) {
+        blitPlane();
+        ctx = MAIN_CTX;
+    }
+
     // Goblins (all active ones)
     for (const g of goblins) {
         if (!g.dead) {
-            drawGoblinFor(g);
+            billboard(g.x + g.w / 2, g.y + g.h, () => drawGoblinFor(g));
         } else if (g.deathAnimActive) {
             // Poof animation: shrink, spin, and dissolve
             const progress = 1 - g.deathAnimTimer / 24; // 0→1
@@ -5562,14 +5668,18 @@ function render() {
         ctx.globalAlpha = 1.0;
     }
 
-    // Player shadow
-    contactShadow(player.x + player.w / 2, player.y + player.h - 1, 5.4, 1.9);
+    // BUZZ and his punch stand up together on his own ground point — one
+    // billboard, or the fist would take a different scale from the arm.
+    billboard(player.x + player.w / 2, player.y + player.h, () => {
+        // Player shadow
+        contactShadow(player.x + player.w / 2, player.y + player.h - 1, 5.4, 1.9);
 
-    // Punch (draw behind player for up-facing, in front otherwise)
-    if (player.attacking && player.dir === 1) drawPunch();
+        // Punch (draw behind player for up-facing, in front otherwise)
+        if (player.attacking && player.dir === 1) drawPunch();
 
-    // Player sprite
-    drawPlayer();
+        // Player sprite
+        drawPlayer();
+    });
 
     // Boulder freeze countdown display (large seconds above Carl)
     if (player.freezeTimer > 0) {
@@ -5586,7 +5696,9 @@ function render() {
     }
 
     // Punch (in front for down/left/right)
-    if (player.attacking && player.dir !== 1) drawPunch();
+    if (player.attacking && player.dir !== 1) {
+        billboard(player.x + player.w / 2, player.y + player.h, drawPunch);
+    }
 
     // "Press any key" prompt while the beat waits for the audio unlock
     if (!sequencerStarted && gameState === "playing") {
