@@ -6562,6 +6562,13 @@ function render() {
         billboard(player.x + player.w / 2, player.y + player.h, drawPunch);
     }
 
+    // ...and the impact after him, whichever way he is facing. See
+    // drawPunchImpact: facing away, the tile he hit is behind him, and so was
+    // the star that said he hit it.
+    if (player.punchFx > 0 && player.punchHit) {
+        billboard(player.x + player.w / 2, player.y + player.h, drawPunchImpact);
+    }
+
     // "Press any key" prompt while the beat waits for the audio unlock
     if (!sequencerStarted && gameState === "playing" && !CAMRIG.on) {
         const blinkStart = Math.floor(performance.now() / 500) % 2 === 0;
@@ -6876,7 +6883,23 @@ function drawPunch() {
     //   by a real hit — a goblin, the catapult, a villager, or a drum pad.
     // Both run off punchFx rather than the swing, because the swing can be HELD
     // and an effect frozen mid-flash reads as a bug rather than a hit.
-    const tip = (heroArm && donkFistTip) ? donkFistTip : { x: fistX, y: fistY };
+    // BRING THE FIST TIP BACK INTO THIS SPACE BEFORE USING IT.
+    //
+    // donkFistTip is ABSOLUTE canvas coordinates — it is baked out through the
+    // live transform at the moment the hand-drawn arm is posed, so the impact FX
+    // can find the glove. Everything else in here is in the billboard's local
+    // space. Handing an absolute point to a drawing call that is already inside
+    // the billboard transform applies that transform twice, and the further the
+    // camera has to move a point the worse it gets: at the back of the room the
+    // burst landed three rows down the board from the fist that made it.
+    //
+    // This is not new — it was there before the burst was reshaped, and the old
+    // slow bloom simply hid it. The trail was reading the same wrong point.
+    const toLocal = (pt) => {
+        const m = ctx.getTransform().invertSelf();
+        return { x: m.a * pt.x + m.c * pt.y + m.e, y: m.b * pt.x + m.d * pt.y + m.f };
+    };
+    const tip = (heroArm && donkFistTip) ? toLocal(donkFistTip) : { x: fistX, y: fistY };
     const punchAngle = Math.atan2(dy, dx);
 
     // --- dry-brush trail, chasing the glove ---
@@ -6921,11 +6944,29 @@ function drawPunch() {
     } else {
         p.punchFxAt = null;
     }
-    const e = p.punchFx > 0 ? 1 - p.punchFx / PUNCH_FX_LEN : 1;  // 0 at contact
-    const fx = p.punchFx > 0 ? Math.pow(1 - e, 1.6) : 0;         // brightness
-    const spread = 0.92 + e * 0.45;                              // and it opens out
-    if (fx > 0 && p.punchHit) {
-        const tipFx = p.punchFxAt || tip;
+    ctx.restore();
+}
+
+// The star and the bloom, drawn AFTER him in every direction.
+//
+// They used to go out with the rest of the punch, which for an up-facing swing
+// is drawn behind him — and the pad he is hitting when he faces up is behind him
+// too, so the whole impact vanished into his own silhouette. One direction in
+// four with no visible hit at all.
+//
+// Carl already ruled on exactly this conflict once, for the punch reticle: it is
+// grown when he faces away because "the reticle gets obscured by his body". Same
+// billboard, same occlusion, same answer. The impact marks a tile in the room,
+// so it belongs to the room and goes down last.
+function drawPunchImpact() {
+    const p = player;
+    if (!(p.punchFx > 0 && p.punchHit && p.punchFxAt)) return;
+    const tipFx = p.punchFxAt;
+    const e = 1 - p.punchFx / PUNCH_FX_LEN;   // 0 on the frame of contact
+    const fx = Math.pow(1 - e, 1.6);          // brightness: instant on, quick off
+    const spread = 0.92 + e * 0.45;           // and it opens out as it goes
+    ctx.save();
+    {
         // What he hit decides the colour: a drum pad flashes its own row, so the
         // impact teaches the sequencer's colour language instead of fighting it.
         const col = p.punchHitCol || INK.mustard;
