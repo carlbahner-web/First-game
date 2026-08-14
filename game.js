@@ -1239,79 +1239,81 @@ function drawSideWalls() {
     if (!tile || !PROJ.on || PROJ.mode !== "rake") return;
     const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
 
-    // Match the back wall's world height exactly.
+    // Match the back wall's world height exactly, so the corners meet.
     const hw = W * projScale(0);
     const idealW = tile.width * (projY(0) / tile.height);
     const nBack = Math.max(1, Math.round(hw / idealW));
     const twBack = hw / nBack;
-    const wallWorldH = (tile.height * (twBack / tile.width)) / projScale(0);
+    const wallH = (tile.height * (twBack / tile.width)) / projScale(0);
 
-    const N = 96;
+    // SOLID GEOMETRY, not sliced texture.
+    //
+    // The first version cut the panel into vertical strips by depth and stood
+    // each one up. It tore: consecutive strips sampled different x of the panel,
+    // so wherever the sampling wrapped it picked up the panel's own border line,
+    // and the wall came out as ragged pale shards with the room showing through.
+    // A side wall is a flat plane of one colour with two horizontal mouldings on
+    // it — so draw exactly that, and there is nothing to seam.
+    const wallCol = "#c9d3c6", railCol = "#efe9dc", inkCol = "rgba(44,44,42,0.55)";
+    const edge = (v) => {
+        const sc = projScale(v);
+        return { x: W / 2 + SIDE * (W / 2) * sc, y: projY(v), h: wallH * sc };
+    };
+    let SIDE = -1;
     for (const side of [-1, 1]) {
-        for (let i = 0; i < N; i++) {
-            const v0 = i / N, v1 = (i + 1) / N;
-            const vm = (v0 + v1) / 2;
-            if (vm > DOOR_V0 && vm < DOOR_V1) {
-                // The opening. Drawn as a recess rather than skipped, or the
-                // surround shows through and it reads as a hole in the picture
-                // instead of a way into the room.
-                const sA = projScale(v0), sB = projScale(v1);
-                const xA = W / 2 + side * (W / 2) * sA, xB = W / 2 + side * (W / 2) * sB;
-                const yA = projY(v0), yB = projY(v1);
-                const hA = wallWorldH * sA * 0.82;
-                ctx.fillStyle = mixC(INK.charcoal, INK.paper, 0.10);
-                ctx.fillRect(Math.min(xA, xB), Math.min(yA, yB) - hA,
-                             Math.abs(xB - xA) + 1, hA + Math.abs(yB - yA));
-                // DOORWAY ART, drawn flat and sheared in here.
-                //
-                // A side wall runs away from the camera, so anything on it has
-                // to lie in that wall's plane — a flat sprite pasted on reads as
-                // a sticker. The wall is already being built as depth slices, so
-                // the shear is free: take the matching vertical slice of the
-                // art and stand it in the same strip the wall would have used.
-                // That means the art is authored straight-on, which is the
-                // easier thing to draw and the thing that can be reused.
-                const dArt = ROOM_ART[b.doorArt || "props/door"];
-                if (dArt) {
-                    const du = (vm - DOOR_V0) / (DOOR_V1 - DOOR_V0);
-                    // One strip takes one strip's worth of the art: the door
-                    // spans (DOOR_V1-DOOR_V0)*N strips, so each gets that
-                    // fraction of its width. Sampling the whole door per strip
-                    // smears it into a pale stripe.
-                    const sw = dArt.width / ((DOOR_V1 - DOOR_V0) * N);
-                    const dh = hA * 0.92;
-                    ctx.drawImage(dArt,
-                        Math.min(dArt.width - 1, du * dArt.width), 0,
-                        Math.max(1, sw), dArt.height,
-                        Math.min(xA, xB), Math.min(yA, yB) - dh,
-                        Math.abs(xB - xA) + 1, dh);
-                }
-                // A pair of eyes in the dark of the opening when a Donk is
-                // about to come through it — the same tell, in the place it now
-                // makes sense.
-                if (Math.abs(vm - (DOOR_V0 + DOOR_V1) / 2) < 0.5 / N) {
-                    const cave = CAVES[side < 0 ? 0 : 1];
-                    for (const g of goblins) {
-                        if (!g.dead || g.respawnTimer >= 60 || CAVES[g.spawnCave] !== cave) continue;
-                        ctx.fillStyle = g.elite ? INK.mint : "#50ad33";
-                        const ey = Math.min(yA, yB) - hA * 0.55, ex = (xA + xB) / 2;
-                        const er = 2 * SCALE * sA;
-                        ctx.beginPath(); ctx.arc(ex - er * 1.2, ey, er, 0, Math.PI * 2); ctx.fill();
-                        ctx.beginPath(); ctx.arc(ex + er * 1.2, ey, er, 0, Math.PI * 2); ctx.fill();
-                        break;
-                    }
-                }
-                continue;
+        SIDE = side;
+        for (const [va, vb] of [[0, DOOR_V0], [DOOR_V1, 1]]) {
+            const A = edge(va), B = edge(vb);
+            ctx.beginPath();
+            ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y);
+            ctx.lineTo(B.x, B.y - B.h); ctx.lineTo(A.x, A.y - A.h);
+            ctx.closePath();
+            ctx.fillStyle = wallCol; ctx.fill();
+            // dado rail and skirting, as bands that follow the wall away
+            for (const [f, t] of [[0.40, 0.045], [0.03, 0.055]]) {
+                ctx.beginPath();
+                ctx.moveTo(A.x, A.y - A.h * f); ctx.lineTo(B.x, B.y - B.h * f);
+                ctx.lineTo(B.x, B.y - B.h * (f + t)); ctx.lineTo(A.x, A.y - A.h * (f + t));
+                ctx.closePath();
+                ctx.fillStyle = railCol; ctx.fill();
             }
-            const s0 = projScale(v0), s1 = projScale(v1);
-            const x0 = W / 2 + side * (W / 2) * s0, x1 = W / 2 + side * (W / 2) * s1;
-            const y0 = projY(v0), y1 = projY(v1);
-            const h0 = wallWorldH * s0, h1 = wallWorldH * s1;
-            // Source slice: run the panel along the wall's length, repeating.
-            const u = (vm * 3) % 1;
-            ctx.drawImage(tile, u * tile.width, 0, tile.width / N * 3, tile.height,
-                          Math.min(x0, x1), Math.min(y0 - h0, y1 - h1),
-                          Math.abs(x1 - x0) + 1, Math.max(y0 - (y0 - h0), y1 - (y1 - h1)));
+            // the wall's top edge, inked
+            ctx.beginPath();
+            ctx.moveTo(A.x, A.y - A.h); ctx.lineTo(B.x, B.y - B.h);
+            ctx.strokeStyle = inkCol; ctx.lineWidth = 2; ctx.stroke();
+        }
+        // The opening: a dark recess, and the eyes of whatever is about to come
+        // through it.
+        const D0 = edge(DOOR_V0), D1 = edge(DOOR_V1);
+        ctx.beginPath();
+        ctx.moveTo(D0.x, D0.y); ctx.lineTo(D1.x, D1.y);
+        ctx.lineTo(D1.x, D1.y - D1.h * 0.86); ctx.lineTo(D0.x, D0.y - D0.h * 0.86);
+        ctx.closePath();
+        ctx.fillStyle = mixC(INK.charcoal, INK.paper, 0.08); ctx.fill();
+        const dArt = ROOM_ART[b.doorArt];
+        if (dArt) {
+            ctx.save(); ctx.beginPath();
+            ctx.moveTo(D0.x, D0.y); ctx.lineTo(D1.x, D1.y);
+            ctx.lineTo(D1.x, D1.y - D1.h * 0.86); ctx.lineTo(D0.x, D0.y - D0.h * 0.86);
+            ctx.closePath(); ctx.clip();
+            // Flat art sheared into the wall's plane: the transform maps the
+            // art's rectangle onto the opening's parallelogram.
+            const dx = D1.x - D0.x, dyTop = (D1.y - D1.h * 0.86) - (D0.y - D0.h * 0.86);
+            ctx.transform(dx / dArt.width, (D1.y - D0.y) / dArt.width,
+                          0, (D0.h * 0.86) / dArt.height,
+                          D0.x, D0.y - D0.h * 0.86);
+            ctx.drawImage(dArt, 0, 0);
+            ctx.restore();
+        }
+        const cave = CAVES[side < 0 ? 0 : 1];
+        for (const g of goblins) {
+            if (!g.dead || g.respawnTimer >= 60 || CAVES[g.spawnCave] !== cave) continue;
+            const ex = (D0.x + D1.x) / 2, ey = (D0.y + D1.y) / 2 - D0.h * 0.5;
+            const er = 2 * SCALE * projScale((DOOR_V0 + DOOR_V1) / 2);
+            ctx.fillStyle = g.elite ? INK.mint : "#50ad33";
+            ctx.beginPath(); ctx.arc(ex - er * 1.2, ey, er, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(ex + er * 1.2, ey, er, 0, Math.PI * 2); ctx.fill();
+            break;
         }
     }
 }
