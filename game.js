@@ -1239,72 +1239,83 @@ function drawSideWalls() {
     if (!tile || !PROJ.on || PROJ.mode !== "rake") return;
     const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
 
-    // Match the back wall's world height exactly, so the corners meet.
+    // Match the back wall's world height AND its panel size, so the three walls
+    // meet at the corners and the panelling is the same size all the way round.
     const hw = W * projScale(0);
     const idealW = tile.width * (projY(0) / tile.height);
     const nBack = Math.max(1, Math.round(hw / idealW));
     const twBack = hw / nBack;
     const wallH = (tile.height * (twBack / tile.width)) / projScale(0);
+    const panelWorldW = W / nBack;
+    const nSide = Math.max(1, Math.round(H / panelWorldW));   // panels along the depth
 
-    // SOLID GEOMETRY, not sliced texture.
+    // TEXTURED, properly.
     //
-    // The first version cut the panel into vertical strips by depth and stood
-    // each one up. It tore: consecutive strips sampled different x of the panel,
-    // so wherever the sampling wrapped it picked up the panel's own border line,
-    // and the wall came out as ragged pale shards with the room showing through.
-    // A side wall is a flat plane of one colour with two horizontal mouldings on
-    // it — so draw exactly that, and there is nothing to seam.
-    const wallCol = "#c9d3c6", railCol = "#efe9dc", inkCol = "rgba(44,44,42,0.55)";
-    const edge = (v) => {
+    // The first attempt sliced the panel by depth and tore, for two reasons that
+    // are worth writing down because neither was the texture's fault:
+    //
+    // 1. The source coordinate was incoherent. It sampled u at the strip's
+    //    midpoint but took a source width unrelated to how u advanced, and never
+    //    split a strip that straddled a panel edge — so strips sampled
+    //    overlapping arbitrary regions, and any strip crossing the wrap dragged
+    //    the panel's own border line into the middle of the wall.
+    // 2. The strips were drawn as axis-aligned rectangles. Every strip's quad
+    //    has a different height on its left and right edge; filling min/max of
+    //    the two leaves wedge-shaped gaps, which is the room showing through.
+    //
+    // So: step in PANEL SPACE, an exact fraction of a panel at a time, which
+    // makes a wrap impossible inside a strip. And map each slice with a
+    // transform rather than a rectangle, so the strip is the trapezoid it
+    // actually is instead of an approximation of one.
+    const K = 40;                       // slices per panel
+    const at = (v, side) => {
         const sc = projScale(v);
-        return { x: W / 2 + SIDE * (W / 2) * sc, y: projY(v), h: wallH * sc };
+        return { x: W / 2 + side * (W / 2) * sc, y: projY(v), h: wallH * sc };
     };
-    let SIDE = -1;
+    const inDoor = (v) => v > DOOR_V0 && v < DOOR_V1;
+
     for (const side of [-1, 1]) {
-        SIDE = side;
-        for (const [va, vb] of [[0, DOOR_V0], [DOOR_V1, 1]]) {
-            const A = edge(va), B = edge(vb);
-            ctx.beginPath();
-            ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y);
-            ctx.lineTo(B.x, B.y - B.h); ctx.lineTo(A.x, A.y - A.h);
-            ctx.closePath();
-            ctx.fillStyle = wallCol; ctx.fill();
-            // dado rail and skirting, as bands that follow the wall away
-            for (const [f, t] of [[0.40, 0.045], [0.03, 0.055]]) {
-                ctx.beginPath();
-                ctx.moveTo(A.x, A.y - A.h * f); ctx.lineTo(B.x, B.y - B.h * f);
-                ctx.lineTo(B.x, B.y - B.h * (f + t)); ctx.lineTo(A.x, A.y - A.h * (f + t));
-                ctx.closePath();
-                ctx.fillStyle = railCol; ctx.fill();
-            }
-            // the wall's top edge, inked
-            ctx.beginPath();
-            ctx.moveTo(A.x, A.y - A.h); ctx.lineTo(B.x, B.y - B.h);
-            ctx.strokeStyle = inkCol; ctx.lineWidth = 2; ctx.stroke();
+        for (let i = 0; i < nSide * K; i++) {
+            const u0 = i / K, u1 = (i + 1) / K;          // panel space
+            const v0 = u0 / nSide, v1 = u1 / nSide;      // depth
+            if (inDoor((v0 + v1) / 2)) continue;
+            const A = at(v0, side), B = at(v1, side);
+            const sx = (u0 % 1) * tile.width, sw = tile.width / K;
+
+            ctx.save();
+            // Map the slice's rectangle onto its trapezoid: x across, y scaled
+            // to this end's height, sheared by how much the top edge climbs.
+            ctx.transform((B.x - A.x) / sw,
+                          ((B.y - B.h) - (A.y - A.h)) / sw,
+                          0, A.h / tile.height,
+                          A.x, A.y - A.h);
+            // +1 on the source width closes the hairline between slices without
+            // ever reaching across a panel edge, because a slice is a whole
+            // fraction of a panel by construction.
+            ctx.drawImage(tile, sx, 0, Math.min(sw + 1, tile.width - sx), tile.height,
+                          0, 0, sw + 1, tile.height);
+            ctx.restore();
         }
-        // The opening: a dark recess, and the eyes of whatever is about to come
-        // through it.
-        const D0 = edge(DOOR_V0), D1 = edge(DOOR_V1);
+
+        // The opening, and the flat door art sheared into its plane.
+        const D0 = at(DOOR_V0, side), D1 = at(DOOR_V1, side);
+        const top = 0.86;
         ctx.beginPath();
         ctx.moveTo(D0.x, D0.y); ctx.lineTo(D1.x, D1.y);
-        ctx.lineTo(D1.x, D1.y - D1.h * 0.86); ctx.lineTo(D0.x, D0.y - D0.h * 0.86);
+        ctx.lineTo(D1.x, D1.y - D1.h * top); ctx.lineTo(D0.x, D0.y - D0.h * top);
         ctx.closePath();
         ctx.fillStyle = mixC(INK.charcoal, INK.paper, 0.08); ctx.fill();
         const dArt = ROOM_ART[b.doorArt];
         if (dArt) {
-            ctx.save(); ctx.beginPath();
-            ctx.moveTo(D0.x, D0.y); ctx.lineTo(D1.x, D1.y);
-            ctx.lineTo(D1.x, D1.y - D1.h * 0.86); ctx.lineTo(D0.x, D0.y - D0.h * 0.86);
-            ctx.closePath(); ctx.clip();
-            // Flat art sheared into the wall's plane: the transform maps the
-            // art's rectangle onto the opening's parallelogram.
-            const dx = D1.x - D0.x, dyTop = (D1.y - D1.h * 0.86) - (D0.y - D0.h * 0.86);
-            ctx.transform(dx / dArt.width, (D1.y - D0.y) / dArt.width,
-                          0, (D0.h * 0.86) / dArt.height,
-                          D0.x, D0.y - D0.h * 0.86);
+            ctx.save(); ctx.clip();
+            ctx.transform((D1.x - D0.x) / dArt.width,
+                          ((D1.y - D1.h * top) - (D0.y - D0.h * top)) / dArt.width,
+                          0, (D0.h * top) / dArt.height,
+                          D0.x, D0.y - D0.h * top);
             ctx.drawImage(dArt, 0, 0);
             ctx.restore();
         }
+
         const cave = CAVES[side < 0 ? 0 : 1];
         for (const g of goblins) {
             if (!g.dead || g.respawnTimer >= 60 || CAVES[g.spawnCave] !== cave) continue;
