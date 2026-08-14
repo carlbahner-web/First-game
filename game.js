@@ -992,7 +992,10 @@ const PROJ = {
     squash: 0.55,    // oblique only — how far the floor lies away from you
     tilt: 0.45,      // rake only. 0 = flat top-down (what it was), 1 = extreme
     strips: 160,     // rake only — horizontal slices of the plane
-    lift: 0.10,      // rake only — where the horizon sits below the top
+    lift: 0.42,      // rake only — where the horizon sits below the top.
+                     // It has to leave real headroom now: the back wall stands
+                     // ABOVE this line, and at 0.10 there were eighty pixels of
+                     // sky to put a whole wall in.
     isoRatio: 0.5,   // 0.5 = classic 2:1 isometric. Lower is a flatter rake.
 };
 
@@ -1118,12 +1121,30 @@ function paintSurround() {
     MAIN_CTX.fillRect(0, 0, W, H);
 }
 
+// The back wall STANDS UP. It is not part of the plane and is never projected —
+// that is the whole reason it is a separate image. It is scaled to meet the
+// floor's far edge exactly: same width as the horizon, its foot on the horizon
+// line, and whatever height its own proportions give it. Cropped by the top of
+// the frame is correct; you do not see the ceiling of a room you are standing
+// in.
+function drawBackWall() {
+    const b = currentBiome;
+    const art = b && b.wallArt ? ROOM_ART[b.wallArt] : null;
+    if (!art || PROJ.mode !== "rake") return;
+    const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
+    const w = W * projScale(0);
+    const h = w * (art.height / art.width);
+    const y = projY(0, H);
+    MAIN_CTX.drawImage(art, (W - w) / 2, y - h, w, h);
+}
+
 // Lay the finished floor canvas down onto the plane.
 function blitPlane() {
     if (PROJ.mode === "oblique") { paintSurround(); return blitOblique(); }
     if (PROJ.mode === "iso") { paintSurround(); return blitIso(); }
     const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
     paintSurround();
+    drawBackWall();
     const n = PROJ.strips, sh = H / n;
     for (let i = 0; i < n; i++) {
         const v0 = i / n, v1 = (i + 1) / n;
@@ -1342,6 +1363,7 @@ const BIOMES = [
         tagline: "WHERE THE GROOVE BEGINS",
         art: "warm-up-floor",  // assets/room/warm-up-floor.png — see ROOM_ART
         floorArt: true,        // the plate is the FLOOR only; no walls in it
+        wallArt: "warm-up-wall", // stands up at the horizon, never projected
         floor: { base: mixC(INK.charcoal, INK.mint, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.mint, 0.17) },
         walls: [
             { base: "#BFCDC0", dark: "#93a89a", hi: "#e9eee9" },
@@ -1790,17 +1812,21 @@ rebuildCaveTextures(0);
 // one. Any biome without a file just stays a cave — onerror is the fallback,
 // not an error.
 for (const b of BIOMES) {
-    if (!b.art || ROOM_ART[b.art]) continue;
-    const im = new Image();
-    const slug = b.art;
-    im.onload = () => {
-        ROOM_ART[slug] = im;
-        if (currentBiome && currentBiome.art === slug) {
-            rebuildCaveTextures(Math.max(0, texturesBuiltForLevel));
-        }
-    };
-    im.onerror = () => {};
-    im.src = "assets/room/" + slug + ".png";
+    // Both plates load the same way. The floor goes into the baked room texture
+    // and so needs a rebuild when it lands; the wall is blitted live every frame
+    // and needs nothing but to exist.
+    for (const slug of [b.art, b.wallArt]) {
+        if (!slug || ROOM_ART[slug]) continue;
+        const im = new Image();
+        im.onload = () => {
+            ROOM_ART[slug] = im;
+            if (currentBiome && currentBiome.art === slug) {
+                rebuildCaveTextures(Math.max(0, texturesBuiltForLevel));
+            }
+        };
+        im.onerror = () => {};
+        im.src = "assets/room/" + slug + ".png";
+    }
 }
 
 // ============================================================
