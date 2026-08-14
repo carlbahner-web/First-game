@@ -1267,7 +1267,16 @@ function drawSideWalls() {
     // makes a wrap impossible inside a strip. And map each slice with a
     // transform rather than a rectangle, so the strip is the trapezoid it
     // actually is instead of an approximation of one.
-    const K = 40;                       // slices per panel
+    // SLICE COUNT IS SET BY SCREEN WIDTH, not picked.
+    //
+    // A fixed 40 slices per panel gave 120 slices across a wall whose
+    // HORIZONTAL span is only ~144px — 1.2px per slice, each minifying 18
+    // source pixels and each antialiasing its own two edges against the
+    // neighbour. A hundred and twenty of those side by side is a picket fence,
+    // which is what Carl kept seeing blink.
+    //
+    // So the wall decides: about four screen pixels per slice, and never fewer
+    // than two slices to a panel so the perspective still bends.
     const at = (v, side) => {
         const sc = projScale(v);
         return { x: W / 2 + side * (W / 2) * sc, y: projY(v), h: wallH * sc };
@@ -1275,6 +1284,9 @@ function drawSideWalls() {
     const inDoor = (v) => v > DOOR_V0 && v < DOOR_V1;
 
     for (const side of [-1, 1]) {
+        const spanX = Math.abs((W / 2 + side * (W / 2) * projScale(1)) -
+                               (W / 2 + side * (W / 2) * projScale(0)));
+        const K = Math.max(2, Math.round(spanX / nSide / 4));
         for (let i = 0; i < nSide * K; i++) {
             const u0 = i / K, u1 = (i + 1) / K;          // panel space
             const v0 = u0 / nSide, v1 = u1 / nSide;      // depth
@@ -1292,8 +1304,12 @@ function drawSideWalls() {
             // +1 on the source width closes the hairline between slices without
             // ever reaching across a panel edge, because a slice is a whole
             // fraction of a panel by construction.
-            ctx.drawImage(tile, sx, 0, Math.min(sw + 1, tile.width - sx), tile.height,
-                          0, 0, sw + 1, tile.height);
+            // Overlap by a source pixel's worth of DEST, so neighbouring
+            // slices meet with no antialiased hairline between them. Clamped to
+            // the panel so it can never reach across a panel edge.
+            const bleed = sw * 0.06;
+            ctx.drawImage(tile, sx, 0, Math.min(sw + bleed, tile.width - sx), tile.height,
+                          0, 0, sw + bleed, tile.height);
             ctx.restore();
         }
 
