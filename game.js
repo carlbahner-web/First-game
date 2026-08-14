@@ -2092,9 +2092,11 @@ const BIOMES = [
         // capped by the props either side — 0.350 to 0.664 was all the clear
         // wall there was, which is why it could not grow.
         //
-        // So the props moved and the board did too. It is 0.38 of the wall wide
-        // now against 0.285, half again as big, hung on the room's centre line
-        // so the rail passes behind it and its foot clears the skirting.
+        // So the props moved and the board did too. 0.38 was too big — this is
+        // halfway back, 0.3325, with the TOP held exactly where it was at 0.186
+        // so only the foot moves: the centre y falls out of that rather than
+        // being chosen, which is why it is 0.461 and not a round number. The
+        // rail still passes behind it, now about two thirds of the way down.
         //
         // `wells` are the three empty boxes in Carl's plaque, as fractions of
         // the sprite: x0, y0, x1, y1. They were measured off the file by
@@ -2102,7 +2104,7 @@ const BIOMES = [
         // than by eye — re-run it if the art is redrawn and paste the numbers
         // it prints. `pips` is the one placed-not-measured spot on here.
         scoreboard: {
-            art: "props/scoreboard", x: 0.500, y: 0.500, w: 0.380, hFallback: 0.36,
+            art: "props/scoreboard", x: 0.500, y: 0.461, w: 0.3325, hFallback: 0.36,
             wells: {
                 level: [0.0767, 0.5026, 0.2420, 0.6868],
                 score: [0.3105, 0.4000, 0.6895, 0.6868],
