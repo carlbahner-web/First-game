@@ -1305,7 +1305,6 @@ function buildSideWalls() {
         for (let i = 0; i < nSide * K; i++) {
             const u0 = i / K, u1 = (i + 1) / K;
             const v0 = u0 / nSide, v1 = u1 / nSide;
-            if ((v0 + v1) / 2 > DOOR_V0 && (v0 + v1) / 2 < DOOR_V1) continue;
             const A = at(v0, side), B = at(v1, side);
             const sw = tile.width / K;
             const sx = (strip ? u0 : (u0 % 1)) * tile.width;
@@ -1317,21 +1316,43 @@ function buildSideWalls() {
                         0, 0, sw + bleed, src.height);
             g.restore();
         }
-        // the opening, and the flat door art sheared into its plane
+        // The opening, cut INTO a wall that was drawn all the way across.
+        //
+        // It used to be a gap: the slices in the doorway's depth range were
+        // skipped entirely, so the hole ran from the floor to the ceiling and
+        // the strip above the door — where a real room has a lintel and more
+        // wall — was left showing the void behind. Painting the wall first and
+        // the recess over it puts that strip back and costs nothing, because
+        // this is baked.
         const D0 = at(DOOR_V0, side), D1 = at(DOOR_V1, side), top = 0.86;
         g.beginPath();
         g.moveTo(D0.x, D0.y); g.lineTo(D1.x, D1.y);
         g.lineTo(D1.x, D1.y - D1.h * top); g.lineTo(D0.x, D0.y - D0.h * top);
         g.closePath();
         g.fillStyle = mixC(INK.charcoal, INK.paper, 0.08); g.fill();
+
+        // The door art is sliced by depth too, for the same reason the wall is.
+        // Drawn as ONE affine image it is a parallelogram: both its edges get
+        // the height of the far one, so it falls short of the opening at the
+        // near end and leaves a bare strip between the top of the door and the
+        // top of the wall. Sliced, it fills the trapezoid it is standing in.
         const dArt = ROOM_ART[b.doorArt || "props/door"];
         if (dArt) {
-            g.save(); g.clip();
-            g.transform((D1.x - D0.x) / dArt.width,
-                        ((D1.y - D1.h * top) - (D0.y - D0.h * top)) / dArt.width,
-                        0, (D0.h * top) / dArt.height, D0.x, D0.y - D0.h * top);
-            g.drawImage(dArt, 0, 0);
-            g.restore();
+            const DK = 240;
+            for (let i = 0; i < DK; i++) {
+                const t0 = i / DK, t1 = (i + 1) / DK;
+                const A = at(DOOR_V0 + (DOOR_V1 - DOOR_V0) * t0, side);
+                const B = at(DOOR_V0 + (DOOR_V1 - DOOR_V0) * t1, side);
+                const sw = dArt.width / DK, sx = t0 * dArt.width;
+                const bleed = sw * 0.5;
+                g.save();
+                g.transform((B.x - A.x) / sw,
+                            ((B.y - B.h * top) - (A.y - A.h * top)) / sw,
+                            0, (A.h * top) / dArt.height, A.x, A.y - A.h * top);
+                g.drawImage(dArt, sx, 0, Math.min(sw + bleed, dArt.width - sx), dArt.height,
+                            0, 0, sw + bleed, dArt.height);
+                g.restore();
+            }
         }
     }
     return cv;
