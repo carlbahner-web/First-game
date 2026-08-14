@@ -988,7 +988,7 @@ function finishStoneTile(g, c, size, rng) {
 // ~160 blits a frame.
 const PROJ = {
     on: true,
-    mode: "oblique", // "oblique" | "iso" | "rake" | "flat"
+    mode: "rake",    // "rake" | "oblique" | "iso" | "flat"
     squash: 0.55,    // oblique only — how far the floor lies away from you
     tilt: 0.45,      // rake only. 0 = flat top-down (what it was), 1 = extreme
     strips: 160,     // rake only — horizontal slices of the plane
@@ -1024,7 +1024,6 @@ function obliquePoint(dx, dy) {
 
 function blitOblique() {
     const f = obliqueFit();
-    MAIN_CTX.clearRect(0, 0, f.W, f.H);
     MAIN_CTX.drawImage(PLANE, 0, 0, f.W, f.H, 0, f.top, f.W, f.floorH);
 }
 
@@ -1065,7 +1064,6 @@ function isoPoint(dx, dy) {
 function blitIso() {
     const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
     const f = isoFit();
-    MAIN_CTX.clearRect(0, 0, W, H);
     MAIN_CTX.save();
     MAIN_CTX.setTransform(
         f.s * 0.5, f.s * 0.5 * f.k,     // what one step along the room's X does
@@ -1107,13 +1105,26 @@ function projPoint(dx, dy) {
     return { x: W / 2 + (dx - W / 2) * s, y: projY(v, H), s };
 }
 
+// What sits behind and around the room once it no longer fills the frame.
+//
+// Flat, warm and dark — the paper's own charcoal biased a little toward the
+// paper, never a pure grey and never black. A projected room leaves real space
+// around it and that space has to be a decision: cleared canvas reads as a hole
+// cut in the page, which is the same mistake the title card's missing shadow
+// made.
+function paintSurround() {
+    const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
+    MAIN_CTX.fillStyle = mixC(INK.charcoal, INK.paper, 0.06);
+    MAIN_CTX.fillRect(0, 0, W, H);
+}
+
 // Lay the finished floor canvas down onto the plane.
 function blitPlane() {
-    if (PROJ.mode === "oblique") return blitOblique();
-    if (PROJ.mode === "iso") return blitIso();
+    if (PROJ.mode === "oblique") { paintSurround(); return blitOblique(); }
+    if (PROJ.mode === "iso") { paintSurround(); return blitIso(); }
     const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
+    paintSurround();
     const n = PROJ.strips, sh = H / n;
-    MAIN_CTX.clearRect(0, 0, W, H);
     for (let i = 0; i < n; i++) {
         const v0 = i / n, v1 = (i + 1) / n;
         const s = projScale(v0);
@@ -5576,6 +5587,50 @@ function render() {
     // The crowd still exists where it means something: the intro, the title
     // screen and the cave-return cutscene.)
 
+    // The reticle is paint ON THE FLOOR, so it belongs in the plane with the
+    // grid rather than on the glass in front of it. Drawn after the blit it
+    // sat at its flat position while the tile it pointed at had moved.
+    // Punch target tile indicator (gold corner brackets). Drawn whenever he
+    // isn't mid-swing — gating it on being exactly AT the destination blanked
+    // it for the whole step, so it strobed off and on at every tile. The tile
+    // below is the same one the punch actually resolves against, so it stays
+    // truthful mid-step too.
+    if (!player.attacking) {
+        const ptx = Math.round(player.x / TILE);
+        const pty = Math.round((player.y - GRID_Y_OFFSET) / TILE);
+        let ttx = ptx, tty = pty;
+        switch (player.dir) {
+            case 0: tty += 1; break;
+            case 1: tty -= 1; break;
+            case 2: ttx -= 1; break;
+            case 3: ttx += 1; break;
+        }
+        const tx = ttx * TILE;
+        const ty = tty * TILE + GRID_Y_OFFSET;
+        const pulse = 0.35 + Math.sin(performance.now() * 0.004) * 0.2;
+        const c = PAL.punch; // INK.green — mustard is the sequencer's colour
+        const s = 2; // bracket stroke width
+        const L = 5; // bracket arm length
+        // Subtle filled highlight behind brackets
+        ctx.globalAlpha = 0.08;
+        drawRect(tx + 1, ty + 1, TILE - 2, TILE - 2, c);
+        // Corner brackets
+        ctx.globalAlpha = pulse;
+        // Top-left corner
+        drawRect(tx, ty, L, s, c);
+        drawRect(tx, ty, s, L, c);
+        // Top-right corner
+        drawRect(tx + TILE - L, ty, L, s, c);
+        drawRect(tx + TILE - s, ty, s, L, c);
+        // Bottom-left corner
+        drawRect(tx, ty + TILE - s, L, s, c);
+        drawRect(tx, ty + TILE - L, s, L, c);
+        // Bottom-right corner
+        drawRect(tx + TILE - L, ty + TILE - s, L, s, c);
+        drawRect(tx + TILE - s, ty + TILE - L, s, L, c);
+        ctx.globalAlpha = 1.0;
+    }
+
     // The floor is finished. Lay it down, come back to the real canvas, and
     // everything after this stands up on it.
     if (PROJ.on) {
@@ -5667,47 +5722,6 @@ function render() {
         ctx.fillStyle = "#fff";
         ctx.globalAlpha = Math.min(1, screenFlash / 15) * 0.6;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.globalAlpha = 1.0;
-    }
-
-    // Punch target tile indicator (gold corner brackets). Drawn whenever he
-    // isn't mid-swing — gating it on being exactly AT the destination blanked
-    // it for the whole step, so it strobed off and on at every tile. The tile
-    // below is the same one the punch actually resolves against, so it stays
-    // truthful mid-step too.
-    if (!player.attacking) {
-        const ptx = Math.round(player.x / TILE);
-        const pty = Math.round((player.y - GRID_Y_OFFSET) / TILE);
-        let ttx = ptx, tty = pty;
-        switch (player.dir) {
-            case 0: tty += 1; break;
-            case 1: tty -= 1; break;
-            case 2: ttx -= 1; break;
-            case 3: ttx += 1; break;
-        }
-        const tx = ttx * TILE;
-        const ty = tty * TILE + GRID_Y_OFFSET;
-        const pulse = 0.35 + Math.sin(performance.now() * 0.004) * 0.2;
-        const c = PAL.punch; // INK.green — mustard is the sequencer's colour
-        const s = 2; // bracket stroke width
-        const L = 5; // bracket arm length
-        // Subtle filled highlight behind brackets
-        ctx.globalAlpha = 0.08;
-        drawRect(tx + 1, ty + 1, TILE - 2, TILE - 2, c);
-        // Corner brackets
-        ctx.globalAlpha = pulse;
-        // Top-left corner
-        drawRect(tx, ty, L, s, c);
-        drawRect(tx, ty, s, L, c);
-        // Top-right corner
-        drawRect(tx + TILE - L, ty, L, s, c);
-        drawRect(tx + TILE - s, ty, s, L, c);
-        // Bottom-left corner
-        drawRect(tx, ty + TILE - s, L, s, c);
-        drawRect(tx, ty + TILE - L, s, L, c);
-        // Bottom-right corner
-        drawRect(tx + TILE - L, ty + TILE - s, L, s, c);
-        drawRect(tx + TILE - s, ty + TILE - L, s, L, c);
         ctx.globalAlpha = 1.0;
     }
 
