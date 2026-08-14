@@ -1194,7 +1194,21 @@ function drawBackWall() {
         const n = Math.max(1, Math.round(hw / ideal));
         const tw = hw / n;
         const th = tile.height * (tw / tile.width);
-        for (let i = 0; i < n; i++) MAIN_CTX.drawImage(tile, x0 + i * tw, y - th, tw, th);
+        // WHOLE PIXELS, and a pixel of overlap.
+        //
+        // The room does not boil — BOIL.room is false and always was — so the
+        // seams between panels were never boil. They are resampling: a panel
+        // landing on a fractional x gets its edge column interpolated against
+        // whatever is behind it, and sixteen of those in a row is a set of
+        // faint vertical rules down the wall. Snapping each panel to an integer
+        // and letting it overlap its neighbour by one pixel removes both the
+        // interpolation and the hairline the rounding would otherwise leave.
+        const yT = Math.round(y - th), hT = Math.ceil(th);
+        for (let i = 0; i < n; i++) {
+            const xa = Math.round(x0 + i * tw);
+            const xb = Math.round(x0 + (i + 1) * tw);
+            MAIN_CTX.drawImage(tile, xa, yT, (xb - xa) + 1, hT);
+        }
         drawWallProps(x0, y - th, hw, th);
         return;
     }
@@ -1203,6 +1217,32 @@ function drawBackWall() {
     if (!art) return;
     const h = hw * (art.height / art.width);
     MAIN_CTX.drawImage(art, x0, y - h, hw, h);
+}
+
+// Lit pads, waiting to be stood up once the floor is down. Cleared each frame.
+let padRises = [];
+
+// The pads' rise, drawn in screen space so it is genuinely vertical. A pad's
+// top face travels with the floor; its front face is the wall between that face
+// and the pad's footprint, and that wall is upright no matter how the floor is
+// raked.
+function drawPadRises() {
+    if (!PROJ.on) { padRises.length = 0; return; }
+    const size = TILE * SCALE;
+    const w = size - PAD_INSET * 2;
+    for (const pr of padRises) {
+        const face = pr.struck ? PAD_FACE_PRESSED : PAD_FACE;
+        // the pad's own bottom edge, on the floor
+        const yFoot = pr.bys + size - PAD_FOOT;
+        const L = projPoint(pr.bxs + PAD_INSET, yFoot);
+        const R = projPoint(pr.bxs + PAD_INSET + w, yFoot);
+        const rise = face * L.s;
+        ctx.fillStyle = mixC(GLOW_COLORS[pr.r], INK.charcoal, 0.42);
+        ctx.fillRect(L.x, L.y - rise, R.x - L.x, rise);
+        ctx.fillStyle = "rgba(44,44,42,0.5)";
+        ctx.fillRect(L.x, L.y - rise, R.x - L.x, 1);
+    }
+    padRises.length = 0;
 }
 
 // The door, the clock, the safety poster and the rest, hung on the wall rather
@@ -1404,9 +1444,14 @@ function extrudePad(src, faceCol, pressed) {
     // Top face: the cell's own art, cropped to the pad and moved onto it.
     g.drawImage(src, PAD_INSET, PAD_INSET, w, topH, PAD_INSET, topY, w, topH);
 
-    // Front face.
-    g.fillStyle = faceCol;
-    g.fillRect(PAD_INSET, topY + topH, w, face);
+    // The front face is NOT baked when the room is projected. Baked, it is part
+    // of the floor plane, so the camera squashes a 13px rise down to about 5 and
+    // the block stops reading — which is why the pads stopped visibly moving.
+    // Height is vertical in the world; it has to be drawn after the transform.
+    if (!PROJ.on) {
+        g.fillStyle = faceCol;
+        g.fillRect(PAD_INSET, topY + topH, w, face);
+    }
 
     // The fold only. NO outline around the pad: the lattice is already ruled
     // along every cell boundary, and a pad that closes its own rectangle put a
@@ -5442,6 +5487,7 @@ function render() {
     if (PROJ.on) {
         ctx = planeCtx();
         ctx.clearRect(0, 0, COLS * TILE * SCALE, ROWS * TILE * SCALE);
+        padRises.length = 0;
     }
 
     // Clear & draw cave background (sprite scaled to canvas, or pre-rendered fallback)
@@ -5693,6 +5739,10 @@ function render() {
                 // just lighting a column.
                 const struck = playing && c === soundingCol && rowTrigger[r] > 0;
                 ctx.drawImage((struck ? TEX_GRID_HIT : TEX_GRID_ON)[gridVariant(r, c)][r], bxs, bys);
+                // Remember it, so its height can be raised after the camera has
+                // laid the floor down. Height is vertical in the world and the
+                // floor plane is not.
+                if (PROJ.on) padRises.push({ r, c, bxs, bys, struck });
             } else {
                 // Draw dark stone tile (sprite with rotation, or pre-rendered fallback)
                 ctx.drawImage(TEX_GRID_OFF[gridVariant(r, c)], bxs, bys);
@@ -5810,55 +5860,12 @@ function render() {
     // The crowd still exists where it means something: the intro, the title
     // screen and the cave-return cutscene.)
 
-    // The reticle is paint ON THE FLOOR, so it belongs in the plane with the
-    // grid rather than on the glass in front of it. Drawn after the blit it
-    // sat at its flat position while the tile it pointed at had moved.
-    // Punch target tile indicator (gold corner brackets). Drawn whenever he
-    // isn't mid-swing — gating it on being exactly AT the destination blanked
-    // it for the whole step, so it strobed off and on at every tile. The tile
-    // below is the same one the punch actually resolves against, so it stays
-    // truthful mid-step too.
-    if (!player.attacking) {
-        const ptx = Math.round(player.x / TILE);
-        const pty = Math.round((player.y - GRID_Y_OFFSET) / TILE);
-        let ttx = ptx, tty = pty;
-        switch (player.dir) {
-            case 0: tty += 1; break;
-            case 1: tty -= 1; break;
-            case 2: ttx -= 1; break;
-            case 3: ttx += 1; break;
-        }
-        const tx = ttx * TILE;
-        const ty = tty * TILE + GRID_Y_OFFSET;
-        const pulse = 0.35 + Math.sin(performance.now() * 0.004) * 0.2;
-        const c = PAL.punch; // INK.green — mustard is the sequencer's colour
-        const s = 2; // bracket stroke width
-        const L = 5; // bracket arm length
-        // Subtle filled highlight behind brackets
-        ctx.globalAlpha = 0.08;
-        drawRect(tx + 1, ty + 1, TILE - 2, TILE - 2, c);
-        // Corner brackets
-        ctx.globalAlpha = pulse;
-        // Top-left corner
-        drawRect(tx, ty, L, s, c);
-        drawRect(tx, ty, s, L, c);
-        // Top-right corner
-        drawRect(tx + TILE - L, ty, L, s, c);
-        drawRect(tx + TILE - s, ty, s, L, c);
-        // Bottom-left corner
-        drawRect(tx, ty + TILE - s, L, s, c);
-        drawRect(tx, ty + TILE - L, s, L, c);
-        // Bottom-right corner
-        drawRect(tx + TILE - L, ty + TILE - s, L, s, c);
-        drawRect(tx + TILE - s, ty + TILE - L, s, L, c);
-        ctx.globalAlpha = 1.0;
-    }
-
     // The floor is finished. Lay it down, come back to the real canvas, and
     // everything after this stands up on it.
     if (PROJ.on) {
         blitPlane();
         ctx = MAIN_CTX;
+        drawPadRises();
     }
 
     // Goblins (all active ones)
@@ -5960,6 +5967,50 @@ function render() {
         ctx.fillStyle = "#fff";
         ctx.globalAlpha = Math.min(1, screenFlash / 15) * 0.6;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1.0;
+    }
+
+    // ---- The punch reticle -------------------------------------------------
+    // Drawn LAST, and flattened onto the floor.
+    //
+    // In the plane with the grid it was correct and invisible: BUZZ is a
+    // billboard at full height standing on a floor compressed to a fraction of
+    // its flat depth, so his body covers the tile immediately in front of him —
+    // exactly the tile the reticle marks. Under the old top-down camera he sat
+    // inside one tile and the next one was clear; he does not any more.
+    //
+    // So it goes on top of everything, squashed onto the floor plane so it
+    // still reads as paint rather than as a decal on the glass.
+    if (!player.attacking && gameState === "playing") {
+        const ptx = Math.round(player.x / TILE);
+        const pty = Math.round((player.y - GRID_Y_OFFSET) / TILE);
+        let ttx = ptx, tty = pty;
+        switch (player.dir) {
+            case 0: tty += 1; break;
+            case 1: tty -= 1; break;
+            case 2: ttx -= 1; break;
+            case 3: ttx += 1; break;
+        }
+        const cx = (ttx + 0.5) * TILE * SCALE, cy = (tty + 0.5) * TILE * SCALE + GRID_Y_OFFSET * SCALE;
+        const q = PROJ.on ? projPoint(cx, cy) : { x: cx, y: cy, s: 1 };
+        const near = PROJ.on ? projPoint(cx, cy + TILE * SCALE / 2) : { y: cy + TILE * SCALE / 2 };
+        const far  = PROJ.on ? projPoint(cx, cy - TILE * SCALE / 2) : { y: cy - TILE * SCALE / 2 };
+        const halfW = TILE * SCALE * q.s / 2;
+        const halfH = Math.max(3, (near.y - far.y) / 2);   // the tile's depth on screen
+        const pulse = 0.35 + Math.sin(performance.now() * 0.004) * 0.2;
+        const c = PAL.punch;   // INK.green — mustard is the sequencer's colour
+        const armX = halfW * 0.42, armY = halfH * 0.42, t = Math.max(2, 2 * SCALE * q.s * 0.4);
+        ctx.save();
+        ctx.globalAlpha = 0.10;
+        ctx.fillStyle = c;
+        ctx.fillRect(q.x - halfW, q.y - halfH, halfW * 2, halfH * 2);
+        ctx.globalAlpha = pulse;
+        for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+            const x = q.x + sx * halfW, y = q.y + sy * halfH;
+            ctx.fillRect(Math.min(x, x - sx * armX), y - (sy > 0 ? t : 0), armX, t);
+            ctx.fillRect(x - (sx > 0 ? t : 0), Math.min(y, y - sy * armY), t, armY);
+        }
+        ctx.restore();
         ctx.globalAlpha = 1.0;
     }
 
