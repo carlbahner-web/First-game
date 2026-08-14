@@ -1156,6 +1156,7 @@ function drawBackWall() {
         const tw = hw / n;
         const th = tile.height * (tw / tile.width);
         for (let i = 0; i < n; i++) MAIN_CTX.drawImage(tile, x0 + i * tw, y - th, tw, th);
+        drawWallProps(x0, y - th, hw, th);
         return;
     }
 
@@ -1163,6 +1164,21 @@ function drawBackWall() {
     if (!art) return;
     const h = hw * (art.height / art.width);
     MAIN_CTX.drawImage(art, x0, y - h, hw, h);
+}
+
+// The door, the clock, the safety poster and the rest, hung on the wall rather
+// than drawn into it. Cut out of the busy plate as transparent sprites, they can
+// be placed anywhere, reused on any biome's wall, and never stretch when the
+// wall's panel count changes — which a wall that IS one drawing cannot do.
+function drawWallProps(wx, wy, ww, wh) {
+    const list = (currentBiome && currentBiome.wallProps) || [];
+    for (const pr of list) {
+        const art = ROOM_ART["props/" + pr.art];
+        if (!art) continue;
+        const h = wh * pr.h;
+        const w = h * (art.width / art.height);
+        MAIN_CTX.drawImage(art, wx + ww * pr.x - w / 2, wy + wh * pr.y - h / 2, w, h);
+    }
 }
 
 // Lay the finished floor canvas down onto the plane.
@@ -1391,6 +1407,18 @@ const BIOMES = [
         art: "warm-up-floor",  // assets/room/warm-up-floor.png — see ROOM_ART
         floorArt: true,        // the plate is the FLOOR only; no walls in it
         wallTile: "wall-panel", // one panel, repeated along the horizon
+        // Props hang ON the wall, in WALL SPACE: x and y are the prop's centre
+        // as a fraction of the wall's width and height, h is its height as a
+        // fraction of the wall's. Nothing here is in pixels, so the whole
+        // dressing survives a change of tilt, of horizon, or of panel count.
+        wallProps: [
+            { art: "door",      x: 0.117, y: 0.519, h: 0.848 },
+            { art: "switch",    x: 0.241, y: 0.471, h: 0.081 },
+            { art: "poster",    x: 0.328, y: 0.311, h: 0.311 },
+            { art: "clock",     x: 0.683, y: 0.203, h: 0.185 },
+            { art: "clipboard", x: 0.825, y: 0.381, h: 0.234 },
+            { art: "phone",     x: 0.930, y: 0.395, h: 0.284 },
+        ],
         floor: { base: mixC(INK.charcoal, INK.mint, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.mint, 0.17) },
         walls: [
             { base: "#BFCDC0", dark: "#93a89a", hi: "#e9eee9" },
@@ -1842,7 +1870,8 @@ for (const b of BIOMES) {
     // Both plates load the same way. The floor goes into the baked room texture
     // and so needs a rebuild when it lands; the wall is blitted live every frame
     // and needs nothing but to exist.
-    for (const slug of [b.art, b.wallArt, b.wallTile]) {
+    for (const slug of [b.art, b.wallArt, b.wallTile,
+                        ...(b.wallProps || []).map(w => "props/" + w.art)]) {
         if (!slug || ROOM_ART[slug]) continue;
         const im = new Image();
         im.onload = () => {
