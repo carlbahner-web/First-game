@@ -1253,118 +1253,114 @@ function drawBackWall() {
 // where the wall does not get drawn — move them and the spawn row moves.
 const DOOR_V0 = 1.7 / ROWS, DOOR_V1 = 4.0 / ROWS;
 
-function drawSideWalls() {
+// The side walls, baked once and blitted.
+//
+// Carl asked why they slice at all instead of drawing one image into the
+// trapezoid. The answer is that Canvas 2D cannot: drawImage's transform is
+// AFFINE — six numbers — and an affine map turns a rectangle into a
+// parallelogram, never a trapezoid, because it cannot make two opposite edges
+// different lengths. A wall receding from the camera is exactly that. The
+// transform that can do it is projective, which this renderer does not have.
+//
+// But the camera is fixed, so the trapezoid is fixed. The slicing is a
+// CONSTANT, and constants belong in a cache: it runs once into an offscreen
+// canvas and every frame after that is a single blit of one static bitmap.
+//
+// That also settles the shimmer for good. A bitmap drawn at the same integer
+// position every frame cannot differ between frames, whatever the slicing did
+// while it was being built — and it can afford far finer slices than a
+// per-frame version could, because it pays for them once.
+const SIDE_WALLS = { canvas: null, key: "" };
+
+function sideWallKey() {
+    const b = currentBiome;
+    return [PROJ.mode, PROJ.angleDeg, PROJ.distance, b && b.wallStrip, b && b.doorArt,
+            COLS, ROWS, TILE, SCALE].join("|");
+}
+
+function buildSideWalls() {
     const b = currentBiome;
     const tile = b && b.wallTile ? ROOM_ART[b.wallTile] : null;
     const strip = b && b.wallStrip ? ROOM_ART[b.wallStrip] : null;
-    if (!tile || !PROJ.on || PROJ.mode !== "rake") return;
     const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
+    const cv = document.createElement("canvas");
+    cv.width = W; cv.height = H;
+    const g = cv.getContext("2d");
+    if (!tile) return cv;
+    const src = strip || tile;
 
-    // Match the back wall's world height AND its panel size, so the three walls
-    // meet at the corners and the panelling is the same size all the way round.
     const hw = W * projScale(0);
-    const idealW = tile.width * (projY(0) / tile.height);
-    const nBack = Math.max(1, Math.round(hw / idealW));
-    const twBack = hw / nBack;
-    const wallH = (tile.height * (twBack / tile.width)) / projScale(0);
-    const panelWorldW = W / nBack;
-    const nSide = Math.max(1, Math.round(H / panelWorldW));   // panels along the depth
-
-    // TEXTURED, properly.
-    //
-    // The first attempt sliced the panel by depth and tore, for two reasons that
-    // are worth writing down because neither was the texture's fault:
-    //
-    // 1. The source coordinate was incoherent. It sampled u at the strip's
-    //    midpoint but took a source width unrelated to how u advanced, and never
-    //    split a strip that straddled a panel edge — so strips sampled
-    //    overlapping arbitrary regions, and any strip crossing the wrap dragged
-    //    the panel's own border line into the middle of the wall.
-    // 2. The strips were drawn as axis-aligned rectangles. Every strip's quad
-    //    has a different height on its left and right edge; filling min/max of
-    //    the two leaves wedge-shaped gaps, which is the room showing through.
-    //
-    // So: step in PANEL SPACE, an exact fraction of a panel at a time, which
-    // makes a wrap impossible inside a strip. And map each slice with a
-    // transform rather than a rectangle, so the strip is the trapezoid it
-    // actually is instead of an approximation of one.
-    // SLICE COUNT IS SET BY SCREEN WIDTH, not picked.
-    //
-    // A fixed 40 slices per panel gave 120 slices across a wall whose
-    // HORIZONTAL span is only ~144px — 1.2px per slice, each minifying 18
-    // source pixels and each antialiasing its own two edges against the
-    // neighbour. A hundred and twenty of those side by side is a picket fence,
-    // which is what Carl kept seeing blink.
-    //
-    // So the wall decides: about four screen pixels per slice, and never fewer
-    // than two slices to a panel so the perspective still bends.
+    const ideal = tile.width * (projY(0) / tile.height);
+    const nBack = Math.max(1, Math.round(hw / ideal));
+    const wallH = (tile.height * ((hw / nBack) / tile.width)) / projScale(0);
+    const nSide = Math.max(1, Math.round(H / (W / nBack)));
     const at = (v, side) => {
         const sc = projScale(v);
         return { x: W / 2 + side * (W / 2) * sc, y: projY(v), h: wallH * sc };
     };
-    const inDoor = (v) => v > DOOR_V0 && v < DOOR_V1;
 
+    // Baked once, so the slices can be as fine as the arithmetic deserves.
+    const K = 160;
     for (const side of [-1, 1]) {
-        const spanX = Math.abs((W / 2 + side * (W / 2) * projScale(1)) -
-                               (W / 2 + side * (W / 2) * projScale(0)));
-        const K = Math.max(2, Math.round(spanX / nSide / 4));
         for (let i = 0; i < nSide * K; i++) {
-            const u0 = i / K, u1 = (i + 1) / K;          // panel space
-            const v0 = u0 / nSide, v1 = u1 / nSide;      // depth
-            if (inDoor((v0 + v1) / 2)) continue;
+            const u0 = i / K, u1 = (i + 1) / K;
+            const v0 = u0 / nSide, v1 = u1 / nSide;
+            if ((v0 + v1) / 2 > DOOR_V0 && (v0 + v1) / 2 < DOOR_V1) continue;
             const A = at(v0, side), B = at(v1, side);
-            // Sample the CONTINUOUS strip, not the panel. u runs across the
-            // whole wall, so a slice is always inside one image with no wrap to
-            // land on — which is what tore the wall before.
-            const src = strip || tile;
-            const sx = (strip ? u0 : (u0 % 1)) * tile.width, sw = tile.width / K;
-
-            ctx.save();
-            // Map the slice's rectangle onto its trapezoid: x across, y scaled
-            // to this end's height, sheared by how much the top edge climbs.
-            ctx.transform((B.x - A.x) / sw,
-                          ((B.y - B.h) - (A.y - A.h)) / sw,
-                          0, A.h / src.height,
-                          A.x, A.y - A.h);
-            // +1 on the source width closes the hairline between slices without
-            // ever reaching across a panel edge, because a slice is a whole
-            // fraction of a panel by construction.
-            // Overlap by a source pixel's worth of DEST, so neighbouring
-            // slices meet with no antialiased hairline between them. Clamped to
-            // the panel so it can never reach across a panel edge.
-            const bleed = sw * 0.06;
-            ctx.drawImage(src, sx, 0, Math.min(sw + bleed, src.width - sx), src.height,
-                          0, 0, sw + bleed, src.height);
-            ctx.restore();
+            const sw = tile.width / K;
+            const sx = (strip ? u0 : (u0 % 1)) * tile.width;
+            const bleed = sw * 0.5;      // generous: it is baked, not composited
+            g.save();
+            g.transform((B.x - A.x) / sw, ((B.y - B.h) - (A.y - A.h)) / sw,
+                        0, A.h / src.height, A.x, A.y - A.h);
+            g.drawImage(src, sx, 0, Math.min(sw + bleed, src.width - sx), src.height,
+                        0, 0, sw + bleed, src.height);
+            g.restore();
         }
-
-        // The opening, and the flat door art sheared into its plane.
-        const D0 = at(DOOR_V0, side), D1 = at(DOOR_V1, side);
-        const top = 0.86;
-        ctx.beginPath();
-        ctx.moveTo(D0.x, D0.y); ctx.lineTo(D1.x, D1.y);
-        ctx.lineTo(D1.x, D1.y - D1.h * top); ctx.lineTo(D0.x, D0.y - D0.h * top);
-        ctx.closePath();
-        ctx.fillStyle = mixC(INK.charcoal, INK.paper, 0.08); ctx.fill();
-        const dArt = ROOM_ART[b.doorArt];
+        // the opening, and the flat door art sheared into its plane
+        const D0 = at(DOOR_V0, side), D1 = at(DOOR_V1, side), top = 0.86;
+        g.beginPath();
+        g.moveTo(D0.x, D0.y); g.lineTo(D1.x, D1.y);
+        g.lineTo(D1.x, D1.y - D1.h * top); g.lineTo(D0.x, D0.y - D0.h * top);
+        g.closePath();
+        g.fillStyle = mixC(INK.charcoal, INK.paper, 0.08); g.fill();
+        const dArt = ROOM_ART[b.doorArt || "props/door"];
         if (dArt) {
-            ctx.save(); ctx.clip();
-            ctx.transform((D1.x - D0.x) / dArt.width,
-                          ((D1.y - D1.h * top) - (D0.y - D0.h * top)) / dArt.width,
-                          0, (D0.h * top) / dArt.height,
-                          D0.x, D0.y - D0.h * top);
-            ctx.drawImage(dArt, 0, 0);
-            ctx.restore();
+            g.save(); g.clip();
+            g.transform((D1.x - D0.x) / dArt.width,
+                        ((D1.y - D1.h * top) - (D0.y - D0.h * top)) / dArt.width,
+                        0, (D0.h * top) / dArt.height, D0.x, D0.y - D0.h * top);
+            g.drawImage(dArt, 0, 0);
+            g.restore();
         }
+    }
+    return cv;
+}
 
+function drawSideWalls() {
+    const b = currentBiome;
+    if (!b || !b.wallTile || !ROOM_ART[b.wallTile] || !PROJ.on || PROJ.mode !== "rake") return;
+    const key = sideWallKey();
+    if (SIDE_WALLS.key !== key) { SIDE_WALLS.canvas = buildSideWalls(); SIDE_WALLS.key = key; }
+    ctx.drawImage(SIDE_WALLS.canvas, 0, 0);
+
+    // The spawn tell is the one live part, so it stays out of the bake.
+    const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
+    const hw = W * projScale(0);
+    const tile = ROOM_ART[b.wallTile];
+    const ideal = tile.width * (projY(0) / tile.height);
+    const nBack = Math.max(1, Math.round(hw / ideal));
+    const wallH = (tile.height * ((hw / nBack) / tile.width)) / projScale(0);
+    for (const side of [-1, 1]) {
+        const vm = (DOOR_V0 + DOOR_V1) / 2, sc = projScale(vm);
+        const x = W / 2 + side * (W / 2) * sc, y = projY(vm), h = wallH * sc;
         const cave = CAVES[side < 0 ? 0 : 1];
         for (const g of goblins) {
             if (!g.dead || g.respawnTimer >= 60 || CAVES[g.spawnCave] !== cave) continue;
-            const ex = (D0.x + D1.x) / 2, ey = (D0.y + D1.y) / 2 - D0.h * 0.5;
-            const er = 2 * SCALE * projScale((DOOR_V0 + DOOR_V1) / 2);
+            const er = 2 * SCALE * sc;
             ctx.fillStyle = g.elite ? INK.mint : "#50ad33";
-            ctx.beginPath(); ctx.arc(ex - er * 1.2, ey, er, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(ex + er * 1.2, ey, er, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(x - er * 1.2, y - h * 0.5, er, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(x + er * 1.2, y - h * 0.5, er, 0, Math.PI * 2); ctx.fill();
             break;
         }
     }
