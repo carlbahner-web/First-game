@@ -964,6 +964,77 @@ function finishStoneTile(g, c, size, rng) {
 // Generate stone tile for the grid — paper stone with a hand-inked
 // charcoal border. Static wonk, not boil: 96 repeating tiles boiling in
 // lockstep reads as strobe (coaster bible, the rail-ties lesson).
+// ---- Pad extrusion -------------------------------------------------------
+// A sequencer cell is a BLOCK standing on the floor, not a coloured square
+// painted on it. Cabinet projection, the cheap half: a top face and a front
+// face, hard keyline between them, no gradient anywhere — a printed block, not
+// a rendered one.
+//
+// The whole block stays inside its own 80px footprint, which is the point. The
+// grid is a 16 x 6 matrix the player has to SCAN, so nothing here moves a cell,
+// resizes one, or lets one overlap its neighbour; the lattice still rules the
+// true boundaries and the front face sits just inside the bottom edge, which
+// reads as the base of the block.
+//
+// It is baked into the tile rather than drawn per cell, for the reason the
+// glow is: per-cell draw-time work on 96 cells was measured as a large frame
+// cost once already.
+//
+// It also does a job the palette cannot. The six rows are told apart by hue
+// alone, and two pairs measure 1.05:1 and 1.08:1 against each other — the front
+// face gives every row a second, darker band of its own colour, so the field
+// has luminance structure where it used to have only hue.
+// The pads are INSET, with floor visible between them. That is what makes the
+// height read: a block looks like a block because its top face is offset from
+// its footprint, and flush cells have nowhere to put the offset. Darkening the
+// bottom strip of a full-bleed cell was tried first and reads as a thicker
+// border, not as a block.
+//
+// It cannot be done by drawing the top face above the cell either — rows are
+// 80px apart and draw top to bottom, so each row would cover the previous row's
+// front face exactly, and only the last row would have any height at all.
+//
+// So: a gutter, and the pads stand in it. Which is also the right object. This
+// is a drum machine, the player is a producer, and sixteen inset pads in a grid
+// with the board showing between them is what one looks like.
+const PAD_INSET = 3;         // floor gutter around each pad
+const PAD_FACE = 13;         // front face height — the block's rise
+const PAD_FACE_PRESSED = 4;  // struck: it sinks into the board
+const PAD_FOOT = 4;          // gutter under the face, so rows never touch
+
+// Take a fully painted 80x80 cell and stand it up as a block: top face inset
+// and lifted, front face below it in a darker tone of the same colour, floor
+// showing everywhere else. One hard keyline at the fold — a fold is an edge,
+// and edges in this world are drawn, not shaded.
+function extrudePad(src, faceCol, pressed) {
+    const size = TILE * SCALE;
+    const face = pressed ? PAD_FACE_PRESSED : PAD_FACE;
+    const drop = PAD_FACE - face;               // how far the struck pad sinks
+    const w = size - PAD_INSET * 2;
+    const topH = size - PAD_INSET - PAD_FACE - PAD_FOOT;
+    const topY = PAD_INSET + drop;
+
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const g = c.getContext('2d');
+
+    // Top face: the cell's own art, cropped to the pad and moved onto it.
+    g.drawImage(src, PAD_INSET, PAD_INSET, w, topH, PAD_INSET, topY, w, topH);
+
+    // Front face.
+    g.fillStyle = faceCol;
+    g.fillRect(PAD_INSET, topY + topH, w, face);
+
+    // The fold only. NO outline around the pad: the lattice is already ruled
+    // along every cell boundary, and a pad that closes its own rectangle put a
+    // second line a few pixels inside the first — the same doubling that made
+    // the field read as tram-lines when each cell drew its own border, arrived
+    // at from the other direction.
+    g.fillStyle = "rgba(44,44,42,0.5)";
+    g.fillRect(PAD_INSET, topY + topH, w, 1);
+    return c;
+}
+
 function generateGridStoneTile(seed, biome) {
     const gs = biome.gridStone;
     // Plain: a sequencer cell is a flat wash, textured by the paper grain that
@@ -973,12 +1044,26 @@ function generateGridStoneTile(seed, biome) {
     // independently of one another. At a glance that reads as tram-lines rather
     // than as a ruled grid. The lattice is one set of lines now, drawn across
     // the whole field by drawGridLattice.
-    return generateStoneTile(seed, gs.base, gs.dark, gs.hi, { mossColor: gs.moss, plain: true });
+    const t = generateStoneTile(seed, gs.base, gs.dark, gs.hi, { mossColor: gs.moss, plain: true });
+    // AN UNLIT STEP STAYS FLAT. It is an empty slot in the board, not a pad
+    // with the light off.
+    //
+    // Extruding it was tried at three different face tones and all three failed
+    // the same way: sixteen identical faces side by side in a row do not read as
+    // sixteen blocks, they read as one stripe running the width of the field.
+    // That is the eye grouping them, so no amount of darkening fixes it — pale
+    // gave a cream band, dark gave a grey one.
+    //
+    // Leaving them flat is also the better game. Only the ON steps stand up, so
+    // the pattern is in RELIEF against the board: the shape of the beat is
+    // something you can see in the height of the field, not only in its colour.
+    // It changes shape as you play it, which is the point rather than the cost.
+    return t;
 }
 
 // Generate an active grid tile — flat ink-wash fill in the row's color,
 // paper-white veins, and a hand-inked charcoal border (static wonk).
-function generateGlowTile(seed, glowColor) {
+function generateGlowTile(seed, glowColor, pressed) {
     const size = TILE * SCALE;
     const c = document.createElement('canvas');
     c.width = size; c.height = size;
@@ -1020,7 +1105,13 @@ function generateGlowTile(seed, glowColor) {
 
     // No border here either — see generateGridStoneTile. A lit cell is a block
     // of colour and the lattice is ruled over the top of it.
-    return c;
+
+    // Stand it up. The front face is a darker tone of the pad's own colour, so
+    // the light reads as coming from above the room rather than out of the pad,
+    // and every row gains a second luminance band of its own hue — which is the
+    // only thing in the field that tells the six channels apart without relying
+    // on you separating their colours.
+    return extrudePad(c, mixC(glowColor, INK.charcoal, 0.42), pressed);
 }
 
 // Generate a wall-band tile. Plain, for the same reason the grid cells are:
@@ -1226,11 +1317,16 @@ function buildCellVariantTable() {
 buildCellVariantTable();
 const gridVariant = (r, c) => gridVariantTbl[r][c];
 const TEX_GRID_ON = [];   // [variant][row]
+const TEX_GRID_HIT = [];  // [variant][row] — the same pad, struck and sunk
 function bakeGridOnTiles() {
     for (let v = 0; v < GRID_VARIANTS; v++) {
         TEX_GRID_ON[v] = [];
+        TEX_GRID_HIT[v] = [];
         for (let r = 0; r < GRID_ROWS; r++) {
+            // Same seed for both, so a pad does not change its brush hotspot on
+            // the frame it is struck — only its height.
             TEX_GRID_ON[v][r] = generateGlowTile(r * 100 + v * 17 + 7777, GLOW_COLORS[r]);
+            TEX_GRID_HIT[v][r] = generateGlowTile(r * 100 + v * 17 + 7777, GLOW_COLORS[r], true);
         }
     }
 }
@@ -5143,7 +5239,10 @@ function render() {
     // COLOUR ALONE, and two of those pairs measure as the same grey (cowbell/tom
     // 1.05:1, snare/hi-hat 1.08:1) — if the rows ever need telling apart without
     // colour, a per-row mark inside the cell is now the only route left.
+    // (The extruded front face is now a second channel — see PAD_LIFT.)
     const ar = getActiveRows();
+    // The column currently SOUNDING — currentStep is the one after it.
+    const soundingCol = (currentStep + GRID_COLS - 1) % GRID_COLS;
 
     // Stone wall background behind grid (sprite or pre-rendered fallback)
     {
@@ -5168,7 +5267,13 @@ function render() {
                 // Draw glow tile (sprite with rotation, or pre-rendered fallback).
                 // NOTE: no draw-time shadowBlur here — the glow is baked into
                 // the tile art itself; shadowBlur per cell was a huge perf cost.
-                ctx.drawImage(TEX_GRID_ON[gridVariant(r, c)][r], bxs, bys);
+                //
+                // A lit pad SINKS on the step it sounds. Both heights are baked,
+                // so this is still one blit — the pad is a drum head being hit,
+                // and the sequencer plays the board in front of you rather than
+                // just lighting a column.
+                const struck = playing && c === soundingCol && rowTrigger[r] > 0;
+                ctx.drawImage((struck ? TEX_GRID_HIT : TEX_GRID_ON)[gridVariant(r, c)][r], bxs, bys);
             } else {
                 // Draw dark stone tile (sprite with rotation, or pre-rendered fallback)
                 ctx.drawImage(TEX_GRID_OFF[gridVariant(r, c)], bxs, bys);
@@ -5253,7 +5358,7 @@ function render() {
     // after triggering), so the column currently SOUNDING is one behind —
     // draw the playhead there so audio and visuals line up.
     if (playing) {
-        const playheadCol = (currentStep + GRID_COLS - 1) % GRID_COLS;
+        const playheadCol = soundingCol;   // same column, computed once above
         const px = (GRID_X + playheadCol) * TILE;
         ctx.fillStyle = PAL.playhead;
         ctx.globalAlpha = 0.2;
@@ -5458,7 +5563,7 @@ function render() {
     }
 
     // Player shadow
-    drawRect(player.x + 2, player.y + player.h - 2, player.w - 4, 4, PAL.shadow);
+    contactShadow(player.x + player.w / 2, player.y + player.h - 1, 5.4, 1.9);
 
     // Punch (draw behind player for up-facing, in front otherwise)
     if (player.attacking && player.dir === 1) drawPunch();
@@ -6931,9 +7036,11 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
         drawPx(sx + bodyOffX + x, sy + bodyOffY + y - bob, w, h, color);
     }
 
-    // Shadow
+    // Shadow — an ellipse at the feet rather than a bar under them, same
+    // treatment BUZZ gets, so the Donks stand in the room instead of sitting
+    // on it like decals.
     if (showShadow) {
-        drawRect(gx + 3, gy + TILE - 2, TILE - 6, 3, PAL.shadow);
+        contactShadow(gx + TILE / 2, gy + TILE - 1.5, 4.6, 1.6);
     }
 
     // Catapult frame (behind goblin) — 48x48 detail
@@ -7272,6 +7379,28 @@ function drawCatapultGoblin() {
             }
         }
     }
+}
+
+// A flat ellipse of ink on the floor, at the feet. The only depth cue in the
+// room used to be a 4px rectangle under BUZZ and nothing at all under anybody
+// else, so the Donks read as decals rather than as things standing in the room
+// with him.
+//
+// Flat fill, no blur — the same reason the surfaces have no gradients. A soft
+// shadow is a render; this world is a print, and a printed shadow is a shape.
+// Two stacked ellipses give it a core and a penumbra without touching a blur.
+function contactShadow(cx, cy, rx, ry) {
+    ctx.save();
+    ctx.fillStyle = INK.charcoal;
+    ctx.globalAlpha = 0.13;
+    ctx.beginPath();
+    ctx.ellipse(cx * SCALE, cy * SCALE, rx * SCALE, ry * SCALE, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.2;
+    ctx.beginPath();
+    ctx.ellipse(cx * SCALE, cy * SCALE, rx * 0.62 * SCALE, ry * 0.62 * SCALE, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
 }
 
 function drawGoblinFor(g) {
