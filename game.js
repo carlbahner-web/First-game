@@ -181,102 +181,6 @@ function setLevelTempo(levelIndex) {
     // BGM disabled for now — sync issues to resolve later
 }
 
-// ============================================================
-// PROTOTYPE — the timed-punch rewire, level 5 only
-// ============================================================
-// One level rewired to test a hypothesis, rather than the hypothesis argued in
-// prose. Everything here is gated on `isProto()` so the other twenty-nine
-// levels play exactly as they did.
-//
-// The hypothesis: a pad should only answer when its own column is sounding. If
-// that is true the game stops being a match-the-diagram puzzle and becomes a
-// thing you perform, movement stops being pure transport (you are routing
-// against a deadline you can hear), and the tempo table already in this file
-// becomes the difficulty curve.
-//
-// Turn it off with `PROTO.on = false` in the console, or move it to another
-// level with `PROTO.level = n`. Both take effect on the next level start.
-const PROTO = {
-    on: true,
-    level: 4,          // 0-indexed — level 5
-
-    // ---- Timing windows ----
-    // Centred on the onset, NOT aligned to the step's duration. The old pocket
-    // check was `col === playedCol`, which is the whole step but only AFTER the
-    // playhead arrives — punch 20ms early and you got nothing. Human timing
-    // error is roughly symmetric and players anticipate, so the window has to
-    // straddle the onset.
-    //
-    // WHAT COUNTS AS ON TIME IS THE PULSE, NOT THE COLUMN. The first version of
-    // this gate required the punch to land on the punched cell's OWN step, and
-    // that is a scheduling puzzle wearing a rhythm game's clothes: a column
-    // comes round once a bar, so arriving a step late meant 2.67 seconds of
-    // standing still, and a mistimed tap cost another full bar plus the streak.
-    // Sixteen columns sounding and only one of them actionable — the game
-    // sounded busy and played empty. Measured, the wait alone was 1.33s per
-    // fix, ~19s of a 48s level spent unable to do anything.
-    //
-    // So the floor is the pulse: punch on any eighth and the pad answers,
-    // wherever you are standing. Opportunities arrive three times a second
-    // instead of once every three seconds, and a miss costs a third of a
-    // second. The column's own step is still special — it is what PERFECT
-    // means now, and it pays double. That turns the wait from a queue into a
-    // CHOICE: take it now for base, or hold for its own moment and get twice
-    // as much.
-    gridDiv: 2,        // 2 = eighths, 4 = quarters, 1 = every sixteenth
-    hitFrames: 4,      // ±4 frames (±67ms) around the pulse — the punch lands
-    perfectFrames: 1,  // ±1 frame (±17ms) of the cell's OWN step — PERFECT
-
-    // ---- Budget ----
-    // Bars, not seconds. Same pressure, denominated in the thing the game is
-    // about, and it tracks tempo without a second table.
-    bars: 18,
-
-    // A PACING DIAL FOR THE TEST, not a design element.
-    //
-    // Level 5's authored difference from level 4 is six cells, which ends the
-    // level in a handful of bars — short, for judging a mechanic. These are
-    // extra wrong cells rolled on top. It was 8, which was a mistake: stacked
-    // on a gate that cost 2.67 seconds a fix it turned a short level into a
-    // slog, and made the gate look worse than it was. Four. The design answer
-    // is to author a bigger delta, not to roll one; set this to 0 to see the
-    // level as the data actually describes it.
-    extraWrong: 4,
-
-    // ---- Donks ----
-    // One flip per saboteur per 4 bars, on the downbeat only, and only ever on
-    // a cell that is currently RIGHT. Today's rate is 0.60 flips/sec measured;
-    // this is 0.09. The old AI toggled whatever cell it landed on, so on a
-    // badly scrambled board it repaired about as often as it broke — at one
-    // flip per four bars none of them can be spent on a coincidence.
-    donkBarsPerFlip: 4,
-    donkSaboteurs: 1,
-
-    // ---- Scoring ----
-    // The streak ladder is shorter than Guitar Hero's on purpose: a level is
-    // ~20 punches, so the cap means near-flawless and is just reachable.
-    base: 50,
-    perfectMult: 2,
-    streakSteps: [4, 8, 12, 16],   // -> x2 x3 x4 x5
-
-    // ---- Feel ----
-    // 12 frames of punch is 2.4 steps at 180 BPM, which locks you out of the
-    // next beat. Six is playable on consecutive steps at every tempo in the
-    // table.
-    attackFrames: 6,
-
-    // Start on the prototype level instead of level 1.
-    //
-    // The gate is the thing being tested, and `$level05` is not a way in on a
-    // phone — there is no keyboard, and the touch layer only sends arrows,
-    // Space and Enter. On this branch the first tap should land you in the
-    // thing you are here to play. Set false for normal progression from
-    // level 1; the other twenty-nine levels are untouched either way.
-    bootStraightIn: true,
-};
-const isProto = () => PROTO.on && currentLevel === PROTO.level &&
-    currentLevel < LEVELS.length && !LEVELS[currentLevel].noPattern;
-
 // ---- Level Definitions (30 levels) ----
 const LEVELS = [
     // ---- ROCK FUNDAMENTALS (Levels 1-10) — 4 rows: O,H,S,K ----
@@ -2035,7 +1939,6 @@ const CAVES = [
 // ---- Multiple Goblin System ----
 // Max concurrent goblins scales with level: 1 for L3-9, 2 for L10-19, 3 for L20+
 function getMaxGoblins() {
-    if (isProto()) return PROTO.donkSaboteurs;
     if (currentLevel < 6) return 2;   // L3-6
     if (currentLevel < 13) return 3;  // L7-13
     return 3;                         // L14-30: fewer but more dangerous
@@ -2193,168 +2096,6 @@ function playPocketStab(time) {
     gliss.connect(gg); gg.connect(audioCtx.destination);
     gliss.start(time); gliss.stop(time + 0.4);
 }
-// ============================================================
-// PROTOTYPE RUNTIME — timed punches, bar budget, streak multiplier
-// ============================================================
-// State lives here rather than on the level so a restart is one call.
-let protoBar = 0;            // bars elapsed, counted on the downbeat
-let protoStreak = 0;         // consecutive timed hits
-let protoBestStreak = 0;
-let protoHits = 0, protoPerfects = 0, protoMisses = 0;
-let protoJudgeFlash = null;  // { text, col, timer } — the PERFECT callout
-let protoDonkBar = 0;        // bar the Donks last took a cell
-
-function protoReset() {
-    protoBar = 0;
-    protoStreak = 0;
-    protoBestStreak = 0;
-    protoHits = 0; protoPerfects = 0; protoMisses = 0;
-    protoJudgeFlash = null;
-    protoDonkBar = 0;
-}
-
-// x2 at 4, x3 at 8, x4 at 12, x5 at 16.
-function protoMult() {
-    let m = 1;
-    for (const s of PROTO.streakSteps) if (protoStreak >= s) m++;
-    return m;
-}
-
-// Jumping straight to a level with the `$levelNN` cheat skips advanceLevel,
-// which is where the prototype is normally armed. Same setup, minus the thief's
-// run — the padding is applied to the board directly rather than performed.
-function protoPrepareJump() {
-    if (!isProto()) { player.attackDuration = 12; return; }
-    const lv = LEVELS[currentLevel];
-    const ar = lv.activeRows;
-    const spare = [];
-    for (let r = 0; r < ar; r++)
-        for (let c = 0; c < GRID_COLS; c++)
-            if (!!grid[r][c] === !!lv.pattern[r][c]) spare.push({ r, c });
-    for (let n = Math.min(PROTO.extraWrong, spare.length); n > 0; n--) {
-        const pick = spare.splice(Math.floor(Math.random() * spare.length), 1)[0];
-        grid[pick.r][pick.c] = !grid[pick.r][pick.c];
-    }
-    protoReset();
-    player.attackDuration = PROTO.attackFrames;
-}
-
-// Signed seconds from the nearest pulse of `div` steps — an eighth at div 2.
-// Bar boundaries do not come into it: step 0's onset is derivable from the last
-// step that sounded, and everything after is one modulo.
-function pulseOffsetSec(div) {
-    if (!audioCtx || !sequencerStarted) return Infinity;
-    const stepSec = stepMs / 1000;
-    const period = div * stepSec;
-    const zero = lastSoundedT - lastSoundedStep * stepSec;   // onset of step 0
-    const m = (((audioCtx.currentTime - zero) % period) + period) % period;
-    return m > period / 2 ? m - period : m;
-}
-
-// PERFECT is the cell's own step. A hit is any pulse, wherever you are.
-// Returns "perfect", "hit" or "miss".
-//
-// The signed offsets are kept because a player who is consistently 30ms early
-// wants to be told that, not left to guess — and because a systematic bias is
-// exactly the bug that hid here before.
-let protoLastOnsetMs = 0, protoLastPulseMs = 0;
-function protoJudge(col) {
-    const frame = 1000 / 60;
-    protoLastOnsetMs = onsetOffsetSec(col) * 1000;
-    protoLastPulseMs = pulseOffsetSec(PROTO.gridDiv) * 1000;
-    if (Math.abs(protoLastOnsetMs) <= PROTO.perfectFrames * frame) return "perfect";
-    if (Math.abs(protoLastPulseMs) <= PROTO.hitFrames * frame) return "hit";
-    return "miss";
-}
-
-// Only a MISTIMED PAD PUNCH breaks the streak. Punching a Donk does not — you
-// would hate losing a multiplier for defending yourself — and neither does a
-// Donk taking a cell, or a bar spent walking. Punishing hesitation makes
-// routing stressful in the wrong way.
-function protoBreakStreak() {
-    protoStreak = 0;
-    protoMisses++;
-}
-
-function protoRegisterHit(judged, row, col) {
-    protoStreak++;
-    protoBestStreak = Math.max(protoBestStreak, protoStreak);
-    protoHits++;
-    const mult = protoMult();
-    let pts = PROTO.base * mult;
-    if (judged === "perfect") {
-        protoPerfects++;
-        pts *= PROTO.perfectMult;
-        // PERFECT gets the word and the gold ring. A plain in-window hit gets
-        // NOTHING said about it — under the gate, landing on time is just how
-        // the game is played, and a floating callout on every punch is visual
-        // spam rather than a reward.
-        protoJudgeFlash = { text: "PERFECT", timer: 40 };
-        pocketRing = { x: (GRID_X + col) * TILE + TILE / 2, y: rowPixelY(row) + TILE / 2, timer: 30 };
-        carlGlowBoost = 30;
-        entourageCheer = 50;
-        if (audioCtx && !playSample("crowd", audioCtx.currentTime)) playPocketStab(audioCtx.currentTime);
-    }
-    score = Math.min(99999, score + pts);
-}
-
-// A whiffed punch: the pad does not answer, and it says so. No toggle, no drum
-// — a pad that is not being played makes no sound.
-function protoWhiff() {
-    protoBreakStreak();
-    protoJudgeFlash = { text: "OFF BEAT", timer: 24 };
-    if (audioCtx) {
-        const now = audioCtx.currentTime;
-        const osc = audioCtx.createOscillator();
-        const g = audioCtx.createGain();
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(120, now);
-        osc.frequency.exponentialRampToValueAtTime(70, now + 0.09);
-        g.gain.setValueAtTime(0.07, now);
-        g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-        osc.connect(g); g.connect(audioCtx.destination);
-        osc.start(now); osc.stop(now + 0.1);
-    }
-}
-
-// Every downbeat: count the bar, let the Donks take a cell on their cycle,
-// and end the level if the budget is spent.
-function protoOnDownbeat() {
-    if (levelComplete || gameState !== "playing") return;
-    protoBar++;
-    if (protoBar - protoDonkBar >= PROTO.donkBarsPerFlip) {
-        protoDonkBar = protoBar;
-        protoDonkTakeCell();
-    }
-    if (protoBar > PROTO.bars) triggerGameOver();
-}
-
-// The Donks' one flip per cycle. It lands on the CORRECT cell nearest to a
-// living saboteur, which does two things the wandering AI could not: the rate
-// is exact rather than emergent, and killing the Donk stops it outright, so
-// punching one is worth doing rather than merely satisfying.
-function protoDonkTakeCell() {
-    const lv = LEVELS[currentLevel];
-    const ar = getActiveRows();
-    let thief = null;
-    for (const g of goblins) if (!g.dead && !g.elite && !g.fleeing) { thief = g; break; }
-    if (!thief) return;   // nobody home — the bar passes clean
-    let best = null, bestD = Infinity;
-    for (let r = 0; r < ar; r++) {
-        for (let c = 0; c < GRID_COLS; c++) {
-            if (!!grid[r][c] !== !!lv.pattern[r][c]) continue;  // already wrong — never waste the flip
-            const d = Math.abs((GRID_X + c) * TILE - thief.x) + Math.abs(rowPixelY(r) - thief.y);
-            if (d < bestD) { bestD = d; best = { r, c }; }
-        }
-    }
-    if (!best) return;
-    grid[best.r][best.c] = !grid[best.r][best.c];
-    cellFlash[best.r][best.c] = 30;
-    cellRecent[best.r][best.c] = 180;
-    if (audioCtx) playSabotageSound(audioCtx.currentTime);
-    if (patternMatched && !checkLevelComplete()) patternMatched = false;
-}
-
 // ---- Friend NPC (Level 30 only) ----
 let friendNPC = null; // { x, y, destX, destY, moveTimer, highlightGoblin, highlightTimer }
 
@@ -2758,37 +2499,29 @@ function handleCheatCode(key) {
         const targetLevel = parseInt(match[1], 10) - 1; // $level01 = index 0
         if (targetLevel >= 0 && targetLevel < LEVELS.length) {
             cheatBuffer = "";
+            // Reset game state cleanly then jump to target level
             resetGame();
-            jumpToLevel(targetLevel);
+            currentLevel = targetLevel;
+            // Load the correct starting pattern for this level
+            const startPat = targetLevel === 0 ? LEVELS[0].startPattern
+                : LEVELS[targetLevel - 1].pattern;
+            if (startPat) {
+                for (let r = 0; r < GRID_ROWS; r++)
+                    for (let c = 0; c < GRID_COLS; c++)
+                        grid[r][c] = startPat[r][c];
+            }
+            levelTimer = LEVELS[currentLevel].timerSeconds * 60;
+    lastTickSecond = -1;
+            lastTickSecond = -1;
+            player.y = (gridBottomTileY() + 1) * TILE + GRID_Y_OFFSET;
+            player.destY = player.y;
+            setLevelTempo(currentLevel);
+            ensureAudio();
+            gameState = "playing";
+            resetSequencerClock();
             console.log("DEBUG: Jumped to level " + (targetLevel + 1));
         }
     }
-}
-
-// Drop straight into a level, mid-session. Shared by the `$levelNN` cheat and
-// by PROTO.bootStraightIn, which had grown a second copy of this that could
-// drift out of step with the first.
-//
-// It is not advanceLevel: there is no thief, no biome banner and no room
-// rebuild, so anything advanceLevel arms has to be armed here too.
-function jumpToLevel(targetLevel) {
-    currentLevel = targetLevel;
-    const startPat = targetLevel === 0 ? LEVELS[0].startPattern
-        : LEVELS[targetLevel - 1].pattern;
-    if (startPat) {
-        for (let r = 0; r < GRID_ROWS; r++)
-            for (let c = 0; c < GRID_COLS; c++)
-                grid[r][c] = startPat[r][c];
-    }
-    levelTimer = LEVELS[currentLevel].timerSeconds * 60;
-    lastTickSecond = -1;
-    protoPrepareJump();
-    player.y = (gridBottomTileY() + 1) * TILE + GRID_Y_OFFSET;
-    player.destY = player.y;
-    setLevelTempo(currentLevel);
-    ensureAudio();
-    gameState = "playing";
-    resetSequencerClock();
 }
 
 window.addEventListener("keydown", (e) => {
@@ -2879,9 +2612,11 @@ window.addEventListener("keydown", (e) => {
             titleFadeTimer = 0;
             return;
         }
-        // 120 + the 45-frame hold, so the panel still gets its full two seconds
-        // on screen before a key can skip past it.
-        if (gameState === "levelcomplete" && levelCelebrateTimer > 165) {
+        // 120 for the panel, plus however long the room is held first, so it
+        // still gets its full two seconds before a key can skip past it. The
+        // hold is a bar now rather than a fixed 45, so this follows it instead
+        // of restating it.
+        if (gameState === "levelcomplete" && levelCelebrateTimer > 120 + holdFrames()) {
             // (Kidnap mini-levels retired — DJ pieces are now awarded directly
             // in triggerLevelComplete at milestone levels)
             // Show all feature screens (instruments + enemy warnings) before advancing
@@ -3088,41 +2823,12 @@ let nextStepTime = 0;        // audioCtx time of the next step to queue
 let scheduleStep = 0;        // which step that is
 let schedQueue = [];         // {step, t} pending, so "what is sounding" is knowable
 
-// The last step that actually SOUNDED, in audioCtx time.
-//
-// The timed punch cannot be judged against `lastStepTime`. That is a
-// performance.now() stamp taken on the frame a step was noticed, so it already
-// carries up to a frame of error — measuring a ±1 frame window against a
-// reference that is itself a frame late reports nothing. These two are the
-// scheduler's own numbers, exact to the sample.
-let lastSoundedT = 0;
-let lastSoundedStep = 0;
-
 function resetSequencerClock() {
     currentStep = 0;
     scheduleStep = 0;
     schedQueue = [];
     nextStepTime = 0;
-    lastSoundedT = 0;
-    lastSoundedStep = 0;
     lastStepTime = performance.now();
-}
-
-// Signed seconds from the nearest onset of `col` to now: negative is early,
-// positive is late. Every step's onset is predictable off the last one, so both
-// the upcoming and the just-gone occurrence of that column are computable and
-// the nearer wins. A column is chosen SPATIALLY — by which cell BUZZ faces — so
-// windows on neighbouring steps overlapping at high tempo is grace, never
-// ambiguity.
-function onsetOffsetSec(col) {
-    if (!audioCtx || !sequencerStarted) return Infinity;
-    const stepSec = stepMs / 1000;
-    const barSec = stepSec * GRID_COLS;
-    const ahead = ((col - lastSoundedStep) % GRID_COLS + GRID_COLS) % GRID_COLS;
-    const next = lastSoundedT + ahead * stepSec;
-    const prev = next - barSec;
-    const now = audioCtx.currentTime;
-    return Math.abs(now - next) < Math.abs(now - prev) ? now - next : now - prev;
 }
 
 function tickSequencer() {
@@ -3169,9 +2875,6 @@ function tickSequencer() {
         // so playheadCol/soundingCol/the beat window all read unchanged.
         currentStep = (sounded.step + 1) % GRID_COLS;
         lastStepTime = performance.now();
-        lastSoundedT = sounded.t;
-        lastSoundedStep = sounded.step;
-        if (isProto() && sounded.step === 0) protoOnDownbeat();
         const ar = getActiveRows();
         for (let r = 0; r < ar; r++) {
             if (grid[r][sounded.step]) rowTrigger[r] = 8;   // pulse for 8 frames
@@ -3181,20 +2884,21 @@ function tickSequencer() {
 
 // ---- Update ----
 function update(dt) {
-    // THE SEQUENCER STEPS FIRST, before anything reads the clock.
+    // THE SEQUENCER STEPS FIRST, before anything else reads the clock.
     //
-    // This was the last statement in update(), which meant the punch — resolved
-    // a few dozen lines below — was judged against the step state left over
-    // from the PREVIOUS frame. A systematic 16.7ms lag, invisible while the
-    // only consumer was a bonus with a whole-step window, and fatal to a ±1
-    // frame PERFECT: "perfect" actually meant "one frame late", and the ±4
-    // frame hit window was really −3/+5. A rhythm game that wants you late is
-    // a rhythm game that feels wrong and cannot tell you why.
+    // This was the last statement in update(), so everything that asked what
+    // the beat was doing — the punch, the groove bonus, the row pulses — was
+    // answered with the step state left over from the PREVIOUS frame. A
+    // systematic 16.7ms lag. It was invisible while the only consumer was a
+    // bonus with a whole-step window, and it stopped being invisible the moment
+    // anything wanted finer timing than that.
     //
     // Nothing wanted it at the bottom. Hits are scheduled 100ms ahead against
     // the audio clock, so stepping earlier in the frame changes no timing; the
     // row pulses and the drawn playhead now belong to the same frame that
-    // renders them, which is if anything more correct.
+    // renders them, which is if anything more correct. It also means a hit
+    // freeze no longer eats the sequencer tick for those frames, so punching a
+    // Donk cannot stutter the beat.
     tickSequencer();
 
     // Decay visual effect timers
@@ -3206,10 +2910,7 @@ function update(dt) {
     }
 
     // Level countdown timer
-    // The seconds clock does not run under the gate — the budget is bars, spent
-    // on the downbeat in protoOnDownbeat(). Same pressure, denominated in the
-    // thing the game is about, and it tracks tempo without a second table.
-    if (levelTimer > 0 && !levelComplete && !isProto()) { // clock stops once the beat is restored
+    if (levelTimer > 0 && !levelComplete) { // clock stops once the beat is restored
         levelTimer--;
         if (levelTimer <= 0) {
             // Level 30: timer expiry triggers ending, not game over
@@ -3252,13 +2953,7 @@ function update(dt) {
     // Punch input buffering: a press during the punch animation queues a
     // follow-up punch that fires as soon as the current one finishes
     if (spaceJustPressed && p.attacking) {
-        // Not under the gate. The buffer replays a press as `spaceJustPressed`
-        // on a LATER frame, so a buffered punch would be judged at the frame it
-        // fired rather than the frame you pressed — the timing it reports is
-        // not the timing you played. Buffering it properly means carrying the
-        // press timestamp through; until then the press is dropped, which is at
-        // least honest.
-        if (!isProto()) p.punchBuffered = true;
+        p.punchBuffered = true;
         spaceJustPressed = false;
     }
     if (p.stunTimer > 0 || p.freezeTimer > 0) {
@@ -3432,12 +3127,7 @@ function update(dt) {
                     }
 
                     killCount++;
-                    // No bounty under the gate. A flat 50 for a non-musical
-                    // action pays real score for the one thing in the level
-                    // that is not timing, and it sat above a x1 timed fix.
-                    // Punching a Donk is defence — its reward is the cell it
-                    // now cannot take.
-                    if (!isProto()) score += hitGob.elite ? 150 : 50;
+                    score += hitGob.elite ? 150 : 50;
                     catapultSpawnedThisCycle = false;
 
                     if (patternMatched && !areGoblinsAlive()) {
@@ -3512,16 +3202,6 @@ function update(dt) {
 
         // Toggle block only if no goblin was hit
         if (!hitAnyGoblin && row >= 0 && row < getActiveRows() && col >= 0 && col < GRID_COLS) {
-            // ---- THE GATE ----
-            // A pad only answers when its own column is sounding. Off the beat
-            // the punch whiffs: no toggle, no drum, streak broken. That is the
-            // whole hypothesis, and it is this one branch.
-            const judged = isProto() ? protoJudge(col) : null;
-            if (judged === "miss") {
-                p.punchHit = true;
-                p.punchHitCol = mixC(INK.charcoal, INK.paper, 0.4);
-                protoWhiff();
-            } else {
             grid[row][col] = !grid[row][col];
             blockToggleAnim[row][col] = 12; // trigger pop animation
             p.punchHit = true;
@@ -3559,13 +3239,7 @@ function update(dt) {
             const lvlDef = currentLevel < LEVELS.length ? LEVELS[currentLevel] : null;
             const madeCorrect = lvlDef && !lvlDef.noPattern &&
                 grid[row][col] === lvlDef.pattern[row][col];
-            if (judged) {
-                // Under the gate the streak IS the scoring. A timed punch that
-                // moves the pattern the wrong way still lands musically — it
-                // was on the beat — so it keeps the streak but pays nothing.
-                if (madeCorrect) protoRegisterHit(judged, row, col);
-                else { protoStreak++; protoBestStreak = Math.max(protoBestStreak, protoStreak); }
-            } else if (madeCorrect && playing && sequencerStarted) {
+            if (madeCorrect && playing && sequencerStarted) {
                 const sinceTick = performance.now() - lastStepTime;
                 const playedCol = (currentStep + GRID_COLS - 1) % GRID_COLS;
                 if (col === playedCol) {
@@ -3583,7 +3257,6 @@ function update(dt) {
 
             // Check if level pattern is now complete
             tryCompleteLevelOrWait();
-            } // end else (the punch was in window, or the gate is off)
         }
     }
     spaceJustPressed = false;
@@ -3594,12 +3267,8 @@ function update(dt) {
         // one-shot swing: the thrust peaks at the halfway frame, so pinning the
         // timer there pins the pose. Let go and the rest of the swing plays out
         // and retracts him. A stun or freeze always wins.
-        // The hold is off under the gate. Leaning on the button pins the swing
-        // at full extension for as long as you like, which also blocks the next
-        // punch — in a game where the next punch has a moment, that is a lockout
-        // dressed as a pose.
         const peak = Math.ceil(p.attackDuration / 2);
-        const held = keys["Space"] && p.stunTimer <= 0 && p.freezeTimer <= 0 && !isProto();
+        const held = keys["Space"] && p.stunTimer <= 0 && p.freezeTimer <= 0;
         if (held && p.attackTimer <= peak) {
             p.attackTimer = peak;
         } else {
@@ -3831,12 +3500,8 @@ function update(dt) {
             gob.y = gob.destY;
 
             // Elite goblins don't sabotage — they hunt Carl instead
-            // (and nobody sabotages while fleeing a restored beat).
-            // Under the gate the wandering flip is off entirely: sabotage is
-            // scheduled on the downbeat instead, so the rate is exact rather
-            // than an emergent property of pathfinding. The Donks still walk,
-            // and where they walk still decides which cell goes.
-            if (!gob.elite && !gob.fleeing && !isProto()) {
+            // (and nobody sabotages while fleeing a restored beat)
+            if (!gob.elite && !gob.fleeing) {
                 // Check if on a grid cell to sabotage
                 const gc = Math.round(gob.x / TILE) - GRID_X;
                 const gr = tileYToRow(Math.round(gob.y / TILE));
@@ -4379,10 +4044,6 @@ function resetGame() {
     levelCelebrateTimer = 0;
     levelCelebrateDisplayScore = 0;
 
-    // Reset the prototype's streak/bar state
-    protoReset();
-    player.attackDuration = 12;
-
     // Reset minigame state
     caveClockPickups = [];
     djSetupEarned = [];
@@ -4429,12 +4090,21 @@ function tryCompleteLevelOrWait() {
     triggerLevelComplete();
 }
 
+// One bar of the level's own tempo, in frames at 60fps.
+function holdFrames() {
+    return Math.round(GRID_COLS * stepMs * 60 / 1000);
+}
+
 // The burst on the beat landing: the room cheers, the Donks bolt, the fanfare
 // plays. It used to be the door opening; it is now the win itself.
 function celebrateBeatRestored() {
     entourageCheer = 120;
     deathText = { x: player.x - 28, y: player.y - 18, timer: 90, text: "BEAT RESTORED!", color: "#50ad33", scale: 5 };
-    playLevelFanfare();
+    // The fanfare is NOT played here. triggerLevelComplete runs on the very
+    // next line and plays it, so this was firing two overlapping arpeggios for
+    // one win — and the other paths into triggerLevelComplete never came
+    // through here, so removing it there instead would have lost the fanfare
+    // on those. One win, one fanfare, on every route.
     // The Donks used to be sent fleeing for their caves here, and the catapult
     // crew told to pack up. Both are gone: triggerLevelComplete runs on the
     // very next line and clears the room outright, so nothing ever got a frame
@@ -4503,13 +4173,8 @@ function triggerLevelComplete() {
     }
     // Kill catapult goblin too
     catapultGoblin = null;
-    // Award time bonus.
-    //
-    // None of it under the gate, deliberately. The time bonus is 10 points a
-    // second, and finishing a level fast was worth several times every groove
-    // bonus in it — the economy said "rush" while the game said "listen". The
-    // streak is the whole score here, so the two cannot argue.
-    lastTimeBonus = isProto() ? 0 : Math.ceil(levelTimer / 60) * 10;
+    // Award time bonus
+    lastTimeBonus = Math.ceil(levelTimer / 60) * 10;
     score += lastTimeBonus;
     // DJ piece recovery at milestone levels — the kidnap mini-levels are
     // retired, so the stolen piece is reclaimed directly with the room
@@ -4589,43 +4254,13 @@ function advanceLevel() {
             grid[r][c] = prevPattern[r][c];
 
     // Build zigzag cell list for sabotage animation
-    //
-    // Under the gate there is NO ROLL. The board already opens as last level's
-    // groove, so the cells that are wrong are exactly the ones that differ from
-    // this level's — the authored difference between two beats, and nothing
-    // else. Measured across the 29 scored levels, the roll buries that
-    // difference under noise: it is 16% of the work on average and 11% by
-    // level 29. The thief still runs, but he MARKS the delta rather than adding
-    // to it, so the run reads as "here is what changed" instead of "here is
-    // what I broke".
     sabotageCells = [];
     const ar = LEVELS[currentLevel].activeRows;
-    const protoLevel = PROTO.on && currentLevel === PROTO.level && !LEVELS[currentLevel].noPattern;
-    const tgt = LEVELS[currentLevel].pattern;
     for (let r = 0; r < ar; r++) {
         for (let i = 0; i < GRID_COLS; i++) {
             const c = r % 2 === 0 ? i : GRID_COLS - 1 - i;
-            if (protoLevel) {
-                const isDelta = !!prevPattern[r][c] !== !!tgt[r][c];
-                sabotageCells.push({ r, c, flip: false, mark: isDelta, delta: isDelta });
-            } else {
-                sabotageCells.push({ r, c, flip: Math.random() < getSabotageFlipChance() });
-            }
+            sabotageCells.push({ r, c, flip: Math.random() < getSabotageFlipChance() });
         }
-    }
-    if (protoLevel) {
-        // Pad the workload out to something long enough to judge — see
-        // PROTO.extraWrong. Only cells that are currently RIGHT are eligible,
-        // so this adds work rather than cancelling the authored delta.
-        const spare = sabotageCells.filter(x => !x.delta);
-        for (let n = Math.min(PROTO.extraWrong, spare.length); n > 0; n--) {
-            const pick = spare.splice(Math.floor(Math.random() * spare.length), 1)[0];
-            pick.flip = true;
-        }
-        protoReset();
-        player.attackDuration = PROTO.attackFrames;
-    } else {
-        player.attackDuration = 12;
     }
 
     // Enter the new room through the left-hand doorway
@@ -5071,34 +4706,6 @@ function renderHUD() {
     const scoreStr = String(score).padStart(5, "0");
     number(scoreStr, W / 2, INK.charcoal, "center");
 
-    // --- MULTIPLIER, beside the score ---------------------------------------
-    // The literal reading. The louder half of this readout is the room: the
-    // stage lights and the entourage already scale with excitement, so the
-    // streak drives those too and you can feel it without looking down.
-    if (isProto()) {
-        const mult = protoMult();
-        hudCtx.font = fbody(labSize * SCALE);
-        const sw = hudCtx.measureText(scoreStr).width / SCALE;
-        const mx = W / 2 + hudDigitWidth(5) / 2 + 5;
-        hudCtx.textAlign = "start";
-        hudCtx.font = gfont(Math.round(5.5 * SCALE));
-        const mCol = mult >= 5 ? INK.mustard : mult > 1 ? INK.rust : mixC(INK.charcoal, INK.paper, 0.5);
-        hudCtx.fillStyle = INK.mustard;
-        hudCtx.fillText("x" + mult, (mx + 0.7) * SCALE, (HUD_H / 2 + 2.7) * SCALE);
-        hudCtx.fillStyle = mCol;
-        hudCtx.fillText("x" + mult, mx * SCALE, (HUD_H / 2 + 2) * SCALE);
-    }
-
-    // --- BARS, right (the gate's budget) -------------------------------------
-    if (isProto()) {
-        const left = Math.max(0, PROTO.bars - protoBar + 1);
-        const barStr = left < 10 ? "0" + left : String(left);
-        number(barStr, W - margin, left <= 4 ? INK.rust : INK.charcoal, "right");
-        hudCtx.font = fbody(labSize * SCALE);
-        const blw = hudCtx.measureText("BARS").width / SCALE;
-        label("BARS", W - margin - hudDigitWidth(2) * 2 - 4 - blw);
-    } else {
-
     // --- TIME, right ---------------------------------------------------------
     const timerSec = Math.max(0, Math.ceil(levelTimer / 60));
     const timerStr = timerSec < 10 ? "0" + timerSec : String(timerSec);
@@ -5139,7 +4746,6 @@ function renderHUD() {
         tick.connect(tg); tg.connect(audioCtx.destination);
         tick.start(now); tick.stop(now + 0.08);
     }
-    } // end else (seconds clock — the gate uses bars)
 
     // Equipment recovery tracker — the stage gear recovered so far
     {
@@ -5736,26 +5342,6 @@ function render() {
         ctx.globalAlpha = Math.min(1, deathText.timer / 20);
         drawText(deathText.text, deathText.x, deathText.y, deathText.color || INK.red, deathText.scale || 5);
         ctx.globalAlpha = 1.0;
-    }
-
-    // The judgement callout. PERFECT only — an in-window hit says nothing,
-    // because under the gate landing on time is simply how the game is played
-    // and a floating word on every punch is noise, not a reward.
-    if (protoJudgeFlash) {
-        protoJudgeFlash.timer--;
-        const jt = protoJudgeFlash.timer;
-        const perfect = protoJudgeFlash.text === "PERFECT";
-        const life = perfect ? 40 : 24;
-        ctx.save();
-        ctx.globalAlpha = Math.min(1, jt / (life * 0.5));
-        const rise = (1 - jt / life) * 6;
-        drawText(protoJudgeFlash.text,
-            player.x - protoJudgeFlash.text.length * 1.6,
-            player.y - 18 - rise,
-            perfect ? INK.mustard : mixC(INK.charcoal, INK.paper, 0.35),
-            perfect ? 5 : 4);
-        ctx.restore();
-        if (jt <= 0) protoJudgeFlash = null;
     }
 
     // IN THE POCKET — expanding gold groove ring from the punched cell
@@ -8714,12 +8300,6 @@ function renderTitleScreen() {
             // cutscene.
             gameState = "playing";
             resetSequencerClock();
-            // Land in the prototype rather than on level 1 when it is armed —
-            // the gate is what this build exists to test, and on a phone there
-            // is no way to type the level cheat.
-            if (PROTO.on && PROTO.bootStraightIn && PROTO.level > 0) {
-                jumpToLevel(PROTO.level);
-            }
             // No sceneTransition. There is nothing to cover: the same room, the
             // same grid and the same BUZZ are already on screen, so a fade to
             // black would be hiding a join that no longer exists.
@@ -8960,24 +8540,27 @@ function renderLevelComplete() {
 
     levelCelebrateTimer++;
     if (screenFlash > 0) screenFlash--;
-    // Advance sequencer step to keep dancers dancing
-    if (levelCelebrateTimer % 8 === 0) {
-        currentStep = (currentStep + 1) % GRID_COLS;
-    }
+    // THE BEAT KEEPS PLAYING. This used to shuffle `currentStep` on an
+    // arbitrary every-eighth-frame counter with the sequencer stopped — so the
+    // dancers moved but no drums came out, and the reward for restoring a
+    // groove was that the groove went silent. The real clock runs instead.
+    tickSequencer();
 
     // Render the game map underneath, then fade to black over time.
     //
-    // HOLD FIRST. The level now ends on the beat the pattern lands rather than
-    // when BUZZ reaches a door, so this is the moment the player just earned
-    // and it used to start dissolving on the very next frame. Three quarters of
-    // a second of the finished room, sitting there with the fanfare and the
-    // flash, before anything moves.
+    // HOLD FIRST, FOR A WHOLE BAR. The level ends on the beat the pattern
+    // lands, so this is the moment the player just earned, and 45 frames of it
+    // was under a second — less than a third of a bar at this tempo. You never
+    // once heard the thing you spent the level building. A full sixteen steps
+    // of the restored pattern, in the finished room, before anything moves.
     render();
     // Everything after the hold runs on `ct`, not on the raw timer. Get that
     // wrong and the panel's type starts fading up at frame 30 while the room is
     // still fully lit behind it, which reads as a caption on the game rather
     // than as the next screen arriving.
-    const HOLD = 45;
+    // One bar, derived from the level's own tempo rather than a magic 45 — it
+    // is 160 frames at 90 BPM and 80 at 180, and it stays one bar either way.
+    const HOLD = holdFrames();
     const ct = Math.max(0, levelCelebrateTimer - HOLD);
     const fadeAlpha = Math.min(1, ct / 90);
     ctx.globalAlpha = fadeAlpha;
@@ -9679,10 +9262,6 @@ function renderSabotageAnim() {
             cellFlash[cell.r][cell.c] = 30;
             cellRecent[cell.r][cell.c] = 180;
             if (sabotageFlipIndex % 4 === 0) { screenShake = 2; shakeAt = null; }
-        } else if (cell.mark) {
-            // Already wrong — the thief is pointing at it, not causing it
-            cellFlash[cell.r][cell.c] = 30;
-            cellRecent[cell.r][cell.c] = 180;
         }
         sabotageFlipIndex++;
     }
