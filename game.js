@@ -7089,13 +7089,26 @@ function warpFor(src, boils) {
             const m = warpFor(mipFor(img, a[2]), boils);
             if (m !== img) return orig.call(this, m, a[0], a[1], a[2], a[3]);
         } else if (a.length === 8) {                // sx..sh, dx..dh
-            const m = warpFor(mipFor(img, a[6]), boils);
+            // Judge the reduction by the SOURCE RECT, not by the whole image.
+            // A slice that takes 7 source pixels into 7 destination pixels is a
+            // 1:1 draw; measuring the destination width against img.width read
+            // it as 700:1, picked an 8x1 mip of the wall strip, and then asked
+            // that one-pixel-tall image for 1.26 pixels of height. Canvas
+            // satisfies an over-long source rect by shrinking the DESTINATION
+            // to match — so the side walls arrived 20% short of the floor with
+            // no texture on them, and no error anywhere.
+            const eff = a[2] > 0 ? img.width * (a[6] / a[2]) : a[6];
+            const m = warpFor(mipFor(img, eff), boils);
             if (m !== img) {
                 // the warp preserves the mip's size, so this factor is the
                 // mip's alone
                 const f = m.width / img.width;
-                return orig.call(this, m, a[0] * f, a[1] * f, a[2] * f, a[3] * f,
-                                 a[4], a[5], a[6], a[7]);
+                // and clamp to the mip's real bounds, because its height is
+                // rounded: over-reaching is the silent-shrink bug above.
+                const sy = a[1] * f, sx = a[0] * f;
+                const sh = Math.min(a[3] * f, m.height - sy);
+                const sw = Math.min(a[2] * f, m.width - sx);
+                return orig.call(this, m, sx, sy, sw, sh, a[4], a[5], a[6], a[7]);
             }
         }
         return orig.call(this, img, ...a);
