@@ -988,12 +988,45 @@ function finishStoneTile(g, c, size, rng) {
 // ~160 blits a frame.
 const PROJ = {
     on: true,
-    mode: "iso",     // "iso" | "rake" | "flat"
+    mode: "oblique", // "oblique" | "iso" | "rake" | "flat"
+    squash: 0.55,    // oblique only — how far the floor lies away from you
     tilt: 0.45,      // rake only. 0 = flat top-down (what it was), 1 = extreme
     strips: 160,     // rake only — horizontal slices of the plane
     lift: 0.10,      // rake only — where the horizon sits below the top
     isoRatio: 0.5,   // 0.5 = classic 2:1 isometric. Lower is a flatter rake.
 };
+
+// ---- Oblique --------------------------------------------------------------
+// The camera drops toward the floor without turning. The room stays square to
+// the screen — sixteen steps still run left to right, every cell the same width
+// as every other — and depth comes entirely from the floor lying away from you
+// and from everything on it standing up.
+//
+// It keeps the one property of isometric that is worth having here: NO
+// convergence and NO depth scaling, so the far end of the sequencer is exactly
+// as legible as the near end. It drops the one that costs: the 45 degree turn
+// that puts the timeline on a diagonal.
+//
+// The floor's bottom edge parks on top of the HUD band, so the headroom it
+// gains is at the TOP — which is where a back wall goes when the room is
+// redrawn.
+function obliqueFit() {
+    const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
+    const floorH = H * PROJ.squash;
+    const bottom = H - HUD_H * SCALE;
+    return { W, H, floorH, top: bottom - floorH };
+}
+
+function obliquePoint(dx, dy) {
+    const f = obliqueFit();
+    return { x: dx, y: f.top + dy * PROJ.squash, s: 1 };
+}
+
+function blitOblique() {
+    const f = obliqueFit();
+    MAIN_CTX.clearRect(0, 0, f.W, f.H);
+    MAIN_CTX.drawImage(PLANE, 0, 0, f.W, f.H, 0, f.top, f.W, f.floorH);
+}
 
 // ---- Isometric ------------------------------------------------------------
 // The room turned 45 degrees in plan and squashed vertically, which is the
@@ -1066,6 +1099,7 @@ function projY(v, H) {
 
 // A point on the floor, in device px, to where it lands on screen.
 function projPoint(dx, dy) {
+    if (PROJ.mode === "oblique") return obliquePoint(dx, dy);
     if (PROJ.mode === "iso") return isoPoint(dx, dy);
     const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
     const v = Math.max(0, Math.min(1, dy / H));
@@ -1075,6 +1109,7 @@ function projPoint(dx, dy) {
 
 // Lay the finished floor canvas down onto the plane.
 function blitPlane() {
+    if (PROJ.mode === "oblique") return blitOblique();
     if (PROJ.mode === "iso") return blitIso();
     const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
     const n = PROJ.strips, sh = H / n;
