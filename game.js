@@ -1129,13 +1129,40 @@ function paintSurround() {
 // in.
 function drawBackWall() {
     const b = currentBiome;
-    const art = b && b.wallArt ? ROOM_ART[b.wallArt] : null;
-    if (!art || PROJ.mode !== "rake") return;
+    if (!b || PROJ.mode !== "rake") return;
     const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
-    const w = W * projScale(0);
-    const h = w * (art.height / art.width);
-    const y = projY(0, H);
-    MAIN_CTX.drawImage(art, (W - w) / 2, y - h, w, h);
+    const hw = W * projScale(0);          // the horizon: how wide the far wall is
+    const y = projY(0, H);                // and where its foot sits
+    const x0 = (W - hw) / 2;
+
+    // A REPEATING PANEL, which is a better object than one wide plate.
+    //
+    // The horizon's width is a function of the tilt, so a single image has to be
+    // stretched to whatever that happens to be — and stretched DOWN, since the
+    // plate was authored wider than the horizon ever is. A panel is drawn once
+    // at its own size and repeated, so it keeps its resolution, it fits any
+    // tilt, and one panel recoloured gives all six biomes a wall.
+    //
+    // Repeats are a whole number. A wall that ends on two thirds of a panel is a
+    // wall someone built wrong, and the eye finds that seam immediately — so the
+    // panel width bends to the room rather than the room being left with a
+    // remainder. Measured on Carl's panel, the left and right edges differ by
+    // 3.2 of a possible 765, so the joins do not need hiding.
+    const tile = b.wallTile ? ROOM_ART[b.wallTile] : null;
+    if (tile) {
+        const want = y;                                   // fill the headroom
+        const ideal = tile.width * (want / tile.height);
+        const n = Math.max(1, Math.round(hw / ideal));
+        const tw = hw / n;
+        const th = tile.height * (tw / tile.width);
+        for (let i = 0; i < n; i++) MAIN_CTX.drawImage(tile, x0 + i * tw, y - th, tw, th);
+        return;
+    }
+
+    const art = b.wallArt ? ROOM_ART[b.wallArt] : null;
+    if (!art) return;
+    const h = hw * (art.height / art.width);
+    MAIN_CTX.drawImage(art, x0, y - h, hw, h);
 }
 
 // Lay the finished floor canvas down onto the plane.
@@ -1363,7 +1390,7 @@ const BIOMES = [
         tagline: "WHERE THE GROOVE BEGINS",
         art: "warm-up-floor",  // assets/room/warm-up-floor.png — see ROOM_ART
         floorArt: true,        // the plate is the FLOOR only; no walls in it
-        wallArt: "warm-up-wall", // stands up at the horizon, never projected
+        wallTile: "wall-panel", // one panel, repeated along the horizon
         floor: { base: mixC(INK.charcoal, INK.mint, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.mint, 0.17) },
         walls: [
             { base: "#BFCDC0", dark: "#93a89a", hi: "#e9eee9" },
@@ -1815,7 +1842,7 @@ for (const b of BIOMES) {
     // Both plates load the same way. The floor goes into the baked room texture
     // and so needs a rebuild when it lands; the wall is blitted live every frame
     // and needs nothing but to exist.
-    for (const slug of [b.art, b.wallArt]) {
+    for (const slug of [b.art, b.wallArt, b.wallTile]) {
         if (!slug || ROOM_ART[slug]) continue;
         const im = new Image();
         im.onload = () => {
