@@ -1403,7 +1403,12 @@ function drawWallProps(wx, wy, ww, wh) {
         if (!art) continue;
         const h = wh * pr.h;
         const w = h * (art.width / art.height);
-        MAIN_CTX.drawImage(art, wx + ww * pr.x - w / 2, wy + wh * pr.y - h / 2, w, h);
+        // A door stands ON the floor. Saying that, rather than giving it a y
+        // that happens to land there, is what keeps it standing there when the
+        // art is redrawn a few pixels taller — a hovering door reads as a lip
+        // you would have to step over.
+        const cy = pr.foot ? wh - h / 2 : wh * pr.y;
+        MAIN_CTX.drawImage(art, wx + ww * pr.x - w / 2, wy + cy - h / 2, w, h);
     }
 }
 
@@ -1737,7 +1742,7 @@ const BIOMES = [
         // fraction of the wall's. Nothing here is in pixels, so the whole
         // dressing survives a change of tilt, of horizon, or of panel count.
         wallProps: [
-            { art: "door",      x: 0.117, y: 0.519, h: 0.848 },
+            { art: "door",      x: 0.117, foot: true, h: 0.848 },
             { art: "switch",    x: 0.241, y: 0.471, h: 0.081 },
             { art: "poster",    x: 0.328, y: 0.311, h: 0.311 },
             { art: "clock",     x: 0.683, y: 0.203, h: 0.185 },
