@@ -1219,6 +1219,52 @@ function drawBackWall() {
     MAIN_CTX.drawImage(art, x0, y - h, hw, h);
 }
 
+// The side walls, rising from the floor's left and right edges and running away
+// from the camera.
+//
+// They are built from the same panel as the back wall, sliced BY DEPTH: each
+// strip is a vertical slice of the panel stood up at the floor's edge, as tall
+// as the wall is at that distance. Their height is not chosen — it is derived
+// from the back wall's, so the three meet exactly at the corners however the
+// camera moves.
+//
+// The doorways are holes in this, not decoration. The Donks spawn at tile row 3
+// because the drawn room cut its openings at rows 1.7 to 4.0, so those rows are
+// where the wall does not get drawn — move them and the spawn row moves.
+const DOOR_V0 = 1.7 / ROWS, DOOR_V1 = 4.0 / ROWS;
+
+function drawSideWalls() {
+    const b = currentBiome;
+    const tile = b && b.wallTile ? ROOM_ART[b.wallTile] : null;
+    if (!tile || !PROJ.on || PROJ.mode !== "rake") return;
+    const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
+
+    // Match the back wall's world height exactly.
+    const hw = W * projScale(0);
+    const idealW = tile.width * (projY(0) / tile.height);
+    const nBack = Math.max(1, Math.round(hw / idealW));
+    const twBack = hw / nBack;
+    const wallWorldH = (tile.height * (twBack / tile.width)) / projScale(0);
+
+    const N = 96;
+    for (const side of [-1, 1]) {
+        for (let i = 0; i < N; i++) {
+            const v0 = i / N, v1 = (i + 1) / N;
+            const vm = (v0 + v1) / 2;
+            if (vm > DOOR_V0 && vm < DOOR_V1) continue;   // the doorway
+            const s0 = projScale(v0), s1 = projScale(v1);
+            const x0 = W / 2 + side * (W / 2) * s0, x1 = W / 2 + side * (W / 2) * s1;
+            const y0 = projY(v0), y1 = projY(v1);
+            const h0 = wallWorldH * s0, h1 = wallWorldH * s1;
+            // Source slice: run the panel along the wall's length, repeating.
+            const u = (vm * 3) % 1;
+            ctx.drawImage(tile, u * tile.width, 0, tile.width / N * 3, tile.height,
+                          Math.min(x0, x1), Math.min(y0 - h0, y1 - h1),
+                          Math.abs(x1 - x0) + 1, Math.max(y0 - (y0 - h0), y1 - (y1 - h1)));
+        }
+    }
+}
+
 // Lit pads, waiting to be stood up once the floor is down. Cleared each frame.
 let padRises = [];
 
@@ -5865,6 +5911,7 @@ function render() {
     if (PROJ.on) {
         blitPlane();
         ctx = MAIN_CTX;
+        drawSideWalls();
         drawPadRises();
     }
 
