@@ -1272,10 +1272,22 @@ const DOOR_V0 = 1.7 / ROWS, DOOR_V1 = 4.0 / ROWS;
 // per-frame version could, because it pays for them once.
 const SIDE_WALLS = { parts: [], key: "" };
 
+// What the bake was made FROM — including whether each piece had actually
+// arrived, not just which piece was asked for.
+//
+// This matters now that the bake is kicked off by the art loader rather than by
+// the first frame that draws it. Images land in whatever order the network
+// returns them, so the first one to arrive fires the bake; when that happened
+// before the door sprite had loaded, the wall was baked with an empty doorway —
+// and a key naming only `doorArt` could not tell that apart from the door being
+// there, so the door never appeared. Presence is part of the identity.
 function sideWallKey() {
     const b = currentBiome;
-    return [PROJ.mode, PROJ.angleDeg, PROJ.distance, b && b.wallStrip, b && b.doorArt,
-            COLS, ROWS, TILE, SCALE].join("|");
+    const have = (k) => (k && ROOM_ART[k] ? 1 : 0);
+    return [PROJ.mode, PROJ.angleDeg, PROJ.distance, COLS, ROWS, TILE, SCALE,
+            b && b.wallTile, have(b && b.wallTile),
+            b && b.wallStrip, have(b && b.wallStrip),
+            b && b.doorArt, have((b && b.doorArt) || "props/door")].join("|");
 }
 
 function buildSideWalls() {
@@ -1464,9 +1476,14 @@ function buildSideWalls() {
 // audio scheduler's 100ms lookahead — a stall there is a dropped drum, not just
 // a dropped frame. Called from the room-art loader, which runs on the title
 // screen where there is nothing to drop.
-function warmSideWalls() {
+function warmSideWalls(needed) {
     const b = currentBiome;
     if (!b || !b.wallTile || !ROOM_ART[b.wallTile] || !PROJ.on || PROJ.mode !== "rake") return false;
+    // From the loader, hold off until every piece has landed — otherwise it
+    // bakes once per arrival. From a frame, bake with whatever is there, which
+    // is also the fallback if a piece never arrives at all.
+    if (!needed && ((b.wallStrip && !ROOM_ART[b.wallStrip]) ||
+                    !ROOM_ART[b.doorArt || "props/door"])) return false;
     const key = sideWallKey();
     if (SIDE_WALLS.key !== key) { SIDE_WALLS.parts = buildSideWalls(); SIDE_WALLS.key = key; }
     return true;
@@ -1474,7 +1491,7 @@ function warmSideWalls() {
 
 function drawSideWalls() {
     const b = currentBiome;
-    if (!warmSideWalls()) return;
+    if (!warmSideWalls(true)) return;
     for (const p of SIDE_WALLS.parts) ctx.drawImage(p.canvas, p.x, p.y);
 
     // The spawn tell is the one live part, so it stays out of the bake.
