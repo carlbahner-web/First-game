@@ -1,210 +1,181 @@
 # Deep-dive brief — BUZZ's Rhythm Rampage
 
-**Treat this game as a rough draft.** It is finished enough to play and polished
-enough to look finished, which makes it easy to mistake for done. It is not
-done. The visual language is settled and the engineering is sound; the *design*
-has never been examined by anyone.
+**Read §0 before anything else.** The first version of this document sent a
+session down the wrong road for a day, and §0 is the correction.
 
-You are being asked to work out what this should become — gameplay, structure,
-depth — and to be opinionated about it. Propose changes at any scale, up to and
-including changing what the player does.
-
-Written by an agent that just spent a long session in this codebase. Everything
-numeric here was measured, not remembered; where something is opinion it says so.
+Everything numeric here was measured against the running game, not remembered.
+Where something is opinion it says so.
 
 ---
 
-## 0. The mandate, and its limits
+## 0. What this document got wrong
 
-**Nothing in the design is sacred.** §5 lists decisions that were made
-deliberately and explains why — that is there so you argue with the *reasoning*
-rather than rediscovering it, not to fence anything off. Overturn any of it if
-you have something better. Say what you are trading away.
+The first version of this brief argued that the game's central problem was that
+**"you can play this with the sound off and lose nothing"** — that the audio was
+decoration, that the drum kit was the biggest unexploited asset, and that the
+question worth answering was *"what is the version where listening does real
+work?"* It also stated that the look was settled and **"not where the problem
+is."**
 
-**These are the actual constraints:**
+Carl has since read it and played against it. **Both claims were wrong**, and
+they were wrong in the most expensive way available: they pointed at the part of
+the game that already works and away from the parts he actually wants improved.
 
-- **Single-file vanilla JS on HTML5 canvas.** No framework, no build step beyond
-  a Python script that inlines assets. Carl is a music producer who reads code
-  well and writes it rarely; a stack he cannot reason about is a stack he cannot
-  own. Changing this is possible but it is a real cost, not a free upgrade.
-- **It must publish as one self-contained HTML file.** That is how he shares it.
-- **The look is settled and he is happy with it.** Charcoal ink on cream, the
-  line boil, the 1950s StudioLand world. See `design.md`. Visual suggestions are
-  welcome but this is not where the problem is.
-- **BUZZ is the character**, shared with two sibling games.
-- **The drum kit is his own**, sampled and mixed by him. Design around it.
+**In his words: the musical gameplay is the part that works best. It is the most
+fun and the most unique mechanic. Leave it alone.**
 
-Everything else is open: the core verb, the enemies, the level count and
-structure, whether there is a timer, how movement works, what the audio is for,
-how scoring works.
+Two specific corrections, because they cost real time:
 
-**What "better" means here.** This is a portfolio piece for a music-production
-brand, not a commercial release. It should be worth playing for twenty minutes,
-worth showing someone, and it should feel like it was made by someone who thinks
-about rhythm for a living. Depth beats breadth. One mechanic that rewards
-mastery beats five that do not.
+**The randomness is the point, not noise.** The first brief measured the
+authored difference between one level's groove and the next, found it was 16% of
+the work on average and 11% by level 29, and concluded the random scramble was
+burying the musical signal. That measured the destination. The *journey* is the
+music: a sixteen-step pattern flipped 40% at random and played at tempo is a
+mutating groove, and the Donks keep mutating it while you are inside it. Carl's
+words: *"the randomness is the whole fun. It's turning chaos into order, but
+also as musicians it's unique to hear things constantly changing."* Removing the
+roll would remove the game.
 
-**Before you propose anything, read §3 and §4.** They are the two places where
-measurement already contradicts the design's intent, and any serious proposal
-should have an answer for both.
+**Do not gate the input on the beat.** This was tried, twice — first requiring
+the punch to land on the punched cell's own step, then loosening it to any
+eighth, with grace windows, a PERFECT tier and a streak multiplier. Both
+versions were less fun, and the reason is not tuning. Carl: *"it's too much to
+think about instead of just enjoying the puzzle... focusing on the timing
+actually made me not enjoy or even notice the parts that actually make it fun
+and special."* Timing demands put the player's attention on their own hands.
+The pleasure here is listening to the groove change while you sculpt it, and
+those two compete for the same channel. See the commits on
+`claude/deep-dive-brief-review-h5who2` if the details are ever wanted; they are
+not recommended.
+
+**The rule that came out of it:** the loop already works. Improvements should
+ride on top of it for free. Prefer changes to what the player *perceives* over
+changes to what the player must *do*.
 
 ---
 
-## 1. What the game is
+## 1. What is actually being asked for
 
-Top-down room. A 16-step drum sequencer is laid across the middle of it as a
-grid of pads. The Donks scramble your pattern; you walk up to a pad and punch it
-to toggle it. Restore the pattern and the level ends on that beat.
+Three things, in Carl's priority order:
 
-Thirty levels, six biomes of five. It is a **puzzle game wearing a music game's
-clothes** — see §4, which is the single thing I would most like a second opinion
-on.
+1. **The visuals** — specifically whether this should become 2.5D.
+2. **The scoring system** — it is not tuned, and it pays for the wrong things.
+3. **The difficulty curve** — it is not tuned, and what scales is not what
+   makes it hard.
 
-## 2. The loop, moment to moment
+The gameplay loop is **not** on this list. That is deliberate.
 
-1. Level opens. A thief sprints across the grid flipping cells, then bolts out.
-2. The sequencer plays your (now wrong) pattern on a loop, audibly.
-3. You walk BUZZ to a wrong pad and press Space. It toggles, plays that row's
-   drum, and the lattice around it stops boiling — the ink is alive only where
-   the pattern is still wrong, so the field goes quiet as you fix it.
-4. Donks wander in through the side doorways and re-flip cells behind you.
-   Punching one kills it. They respawn.
-5. Get every cell right and the level ends instantly — a 45-frame hold on the
-   finished room, then a fade to the level-complete panel.
-6. Run out of time and it is game over.
+---
 
-**Controls:** arrows to move (tile by tile), Space to punch the tile you face,
-Escape to pause. That is all of them.
+## 2. What the game is
 
-## 3. The difficulty curve, measured
+Top-down room, 20 × 10 tiles. A sixteen-step drum sequencer lies across the
+middle as a grid of pads — four rows for levels 1–10, five for 11–20, six for
+21–30. Each level's board opens as the *previous* level's completed groove; a
+thief runs through flipping cells at random; the sequencer plays the resulting
+mutation on a loop, audibly. You walk BUZZ to a wrong pad and punch it to
+toggle it, which also plays that row's drum. Donks wander in and re-flip cells
+behind you. Restore the pattern and the level ends on that beat.
 
-There is no authored scramble past level 1. Every cell gets an independent flip
-roll at `0.12 + (level / 30) * 0.53`.
+Thirty levels, six biomes of five, 90 → 180 BPM. Controls are arrows, Space,
+Escape. The only failure is the clock.
 
-| lvl | rows | cells | flip % | expected wrong | secs | **secs per fix** | Donk speed |
-|---|---|---|---|---|---|---|---|
-| 1 | 4 | 64 | 12% | 7.7 | 150 | 19.5 | 0 |
-| 5 | 4 | 64 | 19% | 12.2 | 150 | 12.3 | 0.47 |
-| 10 | 4 | 64 | 28% | 17.9 | 150 | 8.4 | 0.53 |
-| 15 | 5 | 80 | 37% | 29.4 | 135 | 4.6 | 0.58 |
-| 20 | 5 | 80 | 46% | 36.5 | 135 | 3.7 | 0.64 |
-| 25 | 6 | 96 | 54% | 52.2 | 130 | 2.5 | 0.73 |
-| 29 | 6 | 96 | 61% | **59.0** | 115 | **1.9** | 0.80 |
+## 3. Scoring, measured
 
-Every fix costs a walk. And the Donks are re-scrambling the whole time.
+| source | value | where |
+|---|---|---|
+| time remaining | **10 per second** — up to 1500 on a 150s level | `triggerLevelComplete` |
+| kill a Donk | 50 | punch resolution |
+| kill an elite | 150 | punch resolution |
+| "YEAH" — correct toggle on a quarter note | 25 | `triggerYeah` |
+| "IN THE POCKET" — correct toggle on the cell's own step | 100 | `triggerPocketHit` |
 
-Two things I would push on:
+- **The time bonus dwarfs everything else.** Finishing a level with two minutes
+  left pays 1200. Every groove bonus in that level put together will not come
+  close. The economy pays you to rush past the most interesting thing in the
+  game.
+- **Fixing a cell — the actual verb — pays nothing.** You are paid for time and
+  for violence. Not for the thing the level is about.
+- **The score is accumulated, not derived.** `score += n` in four places, and
+  it is inconsistent: the two groove bonuses clamp to 99999, the kill bounty
+  and the time bonus do not. The HUD pads to five digits, so a long run can
+  overflow the centred field.
 
-- **The curve scales volume, not interest.** Late levels are the same task
-  sixty times instead of eight. Nothing new is asked of the player after about
-  level 10 except speed.
-- **61% flipped is worse than random.** A coin-flip board would be 50% wrong.
-  Past the halfway point the scramble is closer to an inversion than a
-  disturbance, and "restore the pattern" becomes "rebuild the board" — which may
-  be a different, less interesting verb.
+## 4. Difficulty, measured
 
-## 4. The central contradiction
+What the level table scales, per level index:
 
-**You can play this game with the sound off and lose nothing.**
+| | L1 | L10 | L20 | L29 |
+|---|---|---|---|---|
+| rows / cells | 4 / 64 | 4 / 64 | 5 / 80 | 6 / 96 |
+| scramble chance | 12% | 28% | 46% | 61% |
+| expected wrong at start | 13.8 | 20.1 | 37.5 | 55.3 |
+| timer | 150s | 150s | 135s | 115s |
+| tempo | 90 BPM | 100 | 128.6 | 180 |
+| Donk speed | 0 | 0.53 | 0.64 | 0.80 |
 
-The target pattern is shown visually: pads that need turning ON get a pulsing
-outline with a dot, pads that need turning OFF get a pulsing X. So the win
-condition is fully specified on screen, and the audio is confirmation rather
-than information. It is a match-the-diagram puzzle with a drum machine attached.
+And what that actually produces:
 
-There is one seed of the other thing: punching a pad **on the beat** triggers a
-groove bonus ("in the pocket", or a crowd "yeah" on a quarter-note). That is the
-only mechanic where the ear does anything, and it only affects score.
+- **The clock is not a constraint.** A punch is 12 frames with movement locked,
+  a tile step is 9.5 frames. A full serpentine sweep of the level-29 board,
+  punching all ~55 wrong cells, is **31.9 seconds of a 115-second timer — 28%**.
+  L20 is 18%, L10 is 11%. There is roughly 3.5× slack at the hardest level.
+- **Donk pressure is flat, and it peaks at level 5.** Simulated against the real
+  AI over each level's real duration: 0.63 flips/sec at L5, 0.47 at L10, 0.53 at
+  L20, 0.60 at L29. Bigger grids mean longer trips, and the `moveSteps > 5`
+  retarget means a Donk with a distant target abandons it before arriving. The
+  one system that could supply escalating pressure supplies a constant tax.
+- **The Donks repair the board as often as they break it.** They toggle a random
+  cell, not a *correct* one. On an L29 board that opens 57% wrong, a flip has a
+  57% chance of fixing something. Their expected damage is proportional to how
+  close you are to finishing, so they do almost nothing for the first 80% of a
+  level and then bite. All the tension is in the last few cells, and it is RNG
+  rather than skill.
+- **Nothing can kill you.** There is no health and there are no lives. An elite's
+  punch is a 60-frame stun; the catapult is a 10-second freeze. Both are
+  denominated in time, and time has 3.5× slack — so the dangerous-looking
+  enemies cost about a hundred points.
+- **Difficulty scales volume, not kind.** More cells, faster tempo, same task.
+- **A single clock expiry costs the whole run.** Game over sets `currentLevel =
+  0`. Reaching level 25 is ~40 minutes; losing there returns you to level 1 with
+  no continue and no level select.
 
-For a game called Rhythm Rampage, built around a sequencer and a kit Carl
-sampled himself, this is the biggest unexploited asset in the design — and
-arguably the reason it currently reads as a competent puzzle game rather than a
-music game.
+## 5. Visuals — what the pipeline allows
 
-Removing the visual hints outright would just make it frustrating; the pattern
-has to be knowable somehow. **What is the version where listening does real
-work and the game is still playable?** Solve that and most of §6 stops
-mattering.
+Relevant to the 2.5D question:
 
-## 5. Decisions already made, and their reasoning
+- Everything is drawn top-down and axis-aligned into a fixed 1600 × 800 canvas,
+  positioned in logical units and multiplied by `SCALE` at draw time.
+- **The pads are pre-baked 80 × 80 canvases** (`TEX_GRID_ON[variant][row]`,
+  `TEX_GRID_OFF[variant]`), blitted one `drawImage` each. Anything baked into
+  those tiles — an extruded side face, a lip, a shadow — costs nothing per
+  frame. Per-cell `shadowBlur` was tried and removed as a large per-frame cost;
+  bake, do not draw.
+- The room is a pre-rendered background per boil phase, or a drawn 1600 × 800
+  PNG via `ROOM_ART`. **A projection change invalidates any drawn room**, which
+  is the real cost of the ambitious option.
+- Depth cues that exist today: one flat shadow rectangle under BUZZ. That is all.
+- Characters are drawn procedurally by a rig, not blitted, so they can take a
+  vertical offset and a real contact shadow cheaply.
 
-Not a fence. These were deliberate, and the reasoning is here so you can argue
-with the reasoning instead of rediscovering the problem. Overturn any of them
-with a better answer.
+## 6. Decisions already made, and their reasoning
 
-- **The level ends the instant the pattern lands.** There used to be an exit
-  door to walk to. Getting it right was the achievement; walking afterwards was
-  a chore between the achievement and the reward.
-- **BUZZ holds still while the room shakes** on a punch. It reads as him hitting
-  the room rather than the camera being knocked about.
-- **Only the wrong pads boil.** The lattice's wobble is a hint system — it is
-  alive exactly where there is work to do.
-- **Most boil sources are off.** Room, HUD and text are deliberately still. With
-  grain on and linework boiling, everything moving at once was too much.
-- **Alert red `#FE3636` means deadly, only.** Never decorative. This is the one
-  hard rule in `design.md`.
-- **The title card has no legs, lamps or frame.** It had all three; the artwork
-  did not need the help.
+Not a fence. Argue with the reasoning rather than rediscovering the problem.
+
+- **The level ends the instant the pattern lands.** There used to be an exit door
+  to walk to; the walk was a chore between the achievement and the reward.
+- **The win now holds for a full bar with the drums still running.** It used to
+  hold 45 frames with the sequencer stopped and a synth arpeggio over the
+  silence — the reward for restoring a groove was that the groove went away.
+- **BUZZ holds still while the room shakes** on a punch. He hit the room; the
+  camera was not knocked about.
+- **Only the wrong pads boil.** The lattice is alive exactly where there is work
+  to do, and the field goes quiet as you fix it. This is the model for any
+  further "show me the chaos resolving" idea.
+- **Alert red `#FE3636` means deadly, only.** The one hard rule in `design.md`.
 - **Levels 1–2 have no Donks**, as a runway.
 
-## 6. Where I think it is weak
-
-Opinion, ordered by how much I would want it looked at.
-
-1. **Movement is transport, not gameplay.** Walking to a pad is pure overhead —
-   the only decision is routing, and routing is trivial on an open floor. Most
-   of the late-game difficulty is walking distance.
-2. **The audio is decoration** (§4).
-3. **The Donks are an interruption, not an opponent.** They flip cells
-   semi-randomly and can be punched out. There is no read, no tell, no counter-
-   play beyond noticing and walking over.
-4. **Nothing new arrives after level 10.** Rows go 4 → 5 → 6, biomes change
-   palette, one enemy type is added. The verb never changes.
-5. **Six rows are told apart by colour alone.** Partly mitigated now that
-   punching a pad plays that row's drum, but the visual field still relies on
-   hue. A per-row mark inside the cell is the obvious fix and does not exist.
-6. **Score is accumulated, not derived** — `score += n` in several places, so
-   the readout can drift from the state it reports.
-7. **The groove bonus is invisible if you are not looking for it.** It is the
-   most interesting mechanic in the game and it is nearly unadvertised.
-
-## 7. The questions worth answering
-
-Ranked. The first two are the ones that would change the game rather than
-improve it.
-
-1. **What is the version of this where the ear matters?** (§4) A rhythm game you
-   can play deaf is the central contradiction here.
-2. **Is "restore the pattern" the right verb for thirty levels?** If not, what
-   does the later game ask instead — build to a spec, reproduce something you
-   only heard, keep a pattern alive against escalating sabotage, perform rather
-   than assemble?
-3. **Should the scramble be authored rather than rolled?** Hand-built scrambles
-   could teach: a level whose wrong cells form a shape, or that turns one groove
-   into another so fixing it is a musical journey rather than a checklist.
-4. **What would make movement interesting**, or should it be reduced? Right now
-   it is pure overhead and it is most of the late-game difficulty.
-5. **Does the timer earn its place**, given the Donks already supply pressure?
-6. **What should the Donks actually be?** They are an interruption with no read
-   and no counter-play. Should they be an opponent, an instrument, or gone?
-
-## 8. How to make this deep dive worth doing
-
-The failure mode is twenty generic suggestions that would apply to any game.
-Guard against it:
-
-- **Be opinionated and pick.** A ranked shortlist with reasoning beats an
-  enumeration. Say what you would cut, not only what you would add.
-- **Engage with the numbers in §3.** Any proposal for the late game has to
-  survive "59 cells to fix, 1.9 seconds each, while being re-scrambled".
-- **Prototype the smallest version.** A mechanic argued in prose is a guess. One
-  level rewired to test a hypothesis is evidence.
-- **Say what a change costs.** Which of §5 it overturns, what it breaks, and
-  what Carl would need to author or record.
-- **Cutting counts as improvement.** Thirty shallow levels may want to be twelve
-  good ones.
-
-## 9. Running it
+## 7. Running it
 
 ```
 python3 -m http.server 8123      # then open index.html
@@ -216,40 +187,23 @@ python3 tools/csp-serve.py 8127        # serve the bundle under a CSP
 `img-src` and `fetch("data:...")` by `connect-src`; that asymmetry silently
 blocked the entire drum kit once, with nothing thrown and nothing logged.
 
-Useful hooks from the console: `advanceLevel()`, `currentLevel`, `grid`,
+Console hooks: `advanceLevel()`, `jumpToLevel(n)`, `currentLevel`, `grid`,
 `LEVELS[n].pattern`, `getActiveRows()`, `levelTimer`, `BOIL`, `AUDIO_KIT`.
 
-## 10. Map of the code
+Playwright with the bundled Chromium drives the real game end to end — boot,
+key or touch input, level transitions — and is how every number in §3 and §4
+was taken. It is worth rebuilding a harness rather than reasoning about the
+code cold.
 
-`game.js` is ~10,000 lines, one file, no modules. Rough order:
+## 8. What you cannot see from here
 
-| lines | what |
-|---|---|
-| 1–200 | constants, INK palette, boil engine |
-| 185–690 | LEVELS data — 30 entries, patterns as boolean grids |
-| 690–800 | audio: kit map, take picker, `playSample` |
-| 800–1150 | procedural texture generation |
-| 1000–1150 | BIOMES — six palettes |
-| 1198–1450 | ROOM_ART, room texture build, the three boil phases |
-| 1600–1950 | synthesised drum voices, `drumFns`, `ROW_VOICE` |
-| 2500–2700 | input and state machine |
-| 2884–3600 | `update()` — player, punch resolution, Donk AI |
-| 4800–5600 | `render()` — room, grid, characters, shake |
-| 4780–4900 | `applyLocalShake` — the ring/blur impact |
-| 5600–8000 | sprite drawing, BUZZ's rig |
-| 8000–8300 | title card |
-| 8400–9500 | level complete, ending, high scores, sabotage animation |
-| 9600–10000 | grain, touch controls, game loop |
-
-## 11. What you cannot see from here
-
-- **The commit messages are the real design record.** 222 of them, most
-  carrying the reasoning and the measurement behind a change. `git log` is worth
-  more than reading the code cold.
-- **It has never been played by a human for more than a few minutes.** Every
-  claim in §3 is arithmetic on the level data, not observed play. If you can get
-  Carl to play levels 15–29 and report what it *feels* like, that is worth more
-  than anything in this document.
-- **The look is settled and Carl is happy with it.** The audit that would help
-  is about play, structure and depth. Visual suggestions are welcome but that is
-  not where the problem is.
+- **The commit messages are the real design record.** Most carry the reasoning
+  and the measurement behind a change. `git log` is worth more than reading the
+  code cold.
+- **Carl is a music producer who reads code well and writes it rarely.** Single
+  file, vanilla JS, no build step beyond the Python bundler. It must publish as
+  one self-contained HTML file. A stack he cannot own is not an upgrade.
+- **Ask him to play it, and believe what he says.** Every number in this
+  document is arithmetic and simulation. The three most valuable findings in the
+  session that produced it all came from him playing for five minutes and
+  reporting that something was not fun.
