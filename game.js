@@ -200,18 +200,32 @@ const PROTO = {
     on: true,
     level: 4,          // 0-indexed — level 5
 
-    // ---- Timing windows, measured from the column's own onset ----
+    // ---- Timing windows ----
     // Centred on the onset, NOT aligned to the step's duration. The old pocket
     // check was `col === playedCol`, which is the whole step but only AFTER the
     // playhead arrives — punch 20ms early and you got nothing. Human timing
     // error is roughly symmetric and players anticipate, so the window has to
     // straddle the onset.
     //
-    // 4 frames looks generous against a 10-frame step until you notice a step
-    // is a sixteenth of a bar: 133ms of opportunity per 2667ms bar is a 5% duty
-    // cycle. That is the gate. PERFECT is 1.9%.
-    hitFrames: 4,      // ±4 frames (±67ms) — the punch lands
-    perfectFrames: 1,  // ±1 frame (±17ms) — PERFECT
+    // WHAT COUNTS AS ON TIME IS THE PULSE, NOT THE COLUMN. The first version of
+    // this gate required the punch to land on the punched cell's OWN step, and
+    // that is a scheduling puzzle wearing a rhythm game's clothes: a column
+    // comes round once a bar, so arriving a step late meant 2.67 seconds of
+    // standing still, and a mistimed tap cost another full bar plus the streak.
+    // Sixteen columns sounding and only one of them actionable — the game
+    // sounded busy and played empty. Measured, the wait alone was 1.33s per
+    // fix, ~19s of a 48s level spent unable to do anything.
+    //
+    // So the floor is the pulse: punch on any eighth and the pad answers,
+    // wherever you are standing. Opportunities arrive three times a second
+    // instead of once every three seconds, and a miss costs a third of a
+    // second. The column's own step is still special — it is what PERFECT
+    // means now, and it pays double. That turns the wait from a queue into a
+    // CHOICE: take it now for base, or hold for its own moment and get twice
+    // as much.
+    gridDiv: 2,        // 2 = eighths, 4 = quarters, 1 = every sixteenth
+    hitFrames: 4,      // ±4 frames (±67ms) around the pulse — the punch lands
+    perfectFrames: 1,  // ±1 frame (±17ms) of the cell's OWN step — PERFECT
 
     // ---- Budget ----
     // Bars, not seconds. Same pressure, denominated in the thing the game is
@@ -220,13 +234,14 @@ const PROTO = {
 
     // A PACING DIAL FOR THE TEST, not a design element.
     //
-    // Level 5's authored difference from level 4 is six cells, which is the
-    // honest workload and ends the level in about seven bars — too short to
-    // feel whether the gate is any good. These are extra wrong cells rolled on
-    // top so the level runs long enough to judge. The design answer is to
-    // author a bigger delta, not to roll one; set this to 0 to see the level as
-    // the data actually describes it.
-    extraWrong: 8,
+    // Level 5's authored difference from level 4 is six cells, which ends the
+    // level in a handful of bars — short, for judging a mechanic. These are
+    // extra wrong cells rolled on top. It was 8, which was a mistake: stacked
+    // on a gate that cost 2.67 seconds a fix it turned a short level into a
+    // slog, and made the gate look worse than it was. Four. The design answer
+    // is to author a bigger delta, not to roll one; set this to 0 to see the
+    // level as the data actually describes it.
+    extraWrong: 4,
 
     // ---- Donks ----
     // One flip per saboteur per 4 bars, on the downbeat only, and only ever on
@@ -2224,13 +2239,31 @@ function protoPrepareJump() {
     player.attackDuration = PROTO.attackFrames;
 }
 
-// A punch is judged against its own column's onset, in audio time.
+// Signed seconds from the nearest pulse of `div` steps — an eighth at div 2.
+// Bar boundaries do not come into it: step 0's onset is derivable from the last
+// step that sounded, and everything after is one modulo.
+function pulseOffsetSec(div) {
+    if (!audioCtx || !sequencerStarted) return Infinity;
+    const stepSec = stepMs / 1000;
+    const period = div * stepSec;
+    const zero = lastSoundedT - lastSoundedStep * stepSec;   // onset of step 0
+    const m = (((audioCtx.currentTime - zero) % period) + period) % period;
+    return m > period / 2 ? m - period : m;
+}
+
+// PERFECT is the cell's own step. A hit is any pulse, wherever you are.
 // Returns "perfect", "hit" or "miss".
+//
+// The signed offsets are kept because a player who is consistently 30ms early
+// wants to be told that, not left to guess — and because a systematic bias is
+// exactly the bug that hid here before.
+let protoLastOnsetMs = 0, protoLastPulseMs = 0;
 function protoJudge(col) {
-    const off = Math.abs(onsetOffsetSec(col)) * 1000;
     const frame = 1000 / 60;
-    if (off <= PROTO.perfectFrames * frame) return "perfect";
-    if (off <= PROTO.hitFrames * frame) return "hit";
+    protoLastOnsetMs = onsetOffsetSec(col) * 1000;
+    protoLastPulseMs = pulseOffsetSec(PROTO.gridDiv) * 1000;
+    if (Math.abs(protoLastOnsetMs) <= PROTO.perfectFrames * frame) return "perfect";
+    if (Math.abs(protoLastPulseMs) <= PROTO.hitFrames * frame) return "hit";
     return "miss";
 }
 
@@ -3148,6 +3181,22 @@ function tickSequencer() {
 
 // ---- Update ----
 function update(dt) {
+    // THE SEQUENCER STEPS FIRST, before anything reads the clock.
+    //
+    // This was the last statement in update(), which meant the punch — resolved
+    // a few dozen lines below — was judged against the step state left over
+    // from the PREVIOUS frame. A systematic 16.7ms lag, invisible while the
+    // only consumer was a bonus with a whole-step window, and fatal to a ±1
+    // frame PERFECT: "perfect" actually meant "one frame late", and the ±4
+    // frame hit window was really −3/+5. A rhythm game that wants you late is
+    // a rhythm game that feels wrong and cannot tell you why.
+    //
+    // Nothing wanted it at the bottom. Hits are scheduled 100ms ahead against
+    // the audio clock, so stepping earlier in the frame changes no timing; the
+    // row pulses and the drawn playhead now belong to the same frame that
+    // renders them, which is if anything more correct.
+    tickSequencer();
+
     // Decay visual effect timers
     for (let r = 0; r < GRID_ROWS; r++) {
         if (rowTrigger[r] > 0) rowTrigger[r]--;
@@ -4103,10 +4152,8 @@ function update(dt) {
 
 
 
-    // Update splats
-
-    // Sequencer step
-    tickSequencer();
+    // (The sequencer step used to be HERE, at the very bottom of update. It
+    //  runs at the top now — see the note there.)
 }
 
 // (playerLaunch removed — replaced by near miss stun / direct hit freeze)
