@@ -2073,15 +2073,28 @@ const BIOMES = [
         wallProps: [
             { art: "door",      x: 0.117, foot: true, h: 0.848 },
             { art: "switch",    x: 0.241, y: 0.471, h: 0.081 },
-            { art: "poster",    x: 0.328, y: 0.311, h: 0.311 },
-            { art: "clock",     x: 0.683, y: 0.203, h: 0.185 },
+            // The poster and the clock moved outward to make room for the
+            // scoreboard. Both x values were mine — measured off Carl's plate
+            // when I cut the props out — not his composition, so widening the
+            // gap between them is a layout change rather than an edit to his
+            // drawing. 0.328 -> 0.275 and 0.683 -> 0.735.
+            { art: "poster",    x: 0.275, y: 0.311, h: 0.311 },
+            { art: "clock",     x: 0.735, y: 0.203, h: 0.185 },
             { art: "clipboard", x: 0.825, y: 0.381, h: 0.234 },
             { art: "phone",     x: 0.930, y: 0.395, h: 0.284 },
         ],
-        // The readouts hang here, in the same wall space as the props. The gap
-        // between the poster's right edge (0.351) and the clock's left (0.664)
-        // is the only unbroken stretch of upper wall, so the board takes the
-        // middle of it and clears both by a comfortable margin.
+        // The readouts hang here, in the same wall space as the props.
+        //
+        // Carl: bigger, and crossing the chair rail. Both were geometry
+        // problems. Measured off the wall: the rail is a band at y 0.538..0.569
+        // and the skirting starts at 0.904, so a board that stopped at 0.535
+        // was resting on the rail rather than hanging over it. And the width was
+        // capped by the props either side — 0.350 to 0.664 was all the clear
+        // wall there was, which is why it could not grow.
+        //
+        // So the props moved and the board did too. It is 0.38 of the wall wide
+        // now against 0.285, half again as big, hung on the room's centre line
+        // so the rail passes behind it and its foot clears the skirting.
         //
         // `wells` are the three empty boxes in Carl's plaque, as fractions of
         // the sprite: x0, y0, x1, y1. They were measured off the file by
@@ -2089,7 +2102,7 @@ const BIOMES = [
         // than by eye — re-run it if the art is redrawn and paste the numbers
         // it prints. `pips` is the one placed-not-measured spot on here.
         scoreboard: {
-            art: "props/scoreboard", x: 0.505, y: 0.300, w: 0.285, hFallback: 0.36,
+            art: "props/scoreboard", x: 0.500, y: 0.500, w: 0.380, hFallback: 0.36,
             wells: {
                 level: [0.0767, 0.5026, 0.2420, 0.6868],
                 score: [0.3105, 0.4000, 0.6895, 0.6868],
