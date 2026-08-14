@@ -1251,7 +1251,19 @@ function drawSideWalls() {
         for (let i = 0; i < N; i++) {
             const v0 = i / N, v1 = (i + 1) / N;
             const vm = (v0 + v1) / 2;
-            if (vm > DOOR_V0 && vm < DOOR_V1) continue;   // the doorway
+            if (vm > DOOR_V0 && vm < DOOR_V1) {
+                // The opening. Drawn as a recess rather than skipped, or the
+                // surround shows through and it reads as a hole in the picture
+                // instead of a way into the room.
+                const sA = projScale(v0), sB = projScale(v1);
+                const xA = W / 2 + side * (W / 2) * sA, xB = W / 2 + side * (W / 2) * sB;
+                const yA = projY(v0), yB = projY(v1);
+                const hA = wallWorldH * sA * 0.82;
+                ctx.fillStyle = mixC(INK.charcoal, INK.paper, 0.10);
+                ctx.fillRect(Math.min(xA, xB), Math.min(yA, yB) - hA,
+                             Math.abs(xB - xA) + 1, hA + Math.abs(yB - yA));
+                continue;
+            }
             const s0 = projScale(v0), s1 = projScale(v1);
             const x0 = W / 2 + side * (W / 2) * s0, x1 = W / 2 + side * (W / 2) * s1;
             const y0 = projY(v0), y1 = projY(v1);
@@ -5553,12 +5565,17 @@ function render() {
     // in either kind of room.
     const roomArt = (currentBiome && currentBiome.art && !currentBiome.floorArt)
         ? ROOM_ART[currentBiome.art] : null;
+    // The procedural cave mouth is a hole drawn ON THE FLOOR, which was the only
+    // way to say "they come in here" while the room had no walls to cut. It has
+    // walls now, and the opening is a gap in one — so the mouth would be a
+    // second doorway lying flat next to the real one.
+    const wallsCarryTheDoor = !!(currentBiome && currentBiome.wallTile && PROJ.on && PROJ.mode === "rake");
     for (let ci = 0; ci < CAVES.length; ci++) {
         const cave = CAVES[ci];
         const cx = cave.tileX * TILE;
         const cy = cave.tileY * TILE;
 
-        if (!roomArt) {
+        if (!roomArt && !wallsCarryTheDoor) {
             {
                 // Deep black cave hole
                 ctx.fillStyle = "#2C2C2A";
