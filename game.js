@@ -988,10 +988,59 @@ function finishStoneTile(g, c, size, rng) {
 // ~160 blits a frame.
 const PROJ = {
     on: true,
-    tilt: 0.45,      // 0 = flat top-down (what it was), 1 = extreme rake
-    strips: 160,     // horizontal slices of the plane
-    lift: 0.10,      // fraction of the canvas the horizon sits down from the top
+    mode: "iso",     // "iso" | "rake" | "flat"
+    tilt: 0.45,      // rake only. 0 = flat top-down (what it was), 1 = extreme
+    strips: 160,     // rake only — horizontal slices of the plane
+    lift: 0.10,      // rake only — where the horizon sits below the top
+    isoRatio: 0.5,   // 0.5 = classic 2:1 isometric. Lower is a flatter rake.
 };
+
+// ---- Isometric ------------------------------------------------------------
+// The room turned 45 degrees in plan and squashed vertically, which is the
+// projection people mean by "isometric": a square floor becomes a diamond, and
+// there is NO convergence and NO depth scaling — a tile at the back is exactly
+// the size of a tile at the front. That is the property that makes it readable,
+// and it is why sprites in an isometric game are never scaled by distance.
+//
+// It is a pure affine map, so unlike the rake it needs no strips at all: one
+// setTransform and one drawImage puts the whole floor down, exactly.
+function isoFit() {
+    const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
+    const k = PROJ.isoRatio;
+    const bw = (W + H) * 0.5;          // projected bounding box
+    const bh = (W + H) * 0.5 * k;
+    // Keep clear of the bottom band: the HUD is its own canvas printed there.
+    const avail = H - HUD_H * SCALE;
+    const s = Math.min(W / bw, avail / bh);
+    return {
+        s, k, H,
+        padX: (W - bw * s) / 2,
+        padY: (avail - bh * s) / 2,
+    };
+}
+
+// A floor point in device px -> where it lands on screen, isometric.
+function isoPoint(dx, dy) {
+    const f = isoFit();
+    return {
+        x: f.padX + f.s * ((dx - dy) * 0.5 + f.H / 2),
+        y: f.padY + f.s * ((dx + dy) * 0.5 * f.k),
+        s: 1,     // isometric does not scale with distance. That is the point.
+    };
+}
+
+function blitIso() {
+    const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
+    const f = isoFit();
+    MAIN_CTX.clearRect(0, 0, W, H);
+    MAIN_CTX.save();
+    MAIN_CTX.setTransform(
+        f.s * 0.5, f.s * 0.5 * f.k,     // what one step along the room's X does
+        -f.s * 0.5, f.s * 0.5 * f.k,    // and one step along its Y
+        f.padX + f.s * f.H / 2, f.padY);
+    MAIN_CTX.drawImage(PLANE, 0, 0);
+    MAIN_CTX.restore();
+}
 
 const PLANE = document.createElement("canvas");
 let PLANE_CTX = null;
@@ -1017,6 +1066,7 @@ function projY(v, H) {
 
 // A point on the floor, in device px, to where it lands on screen.
 function projPoint(dx, dy) {
+    if (PROJ.mode === "iso") return isoPoint(dx, dy);
     const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
     const v = Math.max(0, Math.min(1, dy / H));
     const s = projScale(v);
@@ -1025,6 +1075,7 @@ function projPoint(dx, dy) {
 
 // Lay the finished floor canvas down onto the plane.
 function blitPlane() {
+    if (PROJ.mode === "iso") return blitIso();
     const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
     const n = PROJ.strips, sh = H / n;
     MAIN_CTX.clearRect(0, 0, W, H);
