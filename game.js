@@ -1606,9 +1606,78 @@ function drawWallScoreboard(wx, wy, ww, wh) {
     // filled one is a claim about a run that has not happened.
     if (!hudOnWall() || gameState === "title") return;
     const sb = currentBiome.scoreboard;
-    const w = ww * sb.w, h = wh * sb.h;
-    const x = wx + ww * sb.x - w / 2, y = wy + wh * sb.y - h / 2;
     const g = MAIN_CTX;
+
+    // CARL'S PLAQUE, with the game printing into it.
+    //
+    // The art carries its own LEVEL / SCORE / TIME lettering and three empty
+    // wells, so the game supplies numbers and nothing else. The wells were
+    // MEASURED off the file rather than typed by eye — they are cream on a cream
+    // plate, so no colour key can find them, but their outlines SEAL them: flood
+    // the non-ink pixels in from the border and the only region you reach is the
+    // background, which leaves every well as its own walled-in component. All
+    // three came back at a fill ratio of 1.00. See tools/cut-scoreboard.py.
+    const art = sb.art ? ROOM_ART[sb.art] : null;
+    if (art) {
+        // sized by WIDTH, with the height from the art's own proportions, so a
+        // redrawn plaque of a different shape still hangs correctly
+        const w = ww * sb.w, h = w * (art.height / art.width);
+        const x = wx + ww * sb.x - w / 2, y = wy + wh * sb.y - h / 2;
+        g.drawImage(art, x, y, w, h);
+
+        const put = (key, text, col, hero) => {
+            const q = sb.wells[key];
+            const rx = x + q[0] * w, ry = y + q[1] * h;
+            const rw = (q[2] - q[0]) * w, rh = (q[3] - q[1]) * h;
+            g.save();
+            g.textAlign = "center"; g.textBaseline = "middle";
+            g.font = fdisp(rh * 0.78);
+            // the mustard offset belongs to the hero number alone — on a well
+            // this small it turns the two-digit readouts to mush
+            if (hero) {
+                g.fillStyle = INK.mustard;
+                g.fillText(text, rx + rw / 2 + rh * 0.07, ry + rh / 2 + rh * 0.07);
+            }
+            g.fillStyle = col;
+            g.fillText(text, rx + rw / 2, ry + rh / 2);
+            g.restore();
+        };
+
+        put("score", String(score).padStart(5, "0"), INK.charcoal, true);
+        put("level", String(currentLevel + 1).padStart(2, "0"), INK.charcoal, false);
+
+        // The clock is the only way to lose, so it keeps the warning states it
+        // had: rust from 30 seconds, alert red only at 10 — the reserved colour,
+        // for the one thing in this game that can end a run.
+        const timerSec = Math.max(0, Math.ceil(levelTimer / 60));
+        const isUrgent = timerSec <= 30, isCritical = timerSec <= 10;
+        const blinkOn = !isUrgent || Math.floor(levelTimer / (isCritical ? 15 : 30)) % 2 === 0;
+        if (blinkOn) {
+            put("time", timerSec < 10 ? "0" + timerSec : String(timerSec),
+                isCritical ? INK.alert : isUrgent ? INK.rust : INK.charcoal, false);
+        }
+
+        // Equipment recovered. The plaque has no well for this, so it is the
+        // one thing on here I placed rather than measured: the crest above the
+        // score, where they read as indicator lamps. Easy to move — the spot is
+        // two numbers on the biome.
+        const earned = djSetupEarned.length, total = DJ_SETUP_PIECES.length;
+        if (earned > 0 || currentLevel >= 4) {
+            const pip = Math.max(2, h * 0.040), gap = pip * 1.9;
+            const cx2 = x + sb.pips[0] * w, cy2 = y + sb.pips[1] * h;
+            for (let i = 0; i < total; i++) {
+                g.fillStyle = i < earned ? INK.mustard : mixC(INK.charcoal, INK.paper, 0.62);
+                g.fillRect(cx2 + (i - (total - 1) / 2) * gap - pip / 2, cy2 - pip / 2, pip, pip);
+            }
+        }
+        return;
+    }
+
+    // Fallback while the plaque is still loading, or for a biome that has none:
+    // a plain board in the room's own ink, laid out the same way. A slow load
+    // should be a plainer board, not a hole in the wall.
+    const w = ww * sb.w, h = wh * (sb.hFallback || 0.36);
+    const x = wx + ww * sb.x - w / 2, y = wy + wh * sb.y - h / 2;
     const r = Math.max(2, h * 0.06);
 
     g.save();
@@ -2013,7 +2082,21 @@ const BIOMES = [
         // between the poster's right edge (0.351) and the clock's left (0.664)
         // is the only unbroken stretch of upper wall, so the board takes the
         // middle of it and clears both by a comfortable margin.
-        scoreboard: { x: 0.505, y: 0.26, w: 0.275, h: 0.36 },
+        //
+        // `wells` are the three empty boxes in Carl's plaque, as fractions of
+        // the sprite: x0, y0, x1, y1. They were measured off the file by
+        // tools/cut-scoreboard.py, which finds them as sealed regions rather
+        // than by eye — re-run it if the art is redrawn and paste the numbers
+        // it prints. `pips` is the one placed-not-measured spot on here.
+        scoreboard: {
+            art: "props/scoreboard", x: 0.505, y: 0.300, w: 0.285, hFallback: 0.36,
+            wells: {
+                level: [0.0767, 0.5026, 0.2420, 0.6868],
+                score: [0.3105, 0.4000, 0.6895, 0.6868],
+                time:  [0.7580, 0.5026, 0.9233, 0.6868],
+            },
+            pips: [0.5, 0.085],   // the crest, above SCORE
+        },
         floor: { base: mixC(INK.charcoal, INK.mint, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.mint, 0.17) },
         walls: [
             { base: "#BFCDC0", dark: "#93a89a", hi: "#e9eee9" },
@@ -2475,6 +2558,7 @@ for (const b of BIOMES) {
     // and so needs a rebuild when it lands; the wall is blitted live every frame
     // and needs nothing but to exist.
     for (const slug of [b.art, b.wallArt, b.wallTile, b.wallStrip,
+                        b.scoreboard && b.scoreboard.art,
                         ...(b.wallProps || []).map(w => "props/" + w.art)]) {
         if (!slug || ROOM_ART[slug]) continue;
         const im = new Image();
