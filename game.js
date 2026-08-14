@@ -81,6 +81,19 @@ const RIG = SCALE / 4;
 // thinned, and the floor keeps its full tile because the HUD band sits on it.
 const WALL_TOP = TILE / 2;
 const WALL_SIDE = TILE / 2;
+// The walkable band, top and bottom, in pixels on the tile lattice.
+//
+// The top used to be row 1, and that dates from the procedural ceiling: a
+// half-tile masonry band painted onto the floor plate, with the clamp a whole
+// tile in because half a tile is not a position anything can stand on. The room
+// has a real standing wall now and its foot IS the floor's far edge, so row 0 is
+// floor all the way to the skirting — Carl's call, and the right one: the strip
+// between the pads and the back wall is part of the room, not part of the
+// scenery. The Donks get it too, or they cannot follow him up there.
+//
+// The bottom still gives up two rows. The last one is under the HUD band.
+const WALK_TOP = 0;
+const WALK_BOTTOM = (ROWS - 2) * TILE;
 const GRID_Y_OFFSET = 0;   // no offset needed with centered layout
 // The row BUZZ enters a new room on. It was the exit door's row; there is no
 // exit door now, but the middle of the wall is still where you walk in.
@@ -2819,7 +2832,7 @@ function shouldBeElite() {
 function createGoblin(caveIndex) {
     const cave = CAVES[caveIndex];
     const spawnX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
-    const spawnY = Math.max(TILE, Math.min((ROWS - 2) * TILE, cave.tileY * TILE));
+    const spawnY = Math.max(WALK_TOP, Math.min(WALK_BOTTOM, cave.tileY * TILE));
     return {
         x: spawnX, y: spawnY,
         destX: spawnX, destY: spawnY,
@@ -3882,7 +3895,7 @@ function update(dt) {
                     const knockX = hitGob.x + Math.sign(knockDx) * TILE;
                     const knockY = hitGob.y + Math.sign(knockDy) * TILE;
                     hitGob.destX = Math.max(TILE, Math.min((COLS - 2) * TILE, knockX));
-                    hitGob.destY = Math.max(TILE, Math.min((ROWS - 2) * TILE, knockY));
+                    hitGob.destY = Math.max(WALK_TOP, Math.min(WALK_BOTTOM, knockY));
 
                     for (let i = 0; i < 8; i++) {
                         deathParticles.push({
@@ -4026,7 +4039,7 @@ function update(dt) {
                     let tryX = p.x + kbDirX * d * TILE;
                     let tryY = p.y + kbDirY * d * TILE;
                     tryX = Math.max(TILE, Math.min((COLS - 2) * TILE, tryX));
-                    tryY = Math.max(TILE, Math.min((ROWS - 2) * TILE, tryY));
+                    tryY = Math.max(WALK_TOP, Math.min(WALK_BOTTOM, tryY));
                     const ttx = Math.round(tryX / TILE);
                     const tty = Math.round(tryY / TILE);
                     let gobBlocked = false;
@@ -4042,7 +4055,7 @@ function update(dt) {
                     let kbX = p.x + kbDirX * kbDist * TILE;
                     let kbY = p.y + kbDirY * kbDist * TILE;
                     kbX = Math.max(TILE, Math.min((COLS - 2) * TILE, kbX));
-                    kbY = Math.max(TILE, Math.min((ROWS - 2) * TILE, kbY));
+                    kbY = Math.max(WALK_TOP, Math.min(WALK_BOTTOM, kbY));
                     p.destX = kbX;
                     p.destY = kbY;
                 }
@@ -4164,8 +4177,8 @@ function update(dt) {
             // Already facing this way — move one tile
             let nx = p.x, ny = p.y;
             switch (wantDir) {
-                case 0: ny = Math.min((ROWS - 2) * TILE, p.y + TILE); break;
-                case 1: ny = Math.max(TILE, p.y - TILE); break;
+                case 0: ny = Math.min(WALK_BOTTOM, p.y + TILE); break;
+                case 1: ny = Math.max(WALK_TOP, p.y - TILE); break;
                 case 2: nx = Math.max(TILE, p.x - TILE); break;
                 case 3: nx = Math.min((COLS - 2) * TILE, p.x + TILE); break;
             }
@@ -4288,7 +4301,7 @@ function update(dt) {
                 : Math.floor(Math.random() * CAVES.length);
             const cave = CAVES[gob.spawnCave];
             const spawnX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
-            const spawnY = Math.max(TILE, Math.min((ROWS - 2) * TILE, cave.tileY * TILE));
+            const spawnY = Math.max(WALK_TOP, Math.min(WALK_BOTTOM, cave.tileY * TILE));
             gob.x = spawnX;
             gob.y = spawnY;
             gob.destX = spawnX;
@@ -4455,7 +4468,7 @@ function update(dt) {
                     };
                     for (let dist = 2; dist >= 1; dist--) {
                         let newPX = Math.max(TILE, Math.min((COLS - 2) * TILE, p.x + knockDirX * TILE * dist));
-                        let newPY = Math.max(TILE, Math.min((ROWS - 2) * TILE, p.y + knockDirY * TILE * dist));
+                        let newPY = Math.max(WALK_TOP, Math.min(WALK_BOTTOM, p.y + knockDirY * TILE * dist));
                         if (landingClear(newPX, newPY)) {
                             p.x = newPX; p.destX = newPX;
                             p.y = newPY; p.destY = newPY;
@@ -4468,7 +4481,7 @@ function update(dt) {
                     const fleeDirY = Math.sign(gob.y - p.y) || (gob.dir === 0 ? -1 : 1);
                     gob.gloatX = Math.max(TILE, Math.min((COLS - 2) * TILE,
                         Math.round(gob.x / TILE) * TILE + fleeDirX * TILE * 4));
-                    gob.gloatY = Math.max(TILE, Math.min((ROWS - 2) * TILE,
+                    gob.gloatY = Math.max(WALK_TOP, Math.min(WALK_BOTTOM,
                         Math.round(gob.y / TILE) * TILE + fleeDirY * TILE * 4));
                     // Gloat at half speed
                     const gloatBase = currentLevel < LEVELS.length ? LEVELS[currentLevel].goblinSpeed : 0.5;
@@ -4493,7 +4506,7 @@ function update(dt) {
                 // Sprint home to the spawn cave; vanish on arrival
                 const fleeCave = CAVES[gob.spawnCave];
                 const fleeX = fleeCave.tileX === 0 ? TILE : fleeCave.tileX === COLS - 1 ? (COLS - 2) * TILE : fleeCave.tileX * TILE;
-                const fleeY = Math.max(TILE, Math.min((ROWS - 2) * TILE, fleeCave.tileY * TILE));
+                const fleeY = Math.max(WALK_TOP, Math.min(WALK_BOTTOM, fleeCave.tileY * TILE));
                 if (gob.x === fleeX && gob.y === fleeY) {
                     gob.dead = true;
                     gob.respawnTimer = 999999; // gone for the rest of the level
@@ -4543,7 +4556,7 @@ function update(dt) {
             }
 
             nx = Math.max(TILE, Math.min((COLS - 2) * TILE, nx));
-            ny = Math.max(TILE, Math.min((ROWS - 2) * TILE, ny));
+            ny = Math.max(WALK_TOP, Math.min(WALK_BOTTOM, ny));
 
             // Don't walk into player, other goblins, or solid objects; push dancers aside
             const cgBlockX = catapultGoblin ? Math.round(catapultGoblin.x / TILE) * TILE : -999;
@@ -4577,7 +4590,7 @@ function update(dt) {
                     }
                 }
                 ax = Math.max(TILE, Math.min((COLS - 2) * TILE, ax));
-                ay = Math.max(TILE, Math.min((ROWS - 2) * TILE, ay));
+                ay = Math.max(WALK_TOP, Math.min(WALK_BOTTOM, ay));
                 if ((ax !== gob.x || ay !== gob.y) && !isGobTileBlocked(ax, ay)) {
                     gob.destX = ax;
                     gob.destY = ay;
@@ -5193,7 +5206,7 @@ function spawnCatapultGoblin() {
     const caveIdx = Math.floor(Math.random() * CAVES.length);
     const cave = CAVES[caveIdx];
     const spawnX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
-    const spawnY = Math.max(TILE, Math.min((ROWS - 2) * TILE, cave.tileY * TILE));
+    const spawnY = Math.max(WALK_TOP, Math.min(WALK_BOTTOM, cave.tileY * TILE));
 
     // Pick a random grid cell as boulder target
     const tRow = Math.floor(Math.random() * getActiveRows());
@@ -5211,7 +5224,7 @@ function spawnCatapultGoblin() {
     }
     // Clamp to room bounds
     stopX = Math.max(TILE, Math.min((COLS - 2) * TILE, stopX));
-    stopY = Math.max(TILE, Math.min((ROWS - 2) * TILE, stopY));
+    stopY = Math.max(WALK_TOP, Math.min(WALK_BOTTOM, stopY));
 
     catapultGoblin = {
         x: spawnX, y: spawnY,
@@ -5377,7 +5390,7 @@ function updateCatapultGoblin() {
             // Set retreat destination back to cave
             const cave = CAVES[cg.caveIndex];
             const retreatX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
-            const retreatY = Math.max(TILE, Math.min((ROWS - 2) * TILE, cave.tileY * TILE));
+            const retreatY = Math.max(WALK_TOP, Math.min(WALK_BOTTOM, cave.tileY * TILE));
             cg.destX = retreatX;
             cg.destY = retreatY;
         }
@@ -6302,16 +6315,21 @@ function render() {
     //
     // So it goes on top of everything, squashed onto the floor plane so it
     // still reads as paint rather than as a decal on the glass.
-    if (!player.attacking && gameState === "playing") {
-        const ptx = Math.round(player.x / TILE);
-        const pty = Math.round((player.y - GRID_Y_OFFSET) / TILE);
-        let ttx = ptx, tty = pty;
-        switch (player.dir) {
-            case 0: tty += 1; break;
-            case 1: tty -= 1; break;
-            case 2: ttx -= 1; break;
-            case 3: ttx += 1; break;
-        }
+    const ptx = Math.round(player.x / TILE);
+    const pty = Math.round((player.y - GRID_Y_OFFSET) / TILE);
+    let ttx = ptx, tty = pty;
+    switch (player.dir) {
+        case 0: tty += 1; break;
+        case 1: tty -= 1; break;
+        case 2: ttx -= 1; break;
+        case 3: ttx += 1; break;
+    }
+    // Only a tile he could stand on gets marked. Now that row 0 is walkable,
+    // facing the back wall from it aimed the reticle at row -1 — inside the
+    // wall, where it projected as a green smear across the skirting.
+    const targetInRoom = tty * TILE >= WALK_TOP && tty * TILE <= WALK_BOTTOM
+                      && ttx >= 1 && ttx <= COLS - 2;
+    if (!player.attacking && gameState === "playing" && targetInRoom) {
         const cx = (ttx + 0.5) * TILE * SCALE, cy = (tty + 0.5) * TILE * SCALE + GRID_Y_OFFSET * SCALE;
         const q = PROJ.on ? projPoint(cx, cy) : { x: cx, y: cy, s: 1 };
         const near = PROJ.on ? projPoint(cx, cy + TILE * SCALE / 2) : { y: cy + TILE * SCALE / 2 };
