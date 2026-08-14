@@ -1005,8 +1005,8 @@ const PROJ = {
     // with screen height accruing quadratically, so it compressed on a subtly
     // wrong law that read as perspective but would not sit beside a 3D
     // reference.
-    angleDeg: 35,    // camera elevation above the floor. 90 = straight down.
-    distance: 2.6,   // how far back, in room-depths. Near = wide and convergent,
+    angleDeg: 38,    // camera elevation above the floor. 90 = straight down.
+    distance: 3.4,   // how far back, in room-depths. Near = wide and convergent,
                      // far = long lens, approaching no convergence at all.
 
     strips: 160,     // rake only — horizontal slices the plane is laid down in
