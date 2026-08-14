@@ -249,6 +249,15 @@ const PROTO = {
     // next beat. Six is playable on consecutive steps at every tempo in the
     // table.
     attackFrames: 6,
+
+    // Start on the prototype level instead of level 1.
+    //
+    // The gate is the thing being tested, and `$level05` is not a way in on a
+    // phone — there is no keyboard, and the touch layer only sends arrows,
+    // Space and Enter. On this branch the first tap should land you in the
+    // thing you are here to play. Set false for normal progression from
+    // level 1; the other twenty-nine levels are untouched either way.
+    bootStraightIn: true,
 };
 const isProto = () => PROTO.on && currentLevel === PROTO.level &&
     currentLevel < LEVELS.length && !LEVELS[currentLevel].noPattern;
@@ -2716,32 +2725,37 @@ function handleCheatCode(key) {
         const targetLevel = parseInt(match[1], 10) - 1; // $level01 = index 0
         if (targetLevel >= 0 && targetLevel < LEVELS.length) {
             cheatBuffer = "";
-            // Reset game state cleanly then jump to target level
             resetGame();
-            currentLevel = targetLevel;
-            // Load the correct starting pattern for this level
-            const startPat = targetLevel === 0 ? LEVELS[0].startPattern
-                : LEVELS[targetLevel - 1].pattern;
-            if (startPat) {
-                for (let r = 0; r < GRID_ROWS; r++)
-                    for (let c = 0; c < GRID_COLS; c++)
-                        grid[r][c] = startPat[r][c];
-            }
-            levelTimer = LEVELS[currentLevel].timerSeconds * 60;
-            lastTickSecond = -1;
-            // The jump skips advanceLevel, so the prototype's own setup has to
-            // happen here too or `$level05` lands you on the gate with a
-            // twelve-frame swing and an unpadded board.
-            protoPrepareJump();
-            player.y = (gridBottomTileY() + 1) * TILE + GRID_Y_OFFSET;
-            player.destY = player.y;
-            setLevelTempo(currentLevel);
-            ensureAudio();
-            gameState = "playing";
-            resetSequencerClock();
+            jumpToLevel(targetLevel);
             console.log("DEBUG: Jumped to level " + (targetLevel + 1));
         }
     }
+}
+
+// Drop straight into a level, mid-session. Shared by the `$levelNN` cheat and
+// by PROTO.bootStraightIn, which had grown a second copy of this that could
+// drift out of step with the first.
+//
+// It is not advanceLevel: there is no thief, no biome banner and no room
+// rebuild, so anything advanceLevel arms has to be armed here too.
+function jumpToLevel(targetLevel) {
+    currentLevel = targetLevel;
+    const startPat = targetLevel === 0 ? LEVELS[0].startPattern
+        : LEVELS[targetLevel - 1].pattern;
+    if (startPat) {
+        for (let r = 0; r < GRID_ROWS; r++)
+            for (let c = 0; c < GRID_COLS; c++)
+                grid[r][c] = startPat[r][c];
+    }
+    levelTimer = LEVELS[currentLevel].timerSeconds * 60;
+    lastTickSecond = -1;
+    protoPrepareJump();
+    player.y = (gridBottomTileY() + 1) * TILE + GRID_Y_OFFSET;
+    player.destY = player.y;
+    setLevelTempo(currentLevel);
+    ensureAudio();
+    gameState = "playing";
+    resetSequencerClock();
 }
 
 window.addEventListener("keydown", (e) => {
@@ -8653,6 +8667,12 @@ function renderTitleScreen() {
             // cutscene.
             gameState = "playing";
             resetSequencerClock();
+            // Land in the prototype rather than on level 1 when it is armed —
+            // the gate is what this build exists to test, and on a phone there
+            // is no way to type the level cheat.
+            if (PROTO.on && PROTO.bootStraightIn && PROTO.level > 0) {
+                jumpToLevel(PROTO.level);
+            }
             // No sceneTransition. There is nothing to cover: the same room, the
             // same grid and the same BUZZ are already on screen, so a fade to
             // black would be hiding a join that no longer exists.
