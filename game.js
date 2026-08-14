@@ -1340,7 +1340,8 @@ const BIOMES = [
     { // Levels 1-5 → THE LEFT SPEAKER (soft mint, closest to plain paper)
         name: "THE WARM-UP ROOM",
         tagline: "WHERE THE GROOVE BEGINS",
-        art: "warm-up-room",   // assets/room/warm-up-room.png — see ROOM_ART
+        art: "warm-up-floor",  // assets/room/warm-up-floor.png — see ROOM_ART
+        floorArt: true,        // the plate is the FLOOR only; no walls in it
         floor: { base: mixC(INK.charcoal, INK.mint, 0.07), dark: INK.charcoal, hi: lighter(INK.charcoal, 0.11), moss: mixC(INK.charcoal, INK.mint, 0.17) },
         walls: [
             { base: "#BFCDC0", dark: "#93a89a", hi: "#e9eee9" },
@@ -1616,7 +1617,13 @@ function buildCaveBgTexture(biome, LS) {
     g.fillRect(0, 0, w, h);
 
     // A drawn room replaces the floor and the top and side walls in one go.
+    //
+    // A FLOOR PLATE is a different thing and says so: under the rake, walls
+    // painted into a top-down plate are walls painted on the floor, so the
+    // plate carries no walls at all and the room's height comes from pieces
+    // that stand up instead. It still owes the HUD its band — see below.
     const art = biome.art ? ROOM_ART[biome.art] : null;
+    const floorOnly = art && !!biome.floorArt;
 
     if (art) {
         g.drawImage(art, 0, 0, w, h);
@@ -1648,9 +1655,11 @@ function buildCaveBgTexture(biome, LS) {
         }
     }
 
-    // Bottom wall tiles — only where there is no drawing. A drawn room paints
-    // its own band and the HUD prints straight onto it.
-    if (!art) {
+    // Bottom wall tiles — only where there is no drawing. A full drawn room
+    // paints its own band and the HUD prints straight onto it; a floor plate
+    // does not, and the HUD measured 1.30:1 printed on these planks against
+    // 7.66:1 on a pale band, so the band goes back.
+    if (!art || floorOnly) {
         for (let col = 0; col < COLS; col++) {
             g.drawImage(TEX_WALL_BOT[col], col * TILE * SCALE, (ROWS - 1) * TILE * SCALE);
         }
@@ -4952,7 +4961,7 @@ function renderHUD() {
     // of every numeral landed on dark boards. 14.5 puts the whole run, offset
     // shadow included, inside the drawn band: measured 8.38:1 across all three
     // readouts, against 4.9 / 1.4 / 5.0 before.
-    const baseY = (currentBiome && currentBiome.art)
+    const baseY = (currentBiome && currentBiome.art && !currentBiome.floorArt)
         ? 14.5
         : HUD_H / 2 + numSize * 0.42;
 
@@ -5237,7 +5246,8 @@ function render() {
     // The EYE GLEAM below is outside this gate on purpose: it is not scenery,
     // it is the tell that a Donk is about to respawn, and the player needs it
     // in either kind of room.
-    const roomArt = currentBiome && currentBiome.art ? ROOM_ART[currentBiome.art] : null;
+    const roomArt = (currentBiome && currentBiome.art && !currentBiome.floorArt)
+        ? ROOM_ART[currentBiome.art] : null;
     for (let ci = 0; ci < CAVES.length; ci++) {
         const cave = CAVES[ci];
         const cx = cave.tileX * TILE;
