@@ -989,15 +989,67 @@ function finishStoneTile(g, c, size, rng) {
 const PROJ = {
     on: true,
     mode: "rake",    // "rake" | "oblique" | "iso" | "flat"
+
+    // ---- The camera, as a camera ----------------------------------------
+    // These two are a real pinhole looking at a real floor, and everything else
+    // — the horizon, the convergence, the squash — falls out of them. They used
+    // to be `tilt` and `lift`, which were a convergence ratio and a horizon
+    // position: two independent fudges that between them could describe a view
+    // no camera can take. Measured, `tilt` moved the far edge from 1040px to
+    // 560px and never once changed the apparent camera angle, which stayed at
+    // 35.5 degrees the whole way because that came from `lift` instead. A real
+    // camera has one elevation and it decides both.
+    //
+    // It also fixes the curve. In a true view of a ground plane, apparent width
+    // is linear in SCREEN Y; the old one was linear in the floor coordinate
+    // with screen height accruing quadratically, so it compressed on a subtly
+    // wrong law that read as perspective but would not sit beside a 3D
+    // reference.
+    angleDeg: 35,    // camera elevation above the floor. 90 = straight down.
+    distance: 2.6,   // how far back, in room-depths. Near = wide and convergent,
+                     // far = long lens, approaching no convergence at all.
+
+    strips: 160,     // rake only — horizontal slices the plane is laid down in
+    isoRatio: 0.5,   // iso only — 0.5 is classic 2:1
     squash: 0.55,    // oblique only — how far the floor lies away from you
-    tilt: 0.45,      // rake only. 0 = flat top-down (what it was), 1 = extreme
-    strips: 160,     // rake only — horizontal slices of the plane
-    lift: 0.42,      // rake only — where the horizon sits below the top.
-                     // It has to leave real headroom now: the back wall stands
-                     // ABOVE this line, and at 0.10 there were eighty pixels of
-                     // sky to put a whole wall in.
-    isoRatio: 0.5,   // 0.5 = classic 2:1 isometric. Lower is a flatter rake.
 };
+
+// ---- The rake, as a pinhole camera ----------------------------------------
+// Camera pitched down by `angleDeg`, placed so its axis meets the middle of the
+// floor, far enough back that the floor's near edge exactly fills the frame's
+// width. Depth v runs 0 at the far edge to 1 at the near edge.
+function camParams() {
+    const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
+    const phi = Math.max(4, Math.min(85, PROJ.angleDeg)) * Math.PI / 180;
+    const D = H;                       // the room is as deep as it is tall flat
+    const R = Math.max(0.6, PROJ.distance) * D;   // ground distance to its middle
+    const h = R * Math.tan(phi);       // so the axis lands on the middle
+    const f = h * Math.sin(phi) + (R - D / 2) * Math.cos(phi);  // near edge = full width
+    return { W, H, phi, D, R, h, f };
+}
+function camScale(v, p) {
+    const Z = p.R + p.D / 2 - v * p.D;
+    return p.f / (p.h * Math.sin(p.phi) + Z * Math.cos(p.phi));
+}
+// Screen y already increases downward in this form: a near point has a positive
+// value and a far one a negative, so it must NOT be negated again. It was, and
+// the floor came out inside out — the far edge landing below the near one.
+function camYRaw(v, p) {
+    return camScale(v, p) * p.h / Math.cos(p.phi) - p.f * Math.tan(p.phi);
+}
+// The floor's near edge parks on the HUD band; the horizon lands wherever the
+// camera puts it, which is the point — it is no longer a number anyone chose.
+function camFit() {
+    const p = camParams();
+    const bottom = p.H - HUD_H * SCALE;
+    const yNear = camYRaw(1, p);
+    return { p, bottom, yNear };
+}
+const projScale = (v) => camScale(v, camParams());
+function projY(v) {
+    const f = camFit();
+    return f.bottom - (f.yNear - camYRaw(v, f.p));
+}
 
 // ---- Oblique --------------------------------------------------------------
 // The camera drops toward the floor without turning. The room stays square to
@@ -1085,19 +1137,6 @@ function planeCtx() {
     return PLANE_CTX;
 }
 
-// How wide a strip at depth v is, v = 0 at the back of the room, 1 at the front.
-const projScale = (v) => (1 - PROJ.tilt) + PROJ.tilt * v;
-
-// Where a strip at depth v lands vertically. Screen height accrues in
-// proportion to width, which is what makes it read as distance rather than as a
-// squash — so the far half of the room is both narrower AND shallower.
-function projY(v, H) {
-    const a = 1 - PROJ.tilt;
-    const area = (t) => a * t + PROJ.tilt * t * t / 2;   // integral of projScale
-    const top = H * PROJ.lift;
-    return top + (H - top) * (area(v) / area(1));
-}
-
 // A point on the floor, in device px, to where it lands on screen.
 function projPoint(dx, dy) {
     if (PROJ.mode === "oblique") return obliquePoint(dx, dy);
@@ -1105,7 +1144,7 @@ function projPoint(dx, dy) {
     const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
     const v = Math.max(0, Math.min(1, dy / H));
     const s = projScale(v);
-    return { x: W / 2 + (dx - W / 2) * s, y: projY(v, H), s };
+    return { x: W / 2 + (dx - W / 2) * s, y: projY(v), s };
 }
 
 // What sits behind and around the room once it no longer fills the frame.
@@ -1132,7 +1171,7 @@ function drawBackWall() {
     if (!b || PROJ.mode !== "rake") return;
     const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
     const hw = W * projScale(0);          // the horizon: how wide the far wall is
-    const y = projY(0, H);                // and where its foot sits
+    const y = projY(0);                   // and where its foot sits
     const x0 = (W - hw) / 2;
 
     // A REPEATING PANEL, which is a better object than one wide plate.
@@ -1192,7 +1231,7 @@ function blitPlane() {
     for (let i = 0; i < n; i++) {
         const v0 = i / n, v1 = (i + 1) / n;
         const s = projScale(v0);
-        const y0 = projY(v0, H), y1 = projY(v1, H);
+        const y0 = projY(v0), y1 = projY(v1);
         const w = W * s;
         // +1 on the height closes the hairline seams between strips that
         // rounding would otherwise leave as scan lines across the floor.
@@ -1215,6 +1254,98 @@ function billboard(groundX, groundY, draw) {
     draw();
     ctx.restore();
 }
+
+
+// ============================================================
+// CAMERA RIG — a frozen room with the camera on sliders
+// ============================================================
+// So the angle can be found by looking at it, instead of by asking for another
+// render every time there is an idea.
+//
+// It drives THE GAME's own projection, on a real frame, with the real art. A
+// separate viewer that reimplemented the maths would agree with the game right
+// up until it quietly stopped, which is the failure mode this codebase's
+// harnesses have hit before.
+//
+// Off unless enabled. The rig build calls CAMRIG.enable() and nothing else
+// differs. (`RIG` was taken — it is the character rig's unit scale.)
+const CAMRIG = { on: false };
+
+CAMRIG.enable = function () {
+    CAMRIG.on = true;
+    try { resetGame(); } catch (e) {}
+    // A scene worth judging needs BOTH the drawn room and a full grid, and no
+    // level has both: the warm-up room is the only biome with art and it runs
+    // four rows. So the rig borrows the art's level and widens it to six. It is
+    // a rig — the point is to see the camera against the real room, and a
+    // procedural cave would be judging it against scenery that is on its way
+    // out.
+    currentLevel = 0;
+    LEVELS[0].activeRows = 6;
+    const pat = LEVELS[20].pattern;
+    for (let r = 0; r < GRID_ROWS; r++)
+        for (let c = 0; c < GRID_COLS; c++) grid[r][c] = pat[r][c];
+    rebuildCaveTextures(0);
+    setLevelTempo(0);
+    levelTimer = 150 * 60;
+    // One Donk at the back and one at the front, so the depth scaling is
+    // visible on the same sprite rather than inferred.
+    goblins[0].dead = false; goblins[0].x = 4 * TILE;  goblins[0].y = 2 * TILE;
+    goblins[1].dead = false; goblins[1].x = 15 * TILE; goblins[1].y = 7 * TILE;
+    player.x = 9 * TILE; player.y = 8 * TILE;
+    player.destX = player.x; player.destY = player.y;
+    gameState = "playing";
+    CAMRIG.buildUI();
+};
+
+CAMRIG.buildUI = function () {
+    const wrap = document.createElement("div");
+    wrap.id = "rig";
+    wrap.innerHTML = `
+      <style>
+        #rig { position:fixed; left:0; right:0; bottom:0; z-index:50;
+               background:#2C2C2A; color:#fcf7e8; padding:10px 14px 12px;
+               font-family:ui-monospace,Menlo,monospace; font-size:13px;
+               display:flex; flex-wrap:wrap; gap:14px 22px; align-items:center; }
+        #rig .row { display:flex; align-items:center; gap:8px; }
+        #rig label { min-width:88px; opacity:.75; }
+        #rig input[type=range] { width:190px; accent-color:#F6CC60; }
+        #rig output { min-width:56px; color:#F6CC60; font-variant-numeric:tabular-nums; }
+        #rig select { background:#3a3a37; color:#fcf7e8; border:1px solid #55554f;
+                      padding:3px 6px; font-family:inherit; }
+        #rig .note { opacity:.55; flex-basis:100%; font-size:11px; }
+      </style>`;
+    const add = (label, min, max, step, get, set, fmt) => {
+        const row = document.createElement("div");
+        row.className = "row";
+        const l = document.createElement("label"); l.textContent = label;
+        const i = document.createElement("input");
+        i.type = "range"; i.min = min; i.max = max; i.step = step; i.value = get();
+        const o = document.createElement("output"); o.textContent = fmt(get());
+        i.addEventListener("input", () => { set(parseFloat(i.value)); o.textContent = fmt(parseFloat(i.value)); });
+        row.append(l, i, o); wrap.appendChild(row);
+    };
+    add("angle", 8, 85, 1, () => PROJ.angleDeg, (v) => PROJ.angleDeg = v, (v) => v + "\u00b0");
+    add("distance", 0.8, 8, 0.1, () => PROJ.distance, (v) => PROJ.distance = v, (v) => v.toFixed(1) + "D");
+
+    const modeRow = document.createElement("div");
+    modeRow.className = "row";
+    const ml = document.createElement("label"); ml.textContent = "projection";
+    const sel = document.createElement("select");
+    for (const m of ["rake", "oblique", "iso", "flat"]) {
+        const op = document.createElement("option"); op.value = m; op.textContent = m;
+        if (m === PROJ.mode) op.selected = true;
+        sel.appendChild(op);
+    }
+    sel.addEventListener("change", () => { PROJ.mode = sel.value; PROJ.on = sel.value !== "flat"; });
+    modeRow.append(ml, sel); wrap.appendChild(modeRow);
+
+    const note = document.createElement("div");
+    note.className = "note";
+    note.textContent = "Frozen room, live camera. angle = elevation above the floor (90\u00b0 would be straight down). distance = how far back in room-depths; near is a wide convergent lens, far approaches no convergence at all.";
+    wrap.appendChild(note);
+    document.body.appendChild(wrap);
+};
 
 // ---- Pad extrusion -------------------------------------------------------
 // A sequencer cell is a BLOCK standing on the floor, not a coloured square
@@ -5893,7 +6024,7 @@ function render() {
     }
 
     // "Press any key" prompt while the beat waits for the audio unlock
-    if (!sequencerStarted && gameState === "playing") {
+    if (!sequencerStarted && gameState === "playing" && !CAMRIG.on) {
         const blinkStart = Math.floor(performance.now() / 500) % 2 === 0;
         if (blinkStart) {
             ctx.font = gfont(6 * SCALE);
@@ -10334,6 +10465,8 @@ function gameLoop(timestamp) {
                 ctx.fillStyle = INK.paper;
                 ctx.fillText("PRESS ESC TO RESUME", W_p / 2, H_p / 2 + 6 * SCALE);
                 ctx.textAlign = "start";
+            } else if (CAMRIG.on) {
+                render();          // frozen: the camera moves, the game does not
             } else {
                 update(dt);
                 render();
