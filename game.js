@@ -3948,7 +3948,8 @@ function update(dt) {
     if (spaceJustPressed && !p.attacking && p.stunTimer <= 0 && p.freezeTimer <= 0) {
         p.attacking = true;
         p.attackTimer = p.attackDuration;
-        p.punchFx = p.attackDuration;
+        p.punchFx = 0;          // the burst is seeded by CONTACT, not by the swing
+        p.punchFxAt = null;
         p.punchHit = false;
         p.punchHitCol = null;
         ensureAudio();
@@ -3981,6 +3982,7 @@ function update(dt) {
             if (!hitGob.dead && aabb(punchBox, gobBox)) {
                 hitAnyGoblin = true;
                 p.punchHit = true;
+                p.punchFx = PUNCH_FX_LEN + 1; p.punchFxAt = null;
                 p.punchHitCol = INK.mustard;   // a solid hit on a Donk
                 hitGob.hp--;
 
@@ -4123,6 +4125,7 @@ function update(dt) {
             const cgBox = { x: catapultGoblin.x, y: catapultGoblin.y, w: catapultGoblin.w, h: catapultGoblin.h };
             if (aabb(punchBox, cgBox)) {
                 p.punchHit = true;
+                p.punchFx = PUNCH_FX_LEN + 1; p.punchFxAt = null;
                 p.punchHitCol = INK.silverL;   // clang — it's armour plate
                 ensureAudio();
                 if (audioCtx) playClang(audioCtx.currentTime);
@@ -4185,6 +4188,7 @@ function update(dt) {
             grid[row][col] = !grid[row][col];
             blockToggleAnim[row][col] = 12; // trigger pop animation
             p.punchHit = true;
+            p.punchFx = PUNCH_FX_LEN + 1; p.punchFxAt = null;
             // The pad flashes in its own instrument's colour, so the impact
             // reinforces the sequencer's colour language instead of fighting it
             p.punchHitCol = PAL.gridOn[row] || INK.mustard;
@@ -6728,6 +6732,11 @@ function drawPlayerSprite(gx, gy, frame, dir, options) {
 // reach rather than a jab. The arm now SNAPS out over PUNCH_EXT frames and
 // only eases on the way back, so the strike lands almost immediately and the
 // hold (see the attack tick) takes over from there.
+// The impact burst's own length, in frames. Six is a tenth of a second: long
+// enough to register, short enough that it is gone before the fist is. Contact
+// seeds it at LEN+1 because the tick that decrements it runs later in the same
+// update, so the frame the player actually sees the hit on is the full one.
+const PUNCH_FX_LEN = 6;
 const PUNCH_EXT = 3;   // frames to full extension
 const PUNCH_RET = 4;   // frames to pull back once the button is released
 function punchExtensionAt(p, timer) {
@@ -6889,26 +6898,51 @@ function drawPunch() {
         ctx.globalAlpha = 1;
     }
 
-    const fxProg = 1 - (p.punchFx / p.attackDuration);
-    const fx = p.punchFx > 0 ? Math.sin(fxProg * Math.PI) : 0;
+    // --- the star and the bloom ---------------------------------------------
+    //
+    // This is what was making the punch feel wrong, and it was three things.
+    //
+    // It BLOOMED instead of bursting. punchFx was seeded when the swing started
+    // and shaped by sin(progress * PI), so it grew for five frames after the
+    // fist had already landed and peaked in the middle of the hold — measured:
+    // contact on frame 1, maximum on frame 6. A balloon inflating, not a hit.
+    // It is seeded at CONTACT now, and it is loudest on the frame it starts.
+    //
+    // It DECAYED AS SLOWLY AS IT GREW, because a sine is symmetric. Impacts are
+    // not: instant on, quick off. It fades on a curve now and expands slightly
+    // while it does, which reads as the energy going somewhere.
+    //
+    // And it FOLLOWED THE FIST HOME. The star was drawn at the live glove
+    // position, so on the retract it slid backwards with the hand — measured 51
+    // pixels over the last three frames. An impact happened at a place; the mark
+    // it leaves stays there, so the tip is latched on the frame of contact.
+    if (p.punchFx > 0 && p.punchHit) {
+        if (!p.punchFxAt) p.punchFxAt = { x: tip.x, y: tip.y };
+    } else {
+        p.punchFxAt = null;
+    }
+    const e = p.punchFx > 0 ? 1 - p.punchFx / PUNCH_FX_LEN : 1;  // 0 at contact
+    const fx = p.punchFx > 0 ? Math.pow(1 - e, 1.6) : 0;         // brightness
+    const spread = 0.92 + e * 0.45;                              // and it opens out
     if (fx > 0 && p.punchHit) {
+        const tipFx = p.punchFxAt || tip;
         // What he hit decides the colour: a drum pad flashes its own row, so the
         // impact teaches the sequencer's colour language instead of fighting it.
         const col = p.punchHitCol || INK.mustard;
         // Bloom — the paper soaking through behind the glove, not a light source
-        const br = (0.22 + fx * 0.34) * TILE * SCALE;
-        const grad = ctx.createRadialGradient(tip.x, tip.y, 0, tip.x, tip.y, br);
+        const br = 0.56 * spread * TILE * SCALE;
+        const grad = ctx.createRadialGradient(tipFx.x, tipFx.y, 0, tipFx.x, tipFx.y, br);
         grad.addColorStop(0, col); grad.addColorStop(0.45, col);
         grad.addColorStop(1, "rgba(0,0,0,0)");
         ctx.globalAlpha = fx * 0.45; ctx.fillStyle = grad;
-        ctx.beginPath(); ctx.arc(tip.x, tip.y, br, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(tipFx.x, tipFx.y, br, 0, Math.PI * 2); ctx.fill();
         // Inked starburst — drawn and boiling, like everything else in this
         // world. Sized against the TILE so it reads as "one cell got hit"
         // rather than swallowing him whole.
-        const R = (0.26 + fx * 0.30) * TILE * SCALE;
-        const fade = Math.min(1, fx * 2.2);
+        const R = 0.56 * spread * TILE * SCALE;
+        const fade = Math.min(1, fx * 1.35);
         ctx.save();
-        ctx.translate(tip.x, tip.y);
+        ctx.translate(tipFx.x, tipFx.y);
         ctx.beginPath();
         const SPIKES = 11;
         for (let i = 0; i <= SPIKES * 2; i++) {
