@@ -2187,6 +2187,15 @@ const SETED = {
     undo: [],
     showAll: true,      // ignore the stolen-gear ghosting while dressing
     STORE: "buzz.setdress.v1",
+    // OPEN ON LOAD. A working default while Carl is dressing the room, not a
+    // shipping one — flip this to false and the build is a game again that you
+    // reach the dresser from with `$set`.
+    //
+    // It is here because the URL route did not survive publishing: the artifact
+    // page is a wrapper around the game, so a #set on the address bar stays on
+    // the outer document and never reaches this script. A flag in the file
+    // cannot be lost in transit.
+    BOOT: true,
 };
 
 // Everything cut from Carl's sheets, whether the room currently uses it or not.
@@ -2477,7 +2486,7 @@ SETED.overlay = function () {
     g.fillRect(0, 0, 470, 30);
     g.font = "600 13px ui-monospace,Menlo,monospace";
     g.fillStyle = INK.mustard;
-    g.fillText("SET DRESSER — click a prop, drag to place. F flips, [ ] scales.", 12, 20);
+    g.fillText("SET DRESSER — click a prop, drag to place. \"play\" for the game.", 12, 20);
     g.restore();
 };
 
@@ -2624,6 +2633,15 @@ SETED.disable = function () {
     window.removeEventListener("pointercancel", SETED.onUp);
     const el = document.getElementById("setdress");
     if (el) el.remove();
+    document.body.style.removeProperty("--sheet");
+    // Opened at load, closed by "done": hand back the attract screen rather
+    // than dropping into a half-played level 1 with a clock already running.
+    // Opened mid-session with $set, it leaves you where you were.
+    if (SETED.bootOpened) {
+        SETED.bootOpened = false;
+        try { resetGame(); } catch (e) {}
+        gameState = "title";
+    }
 };
 
 SETED.toggle = function () { SETED.on ? SETED.disable() : SETED.enable(); };
@@ -2680,14 +2698,16 @@ SETED.buildUI = function () {
         #setdress .pad button { padding:9px 0; font-size:15px; line-height:1; }
         #setdress .pad .lbl { grid-column:1/-1; opacity:.45; font-size:10.5px;
               margin-top:2px; }
-        /* The sheet header is desktop-hidden BEFORE the media query turns it on,
-           because both selectors have the same specificity and the later one
-           would otherwise win regardless of the query. */
-        #setdress .head { display:none; position:sticky; top:0; z-index:2;
+        /* The header is on everywhere now that the dresser is what LOADS — a way
+           out that is only a keystroke is a way out you have to already know
+           about. Collapsing is the phone's problem alone, so that button is the
+           only part the media query turns on. */
+        #setdress .head { display:flex; position:sticky; top:0; z-index:2;
               align-items:center; gap:8px; background:#2C2C2A; padding:9px 0 7px;
               border-bottom:1px solid #45453f; margin-bottom:6px; }
         #setdress .head b { flex:1; font-size:11px; letter-spacing:.09em; opacity:.65; }
         #setdress .head button { padding:6px 11px; }
+        #setdress .head .fold { display:none; }
         /* --- Phone: a bottom sheet, not a sidebar. 300px of a 390px screen left
            the room 60 CSS pixels wide, which is not a room, it is a stamp. --- */
         @media (max-width: 820px) {
@@ -2716,7 +2736,7 @@ SETED.buildUI = function () {
           #setdress.mini .foldable { display:none; }
           body.setdressing.mini-sheet canvas {
                 width: min(calc(100vw - 8px), calc((70vh - 10px) * 2.0)) !important; }
-          #setdress .head { display:flex; }
+          #setdress .head .fold { display:inline-block; }
           #setdress .grid { grid-template-columns:1fr 1fr; }
           #setdress button { padding:9px 8px; }
           #setdress select { padding:8px 6px; }
@@ -2773,9 +2793,9 @@ SETED.buildUI = function () {
         document.body.classList.toggle("mini-sheet", mini);
         foldBtn.textContent = mini ? "expand" : "collapse";
         SETED.fit();
-    });
+    }, "fold");
     head.append(el("b", { textContent: "SET DRESSER" }), foldBtn,
-                btn("done", () => SETED.disable()));
+                btn("play", () => SETED.disable()));
     wrap.appendChild(head);
 
     // --- selection body, rebuilt whenever what is selected changes. It shares a
@@ -2874,10 +2894,10 @@ SETED.buildUI = function () {
 
     fold.appendChild(el("div", { className: "hint",
         textContent: "drag to place · arrows or the pad nudge · [ ] scale · "
-                   + "F flip · del removes · ctrl-Z undo · esc closes. "
+                   + "F flip · del removes · ctrl-Z undo · esc or \"play\" closes. "
                    + "Saving keeps the layout in THIS browser only — paste the "
-                   + "source into game.js to make it real. On a phone, open with "
-                   + "#set on the end of the URL." }));
+                   + "source into game.js to make it real. This build opens here "
+                   + "on purpose; \"play\" gives you the game back." }));
     wrap.appendChild(fold);
 
     // Rebuilt on selection change; the sliders themselves only get their values
@@ -3763,13 +3783,19 @@ rebuildCaveTextures(0);
 SETED.loadSaved();
 
 // A PHONE HAS NO KEYBOARD, so `$set` cannot be typed and the tool may as well
-// not exist there. The URL is the way in: put #set on the end and it opens on
-// load, which also makes it bookmarkable — which on a phone is the difference
-// between a tool you use and a tool you have to be told how to reach.
+// not exist there. SETED.BOOT opens it on load instead — no URL to get right,
+// nothing to remember, and nothing that a wrapper page can strip on the way in.
 //
-// Waits for the first frame, because enable() dresses a room that has to exist.
-if (typeof location !== "undefined" && /(^|[#&?])set\b/.test(location.hash + location.search)) {
-    setTimeout(() => { try { SETED.enable(); } catch (e) { console.error(e); } }, 400);
+// #set still works when the game is served directly, which is how the harnesses
+// reach it without turning BOOT on for everybody.
+//
+// Waits a beat, because enable() dresses a room that has to exist first.
+if (SETED.BOOT
+    || (typeof location !== "undefined"
+        && /(^|[#&?])set\b/.test(location.hash + location.search))) {
+    setTimeout(() => {
+        try { SETED.enable(); SETED.bootOpened = true; } catch (e) { console.error(e); }
+    }, 400);
 }
 
 for (const b of BIOMES) {
