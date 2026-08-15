@@ -1274,14 +1274,20 @@ function drawBackWall() {
 // The doorways are holes in this, not decoration. The Donks spawn at tile row 3
 // because the drawn room cut its openings at rows 1.7 to 4.0, so those rows are
 // where the wall does not get drawn — move them and the spawn row moves.
-// The opening, in room depth. It was 2.3 tiles deep, which was fine while the
-// door was a flat panel lying in the wall and absurd the moment it could swing:
-// a 2.3-tile leaf rotated into the room is a barn door, taller than BUZZ and
-// wide enough to cover the front of the sequencer. 1.4 tiles is still half again
-// wider than a Donk, so nothing has trouble walking through it.
-const DOOR_V0 = 1.6 / ROWS, DOOR_V1 = 3.0 / ROWS;
+// The opening, in room depth, MEASURED OFF THE REAR DOOR rather than chosen.
+//
+// Carl: the side door should be roughly the same size as the one on the back
+// wall. That is a number, not a judgement — the rear door is the same sprite
+// hung as a wall prop at h 0.848 of the wall, and the wall is 5.04 tiles tall,
+// so it stands 4.275 tiles high and 2.162 wide. The side opening is that width
+// laid into the room's depth, centred on the row the Donks walk in at.
+//
+// I had guessed 1.4 tiles a commit ago, on the grounds that the swinging leaf
+// looked like a barn door. It did — but the fix for that was the swing angle,
+// not shrinking a door below the size of its own twin twelve feet away.
+const DOOR_V0 = 1.419 / ROWS, DOOR_V1 = 3.581 / ROWS;
 // How much of the wall's height the opening takes.
-const DOOR_TOP = 0.86;
+const DOOR_TOP = 0.848;   // the rear door's own height fraction
 // How long the door stands open before a Donk arrives, in frames.
 const DOOR_OPEN_LEAD = 50;
 
