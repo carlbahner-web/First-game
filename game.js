@@ -1658,6 +1658,9 @@ function drawSideWalls() {
 // you cannot miss what you were never shown.
 function propMissing(pr) {
     if (gameState === "title") return false;
+    // You cannot place what you cannot see. The set dresser shows the room full
+    // by default, with a checkbox to look at the robbed version.
+    if (SETED.on && SETED.showAll) return false;
     if (pr.piece !== undefined) return gearRecovered.length <= pr.piece;
     if (pr.decor !== undefined) return decorRecovered.length <= pr.decor;
     return false;                       // fixtures. Nobody steals a light switch.
@@ -1699,9 +1702,12 @@ function drawFloorProps() {
             const bx = gx * SCALE, by = gy * SCALE;
             ctx.save();
             ctx.translate(bx, by);
-            ctx.scale(sx, sy);
+            // Flipping is about the sprite's own centre line, which is where the
+            // squash already pivots, so a mirrored amp stays on its own feet.
+            ctx.scale(sx * (pr.flip ? -1 : 1), sy);
             if (missing) ctx.globalAlpha = GHOST_ALPHA;
             ctx.drawImage(art, -w / 2, -h, w, h);
+            if (SETED.on) SETED.note(ctx, pr, "floor", -w / 2, -h, w, h);
             ctx.restore();
         });
     }
@@ -1812,6 +1818,9 @@ function drawWallProps(wx, wy, ww, wh) {
     // Lights first: they wash the WALL, so the props and the board stand in
     // front of the light rather than being painted over by it.
     drawStageLights(wx, wy, ww, wh);
+    // Where the wall landed this frame, so the set dresser can turn a mouse
+    // position back into wall fractions.
+    if (SETED.on) SETED.wall = { x: wx, y: wy, w: ww, h: wh, m: MAIN_CTX.getTransform() };
     const list = (currentBiome && currentBiome.wallProps) || [];
     for (const pr of list) {
         const art = ROOM_ART["props/" + pr.art];
@@ -1828,12 +1837,16 @@ function drawWallProps(wx, wy, ww, wh) {
         // here reads as vandalism in a way a gap on the floor does not, and the
         // ghost is what turns that gap into a promise.
         const missing = propMissing(pr);
-        if (missing) {
-            MAIN_CTX.save();
-            MAIN_CTX.globalAlpha = GHOST_ALPHA;
-        }
-        MAIN_CTX.drawImage(art, wx + ww * pr.x - w / 2, wy + cy - h / 2, w, h);
-        if (missing) MAIN_CTX.restore();
+        const cx = wx + ww * pr.x;
+        MAIN_CTX.save();
+        if (missing) MAIN_CTX.globalAlpha = GHOST_ALPHA;
+        // Drawn about its own centre so a flip is one sign change rather than a
+        // second set of coordinates that can disagree with the first.
+        MAIN_CTX.translate(cx, wy + cy);
+        if (pr.flip) MAIN_CTX.scale(-1, 1);
+        MAIN_CTX.drawImage(art, -w / 2, -h / 2, w, h);
+        if (SETED.on) SETED.note(MAIN_CTX, pr, "wall", -w / 2, -h / 2, w, h);
+        MAIN_CTX.restore();
     }
     drawWallScoreboard(wx, wy, ww, wh);
 }
@@ -1888,6 +1901,7 @@ function drawWallScoreboard(wx, wy, ww, wh) {
         const w = ww * sb.w, h = w * (art.height / art.width);
         const x = wx + ww * sb.x - w / 2, y = wy + wh * sb.y - h / 2;
         g.drawImage(art, x, y, w, h);
+        if (SETED.on) SETED.note(g, sb, "board", x, y, w, h);
 
         const put = (key, text, col, hero) => {
             const q = sb.wells[key];
@@ -2146,6 +2160,670 @@ CAMRIG.buildUI = function () {
     wrap.appendChild(note);
     document.body.appendChild(wrap);
 };
+
+// ============================================================
+// SET DRESSER — the room, dressed by hand
+// ============================================================
+// Every prop in this room was placed by me typing a number, rendering, looking,
+// and typing a different number. That is a bad way to compose a picture and an
+// especially bad way for CARL to compose one, because it puts me in the middle
+// of his eye and the screen. This hands him the room directly: click a thing,
+// drag it, scale it, flip it, and read the numbers back out as source.
+//
+// It drives the game's own data and the game's own draw. There is no separate
+// preview that reimplements the placement maths — a viewer that agreed with the
+// game right up until it quietly stopped is the exact failure this codebase's
+// harnesses have hit before, so the editor MUTATES BIOMES[0] and then just lets
+// the frame render. What you drag is what ships.
+//
+// Off unless asked for: type `$set` (like `$level01`), or call SETED.enable().
+const SETED = {
+    on: false,
+    sel: null,          // the selected prop object itself, not an index
+    boxes: [],          // last frame's screen boxes, for hit-testing
+    pending: [],        // this frame's, still filling
+    wall: null,         // where the back wall landed, for wall-space dragging
+    drag: null,
+    undo: [],
+    showAll: true,      // ignore the stolen-gear ghosting while dressing
+    STORE: "buzz.setdress.v1",
+};
+
+// Everything cut from Carl's sheets, whether the room currently uses it or not.
+// A browser cannot read a directory, and the point of the tool is to place the
+// sprites that AREN'T placed yet, so the list is written down.
+SETED.LIBRARY = {
+    set: ["amp-black", "amp-mustard", "amp-teal", "chair", "chair-alt", "crate",
+          "flight-case", "hi-hat", "kick-drum", "mic-stand", "mug", "music-stand",
+          "ride-cymbal", "snare-drum"],
+    props: ["clipboard", "clock", "door", "phone", "poster", "switch"],
+};
+
+// Ranges are per KIND because the three coordinate systems are genuinely
+// different, and a slider that runs 0..1 for a wall poster would give a floor
+// prop a nine-inch travel. `nudge` is an arrow key, `big` is shift+arrow.
+SETED.FIELDS = {
+    floor: [
+        { k: "x", label: "across", min: -1, max: COLS, step: 0.01, nudge: 0.05, big: 0.5, dp: 3 },
+        { k: "y", label: "depth", min: 0, max: 3, step: 0.01, nudge: 0.02, big: 0.2, dp: 3 },
+        { k: "h", label: "height", min: 0.1, max: 5, step: 0.01, nudge: 0.02, big: 0.2, dp: 3 },
+    ],
+    wall: [
+        { k: "x", label: "across", min: 0, max: 1, step: 0.001, nudge: 0.004, big: 0.04, dp: 3 },
+        { k: "y", label: "up/down", min: 0, max: 1, step: 0.001, nudge: 0.004, big: 0.04, dp: 3 },
+        { k: "h", label: "height", min: 0.01, max: 1, step: 0.001, nudge: 0.004, big: 0.04, dp: 3 },
+    ],
+    board: [
+        { k: "x", label: "across", min: 0, max: 1, step: 0.001, nudge: 0.004, big: 0.04, dp: 4 },
+        { k: "y", label: "up/down", min: 0, max: 1, step: 0.001, nudge: 0.004, big: 0.04, dp: 4 },
+        { k: "w", label: "width", min: 0.05, max: 0.9, step: 0.0005, nudge: 0.002, big: 0.02, dp: 4 },
+    ],
+};
+
+SETED.arrays = function () {
+    const b = BIOMES[0];
+    return { floor: b.floorProps || [], wall: b.wallProps || [], board: b.scoreboard };
+};
+
+// A prop's art may not be loaded — the boot loader only fetches what the room
+// already references, and half the point here is placing what it doesn't.
+SETED.ensureArt = function (kind, name) {
+    const slug = (kind === "floor" ? "set/" : "props/") + name;
+    if (ROOM_ART[slug]) return;
+    const im = new Image();
+    im.onload = () => { ROOM_ART[slug] = im; };
+    im.src = assetURL("assets/room/" + slug + ".png");
+};
+
+// ---- What the frame drew, in screen pixels -------------------------------
+// Recorded BY the draw rather than recomputed after it. The transform stack at
+// the moment of the drawImage already knows about the billboard, the depth
+// scale and the flip, so asking the context is exact where a second
+// implementation would be a guess that drifts.
+SETED.note = function (g, pr, kind, x, y, w, h) {
+    const m = g.getTransform();
+    const at = (ux, uy) => ({ x: m.a * ux + m.c * uy + m.e, y: m.b * ux + m.d * uy + m.f });
+    const c = [at(x, y), at(x + w, y), at(x, y + h), at(x + w, y + h)];
+    const xs = c.map((p) => p.x), ys = c.map((p) => p.y);
+    const x0 = Math.min(...xs), y0 = Math.min(...ys);
+    SETED.pending.push({ pr, kind, x: x0, y: y0,
+                         w: Math.max(...xs) - x0, h: Math.max(...ys) - y0 });
+};
+
+// ---- Screen space <-> room space -----------------------------------------
+SETED.pt = function (e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * canvas.width / r.width,
+             y: (e.clientY - r.top) * canvas.height / r.height };
+};
+
+// The floor's inverse. x is exact — projPoint is linear in dx at a fixed depth,
+// so it inverts algebraically — and the depth is found by bisection because
+// projY is monotonic and I would rather not maintain an analytic inverse of a
+// camera that Carl can still move on a slider.
+SETED.unproject = function (X, Y) {
+    const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 40; i++) {
+        const mid = (lo + hi) / 2;
+        if (projY(mid) < Y) lo = mid; else hi = mid;
+    }
+    const v = (lo + hi) / 2, s = projScale(v);
+    return { dx: W / 2 + (X - W / 2) / s, dy: v * H };
+};
+
+// The wall's inverse: undo whatever transform the wall was drawn under, then
+// read off fractions of the panel.
+SETED.unwall = function (X, Y) {
+    const wl = SETED.wall;
+    if (!wl) return null;
+    const m = wl.m, det = m.a * m.d - m.b * m.c;
+    if (!det) return null;
+    const px = X - m.e, py = Y - m.f;
+    const lx = (px * m.d - py * m.c) / det, ly = (py * m.a - px * m.b) / det;
+    return { fx: (lx - wl.x) / wl.w, fy: (ly - wl.y) / wl.h };
+};
+
+SETED.screenOf = function (ent) {
+    if (ent.kind === "floor") {
+        const p = projPoint((ent.pr.x + 0.5) * TILE * SCALE, ent.pr.y * TILE * SCALE);
+        return { x: p.x, y: p.y };
+    }
+    const wl = SETED.wall;
+    if (!wl) return { x: 0, y: 0 };
+    const lx = wl.x + wl.w * ent.pr.x, ly = wl.y + wl.h * ent.pr.y;
+    const m = wl.m;
+    return { x: m.a * lx + m.c * ly + m.e, y: m.b * lx + m.d * ly + m.f };
+};
+
+// ---- Editing --------------------------------------------------------------
+SETED.snapshot = function () {
+    const a = SETED.arrays();
+    SETED.undo.push(JSON.stringify({ floor: a.floor, wall: a.wall, board: a.board }));
+    if (SETED.undo.length > 60) SETED.undo.shift();
+};
+
+SETED.revert = function () {
+    const prev = SETED.undo.pop();
+    if (!prev) return;
+    const s = JSON.parse(prev), a = SETED.arrays();
+    // In place, always. The one-room loop handed the OTHER five biomes this very
+    // array by reference, so replacing it would quietly leave five levels
+    // dressed the old way.
+    a.floor.length = 0; a.floor.push(...s.floor);
+    a.wall.length = 0; a.wall.push(...s.wall);
+    Object.assign(a.board, s.board);
+    SETED.sel = null;
+    SETED.sync();
+};
+
+SETED.add = function (kind, name) {
+    SETED.snapshot();
+    SETED.ensureArt(kind, name);
+    const a = SETED.arrays();
+    const pr = kind === "floor"
+        ? { art: name, x: COLS / 2, y: 0.3, h: 1.2 }
+        : { art: name, x: 0.5, y: 0.35, h: 0.2 };
+    (kind === "floor" ? a.floor : a.wall).push(pr);
+    SETED.sel = { pr, kind };
+    SETED.sync();
+};
+
+SETED.remove = function () {
+    const s = SETED.sel;
+    if (!s || s.kind === "board") return;
+    SETED.snapshot();
+    const a = SETED.arrays(), arr = s.kind === "floor" ? a.floor : a.wall;
+    const i = arr.indexOf(s.pr);
+    if (i >= 0) arr.splice(i, 1);
+    SETED.sel = null;
+    SETED.sync();
+};
+
+SETED.duplicate = function () {
+    const s = SETED.sel;
+    if (!s || s.kind === "board") return;
+    SETED.snapshot();
+    const a = SETED.arrays(), arr = s.kind === "floor" ? a.floor : a.wall;
+    const copy = JSON.parse(JSON.stringify(s.pr));
+    // Offset it, or the copy hides under the original and reads as nothing
+    // having happened.
+    if (s.kind === "floor") copy.x += 1; else copy.x = Math.min(0.98, copy.x + 0.05);
+    delete copy.piece; delete copy.decor;   // one thing was stolen, not two
+    arr.splice(arr.indexOf(s.pr) + 1, 0, copy);
+    SETED.sel = { pr: copy, kind: s.kind };
+    SETED.sync();
+};
+
+// Draw order IS depth order for the floor props, so this is the depth control.
+SETED.reorder = function (dir) {
+    const s = SETED.sel;
+    if (!s || s.kind === "board") return;
+    SETED.snapshot();
+    const a = SETED.arrays(), arr = s.kind === "floor" ? a.floor : a.wall;
+    const i = arr.indexOf(s.pr), j = i + dir;
+    if (i < 0 || j < 0 || j >= arr.length) { SETED.undo.pop(); return; }
+    arr.splice(i, 1); arr.splice(j, 0, s.pr);
+    SETED.sync();
+};
+
+// ---- Reading it back out as source ---------------------------------------
+// The whole tool is worthless if the result cannot leave the browser. This
+// prints the two arrays exactly as game.js declares them, so the round trip is
+// select-all, paste, done — no transcribing numbers off a screenshot.
+SETED.exportText = function () {
+    const a = SETED.arrays();
+    const num = (v, dp) => {
+        const s = v.toFixed(dp).replace(/0+$/, "").replace(/\.$/, "");
+        return s === "" || s === "-" ? "0" : s;
+    };
+    const line = (pr, kind) => {
+        const bits = [`art: "${pr.art}"`];
+        if (kind === "wall" && pr.foot) bits.push("foot: true");
+        bits.push(`x: ${num(pr.x, 3)}`);
+        if (!(kind === "wall" && pr.foot)) bits.push(`y: ${num(pr.y, 3)}`);
+        bits.push(`h: ${num(pr.h, 3)}`);
+        if (pr.flip) bits.push("flip: true");
+        if (pr.row !== undefined) bits.push(`row: ${pr.row}`);
+        if (pr.piece !== undefined) bits.push(`piece: ${pr.piece}`);
+        if (pr.decor !== undefined) bits.push(`decor: ${pr.decor}`);
+        return "            { " + bits.join(", ") + " },";
+    };
+    const b = a.board;
+    return [
+        "        floorProps: [",
+        ...a.floor.map((p) => line(p, "floor")),
+        "        ],",
+        "        wallProps: [",
+        ...a.wall.map((p) => line(p, "wall")),
+        "        ],",
+        "        // scoreboard placement only — wells and pips are unchanged",
+        `        scoreboard x: ${num(b.x, 4)}, y: ${num(b.y, 4)}, w: ${num(b.w, 4)}`,
+    ].join("\n");
+};
+
+// ---- Surviving a reload ---------------------------------------------------
+// A dressing session is long and a browser reload is one stray key away. Saved
+// layouts apply on boot; the panel says so, and says how to get rid of one,
+// because a tool that silently changes what the game looks like for one person
+// is a bug waiting to be reported as a mystery.
+SETED.save = function () {
+    const a = SETED.arrays();
+    try {
+        localStorage.setItem(SETED.STORE, JSON.stringify({
+            floor: a.floor, wall: a.wall,
+            board: { x: a.board.x, y: a.board.y, w: a.board.w },
+        }));
+    } catch (e) {}
+    SETED.sync();
+};
+
+SETED.hasSaved = function () {
+    try { return !!localStorage.getItem(SETED.STORE); } catch (e) { return false; }
+};
+
+SETED.clearSaved = function () {
+    try { localStorage.removeItem(SETED.STORE); } catch (e) {}
+    SETED.sync();
+};
+
+SETED.loadSaved = function () {
+    let raw = null;
+    try { raw = localStorage.getItem(SETED.STORE); } catch (e) {}
+    if (!raw) return;
+    let s;
+    try { s = JSON.parse(raw); } catch (e) { return; }
+    const a = SETED.arrays();
+    if (Array.isArray(s.floor)) { a.floor.length = 0; a.floor.push(...s.floor); }
+    if (Array.isArray(s.wall)) { a.wall.length = 0; a.wall.push(...s.wall); }
+    if (s.board) Object.assign(a.board, s.board);
+    for (const p of a.floor) SETED.ensureArt("floor", p.art);
+    for (const p of a.wall) SETED.ensureArt("wall", p.art);
+    console.log("SET DRESSER: applied a saved layout from this browser. "
+                + "SETED.clearSaved() puts the built-in room back.");
+};
+
+// ---- The overlay ----------------------------------------------------------
+SETED.overlay = function () {
+    SETED.boxes = SETED.pending;
+    SETED.pending = [];
+    if (!SETED.on) return;
+    const g = MAIN_CTX;
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    for (const b of SETED.boxes) {
+        const isSel = SETED.sel && SETED.sel.pr === b.pr;
+        g.lineWidth = isSel ? 3 : 1;
+        g.strokeStyle = isSel ? INK.mustard : "rgba(252,247,232,0.30)";
+        g.strokeRect(b.x, b.y, b.w, b.h);
+        if (!isSel) continue;
+        // Corner ticks, so the selection still reads where the art is pale and
+        // the box edge lands on a pale wall.
+        const t = Math.min(14, b.w / 3, b.h / 3);
+        g.lineWidth = 5;
+        for (const [cx, sx] of [[b.x, 1], [b.x + b.w, -1]])
+            for (const [cy, sy] of [[b.y, 1], [b.y + b.h, -1]]) {
+                g.beginPath();
+                g.moveTo(cx + sx * t, cy); g.lineTo(cx, cy); g.lineTo(cx, cy + sy * t);
+                g.stroke();
+            }
+        g.font = "600 14px ui-monospace,Menlo,monospace";
+        g.textAlign = "center";
+        g.fillStyle = INK.mustard;
+        g.fillText(b.pr.art || "scoreboard", b.x + b.w / 2, b.y - 8);
+        g.textAlign = "start";
+    }
+    g.fillStyle = "rgba(44,44,42,0.85)";
+    g.fillRect(0, 0, 470, 30);
+    g.font = "600 13px ui-monospace,Menlo,monospace";
+    g.fillStyle = INK.mustard;
+    g.fillText("SET DRESSER — click a prop, drag to place. F flips, [ ] scales.", 12, 20);
+    g.restore();
+};
+
+// ---- Input ----------------------------------------------------------------
+SETED.hit = function (p) {
+    // Back to front: the floor props draw after the wall, and later props draw
+    // over earlier ones, so the last box that contains the point is the one the
+    // eye thinks it clicked.
+    for (let i = SETED.boxes.length - 1; i >= 0; i--) {
+        const b = SETED.boxes[i];
+        if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h)
+            return { pr: b.pr, kind: b.kind };
+    }
+    return null;
+};
+
+SETED.onDown = function (e) {
+    if (!SETED.on) return;
+    const p = SETED.pt(e), hit = SETED.hit(p);
+    SETED.sel = hit;
+    SETED.sync();
+    if (!hit) return;
+    e.preventDefault();
+    SETED.snapshot();
+    const at = SETED.screenOf(hit);
+    SETED.drag = { ent: hit, ox: at.x - p.x, oy: at.y - p.y, moved: false };
+};
+
+SETED.onMove = function (e) {
+    if (!SETED.on || !SETED.drag) return;
+    const p = SETED.pt(e), d = SETED.drag;
+    const tx = p.x + d.ox, ty = p.y + d.oy;
+    const pr = d.ent.pr;
+    if (d.ent.kind === "floor") {
+        const u = SETED.unproject(tx, ty);
+        pr.x = u.dx / (TILE * SCALE) - 0.5;
+        pr.y = u.dy / (TILE * SCALE);
+    } else {
+        const f = SETED.unwall(tx, ty);
+        if (!f) return;
+        pr.x = f.fx;
+        // A prop that stands ON the floor keeps its foot there. Dragging it
+        // upward should not make it hover — untick "on the floor" for that.
+        if (!pr.foot) pr.y = f.fy;
+    }
+    d.moved = true;
+    SETED.sync(true);
+};
+
+SETED.onUp = function () {
+    if (SETED.drag && !SETED.drag.moved) SETED.undo.pop();  // a click is not an edit
+    SETED.drag = null;
+};
+
+// Arrows, [ ], F and ctrl-Z, taken before the game sees them so BUZZ does not
+// walk off while a prop is being nudged.
+SETED.key = function (e) {
+    if (!SETED.on) return false;
+    if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return false;
+    const s = SETED.sel;
+    if (e.code === "Escape") { SETED.disable(); return true; }
+    if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ") { SETED.revert(); return true; }
+    if (!s) return false;
+    const F = SETED.FIELDS[s.kind];
+    const step = (f, mul) => {
+        SETED.snapshot();
+        s.pr[f.k] = Math.max(f.min, Math.min(f.max, (s.pr[f.k] || 0) + f.nudge * mul * (e.shiftKey ? f.big / f.nudge : 1)));
+        SETED.sync();
+    };
+    // Up is up in both spaces: a smaller floor depth is further back, a smaller
+    // wall fraction is higher on the wall, and both read as "away from you".
+    if (e.code === "ArrowLeft") { step(F[0], -1); return true; }
+    if (e.code === "ArrowRight") { step(F[0], 1); return true; }
+    if (e.code === "ArrowUp") { step(F[1], -1); return true; }
+    if (e.code === "ArrowDown") { step(F[1], 1); return true; }
+    if (e.code === "BracketLeft") { step(F[2], -1); return true; }
+    if (e.code === "BracketRight") { step(F[2], 1); return true; }
+    if (e.code === "KeyF" && s.kind !== "board") {
+        SETED.snapshot(); s.pr.flip = !s.pr.flip; SETED.sync(); return true;
+    }
+    if (e.code === "Delete" || e.code === "Backspace") { SETED.remove(); return true; }
+    return false;
+};
+
+// ---- Turning it on --------------------------------------------------------
+SETED.enable = function () {
+    if (SETED.on) return;
+    SETED.on = true;
+    // A room to dress has to be a room you can see all of: level 1, nothing
+    // stolen, nobody walking through the shot.
+    try { resetGame(); } catch (err) {}
+    currentLevel = 0;
+    rebuildCaveTextures(0);
+    setLevelTempo(0);
+    levelTimer = 150 * 60;
+    for (const g of goblins) { g.dead = true; g.respawnTimer = 9999; }
+    player.x = 9 * TILE; player.y = (ROWS - 2) * TILE;
+    player.destX = player.x; player.destY = player.y;
+    gameState = "playing";
+    document.body.classList.add("setdressing");
+    canvas.addEventListener("mousedown", SETED.onDown);
+    window.addEventListener("mousemove", SETED.onMove);
+    window.addEventListener("mouseup", SETED.onUp);
+    SETED.buildUI();
+};
+
+SETED.disable = function () {
+    if (!SETED.on) return;
+    SETED.on = false;
+    SETED.sel = null;
+    SETED.drag = null;
+    document.body.classList.remove("setdressing");
+    canvas.removeEventListener("mousedown", SETED.onDown);
+    window.removeEventListener("mousemove", SETED.onMove);
+    window.removeEventListener("mouseup", SETED.onUp);
+    const el = document.getElementById("setdress");
+    if (el) el.remove();
+};
+
+SETED.toggle = function () { SETED.on ? SETED.disable() : SETED.enable(); };
+
+// ---- The panel ------------------------------------------------------------
+SETED.buildUI = function () {
+    const wrap = document.createElement("div");
+    wrap.id = "setdress";
+    wrap.innerHTML = `
+      <style>
+        /* The panel is 300px of the window, and a prop hidden underneath it is a
+           prop that cannot be placed — the chair and the mug live over on that
+           side. So the room gives up the width instead of being covered by it:
+           same aspect, same internal 1600x800, just displayed narrower while the
+           panel is up. Mouse mapping reads the live bounding box, so nothing
+           downstream has to know this happened. */
+        body.setdressing { justify-content:flex-start; padding-left:10px; }
+        body.setdressing canvas {
+              width: min(calc(100vw - 330px), calc((100vh - 18px) * 2.0)) !important; }
+        #setdress { position:fixed; top:0; right:0; bottom:0; width:300px; z-index:60;
+              background:#2C2C2A; color:#fcf7e8; overflow-y:auto; padding:12px 14px 30px;
+              font-family:ui-monospace,Menlo,monospace; font-size:12px;
+              box-shadow:-6px 0 22px rgba(0,0,0,.45); }
+        #setdress h4 { margin:14px 0 6px; font-size:11px; letter-spacing:.09em;
+              text-transform:uppercase; opacity:.5; font-weight:600; }
+        #setdress h4:first-child { margin-top:0; }
+        #setdress .row { display:flex; align-items:center; gap:7px; margin:5px 0; }
+        #setdress .row > label { min-width:56px; opacity:.72; }
+        #setdress input[type=range] { flex:1; min-width:0; accent-color:#F6CC60; }
+        #setdress output { min-width:46px; text-align:right; color:#F6CC60;
+              font-variant-numeric:tabular-nums; }
+        #setdress button { background:#3a3a37; color:#fcf7e8; border:1px solid #55554f;
+              padding:5px 8px; font:inherit; cursor:pointer; border-radius:3px; }
+        #setdress button:hover { background:#4a4a45; }
+        #setdress button.wide { width:100%; margin-top:5px; }
+        #setdress select { background:#3a3a37; color:#fcf7e8; border:1px solid #55554f;
+              padding:4px 5px; font:inherit; flex:1; min-width:0; }
+        #setdress .grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+        #setdress textarea { width:100%; height:150px; background:#211f1f; color:#cfe6d8;
+              border:1px solid #55554f; font:inherit; font-size:10.5px; padding:6px;
+              white-space:pre; resize:vertical; }
+        #setdress .hint { opacity:.5; font-size:10.5px; line-height:1.45; margin:6px 0 0; }
+        #setdress .none { opacity:.45; font-style:italic; padding:6px 0; }
+        #setdress .chk { display:flex; align-items:center; gap:6px; margin:5px 0; }
+      </style>`;
+    document.body.appendChild(wrap);
+
+    const el = (tag, props, kids) => {
+        const n = document.createElement(tag);
+        Object.assign(n, props || {});
+        for (const k of kids || []) n.appendChild(k);
+        return n;
+    };
+    const h = (t) => el("h4", { textContent: t });
+    const btn = (t, fn, cls) => {
+        const b = el("button", { textContent: t, className: cls || "" });
+        b.addEventListener("click", fn);
+        return b;
+    };
+
+    // --- selection body, rebuilt whenever what is selected changes
+    const body = el("div");
+    wrap.append(h("selected"), body);
+
+    // --- library
+    wrap.appendChild(h("add a prop"));
+    const libRow = el("div", { className: "row" });
+    const libSel = el("select");
+    for (const [kind, dir] of [["floor", "set"], ["wall", "props"]])
+        for (const n of SETED.LIBRARY[dir]) {
+            const o = el("option", { value: kind + "|" + n,
+                textContent: (kind === "floor" ? "floor · " : "wall · ") + n });
+            libSel.appendChild(o);
+        }
+    libRow.append(libSel, btn("add", () => {
+        const [kind, name] = libSel.value.split("|");
+        SETED.add(kind, name);
+    }));
+    wrap.appendChild(libRow);
+
+    // --- view
+    wrap.appendChild(h("view"));
+    const ghostRow = el("div", { className: "chk" });
+    const ghostBox = el("input", { type: "checkbox", id: "sd-ghost", checked: !SETED.showAll });
+    ghostBox.addEventListener("change", () => { SETED.showAll = !ghostBox.checked; });
+    ghostRow.append(ghostBox, el("label", { htmlFor: "sd-ghost",
+        textContent: "show stolen gear as ghosts" }));
+    wrap.appendChild(ghostRow);
+
+    // --- export
+    wrap.appendChild(h("source"));
+    const ta = el("textarea", { spellcheck: false, readOnly: true });
+    wrap.appendChild(ta);
+    const exGrid = el("div", { className: "grid" });
+    exGrid.append(
+        btn("copy", () => {
+            ta.select();
+            if (navigator.clipboard) navigator.clipboard.writeText(ta.value).catch(() => {});
+            else { try { document.execCommand("copy"); } catch (e) {} }
+        }),
+        btn("undo", () => SETED.revert()));
+    wrap.appendChild(exGrid);
+
+    wrap.appendChild(h("this browser"));
+    const saveGrid = el("div", { className: "grid" });
+    saveGrid.append(btn("save layout", () => SETED.save()),
+                    btn("clear saved", () => SETED.clearSaved()));
+    wrap.appendChild(saveGrid);
+    const savedNote = el("div", { className: "hint" });
+    wrap.appendChild(savedNote);
+
+    wrap.appendChild(el("div", { className: "hint",
+        textContent: "drag to place · arrows nudge (shift = coarse) · [ ] scale · "
+                   + "F flip · del removes · ctrl-Z undo · esc closes. "
+                   + "Saving keeps the layout in THIS browser only — paste the "
+                   + "source into game.js to make it real." }));
+
+    // Rebuilt on selection change; the sliders themselves only get their values
+    // written on a drag, so dragging on canvas and dragging a slider agree.
+    let fields = [];
+    SETED.sync = function (valuesOnly) {
+        if (!valuesOnly) {
+            body.textContent = "";
+            fields = [];
+            const s = SETED.sel;
+            if (!s) {
+                body.appendChild(el("div", { className: "none",
+                    textContent: "nothing selected — click a prop in the room" }));
+            } else {
+                body.appendChild(el("div", { className: "row" }, [
+                    el("label", { textContent: "art" }),
+                    el("output", { textContent: s.pr.art || "scoreboard",
+                                   style: "min-width:0;flex:1;text-align:left" }),
+                ]));
+                for (const f of SETED.FIELDS[s.kind]) {
+                    const row = el("div", { className: "row" });
+                    const lab = el("label", { textContent: f.label });
+                    const inp = el("input", { type: "range", min: f.min, max: f.max,
+                                              step: f.step, value: s.pr[f.k] });
+                    const out = el("output", { textContent: (+s.pr[f.k]).toFixed(f.dp) });
+                    inp.addEventListener("pointerdown", () => SETED.snapshot());
+                    inp.addEventListener("input", () => {
+                        s.pr[f.k] = parseFloat(inp.value);
+                        out.textContent = (+s.pr[f.k]).toFixed(f.dp);
+                        ta.value = SETED.exportText();
+                    });
+                    row.append(lab, inp, out);
+                    body.appendChild(row);
+                    fields.push({ f, inp, out });
+                }
+                if (s.kind !== "board") {
+                    const fr = el("div", { className: "chk" });
+                    const fb = el("input", { type: "checkbox", id: "sd-flip", checked: !!s.pr.flip });
+                    fb.addEventListener("change", () => {
+                        SETED.snapshot(); s.pr.flip = fb.checked; ta.value = SETED.exportText();
+                    });
+                    fr.append(fb, el("label", { htmlFor: "sd-flip", textContent: "flipped" }));
+                    body.appendChild(fr);
+                }
+                if (s.kind === "wall") {
+                    const fr = el("div", { className: "chk" });
+                    const fb = el("input", { type: "checkbox", id: "sd-foot", checked: !!s.pr.foot });
+                    fb.addEventListener("change", () => {
+                        SETED.snapshot(); s.pr.foot = fb.checked; SETED.sync();
+                    });
+                    fr.append(fb, el("label", { htmlFor: "sd-foot",
+                        textContent: "stands on the floor" }));
+                    body.appendChild(fr);
+                }
+                if (s.kind === "floor") {
+                    const row = el("div", { className: "row" });
+                    const sel = el("select");
+                    sel.appendChild(el("option", { value: "", textContent: "no row — scenery" }));
+                    for (let r = 0; r < GRID_ROWS; r++)
+                        sel.appendChild(el("option", { value: String(r),
+                            textContent: "row " + r + " reacts" }));
+                    sel.value = s.pr.row === undefined ? "" : String(s.pr.row);
+                    sel.addEventListener("change", () => {
+                        SETED.snapshot();
+                        if (sel.value === "") delete s.pr.row; else s.pr.row = parseInt(sel.value, 10);
+                        ta.value = SETED.exportText();
+                    });
+                    row.append(el("label", { textContent: "beat" }), sel);
+                    body.appendChild(row);
+                }
+                if (s.kind !== "board") {
+                    const row = el("div", { className: "row" });
+                    const sel = el("select");
+                    sel.appendChild(el("option", { value: "", textContent: "not stolen" }));
+                    STOLEN_GEAR.forEach((n, i) =>
+                        sel.appendChild(el("option", { value: "p" + i, textContent: "gear · " + n })));
+                    STOLEN_DECOR.forEach((n, i) =>
+                        sel.appendChild(el("option", { value: "d" + i, textContent: "decor · " + n })));
+                    sel.value = s.pr.piece !== undefined ? "p" + s.pr.piece
+                              : s.pr.decor !== undefined ? "d" + s.pr.decor : "";
+                    sel.addEventListener("change", () => {
+                        SETED.snapshot();
+                        delete s.pr.piece; delete s.pr.decor;
+                        if (sel.value.startsWith("p")) s.pr.piece = parseInt(sel.value.slice(1), 10);
+                        else if (sel.value.startsWith("d")) s.pr.decor = parseInt(sel.value.slice(1), 10);
+                        ta.value = SETED.exportText();
+                    });
+                    row.append(el("label", { textContent: "stolen" }), sel);
+                    body.appendChild(row);
+                }
+                if (s.kind !== "board") {
+                    const g2 = el("div", { className: "grid" });
+                    g2.append(btn("back", () => SETED.reorder(-1)),
+                              btn("front", () => SETED.reorder(1)),
+                              btn("duplicate", () => SETED.duplicate()),
+                              btn("delete", () => SETED.remove()));
+                    body.appendChild(g2);
+                }
+            }
+        } else {
+            for (const { f, inp, out } of fields) {
+                inp.value = SETED.sel.pr[f.k];
+                out.textContent = (+SETED.sel.pr[f.k]).toFixed(f.dp);
+            }
+        }
+        ta.value = SETED.exportText();
+        savedNote.textContent = SETED.hasSaved()
+            ? "a saved layout is applied on load in this browser."
+            : "nothing saved in this browser.";
+    };
+    SETED.sync();
+};
+
+SETED.sync = function () {};   // replaced by buildUI; harmless before then
 
 // ---- Pad extrusion -------------------------------------------------------
 // A sequencer cell is a BLOCK standing on the floor, not a coloured square
@@ -2903,6 +3581,10 @@ rebuildCaveTextures(0);
 // Rooms load after that first bake, so a room that lands has to ask for another
 // one. Any biome without a file just stays a cave — onerror is the fallback,
 // not an error.
+// A dressing session survives a reload, and it has to be applied BEFORE the art
+// loader runs or a prop placed from the library would have no image to fetch.
+SETED.loadSaved();
+
 for (const b of BIOMES) {
     // Both plates load the same way. The floor goes into the baked room texture
     // and so needs a rebuild when it lands; the wall is blitted live every frame
@@ -3946,6 +4628,13 @@ function handleCheatCode(key) {
     // Keep buffer trimmed to max expected length ("$level" + 2 digits = 8)
     if (cheatBuffer.length > 8) cheatBuffer = cheatBuffer.slice(-8);
 
+    // The set dresser, on the same doorbell as the level jump.
+    if (cheatBuffer.endsWith("$set")) {
+        cheatBuffer = "";
+        SETED.toggle();
+        return;
+    }
+
     const match = cheatBuffer.match(/\$level(\d{2})$/);
     if (match) {
         const targetLevel = parseInt(match[1], 10) - 1; // $level01 = index 0
@@ -3977,6 +4666,10 @@ function handleCheatCode(key) {
 }
 
 window.addEventListener("keydown", (e) => {
+    // The set dresser eats arrows, brackets and F before the game sees them —
+    // otherwise nudging a prop walks BUZZ across the room at the same time.
+    if (SETED.on && SETED.key(e)) { e.preventDefault(); return; }
+
     // Unlock/resume audio on any key press — browsers only allow
     // AudioContext.resume() inside a real user gesture
     ensureAudio();
@@ -7188,6 +7881,11 @@ function render() {
     // The local shake already ran, further up, before BUZZ was drawn. All that
     // is left here is closing the whole-screen one's translate.
     if (shaking && !shakeAt) ctx.restore();
+
+    // Last, over everything, and outside the shake: the set dresser's boxes are
+    // measurements, and a measurement that wobbles with the room is useless.
+    // This also hands this frame's boxes to the mouse — see SETED.overlay.
+    SETED.overlay();
 }
 
 // Draw at screen-pixel resolution (1:1) — for high-detail 48x48 sprites
@@ -11699,8 +12397,8 @@ function gameLoop(timestamp) {
                 ctx.fillStyle = INK.paper;
                 ctx.fillText("PRESS ESC TO RESUME", W_p / 2, H_p / 2 + 6 * SCALE);
                 ctx.textAlign = "start";
-            } else if (CAMRIG.on) {
-                render();          // frozen: the camera moves, the game does not
+            } else if (CAMRIG.on || SETED.on) {
+                render();          // frozen: the room is dressed, not played
             } else {
                 update(dt);
                 render();
