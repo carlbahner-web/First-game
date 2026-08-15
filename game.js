@@ -1052,9 +1052,16 @@ function camYRaw(v, p) {
 }
 // The floor's near edge parks on the HUD band; the horizon lands wherever the
 // camera puts it, which is the point — it is no longer a number anyone chose.
+//
+// EXCEPT there is no HUD band any more where the readouts hang on the wall, and
+// the camera was still reserving one: a whole tile, 80 device pixels, a tenth of
+// the frame, held back for a thing that moved out. It read as a charcoal strip
+// under the room with nothing in it. Carl spotted it. Give it back and the floor
+// runs to the bottom edge, the plinth goes with it, and every part of the room
+// gets that tenth of the frame to spread into.
 function camFit() {
     const p = camParams();
-    const bottom = p.H - HUD_H * SCALE;
+    const bottom = p.H - (hudOnWall() ? 0 : HUD_H * SCALE);
     const yNear = camYRaw(1, p);
     return { p, bottom, yNear };
 }
@@ -2579,7 +2586,13 @@ for (const b of BIOMES) {
         const im = new Image();
         im.onload = () => {
             ROOM_ART[slug] = im;
-            if (currentBiome && currentBiome.art === slug) {
+            // The floor plate is not the only piece the baked room depends on.
+            // The bottom band's height is decided by whether the readouts are on
+            // the wall, which is decided by whether the WALL ART has arrived —
+            // so a wall panel landing after the floor did has to rebuild too, or
+            // the room keeps a full-height band for a HUD that moved out.
+            const cb = currentBiome;
+            if (cb && (cb.art === slug || cb.wallTile === slug || cb.wallStrip === slug)) {
                 rebuildCaveTextures(Math.max(0, texturesBuiltForLevel));
             }
             warmSideWalls();
