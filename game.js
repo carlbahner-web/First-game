@@ -1608,10 +1608,12 @@ function hudOnWall(biome) {
 // Placement is in WALL SPACE, like the props: fractions of the wall's width and
 // height, so it survives a change of tilt, of horizon, or of panel count.
 function drawWallScoreboard(wx, wy, ww, wh) {
-    // Nothing to report before the shift starts. A board reading SCORE 00000 on
-    // the attract screen is not wrong, but an empty one would look broken and a
-    // filled one is a claim about a run that has not happened.
-    if (!hudOnWall() || gameState === "title") return;
+    // Running from load, Carl's call — and he is right that my reason for
+    // holding it back was thin. The board is a fixture on the wall; a fixture
+    // that blinks into existence when you press a key is a UI element wearing a
+    // costume. It reads 00000 / 01 on the attract screen because that is what is
+    // true before you start.
+    if (!hudOnWall()) return;
     const sb = currentBiome.scoreboard;
     const g = MAIN_CTX;
 
@@ -9408,15 +9410,15 @@ const MQ = {
     // does not need the help — it is a printed card laid over the room, and the
     // only thing left holding it there is its own offset shadow.
     //
-    // 192x108 is exactly the art's 16:9 to four decimals, and exactly the size
-    // the card was drawn at inside the old frame — so losing the frame changed
-    // what is around the picture, not the picture. `top` moved 17 -> 25 for the
-    // same reason: 25 is where the card's own top edge already sat.
+    // 240x135 is the art's 16:9 to four decimals. It was 192x108 — the size the
+    // card was drawn at inside a frame that no longer exists — and Carl wanted
+    // it filling more of the screen, so it grew by a quarter and the margins
+    // came out roughly even: 12 units of room above it, 13 below.
     //
     // It covers BUZZ, and that is correct — the card is over the room, so he is
     // standing behind it.
-    w: 192, h: 108,
-    top: 25,
+    w: 240, h: 135,
+    top: 12,
     radius: 4,             // the card's rounded corners
 };
 
