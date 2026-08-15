@@ -1624,6 +1624,47 @@ function drawSideWalls() {
     for (const side of [-1, 1]) drawDoorLeaf(side);
 }
 
+// FURNITURE ON THE FLOOR, at the back of the room.
+//
+// Carl's placement rule, and it does two jobs at once: the feet go in the UPPER
+// HALF of row 0, so the object stands off the wall with real floor behind it
+// instead of being flush against the skirting — and BUZZ, who can only stand at
+// the BOTTOM of row 0, always walks in front of it on the same row.
+//
+// That second half is why there is no depth sort here. A prop's ground point is
+// always nearer the wall than any character's can be, so drawing the props
+// before the characters is correct in every case rather than by luck.
+//
+// They do not block. BUZZ and the Donks walk the row in front of them.
+//
+// A `row` means the object is part of the kit and answers to that sequencer row,
+// off the same rowTrigger the stage lights use — so it moves when its own drum
+// sounds, not when the playhead passes.
+function drawFloorProps() {
+    const list = (currentBiome && currentBiome.floorProps) || [];
+    for (const pr of list) {
+        const art = ROOM_ART["set/" + pr.art];
+        if (!art) continue;
+        const gx = (pr.x + 0.5) * TILE;          // ground point, in logical units
+        const gy = pr.y * TILE;
+        const lit = pr.row !== undefined && rowTrigger[pr.row] > 0
+            ? rowTrigger[pr.row] / 8 : 0;
+        billboard(gx, gy, () => {
+            contactShadow(gx, gy, (pr.h * 0.42) * (art.width / art.height) * 8, 2.0);
+            // The hit is a SQUASH about the feet, not a jump: a drum that leaves
+            // the floor reads as a bouncing toy, one that flexes reads as struck.
+            const sx = 1 + lit * 0.10, sy = 1 - lit * 0.07;
+            const h = pr.h * TILE * SCALE, w = h * (art.width / art.height);
+            const bx = gx * SCALE, by = gy * SCALE;
+            ctx.save();
+            ctx.translate(bx, by);
+            ctx.scale(sx, sy);
+            ctx.drawImage(art, -w / 2, -h, w, h);
+            ctx.restore();
+        });
+    }
+}
+
 // Lit pads, waiting to be stood up once the floor is down. Cleared each frame.
 let padRises = [];
 
@@ -2252,6 +2293,26 @@ const BIOMES = [
         wallTile: "wall-panel",  // the single panel — still the source of truth
         wallStrip: "wall-strip",  // eight of it, pre-composed: see drawBackWall
         stripPanels: 8,
+        // Furniture standing ON THE FLOOR at the back of the room. x is the tile
+        // column, y is the ground point in tile units — under 0.5 puts the feet
+        // in the upper half of row 0, which is the placement Carl wants: off the
+        // wall, with BUZZ walking in front of it on the same row. h is the
+        // object's height in tiles; width follows from the sprite.
+        //
+        // `row` ties an object to a sequencer row and it moves when that drum
+        // sounds. Three of the six have a kit piece: open hat -> ride, hat ->
+        // hi-hat, kick -> bass drum. The SNARE row deliberately has none, because
+        // BUZZ is a snare drum — the room's snare is the one you are driving.
+        floorProps: [
+            { art: "flight-case", x: 1.2,  y: 0.34, h: 1.15 },
+            { art: "ride-cymbal", x: 3.1,  y: 0.26, h: 2.05, row: 0 },
+            { art: "hi-hat",      x: 4.9,  y: 0.28, h: 1.85, row: 1 },
+            { art: "kick-drum",   x: 6.9,  y: 0.32, h: 1.55, row: 3 },
+            { art: "amp-mustard", x: 11.4, y: 0.30, h: 1.20 },
+            { art: "amp-teal",    x: 13.1, y: 0.30, h: 1.20 },
+            { art: "mic-stand",   x: 15.1, y: 0.24, h: 2.20 },
+            { art: "chair",       x: 17.2, y: 0.32, h: 1.60 },
+        ],
         // Props hang ON the wall, in WALL SPACE: x and y are the prop's centre
         // as a fraction of the wall's width and height, h is its height as a
         // fraction of the wall's. Nothing here is in pixels, so the whole
@@ -2760,6 +2821,7 @@ for (const b of BIOMES) {
     // and needs nothing but to exist.
     for (const slug of [b.art, b.wallArt, b.wallTile, b.wallStrip,
                         b.scoreboard && b.scoreboard.art,
+                        ...(b.floorProps || []).map(w => "set/" + w.art),
                         ...(b.wallProps || []).map(w => "props/" + w.art)]) {
         if (!slug || ROOM_ART[slug]) continue;
         const im = new Image();
@@ -6672,6 +6734,7 @@ function render() {
         blitPlane();
         ctx = MAIN_CTX;
         drawSideWalls();
+        drawFloorProps();
         drawPadRises();
     }
 
