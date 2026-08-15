@@ -1654,7 +1654,81 @@ function drawPadRises() {
 // than drawn into it. Cut out of the busy plate as transparent sprites, they can
 // be placed anywhere, reused on any biome's wall, and never stretch when the
 // wall's panel count changes — which a wall that IS one drawing cannot do.
+// THE ROOM PLAYS ALONG.
+//
+// One lamp per instrument row, standing on the skirting, throwing its row's own
+// colour up the wall on the frame that row's drum sounds.
+//
+// It runs off rowTrigger, which was already there and is the right signal: it is
+// set when the drum ACTUALLY SOUNDS, back-derived from the audio clock as the
+// scheduled step comes due, not from the frame clock or the playhead's position.
+// Samples are scheduled ahead, so anything driven off the visual playhead would
+// be early by up to the lookahead. This cannot drift from what you hear because
+// it is set by the same event that makes the sound.
+//
+// The GROOVE, not the pulse — Carl's call. A lamp per row means the wall is lit
+// by the pattern rather than by the metronome: syncopated where the pattern is,
+// silent where it is, and it gains a light as each instrument unlocks because
+// the count comes from getActiveRows().
+//
+// These are stage cans standing in for whatever the props become. The plumbing
+// is the point: get the timing honest first, then the drawing can be anything.
+function drawStageLights(wx, wy, ww, wh) {
+    const rows = getActiveRows();
+    if (!rows) return;
+    const g = MAIN_CTX;
+    // clear of the door on the left, the phone on the right
+    const xa = 0.205, xb = 0.935;
+    const baseY = wy + wh * 0.883;          // standing on the skirting
+    const canW = ww * 0.018, canH = wh * 0.042;
+    for (let r = 0; r < rows; r++) {
+        const f = rows === 1 ? 0.5 : r / (rows - 1);
+        const cx = wx + ww * (xa + (xb - xa) * f);
+        const col = (PAL.gridOn && PAL.gridOn[r]) || INK.mustard;
+        const lit = rowTrigger[r] > 0 ? rowTrigger[r] / 8 : 0;
+
+        if (lit > 0) {
+            // the beam, opening out as it climbs
+            const top = wy + wh * 0.20;
+            const spread = ww * 0.048 * (0.55 + lit * 0.7);
+            const grad = g.createLinearGradient(cx, baseY, cx, top);
+            grad.addColorStop(0, col);
+            grad.addColorStop(1, "rgba(0,0,0,0)");
+            g.save();
+            g.globalAlpha = lit * 0.45;
+            g.fillStyle = grad;
+            g.beginPath();
+            g.moveTo(cx - canW * 0.6, baseY);
+            g.lineTo(cx + canW * 0.6, baseY);
+            g.lineTo(cx + spread, top);
+            g.lineTo(cx - spread, top);
+            g.closePath();
+            g.fill();
+            g.restore();
+        }
+
+        // the can itself
+        g.save();
+        g.fillStyle = mixC(INK.charcoal, INK.paper, 0.14);
+        g.beginPath();
+        g.roundRect(cx - canW, baseY - canH, canW * 2, canH, canW * 0.4);
+        g.fill();
+        g.strokeStyle = INK.charcoal;
+        g.lineWidth = Math.max(1, canW * 0.14);
+        g.stroke();
+        // the lens, which is the part that lights
+        g.fillStyle = lit > 0 ? col : mixC(INK.charcoal, INK.paper, 0.34);
+        g.beginPath();
+        g.ellipse(cx, baseY - canH, canW * 0.74, canH * 0.24, 0, 0, Math.PI * 2);
+        g.fill();
+        g.restore();
+    }
+}
+
 function drawWallProps(wx, wy, ww, wh) {
+    // Lights first: they wash the WALL, so the props and the board stand in
+    // front of the light rather than being painted over by it.
+    drawStageLights(wx, wy, ww, wh);
     const list = (currentBiome && currentBiome.wallProps) || [];
     for (const pr of list) {
         const art = ROOM_ART["props/" + pr.art];
