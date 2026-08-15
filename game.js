@@ -1275,6 +1275,46 @@ function drawBackWall() {
 // because the drawn room cut its openings at rows 1.7 to 4.0, so those rows are
 // where the wall does not get drawn — move them and the spawn row moves.
 const DOOR_V0 = 1.7 / ROWS, DOOR_V1 = 4.0 / ROWS;
+// How much of the wall's height the opening takes.
+const DOOR_TOP = 0.86;
+// How long the door stands open before a Donk arrives, in frames.
+const DOOR_OPEN_LEAD = 50;
+
+// The opening's four screen corners for one side. The bake cuts the hole with
+// these and the runtime paints it open with the same ones, so a Donk walking
+// through can never be framed against a door that has moved.
+function doorwayQuad(side) {
+    const b = currentBiome;
+    const tile = b && b.wallTile ? ROOM_ART[b.wallTile] : null;
+    if (!tile) return null;
+    const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
+    const hw = W * projScale(0);
+    const ideal = tile.width * (projY(0) / tile.height);
+    const nBack = Math.max(1, Math.round(hw / ideal));
+    const wallH = (tile.height * ((hw / nBack) / tile.width)) / projScale(0);
+    const at = (v) => {
+        const sc = projScale(v);
+        return { x: W / 2 + side * (W / 2) * sc, y: projY(v), h: wallH * sc };
+    };
+    const D0 = at(DOOR_V0), D1 = at(DOOR_V1);
+    return [
+        { x: D0.x, y: D0.y },
+        { x: D1.x, y: D1.y },
+        { x: D1.x, y: D1.y - D1.h * DOOR_TOP },
+        { x: D0.x, y: D0.y - D0.h * DOOR_TOP },
+    ];
+}
+
+// Is a Donk coming through this doorway right now? The door opens ahead of the
+// arrival and stays open until whoever is coming through has cleared it.
+function caveIsOpen(ci) {
+    for (const g of goblins) {
+        if (g.spawnCave !== ci) continue;
+        if (g.entering > 0) return true;
+        if (g.dead && g.respawnTimer > 0 && g.respawnTimer <= DOOR_OPEN_LEAD) return true;
+    }
+    return false;
+}
 
 // The side walls, baked once and blitted.
 //
@@ -1517,25 +1557,26 @@ function drawSideWalls() {
     if (!warmSideWalls(true)) return;
     for (const p of SIDE_WALLS.parts) ctx.drawImage(p.canvas, p.x, p.y);
 
-    // The spawn tell is the one live part, so it stays out of the bake.
-    const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
-    const hw = W * projScale(0);
-    const tile = ROOM_ART[b.wallTile];
-    const ideal = tile.width * (projY(0) / tile.height);
-    const nBack = Math.max(1, Math.round(hw / ideal));
-    const wallH = (tile.height * ((hw / nBack) / tile.width)) / projScale(0);
+    // THE DOOR OPENS. That is the whole tell now.
+    //
+    // It used to be a pair of glowing eyes in the dark, which was right when
+    // these were goblins in a cave mouth and is nonsense in a staff corridor
+    // with a door in it — Carl's point. So the door simply reads as open: the
+    // painted door drops out and the opening behind it is charcoal, the way an
+    // open doorway looks from a lit room. It opens ahead of the arrival, and
+    // the Donk walks through it.
     for (const side of [-1, 1]) {
-        const vm = (DOOR_V0 + DOOR_V1) / 2, sc = projScale(vm);
-        const x = W / 2 + side * (W / 2) * sc, y = projY(vm), h = wallH * sc;
-        const cave = CAVES[side < 0 ? 0 : 1];
-        for (const g of goblins) {
-            if (!g.dead || g.respawnTimer >= 60 || CAVES[g.spawnCave] !== cave) continue;
-            const er = 2 * SCALE * sc;
-            ctx.fillStyle = g.elite ? INK.mint : "#50ad33";
-            ctx.beginPath(); ctx.arc(x - er * 1.2, y - h * 0.5, er, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(x + er * 1.2, y - h * 0.5, er, 0, Math.PI * 2); ctx.fill();
-            break;
-        }
+        if (!caveIsOpen(side < 0 ? 0 : 1)) continue;
+        const q = doorwayQuad(side);
+        if (!q) continue;
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(q[0].x, q[0].y);
+        for (let i = 1; i < q.length; i++) ctx.lineTo(q[i].x, q[i].y);
+        ctx.closePath();
+        ctx.fillStyle = mixC(INK.charcoal, INK.paper, 0.04);
+        ctx.fill();
+        ctx.restore();
     }
 }
 
@@ -3085,6 +3126,7 @@ function createGoblin(caveIndex) {
         speed: 0.5,
         dead: true,
         respawnTimer: 300,
+        entering: 0,      // frames spent walking in through the doorway
         respawnDelay: 600,
         spawnCave: caveIndex,
         targetRow: -1, targetCol: -1,
@@ -4510,6 +4552,22 @@ function update(dt) {
         // frame zero and looks stuck in place.
         if (!levelComplete) {
         gob.respawnTimer--;
+        // Choose the door before the door has to open, not at the moment of
+        // arrival. It used to be picked on spawn, which meant the tell showed at
+        // the door of the Donk's PREVIOUS life — right often enough to look
+        // deliberate and wrong often enough to be a lie.
+        if (gob.respawnTimer === DOOR_OPEN_LEAD) {
+            const free = CAVES.map((_, ci) => ci).filter(ci => {
+                for (const og of goblins) {
+                    if (og !== gob && (!og.dead || og.respawnTimer <= DOOR_OPEN_LEAD)
+                        && og.spawnCave === ci) return false;
+                }
+                return true;
+            });
+            gob.spawnCave = free.length
+                ? free[Math.floor(Math.random() * free.length)]
+                : Math.floor(Math.random() * CAVES.length);
+        }
         if (gob.respawnTimer <= 0) {
             // Every 6th goblin is a catapult goblin instead of normal/elite (from L15+)
             if (killCount % 6 === 5 && !catapultGoblin && !catapultSpawnedThisCycle && currentLevel >= 14) {
@@ -4536,23 +4594,32 @@ function update(dt) {
             gob.fleeing = false;
             gob.huntX = undefined;
             gob.huntY = undefined;
-            // Spawn from any cave — pick one not occupied by another alive goblin
-            const availableCaves = CAVES.map((_, ci) => ci).filter(ci => {
-                for (const og of goblins) {
-                    if (og !== gob && !og.dead && og.spawnCave === ci) return false;
-                }
-                return true;
-            });
-            gob.spawnCave = availableCaves.length > 0
-                ? availableCaves[Math.floor(Math.random() * availableCaves.length)]
-                : Math.floor(Math.random() * CAVES.length);
-            const cave = CAVES[gob.spawnCave];
-            const spawnX = cave.tileX === 0 ? TILE : cave.tileX === COLS - 1 ? (COLS - 2) * TILE : cave.tileX * TILE;
+            // HE COMES IN THROUGH THE DOOR.
+            //
+            // He used to appear, fully formed, one tile inside the room. The
+            // doorway was decoration and the arrival happened next to it. He now
+            // starts OUTSIDE the room, beyond the wall line, and walks through
+            // the opening to the first tile anything can stand on — so the door
+            // is the thing he arrives by rather than the thing he arrives near.
+            //
+            // The cave was chosen back at DOOR_OPEN_LEAD, when the door opened.
+            const cave = CAVES[gob.spawnCave === undefined ? 0 : gob.spawnCave];
+            const fromLeft = cave.tileX === 0;
+            const inX = fromLeft ? TILE : (COLS - 2) * TILE;
+            // Far enough out to be standing IN the opening, not up the corridor
+            // behind it. A full tile out projects to 36 pixels clear of the
+            // doorway's near edge, so the clip that keeps him behind the wall
+            // also kept him invisible — the door opened onto nothing and he
+            // appeared halfway through his own entrance. Half a tile puts his
+            // centre on the wall line, framed in the doorway from frame one.
+            const outX = fromLeft ? -TILE / 2 : (COLS - 0.5) * TILE;
             const spawnY = Math.max(WALK_TOP, Math.min(WALK_BOTTOM, cave.tileY * TILE));
-            gob.x = spawnX;
+            gob.x = outX;
             gob.y = spawnY;
-            gob.destX = spawnX;
+            gob.destX = inX;
             gob.destY = spawnY;
+            gob.dir = fromLeft ? 3 : 2;
+            gob.entering = 1;
             gob.targetRow = -1;
             gob.moveSteps = 0;
 
@@ -4598,6 +4665,16 @@ function update(dt) {
         }
         } // end else (non-catapult spawn)
         } // end if (!levelComplete)
+    } else if (gob.entering > 0) {
+        // Walking in. The AI is held off until he is through — otherwise it
+        // would clamp him back inside the room on his first frame, which is
+        // exactly where he is trying to walk from.
+        const step = Math.max(0.7, gob.speed * 1.4);
+        const d = gob.destX - gob.x;
+        if (Math.abs(d) <= step) { gob.x = gob.destX; gob.entering = 0; }
+        else gob.x += Math.sign(d) * step;
+        gob.frameTimer++;
+        if (gob.frameTimer >= 8) { gob.frameTimer = 0; gob.frame = (gob.frame + 1) % 4; }
     } else if (gob.danceTimer > 0) {
         // GROOVED! Involuntary dance break — can't move, sabotage, or punch
         gob.danceTimer--;
@@ -5402,6 +5479,8 @@ function advanceLevel() {
         g.danceTimer = 0;
         g.windupTimer = 0;
         g.gloatTimer = 0;
+        g.entering = 0;
+        g.spawnCave = undefined;   // the next door is chosen when it opens
         const staggerGap = Math.round(600 - (currentLevel / 29) * 360); // 10s apart early → 4s apart late
         g.respawnTimer = 180 + i * staggerGap;
     }
@@ -6465,7 +6544,22 @@ function render() {
     // Goblins (all active ones)
     for (const g of goblins) {
         if (!g.dead) {
+            // While he is still OUTSIDE the room he is only visible through the
+            // opening — clipped to the doorway, the way you would see someone in
+            // a corridor through an open door. Without it he walks across the
+            // face of the wall he is supposed to be coming through.
+            const outside = g.x < 0 || g.x > (COLS - 1) * TILE;
+            const q = outside ? doorwayQuad(g.x < 0 ? -1 : 1) : null;
+            if (q) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(q[0].x, q[0].y);
+                for (let i = 1; i < q.length; i++) ctx.lineTo(q[i].x, q[i].y);
+                ctx.closePath();
+                ctx.clip();
+            }
             billboard(g.x + g.w / 2, g.y + g.h, () => drawGoblinFor(g));
+            if (q) ctx.restore();
         } else if (g.deathAnimActive) {
             // Poof animation: shrink, spin, and dissolve.
             //
