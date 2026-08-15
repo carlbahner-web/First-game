@@ -1640,30 +1640,49 @@ function drawSideWalls() {
 // A `row` means the object is part of the kit and answers to that sequencer row,
 // off the same rowTrigger the stage lights use — so it moves when its own drum
 // sounds, not when the playhead passes.
+// IS THIS PROP STILL IN THE DONKS' VAN?
+//
+// One answer for the whole room, so a poster on the wall and an amp on the
+// floor are missing in the same way and come back on the same terms. Two
+// tracks feed it, because the room lost two different kinds of thing:
+//
+//   `piece` — an index into STOLEN_GEAR, won back at the milestone levels.
+//             This is the kit: the stuff that plays.
+//   `decor` — an index into STOLEN_DECOR, and this is the room's character
+//             rather than its equipment. Posters, the clock, whatever art
+//             Carl hangs next.
+//
+// The attract screen answers no to everything. That is the whole point of it:
+// it is the "before" picture, the one thing that makes a stripped room read as
+// a loss rather than as an unfinished level. Carl's call, and the right one —
+// you cannot miss what you were never shown.
+function propMissing(pr) {
+    if (gameState === "title") return false;
+    if (pr.piece !== undefined) return gearRecovered.length <= pr.piece;
+    if (pr.decor !== undefined) return decorRecovered.length <= pr.decor;
+    return false;                       // fixtures. Nobody steals a light switch.
+}
+
+// MISSING THINGS LEAVE THEIR SHAPE BEHIND.
+//
+// Carl's, adapted from a decorating game that ghosts an item where it would go
+// so you can see the room it is going to become. Nothing here is bought, so
+// there is no button and no price — the ghost is doing a different job. It says
+// the room is INCOMPLETE rather than empty, which is a much better thing for a
+// level-one room to say, and it puts the thing you are playing for on screen
+// while you play for it.
+//
+// Faded rather than outlined, so you can still tell the mustard amp from the
+// teal one, and so a poster still reads as ITS poster. A silhouette would tell
+// you a rectangle is missing; this tells you WHICH rectangle.
+const GHOST_ALPHA = 0.16;
+
 function drawFloorProps() {
     const list = (currentBiome && currentBiome.floorProps) || [];
-    // The attract screen shows the room INTACT. That is the whole point of it:
-    // it is the "before" picture, the one thing that makes a stripped room read
-    // as a loss rather than as an unfinished level. Carl's call, and the right
-    // one — you cannot miss what you were never shown.
-    const showEverything = gameState === "title";
     for (const pr of list) {
         const art = ROOM_ART["set/" + pr.art];
         if (!art) continue;
-        // MISSING GEAR LEAVES ITS SHAPE BEHIND.
-        //
-        // Carl's, adapted from a decorating game that ghosts an item where it
-        // would go so you can see the room it is going to become. Nothing here
-        // is bought, so there is no button and no price — the ghost is doing a
-        // different job. It says the room is INCOMPLETE rather than empty,
-        // which is a much better thing for a level-one room to say, and it puts
-        // the thing you are playing for on screen while you play for it.
-        //
-        // Faded rather than outlined, so you can still tell the mustard amp
-        // from the teal one. A silhouette would tell you a box is missing; this
-        // tells you WHICH box.
-        const missing = pr.piece !== undefined && !showEverything
-            && gearRecovered.length <= pr.piece;
+        const missing = propMissing(pr);
         const gx = (pr.x + 0.5) * TILE;          // ground point, in logical units
         const gy = pr.y * TILE;
         const lit = !missing && pr.row !== undefined && rowTrigger[pr.row] > 0
@@ -1681,7 +1700,7 @@ function drawFloorProps() {
             ctx.save();
             ctx.translate(bx, by);
             ctx.scale(sx, sy);
-            if (missing) ctx.globalAlpha = 0.16;
+            if (missing) ctx.globalAlpha = GHOST_ALPHA;
             ctx.drawImage(art, -w / 2, -h, w, h);
             ctx.restore();
         });
@@ -1804,7 +1823,17 @@ function drawWallProps(wx, wy, ww, wh) {
         // art is redrawn a few pixels taller — a hovering door reads as a lip
         // you would have to step over.
         const cy = pr.foot ? wh - h / 2 : wh * pr.y;
+        // A stolen poster ghosts exactly like a stolen amp — same fade, same
+        // reasoning. The wall is where the room's character lives, so a gap up
+        // here reads as vandalism in a way a gap on the floor does not, and the
+        // ghost is what turns that gap into a promise.
+        const missing = propMissing(pr);
+        if (missing) {
+            MAIN_CTX.save();
+            MAIN_CTX.globalAlpha = GHOST_ALPHA;
+        }
         MAIN_CTX.drawImage(art, wx + ww * pr.x - w / 2, wy + cy - h / 2, w, h);
+        if (missing) MAIN_CTX.restore();
     }
     drawWallScoreboard(wx, wy, ww, wh);
 }
@@ -2354,8 +2383,13 @@ const BIOMES = [
             // when I cut the props out — not his composition, so widening the
             // gap between them is a layout change rather than an edit to his
             // drawing. 0.328 -> 0.275 and 0.683 -> 0.735.
-            { art: "poster",    x: 0.275, y: 0.311, h: 0.311 },
-            { art: "clock",     x: 0.735, y: 0.203, h: 0.185 },
+            // `decor` is an index into STOLEN_DECOR — the thing was taken and
+            // ghosts on the wall until it comes home. Only what a thief would
+            // actually carry out: the poster and the clock come off in seconds,
+            // where the switch, the clipboard and the wall phone are screwed to
+            // the building and would be a strange night's work.
+            { art: "poster",    x: 0.275, y: 0.311, h: 0.311, decor: 0 },
+            { art: "clock",     x: 0.735, y: 0.203, h: 0.185, decor: 1 },
             { art: "clipboard", x: 0.825, y: 0.381, h: 0.234 },
             { art: "phone",     x: 0.930, y: 0.395, h: 0.284 },
         ],
@@ -3712,6 +3746,25 @@ const STOLEN_GEAR = [
     "ride cymbal",
 ];
 let gearRecovered = []; // pieces earned so far
+
+// WHAT THEY TOOK OFF THE WALLS.
+//
+// A second track, deliberately separate from the kit. The gear is what the room
+// PLAYS with and it is won at the milestone levels, one every five; decor is
+// what the room IS, and hanging it on the same schedule would mean nothing ever
+// arrives in between. So this fires at the levels halfway between the gear
+// awards, and the room gains something roughly every two or three levels
+// instead of standing still for five at a stretch.
+//
+// It is also the cheaper track to extend: a new poster is a drawing and a line
+// in wallProps, where a new piece of gear wants a sprite, a sequencer row and a
+// reason to exist. Carl has artwork coming — this is the peg to hang it on.
+const STOLEN_DECOR = [
+    "tour poster",
+    "wall clock",
+];
+let decorRecovered = [];
+const DECOR_LEVELS = [2, 7, 12, 17, 22, 27]; // after levels 3, 8, 13, 18, 23, 28
 let pieceRecoveredThisLevel = null; // piece name to announce on the level-complete screen
 
 // Minigame state
@@ -5487,6 +5540,7 @@ function resetGame() {
     // Reset minigame state
     caveClockPickups = [];
     gearRecovered = [];
+    decorRecovered = [];
     minigamesCompleted = [];
     pieceRecoveredThisLevel = null;
 
@@ -5625,6 +5679,13 @@ function triggerLevelComplete() {
             pieceRecoveredThisLevel = STOLEN_GEAR[gearRecovered.length];
             gearRecovered.push(pieceRecoveredThisLevel);
         }
+    }
+    // Decor comes back QUIETLY — no announcement, no card. A poster you find
+    // back on the wall the next time you look up is a nicer beat than a poster
+    // a screen tells you about, and it keeps the level-complete card meaning
+    // one thing: you got a piece of the kit back.
+    if (DECOR_LEVELS.includes(currentLevel) && decorRecovered.length < STOLEN_DECOR.length) {
+        decorRecovered.push(STOLEN_DECOR[decorRecovered.length]);
     }
     // Screen flash for celebration
     screenFlash = 20;
