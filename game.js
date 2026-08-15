@@ -2501,6 +2501,11 @@ SETED.onDown = function (e) {
     SETED.sync();
     if (!hit) return;
     e.preventDefault();
+    // Pointer capture, so a drag that leaves the canvas — off the top of a
+    // phone, or over the panel — keeps going instead of being dropped.
+    if (e.pointerId !== undefined && canvas.setPointerCapture) {
+        try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+    }
     SETED.snapshot();
     const at = SETED.screenOf(hit);
     SETED.drag = { ent: hit, ox: at.x - p.x, oy: at.y - p.y, moved: false };
@@ -2508,6 +2513,7 @@ SETED.onDown = function (e) {
 
 SETED.onMove = function (e) {
     if (!SETED.on || !SETED.drag) return;
+    e.preventDefault();          // or the phone scrolls the page under the drag
     const p = SETED.pt(e), d = SETED.drag;
     const tx = p.x + d.ox, ty = p.y + d.oy;
     const pr = d.ent.pr;
@@ -2532,6 +2538,30 @@ SETED.onUp = function () {
     SETED.drag = null;
 };
 
+// One nudge, shared by the arrow keys and by the on-screen pad — a phone has no
+// arrow keys, and fine placement by fingertip is exactly where a nudge button
+// beats a drag.
+//
+// axis 0/1/2 is across / up-down / size, in whichever of the three coordinate
+// systems the selection lives in.
+SETED.bump = function (axis, mul, coarse) {
+    const s = SETED.sel;
+    if (!s) return;
+    const f = SETED.FIELDS[s.kind][axis];
+    SETED.snapshot();
+    const d = (coarse ? f.big : f.nudge) * mul;
+    s.pr[f.k] = Math.max(f.min, Math.min(f.max, (s.pr[f.k] || 0) + d));
+    SETED.sync();
+};
+
+SETED.flipSel = function () {
+    const s = SETED.sel;
+    if (!s || s.kind === "board") return;
+    SETED.snapshot();
+    s.pr.flip = !s.pr.flip;
+    SETED.sync();
+};
+
 // Arrows, [ ], F and ctrl-Z, taken before the game sees them so BUZZ does not
 // walk off while a prop is being nudged.
 SETED.key = function (e) {
@@ -2541,23 +2571,16 @@ SETED.key = function (e) {
     if (e.code === "Escape") { SETED.disable(); return true; }
     if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ") { SETED.revert(); return true; }
     if (!s) return false;
-    const F = SETED.FIELDS[s.kind];
-    const step = (f, mul) => {
-        SETED.snapshot();
-        s.pr[f.k] = Math.max(f.min, Math.min(f.max, (s.pr[f.k] || 0) + f.nudge * mul * (e.shiftKey ? f.big / f.nudge : 1)));
-        SETED.sync();
-    };
+    const c = e.shiftKey;
     // Up is up in both spaces: a smaller floor depth is further back, a smaller
     // wall fraction is higher on the wall, and both read as "away from you".
-    if (e.code === "ArrowLeft") { step(F[0], -1); return true; }
-    if (e.code === "ArrowRight") { step(F[0], 1); return true; }
-    if (e.code === "ArrowUp") { step(F[1], -1); return true; }
-    if (e.code === "ArrowDown") { step(F[1], 1); return true; }
-    if (e.code === "BracketLeft") { step(F[2], -1); return true; }
-    if (e.code === "BracketRight") { step(F[2], 1); return true; }
-    if (e.code === "KeyF" && s.kind !== "board") {
-        SETED.snapshot(); s.pr.flip = !s.pr.flip; SETED.sync(); return true;
-    }
+    if (e.code === "ArrowLeft") { SETED.bump(0, -1, c); return true; }
+    if (e.code === "ArrowRight") { SETED.bump(0, 1, c); return true; }
+    if (e.code === "ArrowUp") { SETED.bump(1, -1, c); return true; }
+    if (e.code === "ArrowDown") { SETED.bump(1, 1, c); return true; }
+    if (e.code === "BracketLeft") { SETED.bump(2, -1, c); return true; }
+    if (e.code === "BracketRight") { SETED.bump(2, 1, c); return true; }
+    if (e.code === "KeyF" && s.kind !== "board") { SETED.flipSel(); return true; }
     if (e.code === "Delete" || e.code === "Backspace") { SETED.remove(); return true; }
     return false;
 };
@@ -2578,9 +2601,14 @@ SETED.enable = function () {
     player.destX = player.x; player.destY = player.y;
     gameState = "playing";
     document.body.classList.add("setdressing");
-    canvas.addEventListener("mousedown", SETED.onDown);
-    window.addEventListener("mousemove", SETED.onMove);
-    window.addEventListener("mouseup", SETED.onUp);
+    // Pointer events, not mouse events: one set of handlers that a mouse, a
+    // finger and a stylus all speak. Mouse handlers looked fine on a phone
+    // because a TAP is synthesised into a click — but a drag never is, so
+    // selection worked and placement silently did not.
+    canvas.addEventListener("pointerdown", SETED.onDown);
+    window.addEventListener("pointermove", SETED.onMove, { passive: false });
+    window.addEventListener("pointerup", SETED.onUp);
+    window.addEventListener("pointercancel", SETED.onUp);
     SETED.buildUI();
 };
 
@@ -2590,14 +2618,29 @@ SETED.disable = function () {
     SETED.sel = null;
     SETED.drag = null;
     document.body.classList.remove("setdressing");
-    canvas.removeEventListener("mousedown", SETED.onDown);
-    window.removeEventListener("mousemove", SETED.onMove);
-    window.removeEventListener("mouseup", SETED.onUp);
+    canvas.removeEventListener("pointerdown", SETED.onDown);
+    window.removeEventListener("pointermove", SETED.onMove);
+    window.removeEventListener("pointerup", SETED.onUp);
+    window.removeEventListener("pointercancel", SETED.onUp);
     const el = document.getElementById("setdress");
     if (el) el.remove();
 };
 
 SETED.toggle = function () { SETED.on ? SETED.disable() : SETED.enable(); };
+
+// How much screen the sheet is actually eating, handed to CSS so the room can
+// have the rest. Measured rather than assumed: the sheet's height depends on
+// what is selected, whether it is collapsed, and how tall the phone is, and a
+// guess is wrong on two of those three.
+SETED.fit = function () {
+    const el = document.getElementById("setdress");
+    if (!el) return;
+    // Two frames: one for the class change to land, one to measure the result.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        const h = el.getBoundingClientRect().height;
+        document.body.style.setProperty("--sheet", Math.round(h) + "px");
+    }));
+};
 
 // ---- The panel ------------------------------------------------------------
 SETED.buildUI = function () {
@@ -2613,14 +2656,81 @@ SETED.buildUI = function () {
            downstream has to know this happened. */
         body.setdressing { justify-content:flex-start; padding-left:10px; }
         body.setdressing canvas {
-              width: min(calc(100vw - 330px), calc((100vh - 18px) * 2.0)) !important; }
+              width: min(calc(100vw - 330px), calc((100vh - 18px) * 2.0)) !important;
+              touch-action:none; }
+        /* The game's own thumb controls sit over the room. While dressing they
+           would be four buttons between the finger and the props. */
+        body.setdressing .tc-btn { display:none !important; }
+        /* Same for the portrait nag. Dressing in portrait is cramped but it
+           works, and a banner across the back wall is covering the exact strip
+           of room the props stand in. */
+        body.setdressing #tc-rotate { display:none !important; }
         #setdress { position:fixed; top:0; right:0; bottom:0; width:300px; z-index:60;
               background:#2C2C2A; color:#fcf7e8; overflow-y:auto; padding:12px 14px 30px;
               font-family:ui-monospace,Menlo,monospace; font-size:12px;
-              box-shadow:-6px 0 22px rgba(0,0,0,.45); }
+              box-shadow:-6px 0 22px rgba(0,0,0,.45);
+              -webkit-tap-highlight-color:transparent; }
         #setdress h4 { margin:14px 0 6px; font-size:11px; letter-spacing:.09em;
               text-transform:uppercase; opacity:.5; font-weight:600; }
         #setdress h4:first-child { margin-top:0; }
+        /* --- The nudge pad. Its whole reason for existing is the phone, where
+           there are no arrow keys and a fingertip is wider than a mug. --- */
+        #setdress .pad { display:grid; grid-template-columns:repeat(4,1fr); gap:5px;
+              margin:7px 0 2px; }
+        #setdress .pad button { padding:9px 0; font-size:15px; line-height:1; }
+        #setdress .pad .lbl { grid-column:1/-1; opacity:.45; font-size:10.5px;
+              margin-top:2px; }
+        /* The sheet header is desktop-hidden BEFORE the media query turns it on,
+           because both selectors have the same specificity and the later one
+           would otherwise win regardless of the query. */
+        #setdress .head { display:none; position:sticky; top:0; z-index:2;
+              align-items:center; gap:8px; background:#2C2C2A; padding:9px 0 7px;
+              border-bottom:1px solid #45453f; margin-bottom:6px; }
+        #setdress .head b { flex:1; font-size:11px; letter-spacing:.09em; opacity:.65; }
+        #setdress .head button { padding:6px 11px; }
+        /* --- Phone: a bottom sheet, not a sidebar. 300px of a 390px screen left
+           the room 60 CSS pixels wide, which is not a room, it is a stamp. --- */
+        @media (max-width: 820px) {
+          /* The sheet's MEASURED height becomes the body's bottom padding, so
+             the room centres in exactly what is left — no dead black band, and
+             no hardcoded 52vh that is wrong on the next phone. --sheet is
+             written by SETED.fit() after every layout change. */
+          body.setdressing { align-items:center; justify-content:center;
+                padding:0 0 var(--sheet, 52vh); }
+          body.setdressing canvas {
+                width: min(calc(100vw - 8px),
+                           calc((100vh - var(--sheet, 52vh) - 10px) * 2.0)) !important; }
+          #setdress { top:auto; left:0; right:0; width:auto; height:auto;
+                max-height:56vh; padding:0 12px 18px;
+                box-shadow:0 -6px 22px rgba(0,0,0,.5); }
+          /* Collapsed: the header, the numbers and the pad. Everything that is
+             typing rather than looking folds away, and the room takes the room
+             back — which is the whole point, because on a phone you cannot see
+             what you moved and the thing that moved it at the same time. */
+          /* Never taller than half the screen, even collapsed. A landscape
+             phone is ~340px tall and the collapsed sheet wanted ~290 of them —
+             it covered the room completely, which is the one thing this panel
+             must never do. Scrolling is the safety net; the two-column layout
+             below is what stops it being needed. */
+          #setdress.mini { max-height:48vh; overflow-y:auto; }
+          #setdress.mini .foldable { display:none; }
+          body.setdressing.mini-sheet canvas {
+                width: min(calc(100vw - 8px), calc((70vh - 10px) * 2.0)) !important; }
+          #setdress .head { display:flex; }
+          #setdress .grid { grid-template-columns:1fr 1fr; }
+          #setdress button { padding:9px 8px; }
+          #setdress select { padding:8px 6px; }
+          #setdress input[type=range] { height:26px; }
+        }
+        /* A landscape phone is wide and SHORT. Stacking the readouts above the
+           pad spends the one axis there is none of; side by side spends the one
+           there is plenty of. */
+        @media (max-width: 820px) and (max-height: 560px) {
+          #setdress .cols { display:flex; gap:16px; align-items:flex-start; }
+          #setdress .cols > * { flex:1; min-width:0; margin-top:0; }
+          #setdress .head { padding:7px 0 5px; }
+          #setdress .pad .lbl { display:none; }
+        }
         #setdress .row { display:flex; align-items:center; gap:7px; margin:5px 0; }
         #setdress .row > label { min-width:56px; opacity:.72; }
         #setdress input[type=range] { flex:1; min-width:0; accent-color:#F6CC60; }
@@ -2655,12 +2765,64 @@ SETED.buildUI = function () {
         return b;
     };
 
-    // --- selection body, rebuilt whenever what is selected changes
+    // --- header. Only visible on a phone, where the panel is a sheet that has
+    // to be got out of the way to see what you just moved.
+    const head = el("div", { className: "head" });
+    const foldBtn = btn("collapse", () => {
+        const mini = wrap.classList.toggle("mini");
+        document.body.classList.toggle("mini-sheet", mini);
+        foldBtn.textContent = mini ? "expand" : "collapse";
+        SETED.fit();
+    });
+    head.append(el("b", { textContent: "SET DRESSER" }), foldBtn,
+                btn("done", () => SETED.disable()));
+    wrap.appendChild(head);
+
+    // --- selection body, rebuilt whenever what is selected changes. It shares a
+    // row with the nudge pad on short screens — see .cols.
     const body = el("div");
-    wrap.append(h("selected"), body);
+    const cols = el("div", { className: "cols" });
+    const selCol = el("div");
+    selCol.append(h("selected"), body);
+    cols.appendChild(selCol);
+    wrap.appendChild(cols);
+
+    // --- the nudge pad, outside the foldable part so it survives collapsing:
+    // select, collapse, then place by tapping while you watch the room.
+    const pad = el("div", { className: "pad" });
+    const padBtn = (t, fn) => {
+        const b = el("button", { textContent: t });
+        // pointerdown, not click: on a phone click waits out the double-tap
+        // delay, and a nudge that lands a third of a second late feels broken.
+        b.addEventListener("pointerdown", (e) => { e.preventDefault(); fn(e); });
+        return b;
+    };
+    const coarse = { on: false };
+    pad.append(
+        padBtn("◀", () => SETED.bump(0, -1, coarse.on)),
+        padBtn("▶", () => SETED.bump(0, 1, coarse.on)),
+        padBtn("▲", () => SETED.bump(1, -1, coarse.on)),
+        padBtn("▼", () => SETED.bump(1, 1, coarse.on)),
+        padBtn("−", () => SETED.bump(2, -1, coarse.on)),
+        padBtn("+", () => SETED.bump(2, 1, coarse.on)),
+        padBtn("flip", () => SETED.flipSel()),
+        padBtn("undo", () => SETED.revert()));
+    const stepBtn = padBtn("fine steps", () => {
+        coarse.on = !coarse.on;
+        stepBtn.textContent = coarse.on ? "coarse steps" : "fine steps";
+    });
+    stepBtn.className = "";
+    stepBtn.style.gridColumn = "1/-1";
+    pad.appendChild(stepBtn);
+    pad.appendChild(el("div", { className: "lbl",
+        textContent: "move · size · flip" }));
+    cols.appendChild(pad);
+
+    // Everything below here folds away on a phone.
+    const fold = el("div", { className: "foldable" });
 
     // --- library
-    wrap.appendChild(h("add a prop"));
+    fold.appendChild(h("add a prop"));
     const libRow = el("div", { className: "row" });
     const libSel = el("select");
     for (const [kind, dir] of [["floor", "set"], ["wall", "props"]])
@@ -2673,44 +2835,50 @@ SETED.buildUI = function () {
         const [kind, name] = libSel.value.split("|");
         SETED.add(kind, name);
     }));
-    wrap.appendChild(libRow);
+    fold.appendChild(libRow);
 
     // --- view
-    wrap.appendChild(h("view"));
+    fold.appendChild(h("view"));
     const ghostRow = el("div", { className: "chk" });
     const ghostBox = el("input", { type: "checkbox", id: "sd-ghost", checked: !SETED.showAll });
     ghostBox.addEventListener("change", () => { SETED.showAll = !ghostBox.checked; });
     ghostRow.append(ghostBox, el("label", { htmlFor: "sd-ghost",
         textContent: "show stolen gear as ghosts" }));
-    wrap.appendChild(ghostRow);
+    fold.appendChild(ghostRow);
 
     // --- export
-    wrap.appendChild(h("source"));
+    fold.appendChild(h("source"));
     const ta = el("textarea", { spellcheck: false, readOnly: true });
-    wrap.appendChild(ta);
+    fold.appendChild(ta);
     const exGrid = el("div", { className: "grid" });
     exGrid.append(
         btn("copy", () => {
+            // readOnly rather than disabled, and selected first, so the iOS
+            // fallback path has something to copy when the async clipboard API
+            // is refused outside a trusted gesture.
             ta.select();
+            ta.setSelectionRange(0, ta.value.length);
             if (navigator.clipboard) navigator.clipboard.writeText(ta.value).catch(() => {});
             else { try { document.execCommand("copy"); } catch (e) {} }
         }),
         btn("undo", () => SETED.revert()));
-    wrap.appendChild(exGrid);
+    fold.appendChild(exGrid);
 
-    wrap.appendChild(h("this browser"));
+    fold.appendChild(h("this browser"));
     const saveGrid = el("div", { className: "grid" });
     saveGrid.append(btn("save layout", () => SETED.save()),
                     btn("clear saved", () => SETED.clearSaved()));
-    wrap.appendChild(saveGrid);
+    fold.appendChild(saveGrid);
     const savedNote = el("div", { className: "hint" });
-    wrap.appendChild(savedNote);
+    fold.appendChild(savedNote);
 
-    wrap.appendChild(el("div", { className: "hint",
-        textContent: "drag to place · arrows nudge (shift = coarse) · [ ] scale · "
+    fold.appendChild(el("div", { className: "hint",
+        textContent: "drag to place · arrows or the pad nudge · [ ] scale · "
                    + "F flip · del removes · ctrl-Z undo · esc closes. "
                    + "Saving keeps the layout in THIS browser only — paste the "
-                   + "source into game.js to make it real." }));
+                   + "source into game.js to make it real. On a phone, open with "
+                   + "#set on the end of the URL." }));
+    wrap.appendChild(fold);
 
     // Rebuilt on selection change; the sliders themselves only get their values
     // written on a drag, so dragging on canvas and dragging a slider agree.
@@ -2764,6 +2932,10 @@ SETED.buildUI = function () {
                         textContent: "stands on the floor" }));
                     body.appendChild(fr);
                 }
+                // From here down it is wiring rather than placement, so it folds
+                // away with the rest when the sheet is collapsed on a phone.
+                const extra = el("div", { className: "foldable" });
+                body.appendChild(extra);
                 if (s.kind === "floor") {
                     const row = el("div", { className: "row" });
                     const sel = el("select");
@@ -2778,7 +2950,7 @@ SETED.buildUI = function () {
                         ta.value = SETED.exportText();
                     });
                     row.append(el("label", { textContent: "beat" }), sel);
-                    body.appendChild(row);
+                    extra.appendChild(row);
                 }
                 if (s.kind !== "board") {
                     const row = el("div", { className: "row" });
@@ -2798,7 +2970,7 @@ SETED.buildUI = function () {
                         ta.value = SETED.exportText();
                     });
                     row.append(el("label", { textContent: "stolen" }), sel);
-                    body.appendChild(row);
+                    extra.appendChild(row);
                 }
                 if (s.kind !== "board") {
                     const g2 = el("div", { className: "grid" });
@@ -2806,7 +2978,7 @@ SETED.buildUI = function () {
                               btn("front", () => SETED.reorder(1)),
                               btn("duplicate", () => SETED.duplicate()),
                               btn("delete", () => SETED.remove()));
-                    body.appendChild(g2);
+                    extra.appendChild(g2);
                 }
             }
         } else {
@@ -2819,7 +2991,12 @@ SETED.buildUI = function () {
         savedNote.textContent = SETED.hasSaved()
             ? "a saved layout is applied on load in this browser."
             : "nothing saved in this browser.";
+        // Selecting a wall prop drops two rows the floor prop had, which changes
+        // the sheet's height, which changes how much room there is above it.
+        if (!valuesOnly) SETED.fit();
     };
+    window.addEventListener("resize", SETED.fit);
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", SETED.fit);
     SETED.sync();
 };
 
@@ -3584,6 +3761,16 @@ rebuildCaveTextures(0);
 // A dressing session survives a reload, and it has to be applied BEFORE the art
 // loader runs or a prop placed from the library would have no image to fetch.
 SETED.loadSaved();
+
+// A PHONE HAS NO KEYBOARD, so `$set` cannot be typed and the tool may as well
+// not exist there. The URL is the way in: put #set on the end and it opens on
+// load, which also makes it bookmarkable — which on a phone is the difference
+// between a tool you use and a tool you have to be told how to reach.
+//
+// Waits for the first frame, because enable() dresses a room that has to exist.
+if (typeof location !== "undefined" && /(^|[#&?])set\b/.test(location.hash + location.search)) {
+    setTimeout(() => { try { SETED.enable(); } catch (e) { console.error(e); } }, 400);
+}
 
 for (const b of BIOMES) {
     // Both plates load the same way. The floor goes into the baked room texture
