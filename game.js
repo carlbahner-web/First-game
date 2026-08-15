@@ -95,9 +95,12 @@ const WALL_SIDE = TILE / 2;
 const WALK_TOP = 0;
 const WALK_BOTTOM = (ROWS - 2) * TILE;
 const GRID_Y_OFFSET = 0;   // no offset needed with centered layout
-// The row BUZZ enters a new room on. It was the exit door's row; there is no
-// exit door now, but the middle of the wall is still where you walk in.
-const DOOR_TILE_Y = Math.floor(ROWS / 2);
+// The row BUZZ enters a new room on. It used to be the middle of the wall,
+// chosen when the room had no drawn doorway to disagree with. It has one now —
+// cut into the side walls at rows 1.7 to 4.0, which is why the Donks spawn at
+// row 3 — so entering at row 5 put him through the wallpaper. CAVES is the one
+// place the doorway's position lives; this follows it rather than restating it.
+const DOOR_TILE_Y = 3;
 // (gap row after kick removed)
 
 // ============================================================
@@ -1768,6 +1771,21 @@ function blitPlane() {
         MAIN_CTX.drawImage(PLANE, 0, i * sh, W, sh,
                            W / 2 - w / 2, y0, w, (y1 - y0) + 1);
     }
+}
+
+// A rectangle that LIES ON THE FLOOR, given in flat logical units, returned as
+// the screen box to draw it in. Approximating the cell as an axis-aligned box at
+// its centre's depth is exact enough for a marker and keeps every caller a plain
+// fillRect — which matters, because the callers are the ones that were still
+// drawing in the old top-down space.
+function floorQuad(x, y, w, h) {
+    const cx = (x + w / 2) * SCALE, cy = (y + h / 2) * SCALE;
+    const q = PROJ.on ? projPoint(cx, cy) : { x: cx, y: cy, s: 1 };
+    const near = PROJ.on ? projPoint(cx, cy + h * SCALE / 2) : { y: cy + h * SCALE / 2 };
+    const far = PROJ.on ? projPoint(cx, cy - h * SCALE / 2) : { y: cy - h * SCALE / 2 };
+    const hw = w * SCALE * q.s / 2;
+    const hh = Math.max(1, (near.y - far.y) / 2);
+    return { x: q.x - hw, y: q.y - hh, w: hw * 2, h: hh * 2 };
 }
 
 // Stand a sprite up at its own ground point. It keeps its full height and its
@@ -5361,9 +5379,11 @@ function advanceLevel() {
         }
     }
 
-    // Enter the new room through the left-hand doorway
-    player.x = TILE * 2;
-    player.y = DOOR_TILE_Y * TILE;
+    // Enter the new room through the left-hand doorway — the one the art
+    // actually draws, at the row the Donks use, one tile in from the wall
+    // because that is the first position anything can stand on.
+    player.x = TILE;
+    player.y = CAVES[0].tileY * TILE;
     player.destX = player.x;
     player.destY = player.y;
     player.dir = 3; // facing into the room
@@ -6447,7 +6467,13 @@ function render() {
         if (!g.dead) {
             billboard(g.x + g.w / 2, g.y + g.h, () => drawGoblinFor(g));
         } else if (g.deathAnimActive) {
-            // Poof animation: shrink, spin, and dissolve
+            // Poof animation: shrink, spin, and dissolve.
+            //
+            // It dies where it stood, so it goes up on the same ground point the
+            // live sprite uses. Without that it was spinning away in flat
+            // top-down space while the Donk it belonged to had been standing
+            // somewhere else entirely.
+            billboard(g.x + g.w / 2, g.y + g.h, () => {
             const progress = 1 - g.deathAnimTimer / 24; // 0→1
             const scale = 1 - progress * 0.85; // shrink to 15%
             const alpha = 1 - progress * 0.9;  // fade to 10%
@@ -6470,6 +6496,7 @@ function render() {
             }
             ctx.restore();
             ctx.globalAlpha = 1.0;
+            });
         }
     }
 
@@ -8447,10 +8474,18 @@ function drawGoblinSprite(type, gx, gy, frame, options) {
     }
 }
 
+// THREE PLACES IN THE ROOM, SO THREE DIFFERENT ANSWERS.
+//
+// This drew entirely in flat top-down space, which is why the catapult crew,
+// its blast markers and the boulder were all somewhere other than where they
+// were. They are not one object: the crew STANDS at its own ground point, the
+// markers LIE on the floor over cells that are nowhere near it, and the boulder
+// is an object in the air over a ground point of its own that moves.
 function drawCatapultGoblin() {
     const cg = catapultGoblin;
     if (!cg) return;
 
+    billboard(cg.x + cg.w / 2, cg.y + cg.h, () => {
     drawGoblinSprite("catapult", cg.x, cg.y,
         cg.danceTimer > 0 ? Math.floor(cg.danceTimer / 4) % 4 : cg.frame,
         { dir: cg.danceTimer > 0 ? 0 : cg.dir });
@@ -8468,38 +8503,42 @@ function drawCatapultGoblin() {
         }
         ctx.globalAlpha = 1.0;
     }
+    });
 
     // Landing warning: mark the 3x3 blast zone from aiming through impact
-    // so the direct-hit freeze is dodgeable
+    // so the direct-hit freeze is dodgeable. It is paint on the floor.
     if ((cg.phase === "aiming" || cg.phase === "firing") && cg.targetRow >= 0) {
         const warnT = cg.boulder ? cg.boulder.progress : 0; // intensity ramps in flight
         const tgtX = (GRID_X + cg.targetCol) * TILE;
         const tgtY = rowPixelY(cg.targetRow);
         // Growing shadow at the impact cell
-        const cxp = (tgtX + TILE / 2) * SCALE;
-        const cyp = (tgtY + TILE / 2) * SCALE;
-        const growR = (3 + warnT * 6) * SCALE;
+        const grow = 3 + warnT * 6;
+        const sh = floorQuad(tgtX + TILE / 2 - grow, tgtY + TILE / 2 - grow * 0.6, grow * 2, grow * 1.2);
         ctx.globalAlpha = 0.2 + warnT * 0.35;
         ctx.fillStyle = "#000000";
         ctx.beginPath();
-        ctx.ellipse(cxp, cyp, growR, growR * 0.6, 0, 0, Math.PI * 2);
+        ctx.ellipse(sh.x + sh.w / 2, sh.y + sh.h / 2, sh.w / 2, sh.h / 2, 0, 0, Math.PI * 2);
         ctx.fill();
         // Pulsing red ring around the full 3x3 blast area
         const warnPulse = 0.5 + Math.sin(performance.now() * 0.02) * 0.3;
+        const ring = floorQuad(tgtX - TILE, tgtY - TILE, TILE * 3, TILE * 3);
         ctx.globalAlpha = warnPulse * (0.35 + warnT * 0.45);
         ctx.strokeStyle = "#FF4444";
         ctx.lineWidth = 2 * SCALE;
-        ctx.strokeRect((tgtX - TILE) * SCALE, (tgtY - TILE) * SCALE, TILE * 3 * SCALE, TILE * 3 * SCALE);
+        ctx.strokeRect(ring.x, ring.y, ring.w, ring.h);
         ctx.globalAlpha = 1.0;
     }
 
-    // Boulder in flight
+    // Boulder in flight — an object in the air over a ground point of its own,
+    // and that ground point moves, so the billboard follows it rather than
+    // sitting on the crew that threw it.
     if (cg.boulder) {
         const b = cg.boulder;
         const t = b.progress;
         // Lerp position
         const bx = b.startX + (b.targetX - b.startX) * t;
         const baseY = b.startY + (b.targetY - b.startY) * t;
+        billboard(bx + TILE / 2, baseY + TILE, () => {
         // Parabolic arc — peak height proportional to distance
         const arcHeight = 40;
         const arcY = -4 * arcHeight * t * (1 - t);
@@ -8544,9 +8583,10 @@ function drawCatapultGoblin() {
         // Crack detail
         drawPx(rx + 9, ry + 9, 3, 9, "#5a5a5a");
         drawPx(rx + 12, ry + 12, 6, 3, "#5a5a5a");
+        });
     }
 
-    // Target warning during aiming phase
+    // Target warning during aiming phase — cells, so it lies down too
     if (cg.phase === "aiming") {
         const flashOn = Math.floor(cg.phaseTimer / 4) % 2 === 0;
         if (flashOn) {
@@ -8557,14 +8597,16 @@ function drawCatapultGoblin() {
                     if (r >= 0 && r < getActiveRows() && c >= 0 && c < GRID_COLS) {
                         const tx = (GRID_X + c) * TILE;
                         const ty = rowPixelY(r);
+                        const q = floorQuad(tx, ty, TILE, TILE);
                         ctx.fillStyle = "#BF7538";
                         ctx.globalAlpha = 0.35;
-                        ctx.fillRect(tx * SCALE, ty * SCALE, TILE * SCALE, TILE * SCALE);
+                        ctx.fillRect(q.x, q.y, q.w, q.h);
                         ctx.globalAlpha = 1.0;
                         // Orange border
+                        const qb = floorQuad(tx + 1, ty + 1, TILE - 2, TILE - 2);
                         ctx.strokeStyle = "#ff6600";
                         ctx.lineWidth = SCALE;
-                        ctx.strokeRect(tx * SCALE + SCALE, ty * SCALE + SCALE, TILE * SCALE - 2 * SCALE, TILE * SCALE - 2 * SCALE);
+                        ctx.strokeRect(qb.x, qb.y, qb.w, qb.h);
                     }
                 }
             }
@@ -10626,21 +10668,31 @@ function renderSabotageAnim() {
         const frame = Math.floor(t / 6) % 4;
         const dir = current.r % 2 === 0 ? 3 : 2; // 3=right, 2=left
 
-        // Green smoke trail behind goblin
+        // THE SCRAMBLE HAD NOT BEEN PUT ON THE FLOOR.
+        //
+        // This whole sequence still drew in flat top-down coordinates, which is
+        // where the room used to be. Under the rake it put the thief up on the
+        // BACK WALL — zigzagging across the wallpaper above the pads he was
+        // supposed to be flipping — with his smoke trail hanging beside him.
+        //
+        // Same two rules as everything else that moved: a mark on the floor
+        // goes through projPoint and lies down, a character stands up on its
+        // own ground point through billboard.
         for (let trail = 1; trail <= 3; trail++) {
             const trailIdx = Math.max(0, sabotageFlipIndex - trail);
             if (trailIdx < sabotageCells.length) {
                 const tc = sabotageCells[trailIdx];
-                const tx = (GRID_X + tc.c) * TILE;
-                const ty = rowPixelY(tc.r);
+                const r = floorQuad((GRID_X + tc.c) * TILE + 2, rowPixelY(tc.r) + 2,
+                                    TILE - 4, TILE - 4);
                 ctx.fillStyle = "#50ad33";
                 ctx.globalAlpha = (4 - trail) / 4 * 0.45;
-                ctx.fillRect((tx + 2) * SCALE, (ty + 2) * SCALE, (TILE - 4) * SCALE, (TILE - 4) * SCALE);
+                ctx.fillRect(r.x, r.y, r.w, r.h);
             }
         }
         ctx.globalAlpha = 1.0;
 
-        drawGoblinSprite("normal", gx, gy, frame, { dir: dir, showShadow: false });
+        billboard(gx + TILE / 2, gy + TILE,
+            () => drawGoblinSprite("normal", gx, gy, frame, { dir: dir, showShadow: false }));
     }
 
     // Scramble complete — the thief bolts for the right door and slams it
@@ -10678,6 +10730,10 @@ function renderSabotageAnim() {
             const gx = startX + (exitX - startX) * ease;
             const gy = startY + (exitY - startY) * ease;
             const runFrame = Math.floor(t / 4) % 4;
+            // The bolt for the door stands up on the floor too — and the stolen
+            // piece rides with him, so it goes inside the same billboard rather
+            // than being pasted on the glass at his old flat position.
+            billboard(gx + TILE / 2, gy + TILE, () => {
             drawGoblinSprite("normal", gx, gy, runFrame, { dir: 3, showShadow: false, phase: (gx + gy) * 0.55 });
 
             // On milestone levels the thief is visibly carrying the next DJ piece
@@ -10693,6 +10749,11 @@ function renderSabotageAnim() {
                     ctx.fillStyle = "rgba(255,255,255,0.9)";
                     ctx.fillRect(px2 + 2 * SCALE, py2 - 5 * SCALE, SCALE, SCALE);
                 }
+            }
+            });
+            // The callout is a screen message, not a thing in the room, so it
+            // stays outside the billboard.
+            if (thiefCarriedPiece) {
                 // Callout so the player knows what this zone's prize is
                 const stealText = "THE THIEF HAS THE " + thiefCarriedPiece.toUpperCase() + "!";
                 const W_t = COLS * TILE;
