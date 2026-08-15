@@ -154,9 +154,17 @@ const lighter = (c, t) => mixC(c, INK.paper, t);
 // arrived at on a switchboard that has since been retired now that the judgement
 // is made. The room, the HUD and the text are deliberately still: with grain on
 // and the linework boiling, everything moving at once was too much.
+//
+// `grid` is OFF at Carl's call, and it is a pause rather than a deletion: the
+// three baked variants are still built and the switch still works, so turning it
+// back on is one word. His read is that the boil on the pads looks wrong now,
+// and he wants to revisit it once the rest of the design has settled — which is
+// the right order. The lattice reads differently in a raked room than it did
+// flat, and tuning a wobble against a picture that is still moving is work you
+// do twice.
 const BOIL = {
     on: true, rate: 130, amp: 0.7, freeze: false, frozenPhase: 0,
-    room: false, grid: true, chars: true, hud: false, text: false,
+    room: false, grid: false, chars: true, hud: false, text: false,
     grain: true, grainAlpha: 0.56,
 };
 let perfNow = 0; // advanced once per frame in gameLoop
@@ -6068,6 +6076,18 @@ const SHAKE_DECAY_P = 0.5;
 // throwing the room around. Blur falls off with each ring's own displacement,
 // so it is already a gradient — heaviest at the point of contact, nothing at
 // the rim — and lifting it deepens that gradient rather than fogging the lot.
+// THE SHAKE IS OFF, also Carl's call, and for a reason worth writing down: it
+// was doing a job the 2D version needed and this one does not. Flat and
+// top-down, the room was a still picture and the shake was the only thing that
+// made a punch land in the world rather than on the sprite. Raked, the room
+// already has depth, a standing wall, a floor going away from you and characters
+// billboarded on it — so the same jolt reads as the camera being knocked rather
+// than the room being hit, and it fights the perspective it is shaking.
+//
+// Everything that CAUSES a shake is untouched: the counters still run, the
+// impact burst and the audio still land on the frame they always did. This is a
+// single gate at the point of application, so turning it back on is one word.
+const SHAKE_ON = false;
 const SHAKE_GAIN = 0.95;
 // ...and one for how LONG it lasts. A punch was 5 frames, which is 83ms — over
 // before the eye has finished registering that it started, so it read as a
@@ -6154,7 +6174,8 @@ function render() {
     // A shake with no origin rocks the whole room, the way it always did. One
     // with an origin is applied at the END of the frame instead — see below.
     let shakeSX = 0, shakeSY = 0;
-    if (screenShake > 0) {
+    const shaking = SHAKE_ON && screenShake > 0;
+    if (shaking) {
         // The offset used to be re-rolled at FULL strength every frame and then
         // stop dead, which is white noise with a hard cut — the harshest shape
         // a shake can have, and most of why it was uncomfortable rather than
@@ -6771,7 +6792,7 @@ function render() {
     // Whole-screen shakes (dying, a boulder landing) still move everything
     // including BUZZ — those are not his doing, and there the point is that he
     // is not in control.
-    if (screenShake > 0 && shakeAt) applyLocalShake(shakeSX, shakeSY);
+    if (shaking && shakeAt) applyLocalShake(shakeSX, shakeSY);
 
     // Persistent amber/gold glow under Carl's feet — flares up on groove hits.
     // Gradient is cached at unit radius and scaled via transform.
@@ -6903,7 +6924,7 @@ function render() {
 
     // The local shake already ran, further up, before BUZZ was drawn. All that
     // is left here is closing the whole-screen one's translate.
-    if (screenShake > 0 && !shakeAt) ctx.restore();
+    if (shaking && !shakeAt) ctx.restore();
 }
 
 // Draw at screen-pixel resolution (1:1) — for high-detail 48x48 sprites
