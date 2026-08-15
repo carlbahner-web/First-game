@@ -97,10 +97,10 @@ const WALK_BOTTOM = (ROWS - 2) * TILE;
 const GRID_Y_OFFSET = 0;   // no offset needed with centered layout
 // The row BUZZ enters a new room on. It used to be the middle of the wall,
 // chosen when the room had no drawn doorway to disagree with. It has one now —
-// cut into the side walls at rows 1.7 to 4.0, which is why the Donks spawn at
-// row 3 — so entering at row 5 put him through the wallpaper. CAVES is the one
-// place the doorway's position lives; this follows it rather than restating it.
-const DOOR_TILE_Y = 3;
+// cut into the side walls at rows 1.7 to 4.0 — so entering at row 5 put him
+// through the wallpaper. Carl moved the arrival a row further back; CAVES is the
+// one place that lives, and this is stated after it so it cannot drift.
+const DOOR_TILE_Y = 2;
 // (gap row after kick removed)
 
 // ============================================================
@@ -1274,7 +1274,12 @@ function drawBackWall() {
 // The doorways are holes in this, not decoration. The Donks spawn at tile row 3
 // because the drawn room cut its openings at rows 1.7 to 4.0, so those rows are
 // where the wall does not get drawn — move them and the spawn row moves.
-const DOOR_V0 = 1.7 / ROWS, DOOR_V1 = 4.0 / ROWS;
+// The opening, in room depth. It was 2.3 tiles deep, which was fine while the
+// door was a flat panel lying in the wall and absurd the moment it could swing:
+// a 2.3-tile leaf rotated into the room is a barn door, taller than BUZZ and
+// wide enough to cover the front of the sequencer. 1.4 tiles is still half again
+// wider than a Donk, so nothing has trouble walking through it.
+const DOOR_V0 = 1.6 / ROWS, DOOR_V1 = 3.0 / ROWS;
 // How much of the wall's height the opening takes.
 const DOOR_TOP = 0.86;
 // How long the door stands open before a Donk arrives, in frames.
@@ -1303,6 +1308,76 @@ function doorwayQuad(side) {
         { x: D1.x, y: D1.y - D1.h * DOOR_TOP },
         { x: D0.x, y: D0.y - D0.h * DOOR_TOP },
     ];
+}
+
+// How far each door is swung, 0 shut to 1 wide open. Ticked in update() so it
+// eases rather than snapping, and so a door caught mid-swing when the level ends
+// is simply a door that stopped.
+const caveSwing = [0, 0];
+const DOOR_SWING_FRAMES = 14;
+const DOOR_SWING_MAX = 1.15;   // radians at full open — ajar, not flat to the room
+
+function tickDoors() {
+    for (let ci = 0; ci < CAVES.length; ci++) {
+        const want = caveIsOpen(ci) ? 1 : 0;
+        const d = want - caveSwing[ci];
+        const step = 1 / DOOR_SWING_FRAMES;
+        caveSwing[ci] = Math.abs(d) <= step ? want : caveSwing[ci] + Math.sign(d) * step;
+    }
+}
+
+// THE DOOR SWINGS INTO THE ROOM.
+//
+// Carl's idea, and it is the one that makes the doorway an object rather than a
+// hole with a picture over it. The leaf is hinged on its FAR edge and rotates
+// about that vertical axis into the room, so at rest it lies flat in the wall —
+// pixel for pixel what the bake used to draw — and at full open it is standing
+// in the room with the dark of the corridor behind it.
+//
+// It is sliced across its width for the same reason the wall is: the two
+// vertical edges are at different depths, so they are different heights, and one
+// affine transform cannot make that shape. Sliced, each column is close enough
+// to a parallelogram to be one.
+function drawDoorLeaf(side) {
+    const b = currentBiome;
+    const art = ROOM_ART[(b && b.doorArt) || "props/door"];
+    const tile = b && b.wallTile ? ROOM_ART[b.wallTile] : null;
+    if (!art || !tile) return;
+    const ci = side < 0 ? 0 : 1;
+    const openAmt = caveSwing[ci];
+    const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
+    const hw = W * projScale(0);
+    const ideal = tile.width * (projY(0) / tile.height);
+    const nBack = Math.max(1, Math.round(hw / ideal));
+    const wallH = (tile.height * ((hw / nBack) / tile.width)) / projScale(0);
+
+    // ease the swing so it starts fast and settles, like a door on a closer
+    const e = openAmt * openAmt * (3 - 2 * openAmt);
+    const theta = e * DOOR_SWING_MAX;
+    const wallX = side < 0 ? 0 : W;          // the wall's own plane, in floor px
+    const into = side < 0 ? 1 : -1;          // which way is "into the room"
+    const depth0 = DOOR_V0 * H;              // the hinge, at the far edge
+    const leaf = (DOOR_V1 - DOOR_V0) * H;    // how wide the leaf is, in floor px
+
+    const K = 10;
+    const at = (t) => {
+        const dep = depth0 + leaf * Math.cos(theta) * t;
+        const x = wallX + into * leaf * Math.sin(theta) * t;
+        const p = projPoint(x, dep);
+        return { x: p.x, y: p.y, h: wallH * projScale(dep / H) * DOOR_TOP };
+    };
+    const g = MAIN_CTX;
+    for (let i = 0; i < K; i++) {
+        const A = at(i / K), B = at((i + 1) / K);
+        const sw = art.width / K, sx = (i / K) * art.width;
+        const bleed = sw * 0.5;
+        g.save();
+        g.transform((B.x - A.x) / sw, ((B.y - B.h) - (A.y - A.h)) / sw,
+                    0, A.h / art.height, A.x, A.y - A.h);
+        g.drawImage(art, sx, 0, Math.min(sw + bleed, art.width - sx), art.height,
+                    0, 0, sw + bleed, art.height);
+        g.restore();
+    }
 }
 
 // Is a Donk coming through this doorway right now? The door opens ahead of the
@@ -1496,39 +1571,10 @@ function buildSideWalls() {
         g.closePath();
         g.fillStyle = mixC(INK.charcoal, INK.paper, 0.08); g.fill();
 
-        // The door art is sliced by depth too, for the same reason the wall is.
-        // Drawn as ONE affine image it is a parallelogram: both its edges get
-        // the height of the far one, so it falls short of the opening at the
-        // near end and leaves a bare strip between the top of the door and the
-        // top of the wall. Sliced, it fills the trapezoid it is standing in.
-        const dArt = ROOM_ART[b.doorArt || "props/door"];
-        if (dArt) {
-            // Same two rules as the wall: squeeze the sheet horizontally first,
-            // then slice it on whole screen columns. A door is 350 pixels of
-            // drawing landing in about 28, so it needs both at least as much.
-            const dLo = Math.min(D0.x, D1.x), dHi = Math.max(D0.x, D1.x);
-            let dSheet = dArt;
-            while (dSheet.width / 2 >= Math.max(16, (dHi - dLo) * 2 * SS) && dSheet.width > 16) {
-                dSheet = mipStep(dSheet, Math.max(1, Math.round(dSheet.width / 2)), dSheet.height);
-            }
-            const dv = DOOR_V1 - DOOR_V0;
-            for (const c of columns(dLo, dHi, side < 0)) {
-                const xL = Math.max(dLo, c), xR = Math.min(dHi, c + STEP);
-                if (xR <= xL) continue;
-                const vL = vOfX(side < 0 ? xR : xL, side), vR = vOfX(side < 0 ? xL : xR, side);
-                const A = at(vL, side), B = at(vR, side);
-                const sw = Math.max(1e-6, ((vR - vL) / dv) * dSheet.width);
-                const sx = ((vL - DOOR_V0) / dv) * dSheet.width;
-                const bleed = sw * 0.5;
-                g.save();
-                g.transform((B.x - A.x) / sw,
-                            ((B.y - B.h * top) - (A.y - A.h * top)) / sw,
-                            0, (A.h * top) / dSheet.height, A.x, A.y - A.h * top);
-                g.drawImage(dSheet, sx, 0, Math.min(sw + bleed, dSheet.width - sx), dSheet.height,
-                            0, 0, sw + bleed, dSheet.height);
-                g.restore();
-            }
-        }
+        // The door LEAF is not baked. It swings, so it cannot be — see
+        // drawDoorLeaf. What is baked is the hole behind it, which is why the
+        // opening is filled charcoal above: swing the leaf and you are looking
+        // into the dark, because the dark was always there.
         parts.push({ canvas: SS === 1 ? big : mipStep(big, bw, bh), x: bx, y: by });
     }
     return parts;
@@ -1557,27 +1603,11 @@ function drawSideWalls() {
     if (!warmSideWalls(true)) return;
     for (const p of SIDE_WALLS.parts) ctx.drawImage(p.canvas, p.x, p.y);
 
-    // THE DOOR OPENS. That is the whole tell now.
-    //
-    // It used to be a pair of glowing eyes in the dark, which was right when
-    // these were goblins in a cave mouth and is nonsense in a staff corridor
-    // with a door in it — Carl's point. So the door simply reads as open: the
-    // painted door drops out and the opening behind it is charcoal, the way an
-    // open doorway looks from a lit room. It opens ahead of the arrival, and
-    // the Donk walks through it.
-    for (const side of [-1, 1]) {
-        if (!caveIsOpen(side < 0 ? 0 : 1)) continue;
-        const q = doorwayQuad(side);
-        if (!q) continue;
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(q[0].x, q[0].y);
-        for (let i = 1; i < q.length; i++) ctx.lineTo(q[i].x, q[i].y);
-        ctx.closePath();
-        ctx.fillStyle = mixC(INK.charcoal, INK.paper, 0.04);
-        ctx.fill();
-        ctx.restore();
-    }
+    // THE DOORS. Drawn live rather than baked, because they move — and they are
+    // the whole arrival tell now. It used to be a pair of glowing eyes in the
+    // dark, which was right when these were goblins in a cave mouth and is
+    // nonsense in a staff corridor with a door in it. Carl's point.
+    for (const side of [-1, 1]) drawDoorLeaf(side);
 }
 
 // Lit pads, waiting to be stood up once the floor is down. Cleared each frame.
@@ -3085,8 +3115,8 @@ const player = {
 // half of the opening rather than clipping its top edge. The cave biomes do
 // not care which row it is, so both use the drawing's.
 const CAVES = [
-    { tileX: 0, tileY: 3 },          // left doorway
-    { tileX: COLS - 1, tileY: 3 },   // right doorway
+    { tileX: 0, tileY: 2 },          // left doorway
+    { tileX: COLS - 1, tileY: 2 },   // right doorway
 ];
 
 // ---- Multiple Goblin System ----
@@ -4526,6 +4556,8 @@ function update(dt) {
     // (The walk-to-the-exit check lived here. The level now ends the instant
     // the pattern lands, so there is nothing left to walk to.)
 
+    tickDoors();
+
     // Update all goblins (multiple concurrent)
     const maxGobs = getMaxGoblins();
     for (let gi = 0; gi < goblins.length; gi++) {
@@ -5481,6 +5513,7 @@ function advanceLevel() {
         g.gloatTimer = 0;
         g.entering = 0;
         g.spawnCave = undefined;   // the next door is chosen when it opens
+        caveSwing[0] = caveSwing[1] = 0;
         const staggerGap = Math.round(600 - (currentLevel / 29) * 360); // 10s apart early → 4s apart late
         g.respawnTimer = 180 + i * staggerGap;
     }
