@@ -1642,13 +1642,22 @@ function drawSideWalls() {
 // sounds, not when the playhead passes.
 function drawFloorProps() {
     const list = (currentBiome && currentBiome.floorProps) || [];
+    // The attract screen shows the room INTACT. That is the whole point of it:
+    // it is the "before" picture, the one thing that makes a stripped room read
+    // as a loss rather than as an unfinished level. Carl's call, and the right
+    // one — you cannot miss what you were never shown.
+    const showEverything = gameState === "title";
     for (const pr of list) {
         const art = ROOM_ART["set/" + pr.art];
         if (!art) continue;
+        if (pr.piece !== undefined && !showEverything
+            && gearRecovered.length <= pr.piece) continue;
         const gx = (pr.x + 0.5) * TILE;          // ground point, in logical units
         const gy = pr.y * TILE;
         const lit = pr.row !== undefined && rowTrigger[pr.row] > 0
             ? rowTrigger[pr.row] / 8 : 0;
+        // A recovered piece joins in. Until it is back, its row is played by
+        // nothing in the room — which is the point of getting it back.
         billboard(gx, gy, () => {
             contactShadow(gx, gy, (pr.h * 0.42) * (art.width / art.height) * 8, 2.0);
             // The hit is a SQUASH about the feet, not a jump: a drum that leaves
@@ -1873,7 +1882,7 @@ function drawWallScoreboard(wx, wy, ww, wh) {
         // one thing on here I placed rather than measured: the crest above the
         // score, where they read as indicator lamps. Easy to move — the spot is
         // two numbers on the biome.
-        const earned = djSetupEarned.length, total = DJ_SETUP_PIECES.length;
+        const earned = gearRecovered.length, total = STOLEN_GEAR.length;
         if (earned > 0 || currentLevel >= 4) {
             const pip = Math.max(2, h * 0.040), gap = pip * 1.9;
             const cx2 = x + sb.pips[0] * w, cy2 = y + sb.pips[1] * h;
@@ -1940,7 +1949,7 @@ function drawWallScoreboard(wx, wy, ww, wh) {
     }
 
     // Equipment recovered, as pips between them
-    const earned = djSetupEarned.length, total = DJ_SETUP_PIECES.length;
+    const earned = gearRecovered.length, total = STOLEN_GEAR.length;
     if (earned > 0 || currentLevel >= 4) {
         const pip = Math.max(2, h * 0.055), gap = pip * 1.7;
         const px0 = cx - (total - 1) * gap / 2;
@@ -2303,15 +2312,21 @@ const BIOMES = [
         // sounds. Three of the six have a kit piece: open hat -> ride, hat ->
         // hi-hat, kick -> bass drum. The SNARE row deliberately has none, because
         // BUZZ is a snare drum — the room's snare is the one you are driving.
+        // `piece` is an index into STOLEN_GEAR: the object is only in the room
+        // once that piece has been won back. No `piece` means it was never
+        // taken — the furniture, and the bass drum, which they could not get
+        // through the door.
         floorProps: [
             { art: "flight-case", x: 1.2,  y: 0.34, h: 1.15 },
-            { art: "ride-cymbal", x: 3.1,  y: 0.26, h: 2.05, row: 0 },
-            { art: "hi-hat",      x: 4.9,  y: 0.28, h: 1.85, row: 1 },
+            { art: "ride-cymbal", x: 3.1,  y: 0.26, h: 2.05, row: 0, piece: 5 },
+            { art: "hi-hat",      x: 4.9,  y: 0.28, h: 1.85, row: 1, piece: 0 },
             { art: "kick-drum",   x: 6.9,  y: 0.32, h: 1.55, row: 3 },
-            { art: "amp-mustard", x: 11.4, y: 0.30, h: 1.20 },
-            { art: "amp-teal",    x: 13.1, y: 0.30, h: 1.20 },
-            { art: "mic-stand",   x: 15.1, y: 0.24, h: 2.20 },
+            { art: "amp-black",   x: 9.3,  y: 0.30, h: 1.20, piece: 4 },
+            { art: "amp-mustard", x: 11.4, y: 0.30, h: 1.20, piece: 2 },
+            { art: "amp-teal",    x: 13.1, y: 0.30, h: 1.20, piece: 3 },
+            { art: "mic-stand",   x: 15.1, y: 0.24, h: 2.20, piece: 1 },
             { art: "chair",       x: 17.2, y: 0.32, h: 1.60 },
+            { art: "mug",         x: 18.4, y: 0.36, h: 0.42 },
         ],
         // Props hang ON the wall, in WALL SPACE: x and y are the prop's centre
         // as a fraction of the wall's width and height, h is its height as a
@@ -3638,15 +3653,26 @@ const CAVE_ROWS = ROWS;
 const CAVE_TILE = TILE;
 
 // DJ Setup pieces earned from minigames (6 total)
-const DJ_SETUP_PIECES = [
-    "left speaker",
-    "right speaker",
-    "turntable",
-    "mixer",
-    "light rig",
-    "disco ball",
+// WHAT THE DONKS TOOK, in the order Buzz wins it back — one per zone, at levels
+// 5, 10, 15, 20, 25 and 30.
+//
+// It was a DJ rig, from when this was goblins in a cave. Carl's frame is a band's
+// rehearsal room robbed in the opening, and the six zone names were already
+// telling that story without the art to back it: WARM-UP ROOM, ECHO CHAMBER,
+// AMBER LOUNGE, FUNK HOUSE, MIRRORBALL HALL, MAIN STAGE. That is not a cave
+// system, it is a building, and it ends where a band's night ends.
+//
+// Every name here has a sprite on the floor, so recovering a piece is not a pip
+// on a counter — the thing appears in the room. The room is the progress bar.
+const STOLEN_GEAR = [
+    "hi-hat",
+    "microphone",
+    "guitar amp",
+    "bass amp",
+    "monitor",
+    "ride cymbal",
 ];
-let djSetupEarned = []; // pieces earned so far
+let gearRecovered = []; // pieces earned so far
 let pieceRecoveredThisLevel = null; // piece name to announce on the level-complete screen
 
 // Minigame state
@@ -5421,7 +5447,7 @@ function resetGame() {
 
     // Reset minigame state
     caveClockPickups = [];
-    djSetupEarned = [];
+    gearRecovered = [];
     minigamesCompleted = [];
     pieceRecoveredThisLevel = null;
 
@@ -5556,9 +5582,9 @@ function triggerLevelComplete() {
     pieceRecoveredThisLevel = null;
     if (MINIGAME_LEVELS.includes(currentLevel) && !minigamesCompleted.includes(currentLevel)) {
         minigamesCompleted.push(currentLevel);
-        if (djSetupEarned.length < DJ_SETUP_PIECES.length) {
-            pieceRecoveredThisLevel = DJ_SETUP_PIECES[djSetupEarned.length];
-            djSetupEarned.push(pieceRecoveredThisLevel);
+        if (gearRecovered.length < STOLEN_GEAR.length) {
+            pieceRecoveredThisLevel = STOLEN_GEAR[gearRecovered.length];
+            gearRecovered.push(pieceRecoveredThisLevel);
         }
     }
     // Screen flash for celebration
@@ -5707,8 +5733,8 @@ function advanceLevel() {
     // then bolts through the right door and slams it behind itself)
     sabotageAnimTimer = 0;
     sabotageFlipIndex = 0;
-    thiefCarriedPiece = (MINIGAME_LEVELS.includes(currentLevel) && djSetupEarned.length < DJ_SETUP_PIECES.length)
-        ? DJ_SETUP_PIECES[djSetupEarned.length] : null;
+    thiefCarriedPiece = (MINIGAME_LEVELS.includes(currentLevel) && gearRecovered.length < STOLEN_GEAR.length)
+        ? STOLEN_GEAR[gearRecovered.length] : null;
     gameState = "sabotage-anim";
 }
 
@@ -6140,8 +6166,8 @@ function renderHUD() {
 
     // Equipment recovery tracker — the stage gear recovered so far
     {
-        const earned = djSetupEarned.length;
-        const total = DJ_SETUP_PIECES.length;
+        const earned = gearRecovered.length;
+        const total = STOLEN_GEAR.length;
         if (!onWall && (earned > 0 || currentLevel >= 4)) {
             const trackerY = HUD_H / 2 - 2;
             const trackerX = W / 2 + 34;
@@ -7436,7 +7462,7 @@ function drawPunchImpact() {
 }
 
 
-// Map DJ_SETUP_PIECES names to draw functions with booth-relative offsets
+// Map STOLEN_GEAR names to draw functions with booth-relative offsets
 // Offsets are relative to boothX, boothY as defined in intro Scene 0
 function drawDJSetupPiece(pieceIndex, boothX, boothY, options) {
     const alpha = (options && options.alpha !== undefined) ? options.alpha : 1;
@@ -10293,7 +10319,7 @@ function renderLevelComplete() {
             ctx.globalAlpha = narrativeAlpha;
             ctx.font = gfont(4 * SCALE);
             let narrative = "";
-            const earned = djSetupEarned.length;
+            const earned = gearRecovered.length;
             const lvl = currentLevel + 1;
             if (lvl === 1) narrative = "The rhythm returns...";
             else if (lvl === 2) narrative = "The beat grows stronger.";
@@ -10683,8 +10709,8 @@ function startBiomeTransition() {
     biomeTransFrom = currentBiome;
     biomeTransTo = biomeForLevel(currentLevel + 1);
     biomeTransPiece = pieceRecoveredThisLevel;
-    biomeTransNextPiece = djSetupEarned.length < DJ_SETUP_PIECES.length
-        ? DJ_SETUP_PIECES[djSetupEarned.length] : null;
+    biomeTransNextPiece = gearRecovered.length < STOLEN_GEAR.length
+        ? STOLEN_GEAR[gearRecovered.length] : null;
     biomeTransTimer = 0;
     gameState = "biome-transition";
     if (audioCtx && audioCtx.state === "running") {
@@ -10776,17 +10802,17 @@ function renderBiomeTransition() {
         // DJ setup progress: six slots, earned ones lit gold
         if (t > 55) {
             const slotW = 12, gap = 4;
-            const totalW = DJ_SETUP_PIECES.length * slotW + (DJ_SETUP_PIECES.length - 1) * gap;
+            const totalW = STOLEN_GEAR.length * slotW + (STOLEN_GEAR.length - 1) * gap;
             const sx0 = W / 2 - totalW / 2;
             const sy0 = H - 42;
-            const label = "DJ SETUP: " + djSetupEarned.length + "/" + DJ_SETUP_PIECES.length;
+            const label = "DJ SETUP: " + gearRecovered.length + "/" + STOLEN_GEAR.length;
             ctx.textAlign = "center";
             drawText(label, W / 2, sy0 - 10, "#7A8F85", 5);
             ctx.textAlign = "start";
-            for (let i = 0; i < DJ_SETUP_PIECES.length; i++) {
+            for (let i = 0; i < STOLEN_GEAR.length; i++) {
                 const sx = sx0 + i * (slotW + gap);
-                const earned = i < djSetupEarned.length;
-                const newest = i === djSetupEarned.length - 1;
+                const earned = i < gearRecovered.length;
+                const newest = i === gearRecovered.length - 1;
                 const pulse = newest ? 0.75 + Math.sin(t * 0.15) * 0.25 : 1;
                 ctx.globalAlpha = fadeIn * (earned ? pulse : 0.5);
                 drawRect(sx, sy0, slotW, 10, earned ? "#F6CC60" : "#3a3a37");
