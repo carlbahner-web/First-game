@@ -1650,16 +1650,29 @@ function drawFloorProps() {
     for (const pr of list) {
         const art = ROOM_ART["set/" + pr.art];
         if (!art) continue;
-        if (pr.piece !== undefined && !showEverything
-            && gearRecovered.length <= pr.piece) continue;
+        // MISSING GEAR LEAVES ITS SHAPE BEHIND.
+        //
+        // Carl's, adapted from a decorating game that ghosts an item where it
+        // would go so you can see the room it is going to become. Nothing here
+        // is bought, so there is no button and no price — the ghost is doing a
+        // different job. It says the room is INCOMPLETE rather than empty,
+        // which is a much better thing for a level-one room to say, and it puts
+        // the thing you are playing for on screen while you play for it.
+        //
+        // Faded rather than outlined, so you can still tell the mustard amp
+        // from the teal one. A silhouette would tell you a box is missing; this
+        // tells you WHICH box.
+        const missing = pr.piece !== undefined && !showEverything
+            && gearRecovered.length <= pr.piece;
         const gx = (pr.x + 0.5) * TILE;          // ground point, in logical units
         const gy = pr.y * TILE;
-        const lit = pr.row !== undefined && rowTrigger[pr.row] > 0
+        const lit = !missing && pr.row !== undefined && rowTrigger[pr.row] > 0
             ? rowTrigger[pr.row] / 8 : 0;
         // A recovered piece joins in. Until it is back, its row is played by
         // nothing in the room — which is the point of getting it back.
         billboard(gx, gy, () => {
-            contactShadow(gx, gy, (pr.h * 0.42) * (art.width / art.height) * 8, 2.0);
+            // A ghost casts no shadow — it is not standing there yet.
+            if (!missing) contactShadow(gx, gy, (pr.h * 0.42) * (art.width / art.height) * 8, 2.0);
             // The hit is a SQUASH about the feet, not a jump: a drum that leaves
             // the floor reads as a bouncing toy, one that flexes reads as struck.
             const sx = 1 + lit * 0.10, sy = 1 - lit * 0.07;
@@ -1668,6 +1681,7 @@ function drawFloorProps() {
             ctx.save();
             ctx.translate(bx, by);
             ctx.scale(sx, sy);
+            if (missing) ctx.globalAlpha = 0.16;
             ctx.drawImage(art, -w / 2, -h, w, h);
             ctx.restore();
         });
@@ -2483,6 +2497,31 @@ let currentBiome = BIOMES[0];
 
 // ---- Texture atlas (rebuilt per level — every room gets its own layout & biome) ----
 let TEX_FLOOR = [];
+// ONE ROOM, NOT SIX.
+//
+// Carl's call, and the art was already arguing for it: five of the six zones
+// never had a drawing. They were procedural caves standing in for rooms nobody
+// had made, which meant the game's "six environments" were one environment and
+// five placeholders.
+//
+// The narrative that replaced the cave fiction does not want travel either. It
+// is YOUR rehearsal room, robbed in the opening, and the run is getting it back
+// — so the room should be the one thing that persists and changes, not the thing
+// that gets swapped every five levels. A room that fills up as the gear comes
+// home is a better progress display than six rooms that change because a counter
+// said so.
+//
+// The zones keep their names and their palettes. They still colour the pads, the
+// stage lights and the kit's reactions, so the room still shifts as you go
+// deeper — it just stops pretending to be somewhere else.
+for (const b of BIOMES) {
+    if (b === BIOMES[0]) continue;
+    for (const k of ["art", "floorArt", "wallTile", "wallStrip", "stripPanels",
+                     "wallProps", "scoreboard", "floorProps", "doorArt"]) {
+        if (BIOMES[0][k] !== undefined) b[k] = BIOMES[0][k];
+    }
+}
+
 let TEX_WALL_TOP = [], TEX_WALL_BOT = [], TEX_WALL_LEFT = [], TEX_WALL_RIGHT = [];
 let TEX_GRID_OFF = [];
 let TEX_GRID_WALL = null;
