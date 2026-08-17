@@ -1692,7 +1692,10 @@ function drawFloorProps() {
             ? rowTrigger[pr.row] / 8 : 0;
         // A recovered piece joins in. Until it is back, its row is played by
         // nothing in the room — which is the point of getting it back.
-        billboard(gx, gy, () => {
+        //
+        // Queued rather than drawn: BUZZ and the Donks walk among these now, so
+        // the order is decided by depth at flushStanding, not by call order.
+        standAt(gy, () => billboard(gx, gy, () => {
             // A ghost casts no shadow — it is not standing there yet.
             if (!missing) contactShadow(gx, gy, (pr.h * 0.42) * (art.width / art.height) * 8, 2.0);
             // The hit is a SQUASH about the feet, not a jump: a drum that leaves
@@ -1709,7 +1712,7 @@ function drawFloorProps() {
             ctx.drawImage(art, -w / 2, -h, w, h);
             if (SETED.on) SETED.note(ctx, pr, "floor", -w / 2, -h, w, h);
             ctx.restore();
-        });
+        }));
     }
 }
 
@@ -2080,6 +2083,30 @@ function floorQuad(x, y, w, h) {
 // Stand a sprite up at its own ground point. It keeps its full height and its
 // upright pose — only its position and its size follow the floor — which is the
 // whole idea: 2D characters in a 3D room, not characters lying on the floor.
+// ---- Depth order for everything standing on the floor --------------------
+//
+// This used to be free. Every prop lived in the upper half of row 0, no
+// character could stand further back than that, so "props first, then
+// characters" was right by construction and the comment said so.
+//
+// Carl dressed the room in the editor and the kit came out into the floor —
+// 1.35 to 1.62 tiles deep — which is a better room and breaks that guarantee
+// completely. BUZZ can walk the strip in front of the wall (his own request),
+// so he can stand BEHIND the kick drum and was being drawn straight over it.
+//
+// So the things that stand on this floor now collect here and go down sorted by
+// their ground point, near last. Sorting is on ~12 items a frame; the cost is
+// noise next to one drawImage.
+const STANDING = [];
+function standAt(groundY, draw) { STANDING.push({ y: groundY, draw }); }
+function flushStanding() {
+    // Stable, so two objects at the same depth keep their array order — which is
+    // what the set dresser's back/front buttons move.
+    STANDING.sort((a, b) => a.y - b.y);
+    for (const s of STANDING) s.draw();
+    STANDING.length = 0;
+}
+
 function billboard(groundX, groundY, draw) {
     if (!PROJ.on) { draw(); return; }
     const gx = groundX * SCALE, gy = groundY * SCALE;
@@ -3348,39 +3375,40 @@ const BIOMES = [
         // once that piece has been won back. No `piece` means it was never
         // taken — the furniture, and the bass drum, which they could not get
         // through the door.
+        // Carl's, placed in the set dresser. It is a different room from the one
+        // I typed: the kit is out in the floor at 1.3-1.6 tiles instead of
+        // hugging the skirting, the amps have spread to the corners, and the
+        // flight case is gone. It reads as a room a band actually sets up in
+        // rather than a shelf of objects.
         floorProps: [
-            { art: "flight-case", x: 1.2,  y: 0.34, h: 1.15 },
-            { art: "ride-cymbal", x: 3.1,  y: 0.26, h: 2.05, row: 0, piece: 5 },
-            { art: "hi-hat",      x: 4.9,  y: 0.28, h: 1.85, row: 1, piece: 0 },
-            { art: "kick-drum",   x: 6.9,  y: 0.32, h: 1.55, row: 3 },
-            { art: "amp-black",   x: 9.3,  y: 0.30, h: 1.20, piece: 4 },
-            { art: "amp-mustard", x: 11.4, y: 0.30, h: 1.20, piece: 2 },
-            { art: "amp-teal",    x: 13.1, y: 0.30, h: 1.20, piece: 3 },
-            { art: "mic-stand",   x: 15.1, y: 0.24, h: 2.20, piece: 1 },
-            { art: "chair",       x: 17.2, y: 0.32, h: 1.60 },
-            { art: "mug",         x: 18.4, y: 0.36, h: 0.42 },
+            { art: "chair",       x: 18.924, y: 0.778, h: 1.60, flip: true },
+            { art: "hi-hat",      x: 6.437,  y: 1.350, h: 1.85, flip: true, row: 1, piece: 0 },
+            { art: "kick-drum",   x: 18.015, y: 1.618, h: 1.55, row: 3 },
+            { art: "amp-black",   x: 0.225,  y: 0.737, h: 1.20, piece: 4 },
+            { art: "amp-mustard", x: 4.383,  y: 0.919, h: 1.32, piece: 2 },
+            { art: "amp-teal",    x: 14.108, y: 0.788, h: 1.30, flip: true, piece: 3 },
+            { art: "mic-stand",   x: 10.843, y: 1.397, h: 2.20, piece: 1 },
+            { art: "mug",         x: 16.103, y: 0,     h: 0.66 },
+            { art: "ride-cymbal", x: 18.847, y: 1.616, h: 1.47, row: 0, piece: 5 },
         ],
         // Props hang ON the wall, in WALL SPACE: x and y are the prop's centre
         // as a fraction of the wall's width and height, h is its height as a
         // fraction of the wall's. Nothing here is in pixels, so the whole
         // dressing survives a change of tilt, of horizon, or of panel count.
+        //
+        // Carl's again. The clipboard and the phone are gone and the rest has
+        // gathered into the left third — the whole right half of the wall is
+        // clear now, which is what the scoreboard was always fighting for.
+        //
+        // `decor` is an index into STOLEN_DECOR: the thing was taken and ghosts
+        // on the wall until it comes home. Only what a thief would actually
+        // carry out — the poster and the clock come off in seconds, where the
+        // switch is screwed to the building.
         wallProps: [
             { art: "door",      x: 0.117, foot: true, h: 0.848 },
-            { art: "switch",    x: 0.241, y: 0.471, h: 0.081 },
-            // The poster and the clock moved outward to make room for the
-            // scoreboard. Both x values were mine — measured off Carl's plate
-            // when I cut the props out — not his composition, so widening the
-            // gap between them is a layout change rather than an edit to his
-            // drawing. 0.328 -> 0.275 and 0.683 -> 0.735.
-            // `decor` is an index into STOLEN_DECOR — the thing was taken and
-            // ghosts on the wall until it comes home. Only what a thief would
-            // actually carry out: the poster and the clock come off in seconds,
-            // where the switch, the clipboard and the wall phone are screwed to
-            // the building and would be a strange night's work.
-            { art: "poster",    x: 0.275, y: 0.311, h: 0.311, decor: 0 },
-            { art: "clock",     x: 0.735, y: 0.203, h: 0.185, decor: 1 },
-            { art: "clipboard", x: 0.825, y: 0.381, h: 0.234 },
-            { art: "phone",     x: 0.930, y: 0.395, h: 0.284 },
+            { art: "switch",    x: 0.189, y: 0.466, h: 0.081 },
+            { art: "poster",    x: 0.262, y: 0.351, h: 0.311, decor: 0 },
+            { art: "clock",     x: 0.026, y: 0.237, h: 0.185, decor: 1 },
         ],
         // The light rig. Mount point, can height and angle, all in wall space —
         // `row` is which drum makes it flash. These six numbers are exactly where
@@ -3416,7 +3444,7 @@ const BIOMES = [
         // than by eye — re-run it if the art is redrawn and paste the numbers
         // it prints. `pips` is the one placed-not-measured spot on here.
         scoreboard: {
-            art: "props/scoreboard", x: 0.500, y: 0.461, w: 0.3325, hFallback: 0.36,
+            art: "props/scoreboard", x: 0.4997, y: 0.4531, w: 0.3325, hFallback: 0.36,
             wells: {
                 level: [0.0767, 0.5026, 0.2420, 0.6868],
                 score: [0.3105, 0.4000, 0.6895, 0.6868],
@@ -7906,17 +7934,19 @@ function render() {
             // a corridor through an open door. Without it he walks across the
             // face of the wall he is supposed to be coming through.
             const outside = g.x < 0 || g.x > (COLS - 1) * TILE;
-            const q = outside ? doorwayQuad(g.x < 0 ? -1 : 1) : null;
-            if (q) {
-                ctx.save();
-                ctx.beginPath();
-                ctx.moveTo(q[0].x, q[0].y);
-                for (let i = 1; i < q.length; i++) ctx.lineTo(q[i].x, q[i].y);
-                ctx.closePath();
-                ctx.clip();
-            }
-            billboard(g.x + g.w / 2, g.y + g.h, () => drawGoblinFor(g));
-            if (q) ctx.restore();
+            standAt(g.y + g.h, () => {
+                const q = outside ? doorwayQuad(g.x < 0 ? -1 : 1) : null;
+                if (q) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.moveTo(q[0].x, q[0].y);
+                    for (let i = 1; i < q.length; i++) ctx.lineTo(q[i].x, q[i].y);
+                    ctx.closePath();
+                    ctx.clip();
+                }
+                billboard(g.x + g.w / 2, g.y + g.h, () => drawGoblinFor(g));
+                if (q) ctx.restore();
+            });
         } else if (g.deathAnimActive) {
             // Poof animation: shrink, spin, and dissolve.
             //
@@ -8124,16 +8154,23 @@ function render() {
 
     // BUZZ and his punch stand up together on his own ground point — one
     // billboard, or the fist would take a different scale from the arm.
-    billboard(player.x + player.w / 2, player.y + player.h, () => {
-        // Player shadow
-        contactShadow(player.x + player.w / 2, player.y + player.h - 1, 5.4, 1.9);
+    standAt(player.y + player.h, () => {
+        billboard(player.x + player.w / 2, player.y + player.h, () => {
+            // Player shadow
+            contactShadow(player.x + player.w / 2, player.y + player.h - 1, 5.4, 1.9);
 
-        // Punch (draw behind player for up-facing, in front otherwise)
-        if (player.attacking && player.dir === 1) drawPunch();
+            // Punch (draw behind player for up-facing, in front otherwise)
+            if (player.attacking && player.dir === 1) drawPunch();
 
-        // Player sprite
-        drawPlayer();
+            // Player sprite
+            drawPlayer();
+        });
     });
+    // Everything standing on this floor goes down here, in depth order: the
+    // props, the Donks and BUZZ, sorted together. Nothing after this point is a
+    // standing object — the punch, the impact star and the effects all belong to
+    // BUZZ and stay on top of him where they were.
+    flushStanding();
 
     // Boulder freeze countdown display (large seconds above Carl)
     if (player.freezeTimer > 0) {
