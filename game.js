@@ -94,6 +94,23 @@ const WALL_SIDE = TILE / 2;
 // The bottom still gives up two rows. The last one is under the HUD band.
 const WALK_TOP = 0;
 const WALK_BOTTOM = (ROWS - 2) * TILE;
+
+// Is this floor tile out of bounds? See `blocked` on the biome.
+//
+// The walkable area used to be a plain rectangle, which was true while the room
+// was a rectangle. It is furnished now, and the corner the drum kit stands in is
+// not floor any more.
+function tileBlocked(tx, ty) {
+    const list = currentBiome && currentBiome.blocked;
+    if (!list) return false;
+    for (let i = 0; i < list.length; i++)
+        if (list[i][0] === tx && list[i][1] === ty) return true;
+    return false;
+}
+// The same question in pixels, which is what the movement code has to hand.
+function posBlocked(px, py) {
+    return tileBlocked(Math.round(px / TILE), Math.round(py / TILE));
+}
 const GRID_Y_OFFSET = 0;   // no offset needed with centered layout
 // The row BUZZ enters a new room on. It used to be the middle of the wall,
 // chosen when the room had no drawn doorway to disagree with. It has one now —
@@ -3415,6 +3432,18 @@ const BIOMES = [
         // the old formula put them (evenly from 0.205 to 0.935 on the skirting at
         // 0.883, straight up), so switching from derived to placed changed
         // nothing on screen and made all of it draggable.
+        // FLOOR TILES BUZZ MAY NOT STAND ON, as [x, y] in room tiles.
+        //
+        // The back-right corner, which is where Carl's kit ended up: the kick
+        // and the ride are on 18,1, the chair on 18,0, and 19,* is the strip
+        // between them and the side wall. Walking in there put BUZZ inside a
+        // drum and half inside the wall.
+        //
+        // Kept as room data rather than as a rule about props, because not every
+        // prop should block — you want to be able to walk past a mic stand, and
+        // the mug is not a wall. Which objects are furniture and which are
+        // scenery is a decision, so it is written down.
+        blocked: [[18, 0], [18, 1], [19, 0], [19, 1]],
         stageLights: [
             { x: 0.205, y: 0.883, h: 0.042, angle: 0, row: 0 },
             { x: 0.351, y: 0.883, h: 0.042, angle: 0, row: 1 },
@@ -3582,7 +3611,7 @@ for (const b of BIOMES) {
     if (b === BIOMES[0]) continue;
     for (const k of ["art", "floorArt", "wallTile", "wallStrip", "stripPanels",
                      "wallProps", "scoreboard", "floorProps", "doorArt",
-                     "stageLights"]) {
+                     "stageLights", "blocked"]) {
         if (BIOMES[0][k] !== undefined) b[k] = BIOMES[0][k];
     }
 }
@@ -5696,7 +5725,7 @@ function update(dt) {
                             gobBlocked = true; break;
                         }
                     }
-                    const blocked = gobBlocked;
+                    const blocked = gobBlocked || tileBlocked(ttx, tty);
                     if (!blocked) { kbDist = d; break; }
                 }
                 if (kbDist > 0) {
@@ -5844,6 +5873,7 @@ function update(dt) {
             }
             const blocked = goblinBlocks
                 || (catapultGoblin && nx === cgRoundX && ny === cgRoundY)
+                || tileBlocked(ntx, nty)   // the room's own furniture
                 ;
             if (!blocked) {
                 p.destX = nx;
@@ -6146,6 +6176,9 @@ function update(dt) {
                     const knockDirY = kdy !== 0 ? Math.sign(kdy) : (gob.dir === 0 ? 1 : gob.dir === 1 ? -1 : 0);
                     // Try 2 tiles, then 1, skipping tiles occupied by goblins
                     const landingClear = (lx, ly) => {
+                        // A punch that throws him into the drum kit is the same
+                        // bug as walking into it, arriving faster.
+                        if (posBlocked(lx, ly)) return false;
                         for (const og of goblins) {
                             if (og.dead) continue;
                             if (Math.round(og.x / TILE) * TILE === lx && Math.round(og.y / TILE) * TILE === ly) return false;
@@ -6250,6 +6283,12 @@ function update(dt) {
             const isGobTileBlocked = (tx, ty) => {
                 const ttx = Math.round(tx / TILE);
                 const tty = Math.round(ty / TILE);
+                // A Donk parked inside the drum kit looks exactly as wrong as
+                // BUZZ doing it. Safe to add here: this test already has a
+                // fallback that tries the other axis when the first is refused,
+                // so a Donk meets the corner and walks around it rather than
+                // stopping dead against it.
+                if (tileBlocked(ttx, tty)) return true;
                 if (tx === p.x && ty === p.y) return true;
                 if (catapultGoblin && tx === cgBlockX && ty === cgBlockY) return true;
                 // Check other alive goblins
