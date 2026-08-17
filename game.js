@@ -1762,45 +1762,67 @@ function drawPadRises() {
 //
 // These are stage cans standing in for whatever the props become. The plumbing
 // is the point: get the timing honest first, then the drawing can be anything.
+// THE CANS ARE FIXTURES NOW, not a formula.
+//
+// They used to be derived: N lights for N active rows, spread evenly between two
+// hardcoded x values. That meant the wall GAINED AND LOST HARDWARE between
+// levels — a light rig that installs itself as you unlock drums — and it meant
+// Carl could not move one without editing the spacing maths.
+//
+// So they are data in the biome, in the same wall space as the props: a mount
+// point, a size, and an angle. All of them are always on the wall, because a
+// rehearsal room's lighting rig does not change when the band adds a cowbell;
+// only the rows that are actually playing can LIGHT. `angle` is degrees, 0 being
+// straight up, and the beam swings with the can.
+const LIGHT_CAN_ASPECT = 1.65;   // half-width over height; a squat wide can
+
+function stageLightsOf(b) {
+    return (b || currentBiome || {}).stageLights || [];
+}
+
 function drawStageLights(wx, wy, ww, wh) {
+    const list = stageLightsOf();
+    if (!list.length) return;
     const rows = getActiveRows();
-    if (!rows) return;
     const g = MAIN_CTX;
-    // clear of the door on the left, the phone on the right
-    const xa = 0.205, xb = 0.935;
-    const baseY = wy + wh * 0.883;          // standing on the skirting
-    const canW = ww * 0.018, canH = wh * 0.042;
-    for (let r = 0; r < rows; r++) {
-        const f = rows === 1 ? 0.5 : r / (rows - 1);
-        const cx = wx + ww * (xa + (xb - xa) * f);
-        const col = (PAL.gridOn && PAL.gridOn[r]) || INK.mustard;
-        const lit = rowTrigger[r] > 0 ? rowTrigger[r] / 8 : 0;
+    for (const L of list) {
+        const canH = wh * L.h, canW = canH * LIGHT_CAN_ASPECT;
+        const mx = wx + ww * L.x, my = wy + wh * L.y;
+        const r = L.row;
+        // A row past the level's unlock can't sound, so its can stays dark.
+        const live = r !== undefined && r < rows;
+        const col = (live && PAL.gridOn && PAL.gridOn[r]) || INK.mustard;
+        const lit = live && rowTrigger[r] > 0 ? rowTrigger[r] / 8 : 0;
+
+        g.save();
+        g.translate(mx, my);
+        g.rotate((L.angle || 0) * Math.PI / 180);
 
         if (lit > 0) {
-            // the beam, opening out as it climbs
-            const top = wy + wh * 0.20;
+            // the beam, opening out as it travels — drawn in the can's own
+            // frame, so pointing the can sideways points the beam sideways
+            const reach = wh * 0.683;
             const spread = ww * 0.048 * (0.55 + lit * 0.7);
-            const grad = g.createLinearGradient(cx, baseY, cx, top);
+            const grad = g.createLinearGradient(0, 0, 0, -reach);
             grad.addColorStop(0, col);
             grad.addColorStop(1, "rgba(0,0,0,0)");
             g.save();
             g.globalAlpha = lit * 0.45;
             g.fillStyle = grad;
             g.beginPath();
-            g.moveTo(cx - canW * 0.6, baseY);
-            g.lineTo(cx + canW * 0.6, baseY);
-            g.lineTo(cx + spread, top);
-            g.lineTo(cx - spread, top);
+            g.moveTo(-canW * 0.6, 0);
+            g.lineTo(canW * 0.6, 0);
+            g.lineTo(spread, -reach);
+            g.lineTo(-spread, -reach);
             g.closePath();
             g.fill();
             g.restore();
         }
 
         // the can itself
-        g.save();
         g.fillStyle = mixC(INK.charcoal, INK.paper, 0.14);
         g.beginPath();
-        g.roundRect(cx - canW, baseY - canH, canW * 2, canH, canW * 0.4);
+        g.roundRect(-canW, -canH, canW * 2, canH, canW * 0.4);
         g.fill();
         g.strokeStyle = INK.charcoal;
         g.lineWidth = Math.max(1, canW * 0.14);
@@ -1808,8 +1830,9 @@ function drawStageLights(wx, wy, ww, wh) {
         // the lens, which is the part that lights
         g.fillStyle = lit > 0 ? col : mixC(INK.charcoal, INK.paper, 0.34);
         g.beginPath();
-        g.ellipse(cx, baseY - canH, canW * 0.74, canH * 0.24, 0, 0, Math.PI * 2);
+        g.ellipse(0, -canH, canW * 0.74, canH * 0.24, 0, 0, Math.PI * 2);
         g.fill();
+        if (SETED.on) SETED.note(g, L, "light", -canW, -canH, canW * 2, canH);
         g.restore();
     }
 }
@@ -2227,11 +2250,27 @@ SETED.FIELDS = {
         { k: "y", label: "up/down", min: 0, max: 1, step: 0.001, nudge: 0.004, big: 0.04, dp: 4 },
         { k: "w", label: "width", min: 0.05, max: 0.9, step: 0.0005, nudge: 0.002, big: 0.02, dp: 4 },
     ],
+    // A light gets a fourth control the others do not have. The pad still drives
+    // the first three; rotation is the slider, plus , and . on a keyboard.
+    light: [
+        { k: "x", label: "across", min: -0.05, max: 1.05, step: 0.001, nudge: 0.004, big: 0.04, dp: 3 },
+        { k: "y", label: "up/down", min: -0.05, max: 1.05, step: 0.001, nudge: 0.004, big: 0.04, dp: 3 },
+        { k: "h", label: "size", min: 0.008, max: 0.20, step: 0.001, nudge: 0.002, big: 0.02, dp: 3 },
+        { k: "angle", label: "rotation", min: -180, max: 180, step: 1, nudge: 2, big: 15, dp: 0 },
+    ],
 };
 
 SETED.arrays = function () {
     const b = BIOMES[0];
-    return { floor: b.floorProps || [], wall: b.wallProps || [], board: b.scoreboard };
+    return { floor: b.floorProps || [], wall: b.wallProps || [],
+             light: b.stageLights || [], board: b.scoreboard };
+};
+
+// The list a selection lives in. The scoreboard is a lone object, not a list —
+// it cannot be added, removed or reordered, so it has none.
+SETED.arrFor = function (kind) {
+    const a = SETED.arrays();
+    return kind === "board" ? null : a[kind];
 };
 
 // A prop's art may not be loaded — the boot loader only fetches what the room
@@ -2254,9 +2293,19 @@ SETED.note = function (g, pr, kind, x, y, w, h) {
     const at = (ux, uy) => ({ x: m.a * ux + m.c * uy + m.e, y: m.b * ux + m.d * uy + m.f });
     const c = [at(x, y), at(x + w, y), at(x, y + h), at(x + w, y + h)];
     const xs = c.map((p) => p.x), ys = c.map((p) => p.y);
-    const x0 = Math.min(...xs), y0 = Math.min(...ys);
-    SETED.pending.push({ pr, kind, x: x0, y: y0,
-                         w: Math.max(...xs) - x0, h: Math.max(...ys) - y0 });
+    let x0 = Math.min(...xs), y0 = Math.min(...ys);
+    let bw = Math.max(...xs) - x0, bh = Math.max(...ys) - y0;
+    // A GRABBABLE MINIMUM. A light can is about 46x14 device pixels and the mug
+    // and the light switch are not much better — targets that small are a
+    // precision test on a mouse and impossible with a thumb. Grown about their
+    // own centre, so the box still sits where the object looks like it is.
+    //
+    // Safe against the smallest-box-wins rule in SETED.hit: a padded speck is
+    // still far smaller than an amp, so it keeps winning the clicks it should.
+    const MIN = 26;
+    if (bw < MIN) { x0 -= (MIN - bw) / 2; bw = MIN; }
+    if (bh < MIN) { y0 -= (MIN - bh) / 2; bh = MIN; }
+    SETED.pending.push({ pr, kind, x: x0, y: y0, w: bw, h: bh });
 };
 
 // ---- Screen space <-> room space -----------------------------------------
@@ -2308,7 +2357,8 @@ SETED.screenOf = function (ent) {
 // ---- Editing --------------------------------------------------------------
 SETED.snapshot = function () {
     const a = SETED.arrays();
-    SETED.undo.push(JSON.stringify({ floor: a.floor, wall: a.wall, board: a.board }));
+    SETED.undo.push(JSON.stringify({ floor: a.floor, wall: a.wall,
+                                     light: a.light, board: a.board }));
     if (SETED.undo.length > 60) SETED.undo.shift();
 };
 
@@ -2321,6 +2371,7 @@ SETED.revert = function () {
     // dressed the old way.
     a.floor.length = 0; a.floor.push(...s.floor);
     a.wall.length = 0; a.wall.push(...s.wall);
+    if (s.light) { a.light.length = 0; a.light.push(...s.light); }
     Object.assign(a.board, s.board);
     SETED.sel = null;
     SETED.sync();
@@ -2328,12 +2379,23 @@ SETED.revert = function () {
 
 SETED.add = function (kind, name) {
     SETED.snapshot();
-    SETED.ensureArt(kind, name);
     const a = SETED.arrays();
-    const pr = kind === "floor"
-        ? { art: name, x: COLS / 2, y: 0.3, h: 1.2 }
-        : { art: name, x: 0.5, y: 0.35, h: 0.2 };
-    (kind === "floor" ? a.floor : a.wall).push(pr);
+    let pr;
+    if (kind === "light") {
+        // Lands on the skirting where the rig lives, answering the next row that
+        // has no can of its own — a second light on row 0 is almost never what
+        // you wanted, and guessing right costs nothing.
+        const taken = new Set(a.light.map((L) => L.row));
+        let row = 0;
+        while (row < GRID_ROWS && taken.has(row)) row++;
+        pr = { x: 0.5, y: 0.883, h: 0.042, angle: 0, row: row < GRID_ROWS ? row : 0 };
+    } else {
+        SETED.ensureArt(kind, name);
+        pr = kind === "floor"
+            ? { art: name, x: COLS / 2, y: 0.3, h: 1.2 }
+            : { art: name, x: 0.5, y: 0.35, h: 0.2 };
+    }
+    SETED.arrFor(kind).push(pr);
     SETED.sel = { pr, kind };
     SETED.sync();
 };
@@ -2342,7 +2404,7 @@ SETED.remove = function () {
     const s = SETED.sel;
     if (!s || s.kind === "board") return;
     SETED.snapshot();
-    const a = SETED.arrays(), arr = s.kind === "floor" ? a.floor : a.wall;
+    const arr = SETED.arrFor(s.kind);
     const i = arr.indexOf(s.pr);
     if (i >= 0) arr.splice(i, 1);
     SETED.sel = null;
@@ -2353,11 +2415,12 @@ SETED.duplicate = function () {
     const s = SETED.sel;
     if (!s || s.kind === "board") return;
     SETED.snapshot();
-    const a = SETED.arrays(), arr = s.kind === "floor" ? a.floor : a.wall;
+    const arr = SETED.arrFor(s.kind);
     const copy = JSON.parse(JSON.stringify(s.pr));
     // Offset it, or the copy hides under the original and reads as nothing
     // having happened.
     if (s.kind === "floor") copy.x += 1; else copy.x = Math.min(0.98, copy.x + 0.05);
+    if (s.kind === "light") delete copy.row;   // two cans on one drum is a mistake
     delete copy.piece; delete copy.decor;   // one thing was stolen, not two
     arr.splice(arr.indexOf(s.pr) + 1, 0, copy);
     SETED.sel = { pr: copy, kind: s.kind };
@@ -2369,7 +2432,7 @@ SETED.reorder = function (dir) {
     const s = SETED.sel;
     if (!s || s.kind === "board") return;
     SETED.snapshot();
-    const a = SETED.arrays(), arr = s.kind === "floor" ? a.floor : a.wall;
+    const arr = SETED.arrFor(s.kind);
     const i = arr.indexOf(s.pr), j = i + dir;
     if (i < 0 || j < 0 || j >= arr.length) { SETED.undo.pop(); return; }
     arr.splice(i, 1); arr.splice(j, 0, s.pr);
@@ -2405,6 +2468,11 @@ SETED.exportText = function () {
         "        ],",
         "        wallProps: [",
         ...a.wall.map((p) => line(p, "wall")),
+        "        ],",
+        "        stageLights: [",
+        ...a.light.map((L) => "            { x: " + num(L.x, 3) + ", y: " + num(L.y, 3)
+            + ", h: " + num(L.h, 3) + ", angle: " + num(L.angle || 0, 0)
+            + (L.row === undefined ? "" : ", row: " + L.row) + " },"),
         "        ],",
         "        // scoreboard placement only — wells and pips are unchanged",
         `        scoreboard x: ${num(b.x, 4)}, y: ${num(b.y, 4)}, w: ${num(b.w, 4)}`,
@@ -2479,7 +2547,10 @@ SETED.overlay = function () {
         g.font = "600 14px ui-monospace,Menlo,monospace";
         g.textAlign = "center";
         g.fillStyle = INK.mustard;
-        g.fillText(b.pr.art || "scoreboard", b.x + b.w / 2, b.y - 8);
+        const name = b.pr.art
+            || (b.kind === "light" ? "light" + (b.pr.row === undefined ? "" : " " + b.pr.row)
+                : "scoreboard");
+        g.fillText(name, b.x + b.w / 2, b.y - 8);
         g.textAlign = "start";
     }
     g.fillStyle = "rgba(44,44,42,0.85)";
@@ -2491,16 +2562,26 @@ SETED.overlay = function () {
 };
 
 // ---- Input ----------------------------------------------------------------
+// SMALLEST BOX WINS, not the topmost one.
+//
+// Topmost was the obvious rule and it was wrong. The light cans sit on the
+// skirting, which is exactly where the floor props stand, and the props draw
+// later — so every click meant for a can selected the amp behind it and the
+// lights were effectively unselectable.
+//
+// Area is the better rule for the same reason it is in every editor that has
+// this problem: a big object has plenty of its own space to be clicked in, and a
+// small one has none to spare. Draw order still breaks ties, so two cans on top
+// of each other behave the way they look.
 SETED.hit = function (p) {
-    // Back to front: the floor props draw after the wall, and later props draw
-    // over earlier ones, so the last box that contains the point is the one the
-    // eye thinks it clicked.
-    for (let i = SETED.boxes.length - 1; i >= 0; i--) {
+    let best = null, bestArea = Infinity;
+    for (let i = 0; i < SETED.boxes.length; i++) {
         const b = SETED.boxes[i];
-        if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h)
-            return { pr: b.pr, kind: b.kind };
+        if (p.x < b.x || p.x > b.x + b.w || p.y < b.y || p.y > b.y + b.h) continue;
+        const area = Math.max(1, b.w * b.h);
+        if (area <= bestArea) { best = b; bestArea = area; }
     }
-    return null;
+    return best ? { pr: best.pr, kind: best.kind } : null;
 };
 
 SETED.onDown = function (e) {
@@ -2536,6 +2617,8 @@ SETED.onMove = function (e) {
         pr.x = f.fx;
         // A prop that stands ON the floor keeps its foot there. Dragging it
         // upward should not make it hover — untick "on the floor" for that.
+        // A light is never floor-pinned: putting one up in the corner is half
+        // the point of being able to move them.
         if (!pr.foot) pr.y = f.fy;
     }
     d.moved = true;
@@ -2590,6 +2673,10 @@ SETED.key = function (e) {
     if (e.code === "BracketLeft") { SETED.bump(2, -1, c); return true; }
     if (e.code === "BracketRight") { SETED.bump(2, 1, c); return true; }
     if (e.code === "KeyF" && s.kind !== "board") { SETED.flipSel(); return true; }
+    // Rotation only exists for the lights, so it gets its own pair of keys
+    // rather than stealing one the other kinds use.
+    if (s.kind === "light" && e.code === "Comma") { SETED.bump(3, -1, c); return true; }
+    if (s.kind === "light" && e.code === "Period") { SETED.bump(3, 1, c); return true; }
     if (e.code === "Delete" || e.code === "Backspace") { SETED.remove(); return true; }
     return false;
 };
@@ -2602,6 +2689,20 @@ SETED.enable = function () {
     // stolen, nobody walking through the shot.
     try { resetGame(); } catch (err) {}
     currentLevel = 0;
+    // ALL SIX ROWS WHILE DRESSING. Level 1 runs four, so the grid it shows is
+    // 100px shorter than the one the room has to live with from level 21 on —
+    // dressing against the short version is dressing against a room that stops
+    // existing. Carl's call, and it is the same argument as showing the props
+    // that have been stolen: place against the worst case, not the first one.
+    //
+    // Saved and restored, because this writes to LEVELS[0] — the shipping level
+    // one — and a four-row level that quietly became a six-row level is the kind
+    // of bug that gets found three sessions later.
+    SETED.savedRows = LEVELS[0].activeRows;
+    LEVELS[0].activeRows = GRID_ROWS;
+    const pat = LEVELS[LEVELS.length - 1].pattern || LEVELS[0].startPattern;
+    for (let r = 0; r < GRID_ROWS; r++)
+        for (let c = 0; c < GRID_COLS; c++) grid[r][c] = (pat[r] && pat[r][c]) || 0;
     rebuildCaveTextures(0);
     setLevelTempo(0);
     levelTimer = 150 * 60;
@@ -2634,6 +2735,12 @@ SETED.disable = function () {
     const el = document.getElementById("setdress");
     if (el) el.remove();
     document.body.style.removeProperty("--sheet");
+    // Give level one its four rows back.
+    if (SETED.savedRows !== undefined) {
+        LEVELS[0].activeRows = SETED.savedRows;
+        SETED.savedRows = undefined;
+        try { rebuildCaveTextures(Math.max(0, currentLevel)); } catch (e) {}
+    }
     // Opened at load, closed by "done": hand back the attract screen rather
     // than dropping into a half-played level 1 with a clock already running.
     // Opened mid-session with $set, it leaves you where you were.
@@ -2851,6 +2958,8 @@ SETED.buildUI = function () {
                 textContent: (kind === "floor" ? "floor · " : "wall · ") + n });
             libSel.appendChild(o);
         }
+    libSel.appendChild(el("option", { value: "light|can",
+        textContent: "wall \u00b7 stage light" }));
     libRow.append(libSel, btn("add", () => {
         const [kind, name] = libSel.value.split("|");
         SETED.add(kind, name);
@@ -2914,7 +3023,10 @@ SETED.buildUI = function () {
             } else {
                 body.appendChild(el("div", { className: "row" }, [
                     el("label", { textContent: "art" }),
-                    el("output", { textContent: s.pr.art || "scoreboard",
+                    el("output", { textContent: s.pr.art
+                        || (s.kind === "light" ? "stage light"
+                            + (s.pr.row === undefined ? "" : " \u00b7 row " + s.pr.row)
+                            : "scoreboard"),
                                    style: "min-width:0;flex:1;text-align:left" }),
                 ]));
                 for (const f of SETED.FIELDS[s.kind]) {
@@ -2933,7 +3045,7 @@ SETED.buildUI = function () {
                     body.appendChild(row);
                     fields.push({ f, inp, out });
                 }
-                if (s.kind !== "board") {
+                if (s.kind !== "board" && s.kind !== "light") {
                     const fr = el("div", { className: "chk" });
                     const fb = el("input", { type: "checkbox", id: "sd-flip", checked: !!s.pr.flip });
                     fb.addEventListener("change", () => {
@@ -2956,10 +3068,12 @@ SETED.buildUI = function () {
                 // away with the rest when the sheet is collapsed on a phone.
                 const extra = el("div", { className: "foldable" });
                 body.appendChild(extra);
-                if (s.kind === "floor") {
+                if (s.kind === "floor" || s.kind === "light") {
                     const row = el("div", { className: "row" });
                     const sel = el("select");
-                    sel.appendChild(el("option", { value: "", textContent: "no row — scenery" }));
+                    sel.appendChild(el("option", { value: "",
+                        textContent: s.kind === "light" ? "no row — never lights"
+                                                        : "no row — scenery" }));
                     for (let r = 0; r < GRID_ROWS; r++)
                         sel.appendChild(el("option", { value: String(r),
                             textContent: "row " + r + " reacts" }));
@@ -2972,7 +3086,7 @@ SETED.buildUI = function () {
                     row.append(el("label", { textContent: "beat" }), sel);
                     extra.appendChild(row);
                 }
-                if (s.kind !== "board") {
+                if (s.kind !== "board" && s.kind !== "light") {
                     const row = el("div", { className: "row" });
                     const sel = el("select");
                     sel.appendChild(el("option", { value: "", textContent: "not stolen" }));
@@ -3268,6 +3382,19 @@ const BIOMES = [
             { art: "clipboard", x: 0.825, y: 0.381, h: 0.234 },
             { art: "phone",     x: 0.930, y: 0.395, h: 0.284 },
         ],
+        // The light rig. Mount point, can height and angle, all in wall space —
+        // `row` is which drum makes it flash. These six numbers are exactly where
+        // the old formula put them (evenly from 0.205 to 0.935 on the skirting at
+        // 0.883, straight up), so switching from derived to placed changed
+        // nothing on screen and made all of it draggable.
+        stageLights: [
+            { x: 0.205, y: 0.883, h: 0.042, angle: 0, row: 0 },
+            { x: 0.351, y: 0.883, h: 0.042, angle: 0, row: 1 },
+            { x: 0.497, y: 0.883, h: 0.042, angle: 0, row: 2 },
+            { x: 0.643, y: 0.883, h: 0.042, angle: 0, row: 3 },
+            { x: 0.789, y: 0.883, h: 0.042, angle: 0, row: 4 },
+            { x: 0.935, y: 0.883, h: 0.042, angle: 0, row: 5 },
+        ],
         // The readouts hang here, in the same wall space as the props.
         //
         // Carl: bigger, and crossing the chair rail. Both were geometry
@@ -3426,7 +3553,8 @@ let TEX_FLOOR = [];
 for (const b of BIOMES) {
     if (b === BIOMES[0]) continue;
     for (const k of ["art", "floorArt", "wallTile", "wallStrip", "stripPanels",
-                     "wallProps", "scoreboard", "floorProps", "doorArt"]) {
+                     "wallProps", "scoreboard", "floorProps", "doorArt",
+                     "stageLights"]) {
         if (BIOMES[0][k] !== undefined) b[k] = BIOMES[0][k];
     }
 }
