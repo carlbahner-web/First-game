@@ -1680,6 +1680,262 @@ function propMissing(pr) {
 // you a rectangle is missing; this tells you WHICH rectangle.
 const GHOST_ALPHA = 0.16;
 
+// ============================================================
+// THE KEY LIGHT — one lamp, and what it does to the room
+// ============================================================
+// Carl's, and the reason is better than "shadows would be nice": a room lit
+// evenly everywhere is a diagram of a room. A rehearsal space has ONE work light
+// over the middle and corners you can't quite see into, and that is most of what
+// makes a space feel like somewhere people actually are.
+//
+// It is a POINT light, not a directional one, because that is what a room has.
+// Shadows fan away from the lamp instead of all lying parallel, which is the
+// difference between "indoors" and "outdoors at 4pm".
+//
+// WHY THIS IS CHEAP, and why it is not shadow mapping. Canvas 2D has no depth
+// buffer and no shaders, and there is no geometry here to shadow anyway — the
+// room is a bitmap on a tilted plane and the props are upright cards. But a
+// shadow lying on a FLAT FLOOR is an affine shear of the caster, and affine is
+// exactly what drawImage does. So the shadow is one extra draw per caster.
+//
+// Better still, it goes into the PLANE canvas in flat floor space, where the
+// floor is drawn before being laid onto the tilt. The existing projection then
+// foreshortens the shadows correctly for free. (Note the symmetry with the side
+// walls: those need a PROJECTIVE transform, which Canvas 2D cannot do, which is
+// why they are sliced. Shadows on the floor only ever need affine.)
+const LIGHT = {
+    on: true,
+    x: 10.0,        // centre of the lit pool on the floor, in TILES
+    y: 4.6,
+    // WHERE THE LAMP HANGS, FOR SHADOW PURPOSES ONLY — and deliberately not the
+    // same point as the pool above.
+    //
+    // The props stand against the back wall. A lamp in the middle of the room
+    // throws their shadows AWAY from the camera, which means into the wall and
+    // off the top of the floor plane, so they vanish — the first version of this
+    // drew ten shadows a frame and you could not see one of them. Putting the
+    // key light behind the back wall throws everything forward into the room
+    // instead, where there is floor to catch it.
+    //
+    // It also matches what is already drawn: the stage light cans are ON the
+    // back wall pointing into the room. So the fiction was always "lit from the
+    // back", and the shadows now agree with the scenery.
+    //
+    // Splitting the pool from the lamp is a stylisation, not an accident. It
+    // buys a pool of light where the room wants one and shadow directions that
+    // read, and nobody has ever looked at a picture and audited it for a single
+    // consistent light source.
+    lampY: -0.9,
+    height: 4.6,    // tiles above the floor. Sets how long the shadows are.
+    reach: 13.0,    // tiles. Radius of the lit pool before full shade.
+    shade: 0.52,    // how dark the room goes outside the pool, 0..1
+    // A prop in the top row stands almost against the wall, and the strip of
+    // floor between it and the grid is about a tile and a half — there is
+    // nowhere for a floor shadow to go, which is why the first pass drew ten of
+    // them and you could not see one. The shadow that matters for those objects
+    // is the one on the WALL BEHIND them, and for an object nearly touching a
+    // wall that shadow is very close to its own silhouette, a little bigger and
+    // pushed away from the light. Cheap, and it is what the eye is expecting.
+    wallSpread: 0.055, // tiles of sideways push per tile away from the lamp
+    wallLift: 0.06,    // and a little upward, so it is not a perfect tracing
+    warm: 0.13,     // warmth of the pool itself
+    shadow: 0.34,
+    // SHADOWS GET THEIR OWN INK, and it is not the palette's charcoal.
+    //
+    // The first pass used INK.charcoal, which is very nearly the colour of the
+    // floorboards — so every shadow read perfectly on the pale mint wall and was
+    // completely invisible on the floor, because darkening charcoal with
+    // charcoal does nothing. This is a cool near-black: still under the wall's
+    // shadows without going flat, and actually darker than the planks.
+    ink: "#15151A",
+    minDepth: 0.30, // see shadowOffset — a billboard's floor for shadow depth
+    wall: 0.42,     // how much of the shade the back wall takes
+    // THE ROOM BRIGHTENS AS THE GEAR COMES HOME. Level one is a stripped room
+    // with one sad work light; a full kit is a lit rehearsal space. It costs
+    // nothing and it makes the recovery arc something you feel rather than read.
+    grow: true,
+};
+
+// 0 at the robbery, 1 when it is all back.
+function lightProgress() {
+    if (gameState === "title") return 1;
+    if (typeof STOLEN_GEAR === "undefined" || !STOLEN_GEAR.length) return 1;
+    return Math.min(1, gearRecovered.length / STOLEN_GEAR.length);
+}
+
+function lightShade() {
+    if (!LIGHT.on) return 0;
+    return LIGHT.grow ? LIGHT.shade * (1 - 0.55 * lightProgress()) : LIGHT.shade;
+}
+
+// The lit pool, and the dark that is not it.
+//
+// Drawn as ONE radial fill that is transparent at the lamp and charcoal at the
+// edge, rather than a shade layer with the light punched out of it. Same
+// picture, but destination-out would have eaten the floor art along with the
+// shade, and doing it properly would have meant a second full-size canvas every
+// frame for no visible difference.
+//
+// It runs BEFORE the sequencer grid draws, so the pads stay at full brightness.
+// That is deliberate: the grid is a 16x6 matrix the player has to SCAN, and it
+// is the one thing in the frame that must never get moodier. It reads as a lit
+// floor panel, which is a fair thing for a room like this to have.
+// BAKED, because a full-canvas radial gradient is not a per-frame operation.
+// Measured: two of them cost 16ms of a 27ms frame — the lighting was more than
+// half the render. It only changes when the lamp moves or a piece of gear comes
+// home, which is a handful of times in a whole run, so it bakes on that key and
+// the frame pays one drawImage.
+const LIGHT_WASH = { key: "", cv: null };
+
+function lightWash() {
+    const sh = lightShade();
+    const W = COLS * TILE * SCALE, H = ROWS * TILE * SCALE;
+    const key = [W, H, sh, LIGHT.x, LIGHT.y, LIGHT.reach, LIGHT.warm,
+                 LIGHT.ink, lightProgress()].join("|");
+    if (LIGHT_WASH.key === key) return LIGHT_WASH.cv;
+    const cv = LIGHT_WASH.cv && LIGHT_WASH.cv.width === W ? LIGHT_WASH.cv
+        : Object.assign(document.createElement("canvas"), { width: W, height: H });
+    const g = cv.getContext("2d");
+    g.clearRect(0, 0, W, H);
+    const lx = LIGHT.x * TILE * SCALE, ly = LIGHT.y * TILE * SCALE;
+    const R = Math.max(1, LIGHT.reach * TILE * SCALE);
+    const rgb = shadowRGB();
+    const grad = g.createRadialGradient(lx, ly, R * 0.10, lx, ly, R);
+    grad.addColorStop(0, `rgba(${rgb},0)`);
+    grad.addColorStop(0.55, `rgba(${rgb},${(sh * 0.36).toFixed(3)})`);
+    grad.addColorStop(1, `rgba(${rgb},${sh.toFixed(3)})`);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, W, H);
+    // A little warmth where the lamp actually is. Tungsten, not daylight.
+    if (LIGHT.warm > 0.002) {
+        const wg = g.createRadialGradient(lx, ly, 0, lx, ly, R * 0.85);
+        wg.addColorStop(0, `rgba(246,204,96,${(LIGHT.warm * (1 - 0.4 * lightProgress())).toFixed(3)})`);
+        wg.addColorStop(1, "rgba(246,204,96,0)");
+        g.fillStyle = wg;
+        g.fillRect(0, 0, W, H);
+    }
+    LIGHT_WASH.key = key;
+    LIGHT_WASH.cv = cv;
+    return cv;
+}
+
+function drawRoomLight() {
+    if (lightShade() <= 0.002) return;
+    ctx.drawImage(lightWash(), 0, 0);
+}
+
+// ---- Casting -------------------------------------------------------------
+// A silhouette per sprite, baked once. `source-in` over the art's own alpha, so
+// a mic stand's shadow has the mic stand's holes in it.
+const SILHOUETTES = new WeakMap();
+function silhouetteOf(img) {
+    const hit = SILHOUETTES.get(img);
+    if (hit && hit.ink === LIGHT.ink) return hit.cv;   // ink is on a slider
+    const cv = (hit && hit.cv) || document.createElement("canvas");
+    cv.width = img.width; cv.height = img.height;
+    const g = cv.getContext("2d");
+    g.clearRect(0, 0, cv.width, cv.height);
+    g.drawImage(img, 0, 0);
+    g.globalCompositeOperation = "source-in";
+    g.fillStyle = LIGHT.ink;
+    g.fillRect(0, 0, cv.width, cv.height);
+    SILHOUETTES.set(img, { ink: LIGHT.ink, cv });
+    return cv;
+}
+
+// The shade wash and the shadows share one ink, as `rgba()` so alpha can ride
+// on it. Parsed once per value rather than per fill.
+const INK_RGB = { hex: "", rgb: "21,21,26" };
+function shadowRGB() {
+    if (INK_RGB.hex !== LIGHT.ink) {
+        const h = LIGHT.ink.replace("#", "");
+        INK_RGB.rgb = [0, 2, 4].map((i) => parseInt(h.substr(i, 2), 16)).join(",");
+        INK_RGB.hex = LIGHT.ink;
+    }
+    return INK_RGB.rgb;
+}
+
+// Where the top of a caster's shadow lands, in tiles, relative to its feet.
+//
+// For a lamp at height H over floor point L, a caster point at height t casts to
+// G + (G - L)·t/(H - t). That is not linear in t, so a point light's shadow is
+// strictly a projective map — but with the lamp well above the props the error
+// across a 1.5-tile object is a few percent, so this takes the EXACT offset for
+// the top of the sprite and shears linearly to it. Right at both ends, and
+// affine, which is the whole reason this is affordable.
+function shadowOffset(gx, gy, hTiles) {
+    const H = LIGHT.height;
+    const h = Math.min(hTiles, H * 0.8);
+    const k = h / (H - h);
+    let ox = (gx - LIGHT.x) * k;
+    let oy = (gy - LIGHT.lampY) * k;
+    // A billboard is a flat card. A caster standing level with the lamp in DEPTH
+    // would cast a shadow with no depth at all — a hairline on the floor — which
+    // is geometrically right and looks like a bug. Give every shadow a floor.
+    const minY = h * LIGHT.minDepth;
+    if (Math.abs(oy) < minY) oy = oy < 0 ? -minY : minY;
+    return { ox, oy };
+}
+
+// The real thing: a sheared silhouette. For props, whose outlines are the
+// interesting part — a cymbal on a tripod casts a cymbal on a tripod.
+function castShadowSprite(img, gx, gy, hTiles, flip) {
+    if (!LIGHT.on || LIGHT.shadow <= 0.002 || !img || !img.width) return;
+    const hpx = hTiles * TILE * SCALE;
+    const wpx = hpx * (img.width / img.height);
+    const { ox, oy } = shadowOffset(gx, gy, hTiles);
+    const g = ctx;
+    g.save();
+    g.globalAlpha = LIGHT.shadow * (1 - 0.25 * lightProgress());
+    // feet at the ground point; the sprite's own up-axis leans to the offset
+    g.transform(1, 0,
+                -ox * TILE * SCALE / hpx, -oy * TILE * SCALE / hpx,
+                gx * TILE * SCALE, gy * TILE * SCALE);
+    if (flip) g.scale(-1, 1);
+    g.drawImage(silhouetteOf(img), -wpx / 2, -hpx, wpx, hpx);
+    g.restore();
+}
+
+// And a blob for the characters, who are RIGS — assembled from a body, two arms
+// and two legs every frame, with no single bitmap to take a silhouette from.
+// Rendering each of them a second time into an offscreen just to get one would
+// cost more than the entire lighting pass.
+//
+// It matters less than it sounds: BUZZ is a snare drum with feet. A stretched
+// ellipse leaning away from the lamp IS his silhouette, near enough.
+function castShadowBlob(gx, gy, hTiles, rTiles) {
+    if (!LIGHT.on || LIGHT.shadow <= 0.002) return;
+    const { ox, oy } = shadowOffset(gx, gy, hTiles);
+    const len = Math.hypot(ox, oy) * TILE * SCALE;
+    const rp = Math.max(1, rTiles * TILE * SCALE);
+    const g = ctx;
+    g.save();
+    g.globalAlpha = LIGHT.shadow * 0.85 * (1 - 0.25 * lightProgress());
+    g.fillStyle = LIGHT.ink;
+    g.beginPath();
+    g.ellipse((gx + ox / 2) * TILE * SCALE, (gy + oy / 2) * TILE * SCALE,
+              len / 2 + rp, rp, Math.atan2(oy, ox), 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+}
+
+// Everything that stands on this floor, shadowed in one pass — called during the
+// floor pass, so all of it lands in the plane and gets projected with it.
+function drawFloorShadows() {
+    if (!LIGHT.on) return;
+    for (const pr of (currentBiome && currentBiome.floorProps) || []) {
+        const art = ROOM_ART["set/" + pr.art];
+        // A ghost casts no shadow — it is not standing there yet.
+        if (!art || propMissing(pr)) continue;
+        castShadowSprite(art, pr.x + 0.5, pr.y, pr.h, pr.flip);
+    }
+    if (gameState === "playing" || gameState === "levelcomplete") {
+        if (!player.dead) castShadowBlob(player.x / TILE + 0.5, player.y / TILE + 0.5, 1.5, 0.30);
+        for (const g of goblins)
+            if (!g.dead) castShadowBlob(g.x / TILE + 0.5, g.y / TILE + 0.5, 1.4, 0.28);
+    }
+}
+
 function drawFloorProps() {
     const list = (currentBiome && currentBiome.floorProps) || [];
     for (const pr of list) {
@@ -1700,6 +1956,19 @@ function drawFloorProps() {
             const sx = 1 + lit * 0.10, sy = 1 - lit * 0.07;
             const h = pr.h * TILE * SCALE, w = h * (art.width / art.height);
             const bx = gx * SCALE, by = gy * SCALE;
+            // The shadow on the wall behind, before the object that casts it.
+            // Scaled about the FEET, so it grows upward the way a shadow does
+            // when its object stands further off the wall.
+            if (!missing && LIGHT.on && LIGHT.shadow > 0.002) {
+                const spread = (pr.x + 0.5 - LIGHT.x) * LIGHT.wallSpread * TILE * SCALE;
+                const grow = 1 + pr.y * 0.14;
+                ctx.save();
+                ctx.globalAlpha = LIGHT.shadow * 0.62 * (1 - 0.25 * lightProgress());
+                ctx.translate(bx + spread, by - LIGHT.wallLift * TILE * SCALE);
+                ctx.scale(grow * (pr.flip ? -1 : 1), grow);
+                ctx.drawImage(silhouetteOf(art), -w / 2, -h, w, h);
+                ctx.restore();
+            }
             ctx.save();
             ctx.translate(bx, by);
             // Flipping is about the sprite's own centre line, which is where the
@@ -1848,7 +2117,41 @@ function drawWallProps(wx, wy, ww, wh) {
         if (SETED.on) SETED.note(MAIN_CTX, pr, "wall", -w / 2, -h / 2, w, h);
         MAIN_CTX.restore();
     }
+    drawWallShade(wx, wy, ww, wh);
     drawWallScoreboard(wx, wy, ww, wh);
+}
+
+// The back wall takes its share of the falloff, or the floor gets moody under a
+// wall that is still lit like a showroom and the two stop being the same room.
+//
+// Over the props and UNDER the scoreboard: the poster and the clock are scenery
+// and should sit in the light, but the readouts are the one thing on this wall
+// that has to stay legible at a glance, so nothing is allowed on top of them.
+//
+// The lamp's horizontal position carries across; its height does not, because
+// the wall's bright spot is where the light hits it, which is low and centred
+// under a lamp hanging in the middle of a room.
+const WALL_WASH = { key: "", cv: null };
+
+function drawWallShade(wx, wy, ww, wh) {
+    const sh = lightShade() * LIGHT.wall;
+    if (sh <= 0.002) return;
+    const W = Math.max(1, Math.round(ww)), H = Math.max(1, Math.round(wh));
+    const key = [W, H, sh, LIGHT.x, LIGHT.ink].join("|");
+    if (WALL_WASH.key !== key) {
+        const cv = Object.assign(document.createElement("canvas"), { width: W, height: H });
+        const g = cv.getContext("2d");
+        const cx = W * (LIGHT.x / COLS), cy = H * 0.86;
+        const R = Math.max(1, W * 0.62);
+        const rgb = shadowRGB();
+        const grad = g.createRadialGradient(cx, cy, R * 0.12, cx, cy, R);
+        grad.addColorStop(0, `rgba(${rgb},0)`);
+        grad.addColorStop(1, `rgba(${rgb},${sh.toFixed(3)})`);
+        g.fillStyle = grad;
+        g.fillRect(0, 0, W, H);
+        WALL_WASH.key = key; WALL_WASH.cv = cv;
+    }
+    MAIN_CTX.drawImage(WALL_WASH.cv, wx, wy, ww, wh);
 }
 
 // Is the wall carrying the readouts this level? Five of the six biomes have no
@@ -2408,6 +2711,13 @@ SETED.exportText = function () {
         "        ],",
         "        // scoreboard placement only — wells and pips are unchanged",
         `        scoreboard x: ${num(b.x, 4)}, y: ${num(b.y, 4)}, w: ${num(b.w, 4)}`,
+        "",
+        "// the key light — paste over the LIGHT block",
+        `    x: ${num(LIGHT.x, 2)}, y: ${num(LIGHT.y, 2)}, lampY: ${num(LIGHT.lampY, 2)},`,
+        `    height: ${num(LIGHT.height, 2)}, reach: ${num(LIGHT.reach, 2)},`,
+        `    shade: ${num(LIGHT.shade, 3)}, warm: ${num(LIGHT.warm, 3)},`,
+        `    shadow: ${num(LIGHT.shadow, 3)}, wall: ${num(LIGHT.wall, 3)},`,
+        `    wallSpread: ${num(LIGHT.wallSpread, 4)},`,
     ].join("\n");
 };
 
@@ -2856,6 +3166,42 @@ SETED.buildUI = function () {
         SETED.add(kind, name);
     }));
     fold.appendChild(libRow);
+
+    // --- the key light. A rig, like the camera one: the numbers below were all
+    // found by looking, and there is no reason for me to be the one looking.
+    fold.appendChild(h("lighting"));
+    const lightRow = (label, get, set, min, max, step, dp) => {
+        const row = el("div", { className: "row" });
+        const inp = el("input", { type: "range", min, max, step, value: get() });
+        const out = el("output", { textContent: (+get()).toFixed(dp) });
+        inp.addEventListener("input", () => {
+            set(parseFloat(inp.value));
+            out.textContent = (+get()).toFixed(dp);
+            ta.value = SETED.exportText();
+        });
+        row.append(el("label", { textContent: label }), inp, out);
+        fold.appendChild(row);
+    };
+    const lightChk = (label, id, get, set) => {
+        const r = el("div", { className: "chk" });
+        const b = el("input", { type: "checkbox", id, checked: get() });
+        b.addEventListener("change", () => { set(b.checked); ta.value = SETED.exportText(); });
+        r.append(b, el("label", { htmlFor: id, textContent: label }));
+        fold.appendChild(r);
+    };
+    lightChk("key light on", "sd-light", () => LIGHT.on, (v) => LIGHT.on = v);
+    lightRow("pool x", () => LIGHT.x, (v) => LIGHT.x = v, 0, COLS, 0.1, 1);
+    lightRow("pool depth", () => LIGHT.y, (v) => LIGHT.y = v, 0, ROWS, 0.1, 1);
+    lightRow("reach", () => LIGHT.reach, (v) => LIGHT.reach = v, 3, 26, 0.5, 1);
+    lightRow("shade", () => LIGHT.shade, (v) => LIGHT.shade = v, 0, 0.9, 0.01, 2);
+    lightRow("warmth", () => LIGHT.warm, (v) => LIGHT.warm = v, 0, 0.4, 0.01, 2);
+    lightRow("wall share", () => LIGHT.wall, (v) => LIGHT.wall = v, 0, 1, 0.02, 2);
+    lightRow("lamp depth", () => LIGHT.lampY, (v) => LIGHT.lampY = v, -5, 4, 0.1, 1);
+    lightRow("lamp height", () => LIGHT.height, (v) => LIGHT.height = v, 2, 14, 0.1, 1);
+    lightRow("shadow", () => LIGHT.shadow, (v) => LIGHT.shadow = v, 0, 0.8, 0.01, 2);
+    lightRow("wall throw", () => LIGHT.wallSpread, (v) => LIGHT.wallSpread = v, 0, 0.2, 0.005, 3);
+    lightChk("brighten as the gear comes home", "sd-grow",
+             () => LIGHT.grow, (v) => LIGHT.grow = v);
 
     // --- view
     fold.appendChild(h("view"));
@@ -7597,6 +7943,15 @@ function render() {
         }
         ctx.globalAlpha = 1.0;
     }
+
+    // THE LIGHT, and everything standing in it. Both land in the plane, so the
+    // projection foreshortens them along with the floor they lie on.
+    //
+    // Here and not later: the grid draws immediately below, over the top of all
+    // of this, which keeps the pads at full brightness and keeps a shadow from
+    // ever sweeping across the matrix the player is trying to read.
+    drawRoomLight();
+    drawFloorShadows();
 
     // The O/H/S/K/B/T row letters that used to run down the left are gone, along
     // with the step numbers and the pattern counter. The field is an instrument,
