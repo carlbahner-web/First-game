@@ -1805,6 +1805,14 @@ function drawStageLights(wx, wy, ww, wh) {
     if (!list.length) return;
     const rows = getActiveRows();
     const g = MAIN_CTX;
+    // A beam is light ON THE WALL, so it stops at the wall. Carl moved the cans
+    // up off the skirting and their beams — a fixed 0.683 of the wall's height —
+    // ran straight off the top of it and out over the charcoal surround, which
+    // read as light escaping the room.
+    g.save();
+    g.beginPath();
+    g.rect(wx, wy, ww, wh);
+    g.clip();
     for (const L of list) {
         const canH = wh * L.h, canW = canH * LIGHT_CAN_ASPECT;
         const mx = wx + ww * L.x, my = wy + wh * L.y;
@@ -1821,7 +1829,10 @@ function drawStageLights(wx, wy, ww, wh) {
         if (lit > 0) {
             // the beam, opening out as it travels — drawn in the can's own
             // frame, so pointing the can sideways points the beam sideways
-            const reach = wh * 0.683;
+            // Shortened to the room it actually has above it, so the gradient
+            // finishes fading before the clip would cut it. A hard-edged beam is
+            // worse than a short one.
+            const reach = Math.max(wh * 0.14, Math.min(wh * 0.683, my - wy));
             const spread = ww * 0.048 * (0.55 + lit * 0.7);
             const grad = g.createLinearGradient(0, 0, 0, -reach);
             grad.addColorStop(0, col);
@@ -1855,6 +1866,7 @@ function drawStageLights(wx, wy, ww, wh) {
         if (SETED.on) SETED.note(g, L, "light", -canW, -canH, canW * 2, canH);
         g.restore();
     }
+    g.restore();          // the wall clip
 }
 
 function drawWallProps(wx, wy, ww, wh) {
@@ -2592,7 +2604,8 @@ SETED.overlay = function () {
         g.textAlign = "center";
         g.fillStyle = INK.mustard;
         const name = b.pr.art
-            || (b.kind === "light" ? "light" + (b.pr.row === undefined ? "" : " " + b.pr.row)
+            || (b.kind === "light"
+                ? (b.pr.row === undefined ? "light" : ROW_LABEL[b.pr.row])
                 : "scoreboard");
         g.fillText(name, b.x + b.w / 2, b.y - 8);
         g.textAlign = "start";
@@ -3069,7 +3082,7 @@ SETED.buildUI = function () {
                     el("label", { textContent: "art" }),
                     el("output", { textContent: s.pr.art
                         || (s.kind === "light" ? "stage light"
-                            + (s.pr.row === undefined ? "" : " \u00b7 row " + s.pr.row)
+                            + (s.pr.row === undefined ? "" : " \u00b7 " + ROW_LABEL[s.pr.row])
                             : "scoreboard"),
                                    style: "min-width:0;flex:1;text-align:left" }),
                 ]));
@@ -3120,7 +3133,7 @@ SETED.buildUI = function () {
                                                         : "no row — scenery" }));
                     for (let r = 0; r < GRID_ROWS; r++)
                         sel.appendChild(el("option", { value: String(r),
-                            textContent: "row " + r + " reacts" }));
+                            textContent: ROW_LABEL[r] + "  (row " + r + ")" }));
                     sel.value = s.pr.row === undefined ? "" : String(s.pr.row);
                     sel.addEventListener("change", () => {
                         SETED.snapshot();
@@ -3445,12 +3458,12 @@ const BIOMES = [
         // scenery is a decision, so it is written down.
         blocked: [[18, 0], [18, 1], [19, 0], [19, 1]],
         stageLights: [
-            { x: 0.205, y: 0.883, h: 0.042, angle: 0, row: 0 },
-            { x: 0.351, y: 0.883, h: 0.042, angle: 0, row: 1 },
-            { x: 0.497, y: 0.883, h: 0.042, angle: 0, row: 2 },
-            { x: 0.643, y: 0.883, h: 0.042, angle: 0, row: 3 },
-            { x: 0.789, y: 0.883, h: 0.042, angle: 0, row: 4 },
-            { x: 0.935, y: 0.883, h: 0.042, angle: 0, row: 5 },
+            { x: 0.324, y: 0.676, h: 0.042, angle: 0, row: 0 },
+            { x: 0.649, y: 0.326, h: 0.042, angle: 0, row: 1 },
+            { x: 0.354, y: 0.322, h: 0.042, angle: 0, row: 2 },
+            { x: 0.502, y: 0.294, h: 0.042, angle: 0, row: 3 },
+            { x: 0.501, y: 0.787, h: 0.042, angle: 0, row: 4 },
+            { x: 0.673, y: 0.683, h: 0.042, angle: 0, row: 5 },
         ],
         // The readouts hang here, in the same wall space as the props.
         //
@@ -4365,6 +4378,10 @@ const drumFns = [
 // The same six rows as sample voices, for anything that needs to play a row's
 // drum at a chosen volume — drumFns take a time and nothing else.
 const ROW_VOICE = ["openhat", "hihat", "snare", "kick", "cowbell", "tom"];
+// The same six, for humans. Carl read "row 1" in the set dresser as the open
+// hat, which is the top row of the grid and therefore row 0 — a raw index is a
+// question every time you see it, so the editor names the drum instead.
+const ROW_LABEL = ["open hat", "closed hat", "snare", "kick", "cowbell", "tom"];
 
 // ---- Sequencer State ----
 const grid = Array.from({ length: GRID_ROWS }, () => new Array(GRID_COLS).fill(false));
